@@ -1,0 +1,862 @@
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart'; // Added for navigation
+import 'package:hands_app/routing/routes.dart'; // Added for AppRoutes
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hands_app/services/stripe_service.dart';
+import 'dart:developer';
+
+class EmployeePricingWidget extends StatefulWidget {
+  @override
+  _EmployeePricingWidgetState createState() => _EmployeePricingWidgetState();
+}
+
+class _EmployeePricingWidgetState extends State<EmployeePricingWidget> {
+  final _controller = TextEditingController();
+  int _count = 0;
+
+  final List<_Tier> _tiers = [
+    _Tier(min: 1,   max: 10,   price: 49),
+    _Tier(min: 11,  max: 25,   price: 99),
+    _Tier(min: 26,  max: 50,   price: 179),
+    _Tier(min: 51,  max: 100,  price: 299),
+    _Tier(min: 101, max: null, price: 0), // custom
+  ];
+
+  _Tier get _currentTier {
+    return _tiers.firstWhere((t) =>
+      (t.max ?? double.infinity) >= _count && _count >= t.min,
+      orElse: () => _tiers.last,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tier = _currentTier;
+    final isCustom = tier.max == null;
+    final monthly = isCustom ? '--' : '\$${tier.price.toStringAsFixed(0)}';
+    final perEmp = isCustom
+      ? 'Contact Us'
+      : '\$${(tier.price / tier.max!).toStringAsFixed(2)}';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: _controller,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            labelText: 'Number of Employees',
+            border: OutlineInputBorder(),
+          ),
+          onChanged: (v) {
+            final n = int.tryParse(v) ?? 0;
+            setState(() => _count = n);
+          },
+        ),
+        SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _metricTile('Monthly', monthly, context),
+            _metricTile('Per Employee', perEmp, context),
+          ],
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            child: Text('View Pricing Details'),
+            onPressed: () => _showPricingTable(context),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _metricTile(String label, String value, BuildContext context) {
+    return Column(
+      children: [
+        Text(value, style: Theme.of(context).textTheme.headline6),
+        SizedBox(height: 4),
+        Text(label),
+      ],
+    );
+  }
+
+  void _showPricingTable(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text('Pricing Matrix'),
+        content: SingleChildScrollView(
+          child: DataTable(
+            columns: [
+              DataColumn(label: Text('Employees')),
+              DataColumn(label: Text('Price / Month')),
+              DataColumn(label: Text('Per Employee')),
+            ],
+            rows: _tiers.map((t) {
+              final empRange = t.max == null ? '${t.min}+' : '${t.min}-${t.max}';
+              final priceText = t.max == null
+                ? 'Custom Pricing'
+                : '\$${t.price.toStringAsFixed(0)}';
+              final perEmpText = t.max == null
+                ? 'Contact Us'
+                : '\$${(t.price / t.max!).toStringAsFixed(2)}';
+              return DataRow(cells: [
+                DataCell(Text(empRange)),
+                DataCell(Text(priceText)),
+                DataCell(Text(perEmpText)),
+              ]);
+            }).toList(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text('Close')),
+        ],
+      ),
+    );
+  }
+}
+
+class _Tier {
+  final int min;
+  final int? max;
+  final double price;
+  _Tier({required this.min, required this.max, required this.price});
+}
+
+class SignUpPage extends StatefulWidget {ackage:flutter/material.dart';
+import 'package:go_router/go_router.dart'; // Added for navigation
+import 'package:hands_app/routing/routes.dart'; // Added for AppRoutes
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hands_app/services/stripe_service.dart';
+import 'dart:developer';
+
+class EmployeePricingWidget extends StatefulWidget {
+  @override
+  _EmployeePricingWidgetState createState() => _EmployeePricingWidgetState();
+}
+
+class _EmployeePricingWidgetState extends State<EmployeePricingWidget> {
+  final _controller = TextEditingController();
+  int _count = 0;
+
+  final List<_Tier> _tiers = [
+    _Tier(min: 1,   max: 10,   price: 49),
+    _Tier(min: 11,  max: 25,   price: 99),
+    _Tier(min: 26,  max: 50,   price: 179),
+    _Tier(min: 51,  max: 100,  price: 299),
+    _Tier(min: 101, max: null, price: 0), // custom
+  ];
+
+  _Tier get _currentTier {
+    return _tiers.firstWhere((t) =>
+      (t.max ?? double.infinity) >= _count && _count >= t.min,
+      orElse: () => _tiers.last,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tier = _currentTier;
+    final isCustom = tier.max == null;
+    final monthly = isCustom ? '--' : '\$${tier.price.toStringAsFixed(0)}';
+    final perEmp = isCustom
+      ? 'Contact Us'
+      : '\$${(tier.price / tier.max!).toStringAsFixed(2)}';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: _controller,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            labelText: 'Number of Employees',
+            border: OutlineInputBorder(),
+          ),
+          onChanged: (v) {
+            final n = int.tryParse(v) ?? 0;
+            setState(() => _count = n);
+          },
+        ),
+        SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _metricTile('Monthly', monthly, context),
+            _metricTile('Per Employee', perEmp, context),
+          ],
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            child: Text('View Pricing Details'),
+            onPressed: () => _showPricingTable(context),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _metricTile(String label, String value, BuildContext context) {
+    return Column(
+      children: [
+        Text(value, style: Theme.of(context).textTheme.headline6),
+        SizedBox(height: 4),
+        Text(label),
+      ],
+    );
+  }
+
+  void _showPricingTable(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text('Pricing Matrix'),
+        content: SingleChildScrollView(
+          child: DataTable(
+            columns: [
+              DataColumn(label: Text('Employees')),
+              DataColumn(label: Text('Price / Month')),
+              DataColumn(label: Text('Per Employee')),
+            ],
+            rows: _tiers.map((t) {
+              final empRange = t.max == null ? '${t.min}+' : '${t.min}-${t.max}';
+              final priceText = t.max == null
+                ? 'Custom Pricing'
+                : '\$${t.price.toStringAsFixed(0)}';
+              final perEmpText = t.max == null
+                ? 'Contact Us'
+                : '\$${(t.price / t.max!).toStringAsFixed(2)}';
+              return DataRow(cells: [
+                DataCell(Text(empRange)),
+                DataCell(Text(priceText)),
+                DataCell(Text(perEmpText)),
+              ]);
+            }).toList(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text('Close')),
+        ],
+      ),
+    );
+  }
+}
+
+class _Tier {
+  final int min;
+  final int? max;
+  final double price;
+  _Tier({required this.min, required this.max, required this.price});
+}
+
+class SignUpPage extends StatefulWidget {
+  const SignUpPage({super.key});
+
+  @override
+  _SignUpPageState createState() => _SignUpPageState();
+}
+
+class _SignUpPageState extends State<SignUpPage> {
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController businessNameController = TextEditingController();
+  final TextEditingController primaryLocationNameController = TextEditingController();
+  final TextEditingController primaryLocationAddressController = TextEditingController();
+  final TextEditingController primaryLocationCityController = TextEditingController();
+  final TextEditingController primaryLocationZipController = TextEditingController();
+  final TextEditingController firstNameController = TextEditingController();
+  final TextEditingController lastNameController = TextEditingController();
+  final TextEditingController emailController = TextEditingController();
+  final TextEditingController passwordController = TextEditingController();
+  final TextEditingController confirmPasswordController = TextEditingController();
+  final TextEditingController numberOfEmployeesController = TextEditingController();
+  String? businessType;
+  String? primaryLocationState;
+  String? userRole;
+  bool agreeTerms = false;
+  bool passwordVisible = false;
+
+  final List<String> usStates = [
+    'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+    'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+    'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+    'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+    'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY'
+  ];
+
+  @override
+  void dispose() {
+    businessNameController.dispose();
+    primaryLocationNameController.dispose();
+    primaryLocationAddressController.dispose();
+    primaryLocationCityController.dispose();
+    primaryLocationZipController.dispose();
+    firstNameController.dispose();
+    lastNameController.dispose();
+    emailController.dispose();
+    passwordController.dispose();
+    confirmPasswordController.dispose();
+    numberOfEmployeesController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      // Remove AppBar for a modern look
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Logo at top left
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16.0),
+                  child: Align(
+                    alignment: Alignment.topLeft,
+                    child: Image.asset(
+                      'assets/images/hands_logo_v2.png',
+                      height: 40,
+                      width: 40,
+                    ),
+                  ),
+                ),
+                Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('CREATE YOUR HANDS ACCOUNT', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, letterSpacing: 1.2, color: theme.primaryColor)),
+                      SizedBox(height: 8),
+                      Text('Complete the form below to start managing your business with us.', style: theme.textTheme.bodyMedium),
+                      SizedBox(height: 16),
+
+                      // Business Name
+                      TextFormField(
+                        controller: businessNameController,
+                        decoration: InputDecoration(labelText: 'input your Business or LLC name', border: OutlineInputBorder()),
+                        textCapitalization: TextCapitalization.words,
+                        validator: (v) => v!.isEmpty ? 'Enter business name' : null,
+                      ),
+                      SizedBox(height: 16),
+
+                      // Number of Employees (moved up)
+                      TextFormField(
+                        controller: numberOfEmployeesController,
+                        decoration: InputDecoration(labelText: 'Number of Employees (All Locations)', border: OutlineInputBorder()),
+                        keyboardType: TextInputType.number,
+                        validator: (v) => v!.isEmpty ? 'Enter number of employees' : null,
+                      ),
+                      SizedBox(height: 16),
+
+                      // Business Type Dropdown
+                      DropdownButtonFormField<String>(
+                        decoration: InputDecoration(
+                          labelText: 'Business Type',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: ['Restaurant', 'Cafe', 'Bar', 'Food Truck', 'Catering Service', 'Retail', 'Other']
+                            .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                            .toList(),
+                        onChanged: (v) => setState(() => businessType = v),
+                        validator: (v) => v == null ? 'Select business type' : null,
+                      ),
+                      SizedBox(height: 16),
+
+                      // Primary Location Name
+                      TextFormField(
+                        controller: primaryLocationNameController,
+                        decoration: InputDecoration(
+                          labelText: 'Add your location name (input your primary location name if you have multiple locations)',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.location_on),
+                        ),
+                        textCapitalization: TextCapitalization.words,
+                        validator: (v) => v!.isEmpty ? 'Enter location name' : null,
+                      ),
+                      SizedBox(height: 16),
+
+                      // Primary Location Address
+                      TextFormField(
+                        controller: primaryLocationAddressController,
+                        decoration: InputDecoration(
+                          labelText: 'Street Address',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.home),
+                        ),
+                        textCapitalization: TextCapitalization.words,
+                        validator: (v) => v!.isEmpty ? 'Enter street address' : null,
+                      ),
+                      SizedBox(height: 16),
+
+                      // City, State, Zip Row
+                      Row(
+                        children: [
+                          Expanded(
+                            flex: 2,
+                            child: TextFormField(
+                              controller: primaryLocationCityController,
+                              decoration: InputDecoration(
+                                labelText: 'City',
+                                border: OutlineInputBorder(),
+                              ),
+                              textCapitalization: TextCapitalization.words,
+                              validator: (v) => v!.isEmpty ? 'Enter city' : null,
+                            ),
+                          ),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: primaryLocationState,
+                              decoration: InputDecoration(
+                                labelText: 'State',
+                                border: OutlineInputBorder(),
+                              ),
+                              items: usStates
+                                  .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                                  .toList(),
+                              onChanged: (v) => setState(() => primaryLocationState = v),
+                              validator: (v) => v == null ? 'Select state' : null,
+                            ),
+                          ),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: TextFormField(
+                              controller: primaryLocationZipController,
+                              decoration: InputDecoration(
+                                labelText: 'ZIP',
+                                border: OutlineInputBorder(),
+                              ),
+                              keyboardType: TextInputType.number,
+                              validator: (v) => v!.isEmpty ? 'Enter ZIP' : null,
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 24),
+
+                      // Contact Information Section
+                      Text('CONTACT INFORMATION', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, letterSpacing: 1.2, color: theme.primaryColor)),
+                      SizedBox(height: 8),
+                      Text('Admin account details', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.7))),
+                      SizedBox(height: 16),
+
+                      // Contact Name
+                      Row(children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: firstNameController,
+                            decoration: InputDecoration(labelText: 'Contact First Name', border: OutlineInputBorder()),
+                            textCapitalization: TextCapitalization.words,
+                            validator: (v) => v!.isEmpty ? 'Enter first name' : null,
+                          ),
+                        ),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: TextFormField(
+                            controller: lastNameController,
+                            decoration: InputDecoration(labelText: 'Contact Last Name', border: OutlineInputBorder()),
+                            textCapitalization: TextCapitalization.words,
+                            validator: (v) => v!.isEmpty ? 'Enter last name' : null,
+                          ),
+                        ),
+                      ]),
+                      SizedBox(height: 16),
+
+                      // Email
+                      TextFormField(
+                        controller: emailController,
+                        decoration: InputDecoration(labelText: 'Email Address', border: OutlineInputBorder()),
+                        keyboardType: TextInputType.emailAddress,
+                        validator: (v) => v!.contains('@') ? null : 'Enter a valid email',
+                      ),
+                      SizedBox(height: 16),
+
+                      // Password
+                      TextFormField(
+                        controller: passwordController,
+                        decoration: InputDecoration(
+                          labelText: 'Create Password',
+                          border: OutlineInputBorder(),
+                          suffixIcon: IconButton(
+                            icon: Icon(passwordVisible ? Icons.visibility : Icons.visibility_off),
+                            onPressed: () => setState(() => passwordVisible = !passwordVisible),
+                          ),
+                        ),
+                        obscureText: !passwordVisible,
+                        validator: (v) => v!.length >= 6 ? null : 'Password too short',
+                      ),
+                      SizedBox(height: 16),
+
+                      // Confirm Password
+                      TextFormField(
+                        controller: confirmPasswordController,
+                        decoration: InputDecoration(
+                          labelText: 'Confirm Password',
+                          border: OutlineInputBorder(),
+                          suffixIcon: IconButton(
+                            icon: Icon(passwordVisible ? Icons.visibility : Icons.visibility_off),
+                            onPressed: () => setState(() => passwordVisible = !passwordVisible),
+                          ),
+                        ),
+                        obscureText: !passwordVisible,
+                        validator: (v) => v != passwordController.text ? 'Passwords do not match' : null,
+                      ),
+                      SizedBox(height: 16),
+
+                      // Role
+                      DropdownButtonFormField<String>(
+                        decoration: InputDecoration(labelText: 'Are you the Business Owner or Manager?', border: OutlineInputBorder()),
+                        items: ['Owner', 'Manager']
+                            .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                            .toList(),
+                        onChanged: (v) => setState(() => userRole = v),
+                        validator: (v) => v == null ? 'Select your role' : null,
+                      ),
+                      SizedBox(height: 16),
+
+                      // Terms checkbox
+                      Row(children: [
+                        Checkbox(value: agreeTerms, onChanged: (v) => setState(() => agreeTerms = v!)),
+                        Expanded(child: Text('I agree to the Terms of Service', style: theme.textTheme.bodyMedium)),
+                      ]),
+                      SizedBox(height: 16),
+
+                      // Submit button
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            if (_formKey.currentState!.validate() && agreeTerms) {
+                              try {
+                                // Show loading indicator
+                                showDialog(
+                                  context: context,
+                                  barrierDismissible: false,
+                                  builder: (context) => const Center(child: CircularProgressIndicator()),
+                                );
+
+                                // Firebase Auth - Create user account
+                                final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+                                  email: emailController.text.trim(),
+                                  password: passwordController.text.trim(),
+                                );
+
+                                final userId = credential.user!.uid;
+                                final firestore = FirebaseFirestore.instance;
+                                final batch = firestore.batch();
+
+                                // Parse employee count
+                                final employeeCount = int.tryParse(numberOfEmployeesController.text.trim()) ?? 0;
+                                
+                                // Create organization document with subscription fields
+                                final orgRef = firestore.collection('organizations').doc();
+                                final orgId = orgRef.id;
+                                
+                                batch.set(orgRef, {
+                                  'organizationName': businessNameController.text.trim(),
+                                  'businessType': businessType,
+                                  'employeeCount': employeeCount,
+                                  'numberOfEmployees': employeeCount, // Keep old field for compatibility
+                                  'mainContactId': userId,
+                                  'subscriptionStatus': 'pending', // Set initial status as pending
+                                  'createdAt': FieldValue.serverTimestamp(),
+                                  'updatedAt': FieldValue.serverTimestamp(),
+                                });
+
+                                // Create primary location in organization's locations subcollection
+                                final locationRef = orgRef.collection('locations').doc();
+                                final locationId = locationRef.id;
+                                
+                                batch.set(locationRef, {
+                                  'locationName': primaryLocationNameController.text.trim(),
+                                  'address': primaryLocationAddressController.text.trim(),
+                                  'city': primaryLocationCityController.text.trim(),
+                                  'state': primaryLocationState,
+                                  'zipCode': primaryLocationZipController.text.trim(),
+                                  'organizationId': orgId,
+                                  'isPrimary': true,
+                                  'createdAt': FieldValue.serverTimestamp(),
+                                  'updatedAt': FieldValue.serverTimestamp(),
+                                });
+
+                                // Create user document with proper admin setup
+                                final userRef = firestore.collection('users').doc(userId);
+                                batch.set(userRef, {
+                                  'userId': userId,
+                                  'userRole': 2, // Admin
+                                  'organizationId': orgId,
+                                  'locationIds': [locationId],
+                                  'emailAddress': emailController.text.trim(),
+                                  'firstName': firstNameController.text.trim(),
+                                  'lastName': lastNameController.text.trim(),
+                                  'phoneNumber': '', // Removed phone number
+                                  'jobType': [], // Admins don't need specific job types
+                                  'createdAt': FieldValue.serverTimestamp(),
+                                  'updatedAt': FieldValue.serverTimestamp(),
+                                });
+
+                                // Execute batch operation
+                                await batch.commit();
+                                
+                                log('Organization created successfully. Ensuring authentication is ready...');
+
+                                // Wait for authentication to propagate with retry mechanism
+                                await _ensureAuthenticationReady();
+                                
+                                log('Authentication verified. Redirecting to Stripe checkout...');
+
+                                // Hide loading indicator
+                                if (mounted) Navigator.pop(context);
+                                
+                                // Show pricing preview before redirecting to Stripe
+                                final pricingInfo = StripeService.getPricingTierInfo(employeeCount);
+                                final shouldProceed = await showDialog<bool>(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    title: Text(employeeCount == 0 ? 'Free Test Account' : 'Subscription Required'),
+                                    content: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(employeeCount == 0 
+                                            ? 'Your account will be activated with our free test tier:'
+                                            : 'To complete your account setup, please subscribe to our service:'),
+                                        const SizedBox(height: 16),
+                                        Container(
+                                          padding: const EdgeInsets.all(16),
+                                          decoration: BoxDecoration(
+                                            color: employeeCount == 0 
+                                                ? Colors.green.withValues(alpha: 0.1)
+                                                : theme.primaryColor.withValues(alpha: 0.1),
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(
+                                              color: employeeCount == 0 
+                                                  ? Colors.green.withValues(alpha: 0.3)
+                                                  : theme.primaryColor.withValues(alpha: 0.3)
+                                            ),
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                '${pricingInfo['range']}',
+                                                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                                              ),
+                                              Text(
+                                                '${pricingInfo['price']}/month',
+                                                style: theme.textTheme.headlineSmall?.copyWith(
+                                                  color: employeeCount == 0 ? Colors.green : theme.primaryColor,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 8),
+                                              Text(
+                                                '${pricingInfo['description']}',
+                                                style: theme.textTheme.bodySmall?.copyWith(
+                                                  color: employeeCount == 0 ? Colors.green[700] : theme.primaryColor,
+                                                  fontStyle: FontStyle.italic,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(height: 16),
+                                        Text(
+                                          employeeCount == 0 
+                                              ? 'Click continue to activate your free test account immediately.'
+                                              : 'You will be redirected to Stripe to complete your payment securely. Start with a 14-day free trial!',
+                                          style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+                                        ),
+                                      ],
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.of(context).pop(false),
+                                        child: const Text('Cancel'),
+                                      ),
+                                      ElevatedButton(
+                                        onPressed: () => Navigator.of(context).pop(true),
+                                        child: Text(employeeCount == 0 ? 'Activate Free Account' : 'Start Free Trial'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+
+                                if (shouldProceed == true && mounted) {
+                                  try {
+                                    // For free tier (0 employees), handle differently
+                                    if (employeeCount == 0) {
+                                      // Call the function to activate free tier
+                                      await StripeService.redirectToStripeCheckout(
+                                        email: emailController.text.trim(),
+                                        orgId: orgId,
+                                        employeeCount: employeeCount,
+                                      );
+                                      
+                                      // Show success message and redirect to dashboard
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Free account activated! Welcome to Hands!'),
+                                            backgroundColor: Colors.green,
+                                          ),
+                                        );
+                                        
+                                        // Redirect to admin dashboard
+                                        context.go(AppRoutes.adminDashboardPage.path);
+                                      }
+                                    } else {
+                                      // For paid tiers, redirect to Stripe Checkout
+                                      await StripeService.redirectToStripeCheckout(
+                                        email: emailController.text.trim(),
+                                        orgId: orgId,
+                                        employeeCount: employeeCount,
+                                      );
+                                      
+                                      // Show message about being redirected to payment
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Redirecting to secure payment... Complete your subscription to access the dashboard.'),
+                                            backgroundColor: Colors.blue,
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  } catch (stripeError) {
+                                    log('Stripe checkout error: $stripeError');
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Error setting up payment: $stripeError'),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                    }
+                                  }
+                                } else {
+                                  // User cancelled, could optionally clean up the created organization
+                                  log('User cancelled payment setup');
+                                }
+                              } on FirebaseAuthException catch (e) {
+                                // Hide loading indicator
+                                if (mounted) Navigator.pop(context);
+                                
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(e.message ?? 'Sign up failed')),
+                                );
+                              } catch (e) {
+                                // Hide loading indicator
+                                if (mounted) Navigator.pop(context);
+                                
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('An error occurred: $e')),
+                                );
+                              }
+                            }
+                          },
+                          child: Text('COMPLETE SIGN UP', style: theme.textTheme.labelLarge?.copyWith(color: Colors.white)),
+                        ),
+                      ),
+
+                      // Link to login page
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 24.0),
+                        child: Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('Already have an account?', style: theme.textTheme.bodyMedium),
+                              SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: () {
+                                  context.go(AppRoutes.loginPage.path);
+                                },
+                                child: Text(
+                                  'LOG IN',
+                                  style: theme.textTheme.labelLarge?.copyWith(
+                                    color: theme.primaryColor,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      // Employee Pricing Widget (conditionally visible)
+                      if (numberOfEmployeesController.text.trim().isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 32.0),
+                          child: EmployeePricingWidget(),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Ensures Firebase authentication is fully propagated before calling functions
+  Future<void> _ensureAuthenticationReady() async {
+    final auth = FirebaseAuth.instance;
+    final user = auth.currentUser;
+
+    if (user == null) {
+      throw Exception('User not authenticated');
+    }
+
+    log('Ensuring authentication is ready for user: ${user.uid}');
+
+    // Retry mechanism to check authentication propagation
+    for (int i = 0; i < 10; i++) {
+      try {
+        log('Authentication check attempt ${i + 1}/10');
+        
+        // Force refresh the token to ensure it's valid
+        final token = await user.getIdToken(true);
+        
+        if (token != null && token.isNotEmpty) {
+          log('Valid ID token obtained, authentication ready');
+          
+          // Additional wait to ensure backend propagation
+          await Future.delayed(Duration(milliseconds: 500));
+          return;
+        }
+      } catch (e) {
+        log('Error during authentication check attempt ${i + 1}: $e');
+      }
+
+      // Wait progressively longer between retries
+      final waitTime = Duration(milliseconds: 500 + (i * 200));
+      log('Waiting ${waitTime.inMilliseconds}ms before retry...');
+      await Future.delayed(waitTime);
+    }
+
+    throw Exception('Authentication propagation timed out after 10 attempts');
+  }
+}
