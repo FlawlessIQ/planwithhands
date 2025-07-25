@@ -43,7 +43,8 @@ final ThemeData handsTheme = ThemeData(
     elevation: 0,
     centerTitle: true,
   ),
-  textTheme: GoogleFonts.nunitoTextTheme(), // Use Nunito as a Montserrat alternative
+  textTheme:
+      GoogleFonts.nunitoTextTheme(), // Use Nunito as a Montserrat alternative
   elevatedButtonTheme: ElevatedButtonThemeData(
     style: ButtonStyle(
       backgroundColor: WidgetStateProperty.all<Color>(HandsColors.accent),
@@ -51,8 +52,12 @@ final ThemeData handsTheme = ThemeData(
       shape: WidgetStateProperty.all<RoundedRectangleBorder>(
         RoundedRectangleBorder(borderRadius: BorderRadius.circular(4.0)),
       ),
-      overlayColor: WidgetStateProperty.all<Color>(HandsColors.accent.withAlpha(25)),
-      padding: WidgetStateProperty.all<EdgeInsets>(EdgeInsets.symmetric(vertical: 16, horizontal: 24)),
+      overlayColor: WidgetStateProperty.all<Color>(
+        HandsColors.accent.withAlpha(25),
+      ),
+      padding: WidgetStateProperty.all<EdgeInsets>(
+        EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+      ),
       textStyle: WidgetStateProperty.all<TextStyle>(
         TextStyle(
           fontFamily: 'Montserrat',

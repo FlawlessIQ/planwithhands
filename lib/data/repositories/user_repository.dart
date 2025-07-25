@@ -1,8 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/data/models/user_data.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 class UserRepository {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore _firestore = FirestoreEnforcer.instance;
 
   Future<UserData?> fetchUserData(String userId) async {
     try {
@@ -16,7 +17,10 @@ class UserRepository {
     return null;
   }
 
-  Stream<List<String>> fetchUserLocations(String organizationId, List<String> locationIds) {
+  Stream<List<String>> fetchUserLocations(
+    String organizationId,
+    List<String> locationIds,
+  ) {
     return _firestore
         .collection('organizations/$organizationId/locations')
         .where(FieldPath.documentId, whereIn: locationIds)

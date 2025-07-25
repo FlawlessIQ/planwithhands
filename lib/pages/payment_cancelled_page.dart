@@ -14,11 +14,7 @@ class PaymentCancelledPage extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                Icons.cancel,
-                color: Colors.orange,
-                size: 80,
-              ),
+              Icon(Icons.cancel, color: Colors.orange, size: 80),
               const SizedBox(height: 24),
               Text(
                 'Payment Cancelled',

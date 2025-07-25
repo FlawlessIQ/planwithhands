@@ -49,12 +49,13 @@ class OperationalState extends _$OperationalState {
   void addShiftToLocation(String locationId, ShiftData shift) {
     if (state.organizationData == null) return;
 
-    var updatedLocations = state.organizationData!.locations.map((location) {
-      if (location.locationId == locationId) {
-        return location.copyWith(shifts: [...location.shifts, shift]);
-      }
-      return location;
-    }).toList();
+    var updatedLocations =
+        state.organizationData!.locations.map((location) {
+          if (location.locationId == locationId) {
+            return location.copyWith(shifts: [...location.shifts, shift]);
+          }
+          return location;
+        }).toList();
 
     state = state.copyWith(
       organizationData: state.organizationData!.copyWith(
@@ -78,25 +79,29 @@ class OperationalState extends _$OperationalState {
 
     var locations = [...state.organizationData!.locations];
 
-    int locationIndex =
-        locations.indexWhere((location) => location.locationId == locationId);
+    int locationIndex = locations.indexWhere(
+      (location) => location.locationId == locationId,
+    );
 
     if (locationIndex != -1) {
       var mutableShifts = [...locations[locationIndex].shifts];
-      int shiftIndex =
-          mutableShifts.indexWhere((shift) => shift.shiftId == updatedShift.shiftId);
+      int shiftIndex = mutableShifts.indexWhere(
+        (shift) => shift.shiftId == updatedShift.shiftId,
+      );
 
       if (shiftIndex != -1) {
         mutableShifts[shiftIndex] = updatedShift;
 
-        var updatedLocation =
-            locations[locationIndex].copyWith(shifts: mutableShifts);
+        var updatedLocation = locations[locationIndex].copyWith(
+          shifts: mutableShifts,
+        );
 
         locations[locationIndex] = updatedLocation;
 
         state = state.copyWith(
-          organizationData:
-              state.organizationData!.copyWith(locations: locations),
+          organizationData: state.organizationData!.copyWith(
+            locations: locations,
+          ),
         );
       }
     }
@@ -107,21 +112,26 @@ class OperationalState extends _$OperationalState {
 
     var locations = [...state.organizationData!.locations];
 
-    int locationIndex =
-        locations.indexWhere((location) => location.locationId == locationId);
+    int locationIndex = locations.indexWhere(
+      (location) => location.locationId == locationId,
+    );
 
     if (locationIndex != -1) {
       var mutableShifts = [...locations[locationIndex].shifts];
-      mutableShifts.removeWhere((shift) => shift.shiftId == shiftToDelete.shiftId);
+      mutableShifts.removeWhere(
+        (shift) => shift.shiftId == shiftToDelete.shiftId,
+      );
 
-      var updatedLocation =
-          locations[locationIndex].copyWith(shifts: mutableShifts);
+      var updatedLocation = locations[locationIndex].copyWith(
+        shifts: mutableShifts,
+      );
 
       locations[locationIndex] = updatedLocation;
 
       state = state.copyWith(
-        organizationData:
-            state.organizationData!.copyWith(locations: locations),
+        organizationData: state.organizationData!.copyWith(
+          locations: locations,
+        ),
       );
     }
   }

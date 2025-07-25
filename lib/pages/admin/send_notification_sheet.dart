@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hands_app/state/notification_controller.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 class SendNotificationSheet extends ConsumerStatefulWidget {
   const SendNotificationSheet({super.key});
@@ -41,19 +41,19 @@ class _SendNotificationSheetState
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('User not signed in');
-      final userDoc = await FirebaseFirestore.instance
+      final userDoc = await FirestoreEnforcer.instance
           .collection('users')
           .doc(user.uid)
           .get();
       final orgId = userDoc.data()?['organizationId'] as String?;
       if (orgId == null) throw Exception('Organization not found');
 
-      final groupsSnap = await FirebaseFirestore.instance
+      final groupsSnap = await FirestoreEnforcer.instance
           .collection('organizations')
           .doc(orgId)
           .collection('groups')
           .get();
-      final locSnap = await FirebaseFirestore.instance
+      final locSnap = await FirestoreEnforcer.instance
           .collection('organizations')
           .doc(orgId)
           .collection('locations')

@@ -32,7 +32,11 @@ class Navbar extends ConsumerWidget {
 
     // Filter only the visible items
     final filteredNavItems =
-        navItems.where((item) => item['roles'].contains(userState.userData?.userRole)).toList();
+        navItems
+            .where(
+              (item) => item['roles'].contains(userState.userData?.userRole),
+            )
+            .toList();
 
     return BottomNavigationBar(
       currentIndex: appState.currentPageIndex.clamp(

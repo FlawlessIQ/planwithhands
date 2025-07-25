@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 class CreateGroupSheet extends ConsumerStatefulWidget {
   const CreateGroupSheet({super.key});
@@ -39,28 +40,35 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
     final current = FirebaseAuth.instance.currentUser;
     if (current == null) return;
     // get this user’s orgId
-    final userDoc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(current.uid)
-        .get();
+    final userDoc =
+        await FirestoreEnforcer.instance
+            .collection('users')
+            .doc(current.uid)
+            .get();
     final orgId = userDoc.data()?['organizationId'] as String?;
 
     if (orgId == null) return;
     // load all users in this organization
-    final snap = await FirebaseFirestore.instance
-        .collection('users')
-        .where('organizationId', isEqualTo: orgId)
-        .get();
+    final snap =
+        await FirestoreEnforcer.instance
+            .collection('users')
+            .where('organizationId', isEqualTo: orgId)
+            .get();
 
     setState(() {
-      _users = snap.docs.map((doc) {
-        final data = doc.data();
-        final name = '${data['firstName'] as String? ?? ''} ${data['lastName'] as String? ?? ''}';
-        return {
-          'id': doc.id,
-          'name': name.trim().isEmpty ? (data['email'] as String? ?? doc.id) : name,
-        };
-      }).toList();
+      _users =
+          snap.docs.map((doc) {
+            final data = doc.data();
+            final name =
+                '${data['firstName'] as String? ?? ''} ${data['lastName'] as String? ?? ''}';
+            return {
+              'id': doc.id,
+              'name':
+                  name.trim().isEmpty
+                      ? (data['email'] as String? ?? doc.id)
+                      : name,
+            };
+          }).toList();
       _isLoading = false;
     });
   }
@@ -70,7 +78,9 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
     if (name.isEmpty || _selectedUserIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please enter a group name and select at least one user.'),
+          content: Text(
+            'Please enter a group name and select at least one user.',
+          ),
         ),
       );
       return;
@@ -78,34 +88,36 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
 
     final current = FirebaseAuth.instance.currentUser;
     if (current == null) return;
-    final userDoc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(current.uid)
-        .get();
+    final userDoc =
+        await FirestoreEnforcer.instance
+            .collection('users')
+            .doc(current.uid)
+            .get();
     final orgId = userDoc.data()?['organizationId'] as String?;
     if (orgId == null) return;
 
-    await FirebaseFirestore.instance
+    await FirestoreEnforcer.instance
         .collection('organizations')
         .doc(orgId)
         .collection('groups')
         .add({
-      'name': name,
-      'memberIds': _selectedUserIds.toList(),
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+          'name': name,
+          'memberIds': _selectedUserIds.toList(),
+          'createdAt': FieldValue.serverTimestamp(),
+        });
 
     if (mounted) Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
-    final filtered = _users.where((u) {
-      final q = _searchQuery.toLowerCase();
-      return q.isEmpty ||
-          u['name']!.toLowerCase().contains(q) ||
-          u['id']!.toLowerCase().contains(q);
-    }).toList();
+    final filtered =
+        _users.where((u) {
+          final q = _searchQuery.toLowerCase();
+          return q.isEmpty ||
+              u['name']!.toLowerCase().contains(q) ||
+              u['id']!.toLowerCase().contains(q);
+        }).toList();
 
     return Padding(
       padding: MediaQuery.of(context).viewInsets.add(const EdgeInsets.all(16)),
@@ -144,7 +156,10 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
               if (_isLoading)
                 const Center(child: CircularProgressIndicator())
               else ...[
-                const Text('Select Users:', style: TextStyle(fontWeight: FontWeight.w600)),
+                const Text(
+                  'Select Users:',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
                 const SizedBox(height: 8),
                 ...filtered.map((user) {
                   final id = user['id']!;

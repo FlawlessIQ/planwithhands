@@ -6,7 +6,7 @@ import 'package:hands_app/debug/force_checklist_creator.dart';
 class NuclearDashboardOverride extends HookConsumerWidget {
   final String organizationId;
   final String locationId;
-  
+
   const NuclearDashboardOverride({
     super.key,
     required this.organizationId,
@@ -41,7 +41,7 @@ class NuclearDashboardOverride extends HookConsumerWidget {
               ),
             ),
             const SizedBox(height: 20),
-            
+
             ElevatedButton(
               onPressed: () => _createAndShowChecklists(context),
               style: ElevatedButton.styleFrom(
@@ -54,9 +54,9 @@ class NuclearDashboardOverride extends HookConsumerWidget {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ),
-            
+
             const SizedBox(height: 20),
-            
+
             ElevatedButton(
               onPressed: () => _resetEverything(context),
               style: ElevatedButton.styleFrom(
@@ -69,9 +69,9 @@ class NuclearDashboardOverride extends HookConsumerWidget {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ),
-            
+
             const SizedBox(height: 20),
-            
+
             const Card(
               child: Padding(
                 padding: EdgeInsets.all(16),
@@ -80,13 +80,24 @@ class NuclearDashboardOverride extends HookConsumerWidget {
                   children: [
                     Text(
                       'EMERGENCY PROCEDURES:',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
                     ),
                     SizedBox(height: 8),
-                    Text('1. Force Create: Creates emergency checklists immediately'),
-                    Text('2. Nuclear Reset: Deletes all checklists and recreates them'),
-                    Text('3. Both bypass all normal validation and generation logic'),
-                    Text('4. Use only when normal dashboard is completely broken'),
+                    Text(
+                      '1. Force Create: Creates emergency checklists immediately',
+                    ),
+                    Text(
+                      '2. Nuclear Reset: Deletes all checklists and recreates them',
+                    ),
+                    Text(
+                      '3. Both bypass all normal validation and generation logic',
+                    ),
+                    Text(
+                      '4. Use only when normal dashboard is completely broken',
+                    ),
                   ],
                 ),
               ),
@@ -100,26 +111,31 @@ class NuclearDashboardOverride extends HookConsumerWidget {
   Future<void> _createAndShowChecklists(BuildContext context) async {
     try {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('🚀 FORCE CREATING EMERGENCY CHECKLISTS...')),
+        const SnackBar(
+          content: Text('🚀 FORCE CREATING EMERGENCY CHECKLISTS...'),
+        ),
       );
 
       final today = DateTime.now();
-      final dateString = '${today.year.toString().padLeft(4, '0')}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-      
+      final dateString =
+          '${today.year.toString().padLeft(4, '0')}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+
       final forceCreator = ForceChecklistCreator();
       final checklists = await forceCreator.createEmergencyChecklists(
         organizationId,
         locationId,
         dateString,
       );
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('✅ SUCCESS: Created ${checklists.length} emergency checklists!'),
+          content: Text(
+            '✅ SUCCESS: Created ${checklists.length} emergency checklists!',
+          ),
           backgroundColor: Colors.green,
         ),
       );
-      
+
       // Navigate to a simple checklist view
       Navigator.push(
         context,
@@ -127,13 +143,9 @@ class NuclearDashboardOverride extends HookConsumerWidget {
           builder: (context) => _EmergencyChecklistView(checklists: checklists),
         ),
       );
-      
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('❌ ERROR: $e'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text('❌ ERROR: $e'), backgroundColor: Colors.red),
       );
     }
   }
@@ -141,23 +153,26 @@ class NuclearDashboardOverride extends HookConsumerWidget {
   Future<void> _resetEverything(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('💀 NUCLEAR OPTION'),
-        content: const Text('This will DELETE ALL existing checklists and recreate them. Are you absolutely sure?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+      builder:
+          (context) => AlertDialog(
+            title: const Text('💀 NUCLEAR OPTION'),
+            content: const Text(
+              'This will DELETE ALL existing checklists and recreate them. Are you absolutely sure?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                child: const Text('YES, NUKE IT'),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('YES, NUKE IT'),
-          ),
-        ],
-      ),
     );
-    
+
     if (confirmed == true) {
       // TODO: Implement nuclear reset functionality
       ScaffoldMessenger.of(context).showSnackBar(
@@ -172,7 +187,7 @@ class NuclearDashboardOverride extends HookConsumerWidget {
 
 class _EmergencyChecklistView extends StatelessWidget {
   final List<DailyChecklist> checklists;
-  
+
   const _EmergencyChecklistView({required this.checklists});
 
   @override
@@ -195,18 +210,26 @@ class _EmergencyChecklistView extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    checklist.templateName ?? 'Emergency Checklist ${index + 1}',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    checklist.templateName ??
+                        'Emergency Checklist ${index + 1}',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text('Tasks: ${checklist.tasks.length}'),
-                  Text('Completed: ${checklist.tasks.where((t) => t.isCompleted).length}'),
+                  Text(
+                    'Completed: ${checklist.tasks.where((t) => t.isCompleted).length}',
+                  ),
                   Text('ID: ${checklist.id}'),
                   const SizedBox(height: 8),
-                  ...checklist.tasks.map((task) => Padding(
-                    padding: const EdgeInsets.only(left: 16),
-                    child: Text('• ${task.description}'),
-                  )),
+                  ...checklist.tasks.map(
+                    (task) => Padding(
+                      padding: const EdgeInsets.only(left: 16),
+                      child: Text('• ${task.description}'),
+                    ),
+                  ),
                 ],
               ),
             ),

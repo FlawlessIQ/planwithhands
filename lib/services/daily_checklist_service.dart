@@ -3,9 +3,10 @@ import 'package:flutter/foundation.dart';
 import 'package:hands_app/models/daily_checklist.dart';
 import 'package:hands_app/data/models/shift_data.dart';
 import 'package:uuid/uuid.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 class DailyChecklistService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore _firestore = FirestoreEnforcer.instance;
   final Uuid _uuid = const Uuid();
 
   /// Generate daily checklists for a specific shift and date
@@ -18,14 +19,18 @@ class DailyChecklistService {
     required String date, // YYYY-MM-DD format
   }) async {
     debugPrint('[DailyChecklistService] Starting generation...');
-    debugPrint('[DailyChecklistService] Params: orgId=$organizationId, locationId=$locationId, shiftId=$shiftId, date=$date');
-    debugPrint('[DailyChecklistService] ShiftData.checklistTemplateIds: ${shiftData.checklistTemplateIds}');
-    
+    debugPrint(
+      '[DailyChecklistService] Params: orgId=$organizationId, locationId=$locationId, shiftId=$shiftId, date=$date',
+    );
+    debugPrint(
+      '[DailyChecklistService] ShiftData.checklistTemplateIds: ${shiftData.checklistTemplateIds}',
+    );
+
     final List<DailyChecklist> createdChecklists = [];
 
     for (String templateId in shiftData.checklistTemplateIds) {
       debugPrint('[DailyChecklistService] Processing template: $templateId');
-      
+
       final checklistId = _generateChecklistId(
         organizationId: organizationId,
         locationId: locationId,
@@ -33,74 +38,98 @@ class DailyChecklistService {
         templateId: templateId,
         date: date,
       );
-      
+
       debugPrint('[DailyChecklistService] Generated checklistId: $checklistId');
 
       // Check if checklist already exists (idempotent)
-      final existingDoc = await _firestore
-          .collection('organizations')
-          .doc(organizationId)
-          .collection('locations')
-          .doc(locationId)
-          .collection('daily_checklists')
-          .doc(checklistId)
-          .get();
+      final existingDoc =
+          await _firestore
+              .collection('organizations')
+              .doc(organizationId)
+              .collection('locations')
+              .doc(locationId)
+              .collection('daily_checklists')
+              .doc(checklistId)
+              .get();
 
       if (existingDoc.exists) {
-        debugPrint('[DailyChecklistService] Checklist already exists: $checklistId');
+        debugPrint(
+          '[DailyChecklistService] Checklist already exists: $checklistId',
+        );
         // Already exists, add to result
-        final existingChecklist = DailyChecklist.fromMap(existingDoc.data()!, checklistId);
+        final existingChecklist = DailyChecklist.fromMap(
+          existingDoc.data()!,
+          checklistId,
+        );
         createdChecklists.add(existingChecklist);
         continue;
       }
 
-      debugPrint('[DailyChecklistService] Fetching template: organizations/$organizationId/checklist_templates/$templateId');
-      
+      debugPrint(
+        '[DailyChecklistService] Fetching template: organizations/$organizationId/checklist_templates/$templateId',
+      );
+
       // Get template data - using organization-scoped path
-      final templateDoc = await _firestore
-          .collection('organizations')
-          .doc(organizationId)
-          .collection('checklist_templates')
-          .doc(templateId)
-          .get();
+      final templateDoc =
+          await _firestore
+              .collection('organizations')
+              .doc(organizationId)
+              .collection('checklist_templates')
+              .doc(templateId)
+              .get();
 
       if (!templateDoc.exists) {
-        debugPrint('[DailyChecklistService] ERROR: Template not found: $templateId');
+        debugPrint(
+          '[DailyChecklistService] ERROR: Template not found: $templateId',
+        );
         continue;
       }
-      
+
       debugPrint('[DailyChecklistService] Template found: $templateId');
 
       final templateData = templateDoc.data()!;
       final templateName = templateData['name'] as String?;
-      final templateTasks = List<Map<String, dynamic>>.from(templateData['tasks'] ?? []);
+      final templateTasks = List<Map<String, dynamic>>.from(
+        templateData['tasks'] ?? [],
+      );
 
-      debugPrint('[DailyChecklistService] Template $templateId ($templateName) has ${templateTasks.length} tasks');
-      
+      debugPrint(
+        '[DailyChecklistService] Template $templateId ($templateName) has ${templateTasks.length} tasks',
+      );
+
       if (templateTasks.isEmpty) {
-        debugPrint('[DailyChecklistService] WARNING: Template $templateId has no tasks!');
+        debugPrint(
+          '[DailyChecklistService] WARNING: Template $templateId has no tasks!',
+        );
         continue;
       }
-      
+
       // Create daily tasks from template - Handle both 'title' and 'name' fields
-      final dailyTasks = templateTasks.map((taskData) {
-        // Extract title from various possible fields
-        final taskTitle = taskData['title'] ?? taskData['name'] ?? taskData['description'] ?? 'Untitled Task';
-        
-        debugPrint('Creating task with title: "$taskTitle" from data: $taskData');
-        
-        // Standardize: set all name fields and both completion fields
-        return DailyChecklistTask(
-          taskId: _uuid.v4(),
-          description: taskTitle,
-          isCompleted: false,
-          completedBy: null,
-          completedAt: null,
-          proofImageUrl: null,
-          notes: null,
-          photoRequired: taskData['photoRequired'] ?? false,
-        );
-      }).toList();
+      final dailyTasks =
+          templateTasks.map((taskData) {
+            // Extract title from various possible fields
+            final taskTitle =
+                taskData['title'] ??
+                taskData['name'] ??
+                taskData['description'] ??
+                'Untitled Task';
+
+            debugPrint(
+              'Creating task with title: "$taskTitle" from data: $taskData',
+            );
+
+            // Standardize: set all name fields and both completion fields
+            return DailyChecklistTask(
+              taskId: _uuid.v4(),
+              description: taskTitle,
+              isCompleted: false,
+              completedBy: null,
+              completedAt: null,
+              proofImageUrl: null,
+              notes: null,
+              photoRequired: taskData['photoRequired'] ?? false,
+            );
+          }).toList();
 
       // Create daily checklist
       final dailyChecklist = DailyChecklist(
@@ -120,17 +149,18 @@ class DailyChecklistService {
       // Save to Firestore with merge option and add completedItems/totalItems for Manager Dashboard
       final checklistJson = dailyChecklist.toMap();
       // Overwrite each task map to include 'title', 'name', 'isCompleted', 'completed'
-      checklistJson['tasks'] = dailyTasks.map((task) {
-        final map = task.toMap();
-        map['title'] = map['description'];
-        map['name'] = map['description'];
-        map['isCompleted'] = false;
-        map['completed'] = false;
-        return map;
-      }).toList();
+      checklistJson['tasks'] =
+          dailyTasks.map((task) {
+            final map = task.toMap();
+            map['title'] = map['description'];
+            map['name'] = map['description'];
+            map['isCompleted'] = false;
+            map['completed'] = false;
+            return map;
+          }).toList();
       checklistJson['completedItems'] = 0; // Initially no tasks completed
       checklistJson['totalItems'] = dailyTasks.length; // Total number of tasks
-      
+
       await _firestore
           .collection('organizations')
           .doc(organizationId)
@@ -139,12 +169,16 @@ class DailyChecklistService {
           .collection('daily_checklists')
           .doc(checklistId)
           .set(checklistJson, SetOptions(merge: true));
-      
-      debugPrint('[DailyChecklistService] Successfully created checklist: $checklistId');
+
+      debugPrint(
+        '[DailyChecklistService] Successfully created checklist: $checklistId',
+      );
       createdChecklists.add(dailyChecklist);
     }
-    
-    debugPrint('[DailyChecklistService] Generation complete. Created ${createdChecklists.length} checklists total.');
+
+    debugPrint(
+      '[DailyChecklistService] Generation complete. Created ${createdChecklists.length} checklists total.',
+    );
     return createdChecklists;
   }
 
@@ -155,15 +189,16 @@ class DailyChecklistService {
     required String shiftId,
     required String date,
   }) async {
-    final querySnapshot = await _firestore
-        .collection('organizations')
-        .doc(organizationId)
-        .collection('locations')
-        .doc(locationId)
-        .collection('daily_checklists')
-        .where('shiftId', isEqualTo: shiftId)
-        .where('date', isEqualTo: date)
-        .get();
+    final querySnapshot =
+        await _firestore
+            .collection('organizations')
+            .doc(organizationId)
+            .collection('locations')
+            .doc(locationId)
+            .collection('daily_checklists')
+            .where('shiftId', isEqualTo: shiftId)
+            .where('date', isEqualTo: date)
+            .get();
 
     return querySnapshot.docs
         .map((doc) => DailyChecklist.fromMap(doc.data(), doc.id))
@@ -191,13 +226,16 @@ class DailyChecklistService {
       if (!checklistDoc.exists) return;
 
       final checklistData = checklistDoc.data()!;
-      final tasks = List<Map<String, dynamic>>.from(checklistData['tasks'] ?? []);
+      final tasks = List<Map<String, dynamic>>.from(
+        checklistData['tasks'] ?? [],
+      );
 
       // Find and update the task using both 'id' and 'taskId' fields
       for (int i = 0; i < tasks.length; i++) {
         if (tasks[i]['id'] == taskId || tasks[i]['taskId'] == taskId) {
           tasks[i] = {...tasks[i], ...updates};
-          if (updates.containsKey('completed') && updates['completed'] == true) {
+          if (updates.containsKey('completed') &&
+              updates['completed'] == true) {
             tasks[i]['completedAt'] = Timestamp.now();
           }
           break;
@@ -206,7 +244,7 @@ class DailyChecklistService {
 
       // Check if all tasks are completed
       final allCompleted = tasks.every((task) => task['completed'] == true);
-      
+
       transaction.update(checklistRef, {
         'tasks': tasks,
         'isCompleted': allCompleted,
@@ -240,19 +278,21 @@ class DailyChecklistService {
       if (!checklistDoc.exists) return;
 
       final checklistData = checklistDoc.data()!;
-      final tasks = List<Map<String, dynamic>>.from(checklistData['tasks'] ?? []);
-      
+      final tasks = List<Map<String, dynamic>>.from(
+        checklistData['tasks'] ?? [],
+      );
+
       // Find and update the task
       bool taskFound = false;
       for (int i = 0; i < tasks.length; i++) {
         if (tasks[i]['id'] == taskId || tasks[i]['taskId'] == taskId) {
           taskFound = true;
           tasks[i] = Map<String, dynamic>.from(tasks[i]);
-          
+
           // Standardize: always set both completion fields
           tasks[i]['completed'] = completed;
           tasks[i]['isCompleted'] = completed;
-          
+
           if (completed) {
             tasks[i]['completedAt'] = Timestamp.now();
             // Add user certification data
@@ -279,8 +319,13 @@ class DailyChecklistService {
       if (!taskFound) return;
 
       // Calculate completion metrics for Manager Dashboard
-      final completedTasks = tasks.where((task) => 
-        task['completed'] == true || task['isCompleted'] == true).length;
+      final completedTasks =
+          tasks
+              .where(
+                (task) =>
+                    task['completed'] == true || task['isCompleted'] == true,
+              )
+              .length;
       final totalTasks = tasks.length;
       final allCompleted = completedTasks == totalTasks;
 
@@ -334,7 +379,9 @@ class DailyChecklistService {
       if (!checklistDoc.exists) return;
 
       final checklistData = checklistDoc.data()!;
-      final tasks = List<Map<String, dynamic>>.from(checklistData['tasks'] ?? []);
+      final tasks = List<Map<String, dynamic>>.from(
+        checklistData['tasks'] ?? [],
+      );
 
       // Find and update the task
       for (int i = 0; i < tasks.length; i++) {
@@ -357,25 +404,27 @@ class DailyChecklistService {
     final cutoffDateString = _formatDate(cutoffDate);
 
     // Get all locations first
-    final locationsQuery = await _firestore
-        .collection('organizations')
-        .doc(organizationId)
-        .collection('locations')
-        .get();
+    final locationsQuery =
+        await _firestore
+            .collection('organizations')
+            .doc(organizationId)
+            .collection('locations')
+            .get();
 
     final batch = _firestore.batch();
-    
+
     for (final locationDoc in locationsQuery.docs) {
       final locationId = locationDoc.id;
-      
-      final querySnapshot = await _firestore
-          .collection('organizations')
-          .doc(organizationId)
-          .collection('locations')
-          .doc(locationId)
-          .collection('daily_checklists')
-          .where('date', isLessThan: cutoffDateString)
-          .get();
+
+      final querySnapshot =
+          await _firestore
+              .collection('organizations')
+              .doc(organizationId)
+              .collection('locations')
+              .doc(locationId)
+              .collection('daily_checklists')
+              .where('date', isLessThan: cutoffDateString)
+              .get();
 
       for (final doc in querySnapshot.docs) {
         batch.delete(doc.reference);
@@ -418,11 +467,12 @@ class DailyChecklistService {
         return _processCompletionStats(snapshot);
       } else {
         // Query all locations
-        final locationsQuery = await _firestore
-            .collection('organizations')
-            .doc(organizationId)
-            .collection('locations')
-            .get();
+        final locationsQuery =
+            await _firestore
+                .collection('organizations')
+                .doc(organizationId)
+                .collection('locations')
+                .get();
 
         int totalChecklists = 0;
         int completedChecklists = 0;
@@ -431,7 +481,7 @@ class DailyChecklistService {
 
         for (final locationDoc in locationsQuery.docs) {
           final locationId = locationDoc.id;
-          
+
           var query = _firestore
               .collection('organizations')
               .doc(organizationId)
@@ -451,7 +501,7 @@ class DailyChecklistService {
 
           final snapshot = await query.get();
           final locationStats = _processCompletionStats(snapshot);
-          
+
           totalChecklists += locationStats['totalChecklists'] as int;
           completedChecklists += locationStats['completedChecklists'] as int;
           totalTasks += locationStats['totalTasks'] as int;
@@ -463,7 +513,10 @@ class DailyChecklistService {
           'completedChecklists': completedChecklists,
           'totalTasks': totalTasks,
           'completedTasks': completedTasks,
-          'completionPercentage': totalChecklists > 0 ? (completedChecklists / totalChecklists * 100).round() : 0,
+          'completionPercentage':
+              totalChecklists > 0
+                  ? (completedChecklists / totalChecklists * 100).round()
+                  : 0,
         };
       }
     } catch (e) {
@@ -484,7 +537,7 @@ class DailyChecklistService {
     int completedChecklists = 0;
     int totalTasks = 0;
     int completedTasks = 0;
-    
+
     for (final doc in snapshot.docs) {
       final data = doc.data() as Map<String, dynamic>;
       final isCompleted = data['isCompleted'] as bool? ?? false;
@@ -502,7 +555,10 @@ class DailyChecklistService {
       'completedChecklists': completedChecklists,
       'totalTasks': totalTasks,
       'completedTasks': completedTasks,
-      'completionPercentage': totalChecklists > 0 ? (completedChecklists / totalChecklists * 100).round() : 0,
+      'completionPercentage':
+          totalChecklists > 0
+              ? (completedChecklists / totalChecklists * 100).round()
+              : 0,
     };
   }
 
@@ -530,39 +586,47 @@ class DailyChecklistService {
     required String date, // YYYY-MM-DD format
   }) async {
     final List<DailyChecklist> allCreatedChecklists = [];
-    
+
     try {
-      debugPrint('Starting daily checklist generation for org $organizationId on $date');
-      
+      debugPrint(
+        'Starting daily checklist generation for org $organizationId on $date',
+      );
+
       // Get all locations in the organization
-      final locationsQuery = await _firestore
-          .collection('organizations')
-          .doc(organizationId)
-          .collection('locations')
-          .get();
-      
+      final locationsQuery =
+          await _firestore
+              .collection('organizations')
+              .doc(organizationId)
+              .collection('locations')
+              .get();
+
       debugPrint('Found ${locationsQuery.docs.length} locations');
-      
+
       for (final locationDoc in locationsQuery.docs) {
         final locationId = locationDoc.id;
-        
+
         // Get all shifts for this location - CORRECTED PATH
-        final shiftsQuery = await _firestore
-            .collection('organizations')
-            .doc(organizationId)
-            .collection('locations')
-            .doc(locationId)
-            .collection('shifts')
-            .get();
-        
-        debugPrint('Found ${shiftsQuery.docs.length} shifts for location $locationId');
-        
+        final shiftsQuery =
+            await _firestore
+                .collection('organizations')
+                .doc(organizationId)
+                .collection('locations')
+                .doc(locationId)
+                .collection('shifts')
+                .get();
+
+        debugPrint(
+          'Found ${shiftsQuery.docs.length} shifts for location $locationId',
+        );
+
         for (final shiftDoc in shiftsQuery.docs) {
           final shiftId = shiftDoc.id;
           final shiftData = ShiftData.fromJson(shiftDoc.data());
-          
-          debugPrint('Processing shift $shiftId with ${shiftData.checklistTemplateIds.length} templates');
-          
+
+          debugPrint(
+            'Processing shift $shiftId with ${shiftData.checklistTemplateIds.length} templates',
+          );
+
           // Generate daily checklists for this shift
           final checklists = await generateDailyChecklists(
             organizationId: organizationId,
@@ -571,13 +635,17 @@ class DailyChecklistService {
             shiftData: shiftData,
             date: date,
           );
-          
+
           allCreatedChecklists.addAll(checklists);
-          debugPrint('Generated ${checklists.length} checklists for shift $shiftId');
+          debugPrint(
+            'Generated ${checklists.length} checklists for shift $shiftId',
+          );
         }
       }
-      
-      debugPrint('Total daily checklists generated: ${allCreatedChecklists.length}');
+
+      debugPrint(
+        'Total daily checklists generated: ${allCreatedChecklists.length}',
+      );
       return allCreatedChecklists;
     } catch (e, stackTrace) {
       debugPrint('Error in generateAllDailyChecklistsForDate: $e');
@@ -591,38 +659,42 @@ class DailyChecklistService {
   Future<void> ensureDailyChecklistsExist(String organizationId) async {
     final today = DateTime.now();
     final dateString = _formatDate(today);
-    
+
     try {
       // Check if any daily checklists exist for today across all locations
-      final locationsQuery = await _firestore
-          .collection('organizations')
-          .doc(organizationId)
-          .collection('locations')
-          .get();
+      final locationsQuery =
+          await _firestore
+              .collection('organizations')
+              .doc(organizationId)
+              .collection('locations')
+              .get();
 
       bool hasExistingChecklists = false;
-      
+
       for (final locationDoc in locationsQuery.docs) {
         final locationId = locationDoc.id;
-        
-        final existingChecklists = await _firestore
-            .collection('organizations')
-            .doc(organizationId)
-            .collection('locations')
-            .doc(locationId)
-            .collection('daily_checklists')
-            .where('date', isEqualTo: dateString)
-            .limit(1)
-            .get();
-        
+
+        final existingChecklists =
+            await _firestore
+                .collection('organizations')
+                .doc(organizationId)
+                .collection('locations')
+                .doc(locationId)
+                .collection('daily_checklists')
+                .where('date', isEqualTo: dateString)
+                .limit(1)
+                .get();
+
         if (existingChecklists.docs.isNotEmpty) {
           hasExistingChecklists = true;
           break;
         }
       }
-      
+
       if (!hasExistingChecklists) {
-        debugPrint('No daily checklists found for $dateString, generating now...');
+        debugPrint(
+          'No daily checklists found for $dateString, generating now...',
+        );
         await generateAllDailyChecklistsForDate(
           organizationId: organizationId,
           date: dateString,

@@ -1,9 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 class WebOptimizedFirestoreService {
-  static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  
+  static final _firestore = FirestoreEnforcer.instance;
+
   // Web-specific cache to reduce repeated queries
   static final Map<String, dynamic> _cache = {};
   static final Map<String, DateTime> _cacheTimestamps = {};
@@ -25,50 +26,63 @@ class WebOptimizedFirestoreService {
     Source source = Source.serverAndCache,
   }) async {
     // Create cache key
-    final cacheKey = _createCacheKey(collection, organizationId, where, orderBy, limit);
-    
+    final cacheKey = _createCacheKey(
+      collection,
+      organizationId,
+      where,
+      orderBy,
+      limit,
+    );
+
     // Check cache first (only on web for performance)
     if (kIsWeb && useCache && _cache.containsKey(cacheKey)) {
       final cacheTime = _cacheTimestamps[cacheKey];
-      if (cacheTime != null && DateTime.now().difference(cacheTime) < _cacheExpiry) {
+      if (cacheTime != null &&
+          DateTime.now().difference(cacheTime) < _cacheExpiry) {
         return _cache[cacheKey] as List<QueryDocumentSnapshot>;
       }
     }
 
     // Build query with web optimizations
-    Query<Map<String, dynamic>> query = organizationId != null 
-        ? _firestore.collection('organizations').doc(organizationId).collection(collection)
-        : _firestore.collection(collection);
-    
+    Query<Map<String, dynamic>> query =
+        organizationId != null
+            ? _firestore
+                .collection('organizations')
+                .doc(organizationId)
+                .collection(collection)
+            : _firestore.collection(collection);
+
     // Apply where clauses
     if (where != null) {
       for (final clause in where) {
         query = query.where(clause.field, isEqualTo: clause.value);
       }
     }
-    
+
     // Apply ordering
     if (orderBy != null) {
       query = query.orderBy(orderBy, descending: descending);
     }
-    
+
     // Apply web-optimized limits
     final effectiveLimit = limit ?? _webQueryLimit;
     query = query.limit(effectiveLimit);
 
     try {
       // Use cache-first strategy on web
-      final snapshot = await query.get(GetOptions(
-        source: kIsWeb ? Source.cache : source,
-      ));
-      
+      final snapshot = await query.get(
+        GetOptions(source: kIsWeb ? Source.cache : source),
+      );
+
       // If cache miss on web, fetch from server
       if (kIsWeb && snapshot.docs.isEmpty && source != Source.server) {
-        final serverSnapshot = await query.get(GetOptions(source: Source.server));
+        final serverSnapshot = await query.get(
+          GetOptions(source: Source.server),
+        );
         _updateCache(cacheKey, serverSnapshot.docs);
         return serverSnapshot.docs;
       }
-      
+
       _updateCache(cacheKey, snapshot.docs);
       return snapshot.docs;
     } catch (e) {
@@ -88,20 +102,24 @@ class WebOptimizedFirestoreService {
     bool descending = false,
     int? limit,
   }) {
-    Query<Map<String, dynamic>> query = organizationId != null 
-        ? _firestore.collection('organizations').doc(organizationId).collection(collection)
-        : _firestore.collection(collection);
-    
+    Query<Map<String, dynamic>> query =
+        organizationId != null
+            ? _firestore
+                .collection('organizations')
+                .doc(organizationId)
+                .collection(collection)
+            : _firestore.collection(collection);
+
     if (where != null) {
       for (final clause in where) {
         query = query.where(clause.field, isEqualTo: clause.value);
       }
     }
-    
+
     if (orderBy != null) {
       query = query.orderBy(orderBy, descending: descending);
     }
-    
+
     // Use smaller limits for real-time queries on web
     final effectiveLimit = limit ?? _webRealtimeLimit;
     query = query.limit(effectiveLimit);
@@ -112,13 +130,13 @@ class WebOptimizedFirestoreService {
   /// Batch write optimized for web
   static Future<void> performBatchWrite(List<BatchOperation> operations) async {
     final batch = _firestore.batch();
-    
+
     // Web browsers have lower memory limits, so use smaller batch sizes
     const webBatchLimit = kIsWeb ? 250 : 500;
-    
+
     for (int i = 0; i < operations.length; i += webBatchLimit) {
       final batchOps = operations.skip(i).take(webBatchLimit);
-      
+
       for (final operation in batchOps) {
         switch (operation.type) {
           case BatchOperationType.set:
@@ -132,9 +150,9 @@ class WebOptimizedFirestoreService {
             break;
         }
       }
-      
+
       await batch.commit();
-      
+
       // Add small delay between batches on web to prevent overwhelming the browser
       if (kIsWeb && i + webBatchLimit < operations.length) {
         await Future.delayed(const Duration(milliseconds: 50));
@@ -153,7 +171,7 @@ class WebOptimizedFirestoreService {
     if (kIsWeb) {
       _cache[key] = docs;
       _cacheTimestamps[key] = DateTime.now();
-      
+
       // Clean old cache entries to prevent memory leaks
       _cleanOldCacheEntries();
     }
@@ -163,13 +181,13 @@ class WebOptimizedFirestoreService {
   static void _cleanOldCacheEntries() {
     final now = DateTime.now();
     final keysToRemove = <String>[];
-    
+
     _cacheTimestamps.forEach((key, timestamp) {
       if (now.difference(timestamp) > _cacheExpiry) {
         keysToRemove.add(key);
       }
     });
-    
+
     for (final key in keysToRemove) {
       _cache.remove(key);
       _cacheTimestamps.remove(key);
@@ -198,7 +216,7 @@ class WebOptimizedFirestoreService {
 class WhereClause {
   final String field;
   final dynamic value;
-  
+
   WhereClause(this.field, this.value);
 }
 
@@ -206,7 +224,7 @@ class BatchOperation {
   final BatchOperationType type;
   final DocumentReference reference;
   final Map<String, dynamic>? data;
-  
+
   BatchOperation(this.type, this.reference, [this.data]);
 }
 

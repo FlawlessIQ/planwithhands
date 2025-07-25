@@ -1,8 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/constants/firestore_names.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 class UserActions {
-  static final _users = FirebaseFirestore.instance.collection(FirestoreCollectionNames.users);
+  static final _users = FirestoreEnforcer.instance.collection(
+    FirestoreCollectionNames.users,
+  );
 
   /// Create a new user with the UserData schema
   static Future<void> createUser({
@@ -28,11 +31,11 @@ class UserActions {
       UserFieldNames.phoneNumber: phoneNumber,
       UserFieldNames.createdAt: now,
     };
-    
+
     if (additionalFields != null) {
       data.addAll(additionalFields);
     }
-    
+
     await _users.doc(userId).set(data);
   }
 
@@ -49,36 +52,44 @@ class UserActions {
     Map<String, dynamic>? additionalFields,
   }) async {
     final updates = <String, dynamic>{};
-    
+
     if (userEmail != null) updates[UserFieldNames.emailAddress] = userEmail;
     if (accessLevel != null) updates[UserFieldNames.userRole] = accessLevel;
-    if (organizationId != null) updates[UserFieldNames.organizationId] = organizationId;
+    if (organizationId != null) {
+      updates[UserFieldNames.organizationId] = organizationId;
+    }
     if (locationIds != null) updates[UserFieldNames.locationIds] = locationIds;
     if (firstName != null) updates[UserFieldNames.firstName] = firstName;
     if (lastName != null) updates[UserFieldNames.lastName] = lastName;
     if (phoneNumber != null) updates[UserFieldNames.phoneNumber] = phoneNumber;
-    
+
     if (additionalFields != null) {
       updates.addAll(additionalFields);
     }
-    
+
     await _users.doc(userId).update(updates);
   }
 
   /// Get a user by ID
-  static Future<DocumentSnapshot<Map<String, dynamic>>> getUser(String userId) async {
+  static Future<DocumentSnapshot<Map<String, dynamic>>> getUser(
+    String userId,
+  ) async {
     return await _users.doc(userId).get();
   }
 
   /// Get all users in an organization
-  static Future<QuerySnapshot<Map<String, dynamic>>> getUsersByOrganization(String organizationId) async {
+  static Future<QuerySnapshot<Map<String, dynamic>>> getUsersByOrganization(
+    String organizationId,
+  ) async {
     return await _users
         .where(UserFieldNames.organizationId, isEqualTo: organizationId)
         .get();
   }
 
   /// Get users by access level
-  static Future<QuerySnapshot<Map<String, dynamic>>> getUsersByAccessLevel(int accessLevel) async {
+  static Future<QuerySnapshot<Map<String, dynamic>>> getUsersByAccessLevel(
+    int accessLevel,
+  ) async {
     return await _users
         .where(UserFieldNames.userRole, isEqualTo: accessLevel)
         .get();

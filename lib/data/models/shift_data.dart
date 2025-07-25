@@ -4,7 +4,6 @@ import 'package:hands_app/data/models/timestamp_converter.dart';
 part 'shift_data.freezed.dart';
 part 'shift_data.g.dart';
 
-
 @freezed
 class ShiftData with _$ShiftData {
   /// Main ShiftData constructor. activeDays is always required and must be a List of int (`List<int>`).
@@ -30,5 +29,6 @@ class ShiftData with _$ShiftData {
   }) = _ShiftData;
 
   /// Custom fromJson to ensure activeDays is always a List of int (`List<int>`).
-  factory ShiftData.fromJson(Map<String, dynamic> json) => _$ShiftDataFromJson(json);
+  factory ShiftData.fromJson(Map<String, dynamic> json) =>
+      _$ShiftDataFromJson(json);
 }

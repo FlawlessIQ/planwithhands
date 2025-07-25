@@ -16,6 +16,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:hands_app/global_widgets/hands_icon.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 class ViewDocumentsPage extends HookConsumerWidget {
   const ViewDocumentsPage({super.key});
@@ -32,12 +33,14 @@ class ViewDocumentsPage extends HookConsumerWidget {
     final selectedCategory = useState<String>('All');
     final organizationId = useState<String?>(null);
     final isLoadingOrgId = useState<bool>(true);
-    
+
     print('DEBUG: userState: $userState');
     print('DEBUG: userState.userData: ${userState.userData}');
-    print('DEBUG: organizationId from userState: ${userState.userData?.organizationId}');
+    print(
+      'DEBUG: organizationId from userState: ${userState.userData?.organizationId}',
+    );
     print('DEBUG: organizationId from useState: ${organizationId.value}');
-    
+
     // Fallback mechanism to get organizationId directly from Firebase Auth/Firestore
     useEffect(() {
       Future<void> loadOrganizationId() async {
@@ -46,19 +49,22 @@ class ViewDocumentsPage extends HookConsumerWidget {
           if (userState.userData?.organizationId != null) {
             organizationId.value = userState.userData!.organizationId;
             isLoadingOrgId.value = false;
-            print('DEBUG: Using organizationId from userState: ${organizationId.value}');
+            print(
+              'DEBUG: Using organizationId from userState: ${organizationId.value}',
+            );
             return;
           }
-          
+
           // Fallback: Get from Firebase Auth + Firestore directly
           final currentUser = FirebaseAuth.instance.currentUser;
           if (currentUser != null) {
             print('DEBUG: Current user UID: ${currentUser.uid}');
-            final userDoc = await FirebaseFirestore.instance
-                .collection('users')
-                .doc(currentUser.uid)
-                .get();
-            
+            final userDoc =
+                await FirestoreEnforcer.instance
+                    .collection('users')
+                    .doc(currentUser.uid)
+                    .get();
+
             if (userDoc.exists) {
               final userData = userDoc.data() as Map<String, dynamic>;
               final orgId = userData['organizationId'] as String?;
@@ -76,11 +82,11 @@ class ViewDocumentsPage extends HookConsumerWidget {
           isLoadingOrgId.value = false;
         }
       }
-      
+
       loadOrganizationId();
       return null;
     }, [userState.userData?.organizationId]);
-    
+
     final categories = [
       'All',
       'Safety Procedures',
@@ -90,7 +96,7 @@ class ViewDocumentsPage extends HookConsumerWidget {
       'Emergency Procedures',
       'Equipment Manuals',
       'Policy Documents',
-      'Other'
+      'Other',
     ];
 
     // Show loading while we're determining the organizationId
@@ -181,9 +187,7 @@ class ViewDocumentsPage extends HookConsumerWidget {
             ),
           ],
         ),
-        actions: [
-          UnifiedMenuButton(userRole: userRole),
-        ],
+        actions: [UnifiedMenuButton(userRole: userRole)],
         centerTitle: false,
         elevation: 0,
       ),
@@ -221,17 +225,15 @@ class ViewDocumentsPage extends HookConsumerWidget {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                
+
                 if (snapshot.hasError) {
                   return Center(
                     child: Text('Error loading documents: ${snapshot.error}'),
                   );
                 }
-                
+
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(
-                    child: Text('No documents available.'),
-                  );
+                  return const Center(child: Text('No documents available.'));
                 }
 
                 final docs = snapshot.data!.docs;
@@ -243,7 +245,7 @@ class ViewDocumentsPage extends HookConsumerWidget {
                   itemBuilder: (context, index) {
                     final doc = docs[index];
                     final data = doc.data() as Map<String, dynamic>;
-                    
+
                     final title = data['title'] ?? 'Untitled';
                     final type = data['fileType'] ?? 'document';
                     final url = data['fileUrl'] ?? '';
@@ -268,7 +270,11 @@ class ViewDocumentsPage extends HookConsumerWidget {
 
                     return Card(
                       child: ListTile(
-                        leading: Icon(icon, size: 36, color: Theme.of(context).primaryColor),
+                        leading: Icon(
+                          icon,
+                          size: 36,
+                          color: Theme.of(context).primaryColor,
+                        ),
                         title: Text(
                           title,
                           style: const TextStyle(fontWeight: FontWeight.w500),
@@ -288,20 +294,22 @@ class ViewDocumentsPage extends HookConsumerWidget {
                           ],
                         ),
                         trailing: const Icon(Icons.arrow_forward),
-                        onTap: url.isNotEmpty
-                            ? () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => DocumentViewerPage(
-                                      url: url,
-                                      title: title,
-                                      fileType: type,
+                        onTap:
+                            url.isNotEmpty
+                                ? () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder:
+                                          (_) => DocumentViewerPage(
+                                            url: url,
+                                            title: title,
+                                            fileType: type,
+                                          ),
                                     ),
-                                  ),
-                                );
-                              }
-                            : null,
+                                  );
+                                }
+                                : null,
                       ),
                     );
                   },
@@ -315,12 +323,17 @@ class ViewDocumentsPage extends HookConsumerWidget {
     );
   }
 
-  Stream<QuerySnapshot> _getDocumentsStream(String organizationId, String category) {
-    print('DEBUG: Getting documents for orgId: $organizationId, category: $category');
+  Stream<QuerySnapshot> _getDocumentsStream(
+    String organizationId,
+    String category,
+  ) {
+    print(
+      'DEBUG: Getting documents for orgId: $organizationId, category: $category',
+    );
     print('DEBUG: Full path: organizations/$organizationId/training_documents');
-    
+
     // Updated path to match admin dashboard's nested path structure
-    Query query = FirebaseFirestore.instance
+    Query query = FirestoreEnforcer.instance
         .collection('organizations')
         .doc(organizationId)
         .collection('training_documents');
@@ -336,22 +349,25 @@ class ViewDocumentsPage extends HookConsumerWidget {
       // query = query.orderBy('createdAt', descending: true);
     }
 
-    return query.snapshots().map((snapshot) {
-      print('DEBUG: Query executed successfully');
-      print('DEBUG: Found ${snapshot.docs.length} documents');
-      
-      if (snapshot.docs.isEmpty) {
-        print('DEBUG: No documents found - checking if collection exists');
-      }
-      
-      for (var doc in snapshot.docs) {
-        print('DEBUG: Document ${doc.id}: ${doc.data()}');
-      }
-      return snapshot;
-    }).handleError((error) {
-      print('DEBUG: Stream error: $error');
-      print('DEBUG: Error type: ${error.runtimeType}');
-    });
+    return query
+        .snapshots()
+        .map((snapshot) {
+          print('DEBUG: Query executed successfully');
+          print('DEBUG: Found ${snapshot.docs.length} documents');
+
+          if (snapshot.docs.isEmpty) {
+            print('DEBUG: No documents found - checking if collection exists');
+          }
+
+          for (var doc in snapshot.docs) {
+            print('DEBUG: Document ${doc.id}: ${doc.data()}');
+          }
+          return snapshot;
+        })
+        .handleError((error) {
+          print('DEBUG: Stream error: $error');
+          print('DEBUG: Error type: ${error.runtimeType}');
+        });
   }
 }
 
@@ -379,7 +395,7 @@ class DocumentViewerPage extends HookWidget {
         if (kIsWeb) {
           return url;
         }
-        
+
         // For images and videos, we can use the URL directly
         if (fileType.toLowerCase() == 'image') {
           return url;
@@ -392,16 +408,20 @@ class DocumentViewerPage extends HookWidget {
             final http = HttpClient();
             final request = await http.getUrl(Uri.parse(url));
             final response = await request.close();
-            
+
             if (response.statusCode == 200) {
               final dir = await getTemporaryDirectory();
-              final file = File('${dir.path}/temp_document_${DateTime.now().millisecondsSinceEpoch}.pdf');
-              
+              final file = File(
+                '${dir.path}/temp_document_${DateTime.now().millisecondsSinceEpoch}.pdf',
+              );
+
               final bytes = await consolidateHttpClientResponseBytes(response);
               await file.writeAsBytes(bytes);
               return file.path;
             } else {
-              throw Exception('Failed to download PDF: Status ${response.statusCode}');
+              throw Exception(
+                'Failed to download PDF: Status ${response.statusCode}',
+              );
             }
           } catch (e) {
             // Fallback to direct URL if download fails
@@ -424,13 +444,15 @@ class DocumentViewerPage extends HookWidget {
     }
 
     useEffect(() {
-      downloadAndCacheFile().then((path) {
-        localPath.value = path;
-        isLoading.value = false;
-      }).catchError((error) {
-        errorMessage.value = error.toString();
-        isLoading.value = false;
-      });
+      downloadAndCacheFile()
+          .then((path) {
+            localPath.value = path;
+            isLoading.value = false;
+          })
+          .catchError((error) {
+            errorMessage.value = error.toString();
+            isLoading.value = false;
+          });
       return null;
     }, [url]);
 
@@ -443,10 +465,7 @@ class DocumentViewerPage extends HookWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          title,
-          style: const TextStyle(color: Colors.white),
-        ),
+        title: Text(title, style: const TextStyle(color: Colors.white)),
         backgroundColor: Theme.of(context).primaryColor,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
@@ -457,54 +476,59 @@ class DocumentViewerPage extends HookWidget {
           ),
         ],
       ),
-      body: isLoading.value
-          ? const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('Loading document...'),
-                ],
-              ),
-            )
-          : errorMessage.value != null
+      body:
+          isLoading.value
+              ? const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('Loading document...'),
+                  ],
+                ),
+              )
+              : errorMessage.value != null
               ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.error_outline,
-                        size: 64,
-                        color: Colors.red,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      size: 64,
+                      color: Colors.red,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Error loading document',
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      errorMessage.value!,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Colors.grey.shade600,
                       ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Error loading document',
-                        style: Theme.of(context).textTheme.headlineSmall,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        errorMessage.value!,
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      ElevatedButton.icon(
-                        onPressed: openInBrowser,
-                        icon: const Icon(Icons.open_in_browser),
-                        label: const Text('Open in Browser'),
-                      ),
-                    ],
-                  ),
-                )
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: openInBrowser,
+                      icon: const Icon(Icons.open_in_browser),
+                      label: const Text('Open in Browser'),
+                    ),
+                  ],
+                ),
+              )
               : _buildDocumentViewer(context, localPath.value),
       // Use userRole from userState or default to 0
-      bottomNavigationBar: BottomNavBar(currentIndex: 4, userRole: (ModalRoute.of(context)?.settings.arguments is int)
-          ? ModalRoute.of(context)!.settings.arguments as int
-          : 0),
+      bottomNavigationBar: BottomNavBar(
+        currentIndex: 4,
+        userRole:
+            (ModalRoute.of(context)?.settings.arguments is int)
+                ? ModalRoute.of(context)!.settings.arguments as int
+                : 0,
+      ),
     );
   }
 
@@ -532,11 +556,7 @@ class DocumentViewerPage extends HookWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
-              Icons.picture_as_pdf,
-              size: 64,
-              color: Colors.blue,
-            ),
+            const Icon(Icons.picture_as_pdf, size: 64, color: Colors.blue),
             const SizedBox(height: 16),
             Text(
               'PDF Preview',
@@ -545,9 +565,9 @@ class DocumentViewerPage extends HookWidget {
             const SizedBox(height: 8),
             Text(
               'Click below to open the PDF in a new tab',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Colors.grey.shade600,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
@@ -564,7 +584,7 @@ class DocumentViewerPage extends HookWidget {
         ),
       );
     }
-    
+
     // For mobile platforms, use the PDFView widget
     return PDFView(
       filePath: path,
@@ -602,10 +622,11 @@ class DocumentViewerPage extends HookWidget {
             if (loadingProgress == null) return child;
             return Center(
               child: CircularProgressIndicator(
-                value: loadingProgress.expectedTotalBytes != null
-                    ? loadingProgress.cumulativeBytesLoaded /
-                        loadingProgress.expectedTotalBytes!
-                    : null,
+                value:
+                    loadingProgress.expectedTotalBytes != null
+                        ? loadingProgress.cumulativeBytesLoaded /
+                            loadingProgress.expectedTotalBytes!
+                        : null,
               ),
             );
           },
@@ -664,7 +685,10 @@ class DocumentViewerPage extends HookWidget {
                   onPressed: () async {
                     final uri = Uri.parse(url);
                     if (await canLaunchUrl(uri)) {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      await launchUrl(
+                        uri,
+                        mode: LaunchMode.externalApplication,
+                      );
                     }
                   },
                   icon: const Icon(Icons.open_in_new),
@@ -676,7 +700,9 @@ class DocumentViewerPage extends HookWidget {
                     await Clipboard.setData(ClipboardData(text: url));
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Video URL copied to clipboard')),
+                        const SnackBar(
+                          content: Text('Video URL copied to clipboard'),
+                        ),
                       );
                     }
                   },
@@ -689,48 +715,52 @@ class DocumentViewerPage extends HookWidget {
         ),
       );
     }
-    
+
     // For mobile, use the existing VideoPlayerWidget
     return VideoPlayerWidget(url: url);
   }
 
   Widget _buildUnsupportedViewer(BuildContext context) {
     return Builder(
-      builder: (context) => Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.insert_drive_file,
-              size: 64,
-              color: Colors.grey,
+      builder:
+          (context) => Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.insert_drive_file,
+                  size: 64,
+                  color: Colors.grey,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Preview not available',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'This file type is not supported for preview',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    final uri = Uri.parse(url);
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(
+                        uri,
+                        mode: LaunchMode.externalApplication,
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.open_in_browser),
+                  label: const Text('Open in External App'),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            Text(
-              'Preview not available',
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'This file type is not supported for preview',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Colors.grey.shade600,
-              ),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () async {
-                final uri = Uri.parse(url);
-                if (await canLaunchUrl(uri)) {
-                  await launchUrl(uri, mode: LaunchMode.externalApplication);
-                }
-              },
-              icon: const Icon(Icons.open_in_browser),
-              label: const Text('Open in External App'),
-            ),
-          ],
-        ),
-      ),
+          ),
     );
   }
 }
@@ -751,12 +781,15 @@ class VideoPlayerWidget extends HookWidget {
       final controller = VideoPlayerController.networkUrl(Uri.parse(url));
       videoController.value = controller;
 
-      controller.initialize().then((_) {
-        isInitialized.value = true;
-      }).catchError((error) {
-        hasError.value = true;
-        // Handle video initialization error silently or use a proper logging framework
-      });
+      controller
+          .initialize()
+          .then((_) {
+            isInitialized.value = true;
+          })
+          .catchError((error) {
+            hasError.value = true;
+            // Handle video initialization error silently or use a proper logging framework
+          });
 
       controller.addListener(() {
         isPlaying.value = controller.value.isPlaying;

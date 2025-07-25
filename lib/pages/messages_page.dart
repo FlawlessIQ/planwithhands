@@ -15,10 +15,7 @@ class MessagesPage extends ConsumerWidget {
     final userRole = userState.userData?.userRole ?? 0;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Messages'),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('Messages'), centerTitle: true),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -35,46 +32,49 @@ class MessagesPage extends ConsumerWidget {
                   showModalBottomSheet(
                     context: context,
                     isScrollControlled: true,
-                    builder: (_) => NotificationListSheet(
-                      onMessageTap: (title, details) {
-                        showDialog(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: Row(
-                              children: [
-                                const Icon(Icons.message, size: 28),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    title,
-                                    style: const TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
+                    builder:
+                        (_) => NotificationListSheet(
+                          onMessageTap: (title, details) {
+                            showDialog(
+                              context: context,
+                              builder:
+                                  (context) => AlertDialog(
+                                    title: Row(
+                                      children: [
+                                        const Icon(Icons.message, size: 28),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            title,
+                                            style: const TextStyle(
+                                              fontSize: 20,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
+                                    content: Text(
+                                      details,
+                                      style: const TextStyle(fontSize: 16),
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed:
+                                            () => Navigator.of(context).pop(),
+                                        child: const Text('Close'),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                              ],
-                            ),
-                            content: Text(
-                              details,
-                              style: const TextStyle(fontSize: 16),
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.of(context).pop(),
-                                child: const Text('Close'),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
+                            );
+                          },
+                        ),
                   );
                 },
               ),
             ),
             const SizedBox(height: 8),
-            
+
             // Send Message Card (Managers and Admins only)
             if (userRole >= 1)
               Card(
@@ -92,7 +92,7 @@ class MessagesPage extends ConsumerWidget {
                   },
                 ),
               ),
-            
+
             // Create Group Card (Admins only)
             if (userRole >= 2)
               Card(
@@ -110,9 +110,9 @@ class MessagesPage extends ConsumerWidget {
                   },
                 ),
               ),
-            
+
             const SizedBox(height: 24),
-            
+
             // Message Statistics (if available)
             Expanded(
               child: Card(
@@ -153,7 +153,10 @@ class MessagesPage extends ConsumerWidget {
           ],
         ),
       ),
-      bottomNavigationBar: BottomNavBar(currentIndex: -1, userRole: userRole), // No specific index for messages page
+      bottomNavigationBar: BottomNavBar(
+        currentIndex: -1,
+        userRole: userRole,
+      ), // No specific index for messages page
     );
   }
 }

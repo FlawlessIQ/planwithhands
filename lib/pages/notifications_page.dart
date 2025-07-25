@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 class NotificationListSheet extends ConsumerStatefulWidget {
   final void Function(String title, String details)? onMessageTap;
@@ -10,7 +11,8 @@ class NotificationListSheet extends ConsumerStatefulWidget {
   const NotificationListSheet({super.key, this.onMessageTap});
 
   @override
-  ConsumerState<NotificationListSheet> createState() => _NotificationListSheetState();
+  ConsumerState<NotificationListSheet> createState() =>
+      _NotificationListSheetState();
 }
 
 class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
@@ -34,10 +36,11 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
       return;
     }
     _userId = user.uid;
-    final userDoc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .get();
+    final userDoc =
+        await FirestoreEnforcer.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
     _orgId = userDoc.data()?['organizationId'] as String?;
     if (_orgId == null) {
       setState(() => _isLoading = false);
@@ -45,61 +48,69 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
     }
 
     // subscribe to notifications
-    _subscription = FirebaseFirestore.instance
+          _subscription = FirestoreEnforcer.instance
         .collection('organizations')
         .doc(_orgId)
         .collection('notifications')
         .orderBy('createdAt', descending: true)
         .snapshots()
         .listen((snap) {
-      final docs = snap.docs;
-      final list = docs.map((doc) {
-        final data = doc.data();
-        return {
-          'id': doc.id,
-          'message': data['message'] as String? ?? '',
-          'createdAt': data['createdAt'],
-          'readBy': List<String>.from(data['readBy'] ?? []),
-          'archivedBy': List<String>.from(data['archivedBy'] ?? []),
-        };
-      }).toList();
+          final docs = snap.docs;
+          final list = docs.map((doc) {
+            final data = doc.data();
+            return {
+              'id': doc.id,
+              'title': data['title'] as String? ?? '',
+              'message': data['message'] as String? ?? '',
+              'createdAt': data['createdAt'],
+              'readBy': List<String>.from(data['readBy'] ?? []),
+              'archivedBy': List<String>.from(data['archivedBy'] ?? []),
+            };
+          }).toList();
 
-      setState(() {
-        _notifications
-          ..clear()
-          ..addAll(list);
-        _isLoading = false;
-      });
-    });
+          setState(() {
+            _notifications
+              ..clear()
+              ..addAll(list);
+            _isLoading = false;
+          });
+        });
   }
 
   Future<void> _archiveNotification(String id) async {
     if (_userId == null || _orgId == null) return;
-    await FirebaseFirestore.instance
+    await FirestoreEnforcer.instance
         .collection('organizations')
         .doc(_orgId)
         .collection('notifications')
         .doc(id)
-        .update({'archivedBy': FieldValue.arrayUnion([_userId])});
+        .update({
+          'archivedBy': FieldValue.arrayUnion([_userId]),
+        });
   }
+
   Future<void> _unarchiveNotification(String id) async {
     if (_userId == null || _orgId == null) return;
-    await FirebaseFirestore.instance
+    await FirestoreEnforcer.instance
         .collection('organizations')
         .doc(_orgId)
         .collection('notifications')
         .doc(id)
-        .update({'archivedBy': FieldValue.arrayRemove([_userId])});
+        .update({
+          'archivedBy': FieldValue.arrayRemove([_userId]),
+        });
   }
 
   Future<void> _markAsRead(String id) async {
     if (_userId == null || _orgId == null) return;
-    await FirebaseFirestore.instance
+    await FirestoreEnforcer.instance
         .collection('organizations')
         .doc(_orgId)
         .collection('notifications')
         .doc(id)
-        .update({'readBy': FieldValue.arrayUnion([_userId])});
+        .update({
+          'readBy': FieldValue.arrayUnion([_userId]),
+        });
   }
 
   String _formatTimestamp(dynamic timestamp) {
@@ -117,13 +128,24 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
     final diff = now.difference(dt);
 
     final months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     final dateStr = '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
-    final hour = dt.hour == 0
-        ? 12
-        : dt.hour > 12
+    final hour =
+        dt.hour == 0
+            ? 12
+            : dt.hour > 12
             ? dt.hour - 12
             : dt.hour;
     final minute = dt.minute.toString().padLeft(2, '0');
@@ -148,33 +170,41 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
     if (_userId == null || _orgId == null) return;
     // Optimistically update local state
     final idx = _notifications.indexWhere((n) => n['id'] == id);
-    if (idx != -1 && !(_notifications[idx]['readBy'] as List<String>).contains(_userId)) {
+    if (idx != -1 &&
+        !(_notifications[idx]['readBy'] as List<String>).contains(_userId)) {
       setState(() {
         (_notifications[idx]['readBy'] as List<String>).add(_userId!);
       });
     }
-    await FirebaseFirestore.instance
+    await FirestoreEnforcer.instance
         .collection('organizations')
         .doc(_orgId)
         .collection('notifications')
         .doc(id)
-        .update({'readBy': FieldValue.arrayUnion([_userId])});
+        .update({
+          'readBy': FieldValue.arrayUnion([_userId]),
+        });
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     // filter notifications by view
-    final filtered = _notifications.where((n) {
-      final read = (n['readBy'] as List<String>).contains(_userId);
-      final archived = (n['archivedBy'] as List<String>).contains(_userId);
-      switch (_viewFilter) {
-        case 'Unread': return !read && !archived;
-        case 'Read':   return read && !archived;
-        case 'Archived': return archived;
-        default: return true;
-      }
-    }).toList();
+    final filtered =
+        _notifications.where((n) {
+          final read = (n['readBy'] as List<String>).contains(_userId);
+          final archived = (n['archivedBy'] as List<String>).contains(_userId);
+          switch (_viewFilter) {
+            case 'Unread':
+              return !read && !archived;
+            case 'Read':
+              return read && !archived;
+            case 'Archived':
+              return archived;
+            default:
+              return true;
+          }
+        }).toList();
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -190,9 +220,12 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Messages',
-                  style: theme.textTheme.titleLarge
-                      ?.copyWith(fontWeight: FontWeight.bold)),
+              Text(
+                'Messages',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               IconButton(
                 icon: const Icon(Icons.close),
                 onPressed: () => Navigator.of(context).pop(),
@@ -202,11 +235,16 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
           // View filter chips
           Wrap(
             spacing: 8,
-            children: ['Unread','Read','Archived'].map((f) => ChoiceChip(
-              label: Text(f),
-              selected: _viewFilter == f,
-              onSelected: (_) => setState(() => _viewFilter = f),
-            )).toList(),
+            children:
+                ['Unread', 'Read', 'Archived']
+                    .map(
+                      (f) => ChoiceChip(
+                        label: Text(f),
+                        selected: _viewFilter == f,
+                        onSelected: (_) => setState(() => _viewFilter = f),
+                      ),
+                    )
+                    .toList(),
           ),
           const Divider(),
 
@@ -233,8 +271,12 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
                 itemCount: filtered.length,
                 itemBuilder: (context, i) {
                   final n = filtered[i];
-                  final isRead = (n['readBy'] as List<String>).contains(_userId);
-                  final isArchived = (n['archivedBy'] as List<String>).contains(_userId);
+                  final isRead = (n['readBy'] as List<String>).contains(
+                    _userId,
+                  );
+                  final isArchived = (n['archivedBy'] as List<String>).contains(
+                    _userId,
+                  );
                   final title = n['title'] as String? ?? 'New Message';
                   final details = n['message'] as String? ?? 'No content';
 
@@ -243,13 +285,16 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
                     margin: const EdgeInsets.symmetric(vertical: 6),
                     child: ListTile(
                       leading: Icon(
-                        isRead ? Icons.mark_email_read_outlined : Icons.mark_email_unread,
+                        isRead
+                            ? Icons.mark_email_read_outlined
+                            : Icons.mark_email_unread,
                         color: isRead ? Colors.grey : theme.primaryColor,
                       ),
                       title: Text(
                         title,
                         style: TextStyle(
-                          fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
+                          fontWeight:
+                              isRead ? FontWeight.normal : FontWeight.bold,
                         ),
                       ),
                       subtitle: Text(
@@ -265,12 +310,15 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
                             _unarchiveNotification(n['id']);
                           }
                         },
-                        itemBuilder: (context) => [
-                          PopupMenuItem(
-                            value: isArchived ? 'unarchive' : 'archive',
-                            child: Text(isArchived ? 'Unarchive' : 'Archive'),
-                          ),
-                        ],
+                        itemBuilder:
+                            (context) => [
+                              PopupMenuItem(
+                                value: isArchived ? 'unarchive' : 'archive',
+                                child: Text(
+                                  isArchived ? 'Unarchive' : 'Archive',
+                                ),
+                              ),
+                            ],
                       ),
                       onTap: () {
                         if (widget.onMessageTap != null) {

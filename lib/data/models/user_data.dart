@@ -17,14 +17,17 @@ class UserData with _$UserData {
     @TimestampConverter()
     required DateTime createdAt,
     @JsonKey(name: UserFieldNames.emailAddress) required String userEmail,
-    @JsonKey(name: UserFieldNames.userRole) required int userRole, // Changed from accessLevel
-    @JsonKey(name: UserFieldNames.organizationId) required String organizationId,
+    @JsonKey(name: UserFieldNames.userRole)
+    required int userRole, // Changed from accessLevel
+    @JsonKey(name: UserFieldNames.organizationId)
+    required String organizationId,
     @JsonKey(name: UserFieldNames.locationIds)
     required List<String> locationIds,
     @JsonKey(name: UserFieldNames.firstName) required String firstName,
     @JsonKey(name: UserFieldNames.lastName) required String lastName,
     @JsonKey(name: UserFieldNames.phoneNumber) required String phoneNumber,
-    @JsonKey(name: 'jobTypes') required List<String> jobTypes, // Changed from jobType to jobTypes
+    @JsonKey(name: 'jobTypes')
+    required List<String> jobTypes, // Changed from jobType to jobTypes
   }) = _UserData;
 
   factory UserData.fromJson(Map<String, Object?> json) =>

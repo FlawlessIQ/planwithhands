@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 class ShiftActions {
   /// Create a shift with Firestore Timestamp fields and correct field names
@@ -7,7 +7,7 @@ class ShiftActions {
     required String shiftId,
     required Map<String, dynamic> shiftData, // Use Timestamp for startTime/endTime/startDate
   }) async {
-    final shiftRef = FirebaseFirestore.instance
+    final shiftRef = FirestoreEnforcer.instance
         .collection('organizations')
         .doc(orgId)
         .collection('shifts')
@@ -21,7 +21,7 @@ class ShiftActions {
     required String shiftId,
     required Map<String, dynamic> updates, // Use Timestamp for startTime/endTime/startDate
   }) async {
-    final shiftRef = FirebaseFirestore.instance
+    final shiftRef = FirestoreEnforcer.instance
         .collection('organizations')
         .doc(orgId)
         .collection('shifts')

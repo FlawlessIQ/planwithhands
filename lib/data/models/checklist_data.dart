@@ -20,7 +20,8 @@ class ChecklistData with _$ChecklistData {
       _$ChecklistDataFromJson(json);
 }
 
-class TaskDataListConverter implements JsonConverter<List<TaskData>, List<dynamic>> {
+class TaskDataListConverter
+    implements JsonConverter<List<TaskData>, List<dynamic>> {
   const TaskDataListConverter();
 
   @override

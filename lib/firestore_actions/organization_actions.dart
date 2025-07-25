@@ -3,9 +3,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/constants/firestore_names.dart';
 import 'package:hands_app/data/models/location_data.dart';
 import 'package:hands_app/data/models/organization_data.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 Future<int?> getIncrementedOrganizationId() async {
-  final FirebaseFirestore firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore firestore = FirestoreEnforcer.instance;
 
   try {
     final CollectionReference collection = firestore.collection(
@@ -24,7 +25,8 @@ Future<int?> getIncrementedOrganizationId() async {
     // find the highest id, increment it
     // if the docs are empty (shouldn't happen), use 1000
     if (documentIds.isEmpty) {
-      log( // Replaced print with log
+      log(
+        // Replaced print with log
         'Theres no org ids.  This is a problem, possibly a permissions issue',
       );
       return 1000;
@@ -33,7 +35,8 @@ Future<int?> getIncrementedOrganizationId() async {
       return documentIds.last + 1;
     }
   } catch (e) {
-    log( // Replaced print with log
+    log(
+      // Replaced print with log
       'Error inserting new organization data: $e.  Its likely because of doc id insert',
     );
     return null;
@@ -43,7 +46,7 @@ Future<int?> getIncrementedOrganizationId() async {
 Future<OrganizationData?> insertNewOrganization({
   required OrganizationData organizationData,
 }) async {
-  final FirebaseFirestore firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore firestore = FirestoreEnforcer.instance;
 
   try {
     // Insert the new organization data into Firestore
@@ -73,7 +76,7 @@ Future<OrganizationData?> insertNewOrganization({
 }
 
 Future<OrganizationData?> getOrganizationById(String organizationId) async {
-  final FirebaseFirestore firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore firestore = FirestoreEnforcer.instance;
 
   try {
     // Fetch the document from Firestore
@@ -94,7 +97,9 @@ Future<OrganizationData?> getOrganizationById(String organizationId) async {
         return null;
       }
     } else {
-      log('Organization not found for ID: $organizationId'); // Replaced print with log
+      log(
+        'Organization not found for ID: $organizationId',
+      ); // Replaced print with log
       return null;
     }
   } catch (e) {
@@ -106,7 +111,7 @@ Future<OrganizationData?> getOrganizationById(String organizationId) async {
 Future<OrganizationData?> updateOrganization({
   required OrganizationData organizationData,
 }) async {
-  final FirebaseFirestore firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore firestore = FirestoreEnforcer.instance;
 
   try {
     // Update the existing organization data in Firestore
@@ -138,26 +143,31 @@ Future<OrganizationData?> updateOrganization({
 Future<List<LocationData>> getLocationsForOrganization(
   String organizationId,
 ) async {
-  final FirebaseFirestore firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore firestore = FirestoreEnforcer.instance;
 
   try {
     log('Fetching locations for organization: $organizationId'); // Debug log
-    
+
     // Query the top-level locations collection filtered by organizationId
-    final QuerySnapshot snapshot = await firestore
-        .collection('locations') // Top-level locations collection
-        .where('organizationId', isEqualTo: organizationId) // Filter by organizationId
-        .get();
+    final QuerySnapshot snapshot =
+        await firestore
+            .collection('locations') // Top-level locations collection
+            .where(
+              'organizationId',
+              isEqualTo: organizationId,
+            ) // Filter by organizationId
+            .get();
 
     log('Found ${snapshot.docs.length} locations'); // Debug log
 
     // Convert each document into a LocationData object
-    List<LocationData> locations = snapshot.docs.map((doc) {
-      Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-      data['locationId'] = doc.id; // Add the document ID as locationId
-      log('Location data: $data'); // Debug log
-      return LocationData.fromJson(data);
-    }).toList();
+    List<LocationData> locations =
+        snapshot.docs.map((doc) {
+          Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+          data['locationId'] = doc.id; // Add the document ID as locationId
+          log('Location data: $data'); // Debug log
+          return LocationData.fromJson(data);
+        }).toList();
 
     return locations;
   } catch (e) {

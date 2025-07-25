@@ -2,10 +2,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import '../../firebase_options.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 Future<void> main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  final firestore = FirebaseFirestore.instance;
+  final firestore = FirestoreEnforcer.instance;
   final usersRef = firestore.collection('users');
 
   final users = await usersRef.get();
@@ -24,7 +25,8 @@ Future<void> main() async {
     }
     // Rename accessLevel to userRole if needed
     if (data.containsKey('accessLevel') && !data.containsKey('userRole')) {
-      updates['userRole'] = data['accessLevel'] is int ? data['accessLevel'] : 0;
+      updates['userRole'] =
+          data['accessLevel'] is int ? data['accessLevel'] : 0;
     }
     // Add phoneNumber if missing
     if (!data.containsKey('phoneNumber')) {

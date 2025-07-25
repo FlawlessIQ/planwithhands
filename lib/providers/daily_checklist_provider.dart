@@ -6,15 +6,19 @@ final dailyChecklistServiceProvider = Provider<DailyChecklistService>((ref) {
 });
 
 // Simplified provider for completion stats - used by admin dashboards
-final completionStatsProvider = FutureProvider.family<Map<String, dynamic>, CompletionStatsParams>((ref, params) {
-  final service = ref.watch(dailyChecklistServiceProvider);
-  return service.getCompletionStats(
-    organizationId: params.organizationId,
-    startDate: params.startDate,
-    endDate: params.endDate,
-    locationId: params.locationId,
-  );
-});
+final completionStatsProvider =
+    FutureProvider.family<Map<String, dynamic>, CompletionStatsParams>((
+      ref,
+      params,
+    ) {
+      final service = ref.watch(dailyChecklistServiceProvider);
+      return service.getCompletionStats(
+        organizationId: params.organizationId,
+        startDate: params.startDate,
+        endDate: params.endDate,
+        locationId: params.locationId,
+      );
+    });
 
 class CompletionStatsParams {
   final String organizationId;

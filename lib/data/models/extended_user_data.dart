@@ -13,10 +13,10 @@ class ExtendedUserData {
   final List<String> jobTypes;
   final DateTime createdAt;
   final DateTime? updatedAt;
-  
+
   // Scheduling fields
-  final Map<String, bool> availability;         // dayShiftKey → available
-  final Map<String, TimeOfDay> earliestStart;  // weekday → earliest TimeOfDay
+  final Map<String, bool> availability; // dayShiftKey → available
+  final Map<String, TimeOfDay> earliestStart; // weekday → earliest TimeOfDay
   final Map<String, dynamic> notificationSettings;
 
   ExtendedUserData({
@@ -45,20 +45,35 @@ class ExtendedUserData {
       userRole: map['userRole'] ?? 0,
       organizationId: map['organizationId'] ?? '',
       locationId: map['locationId'],
-      locationIds: map['locationIds'] != null ? List<String>.from(map['locationIds']) : null,
-      jobTypes: map['jobTypes'] != null 
-          ? List<String>.from(map['jobTypes']) 
-          : (map['jobType'] != null ? List<String>.from(map['jobType']) : []),
-      createdAt: map['createdAt'] != null ? (map['createdAt'] as Timestamp).toDate() : DateTime.now(),
-      updatedAt: map['updatedAt'] != null ? (map['updatedAt'] as Timestamp).toDate() : null,
+      locationIds:
+          map['locationIds'] != null
+              ? List<String>.from(map['locationIds'])
+              : null,
+      jobTypes:
+          map['jobTypes'] != null
+              ? List<String>.from(map['jobTypes'])
+              : (map['jobType'] != null
+                  ? List<String>.from(map['jobType'])
+                  : []),
+      createdAt:
+          map['createdAt'] != null
+              ? (map['createdAt'] as Timestamp).toDate()
+              : DateTime.now(),
+      updatedAt:
+          map['updatedAt'] != null
+              ? (map['updatedAt'] as Timestamp).toDate()
+              : null,
       availability: Map<String, bool>.from(map['availability'] ?? {}),
       earliestStart: _parseEarliestStart(map['earliestStart'] ?? {}),
-      notificationSettings: Map<String, dynamic>.from(map['notificationSettings'] ?? {
-        'scheduleUpdates': true,
-        'shiftReminders': true,
-        'emailNotifications': true,
-        'pushNotifications': true,
-      }),
+      notificationSettings: Map<String, dynamic>.from(
+        map['notificationSettings'] ??
+            {
+              'scheduleUpdates': true,
+              'shiftReminders': true,
+              'emailNotifications': true,
+              'pushNotifications': true,
+            },
+      ),
     );
   }
 
@@ -98,13 +113,12 @@ class ExtendedUserData {
     return result;
   }
 
-  static Map<String, dynamic> _serializeEarliestStart(Map<String, TimeOfDay> map) {
+  static Map<String, dynamic> _serializeEarliestStart(
+    Map<String, TimeOfDay> map,
+  ) {
     final result = <String, dynamic>{};
     map.forEach((key, timeOfDay) {
-      result[key] = {
-        'hour': timeOfDay.hour,
-        'minute': timeOfDay.minute,
-      };
+      result[key] = {'hour': timeOfDay.hour, 'minute': timeOfDay.minute};
     });
     return result;
   }
@@ -144,16 +158,20 @@ class ExtendedUserData {
   }
 
   String get fullName => '$firstName $lastName'.trim();
-  
+
   String get roleText {
     switch (userRole) {
-      case 2: return 'Admin';
-      case 1: return 'Manager';
-      default: return 'General User';
+      case 2:
+        return 'Admin';
+      case 1:
+        return 'Manager';
+      default:
+        return 'General User';
     }
   }
 
-  bool get isAvailableForShift => availability.values.any((available) => available);
+  bool get isAvailableForShift =>
+      availability.values.any((available) => available);
 
   @override
   String toString() {

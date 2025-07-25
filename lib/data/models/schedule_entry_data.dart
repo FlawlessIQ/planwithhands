@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ScheduleEntryData {
   final String id;
-  final String dayShiftKey;            // e.g. "Tuesday_Dinner"
+  final String dayShiftKey; // e.g. "Tuesday_Dinner"
   final Map<String, int> requiredRoles; // roleId → target count
   final List<String> assignedUserIds;
   final String scheduleId;
@@ -29,8 +29,14 @@ class ScheduleEntryData {
       assignedUserIds: List<String>.from(map['assignedUserIds'] ?? []),
       scheduleId: map['scheduleId'] ?? '',
       shiftId: map['shiftId'] ?? '',
-      createdAt: map['createdAt'] != null ? (map['createdAt'] as Timestamp).toDate() : null,
-      updatedAt: map['updatedAt'] != null ? (map['updatedAt'] as Timestamp).toDate() : null,
+      createdAt:
+          map['createdAt'] != null
+              ? (map['createdAt'] as Timestamp).toDate()
+              : null,
+      updatedAt:
+          map['updatedAt'] != null
+              ? (map['updatedAt'] as Timestamp).toDate()
+              : null,
     );
   }
 
@@ -41,7 +47,10 @@ class ScheduleEntryData {
       'assignedUserIds': assignedUserIds,
       'scheduleId': scheduleId,
       'shiftId': shiftId,
-      'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : FieldValue.serverTimestamp(),
+      'createdAt':
+          createdAt != null
+              ? Timestamp.fromDate(createdAt!)
+              : FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     };
   }
@@ -60,7 +69,8 @@ class ScheduleEntryData {
       id: id ?? this.id,
       dayShiftKey: dayShiftKey ?? this.dayShiftKey,
       requiredRoles: requiredRoles ?? Map<String, int>.from(this.requiredRoles),
-      assignedUserIds: assignedUserIds ?? List<String>.from(this.assignedUserIds),
+      assignedUserIds:
+          assignedUserIds ?? List<String>.from(this.assignedUserIds),
       scheduleId: scheduleId ?? this.scheduleId,
       shiftId: shiftId ?? this.shiftId,
       createdAt: createdAt ?? this.createdAt,
@@ -70,16 +80,20 @@ class ScheduleEntryData {
 
   // Helper methods
   int get totalAssigned => assignedUserIds.length;
-  
-  int get totalRequired => requiredRoles.values.fold(0, (sum, count) => sum + count);
-  
+
+  int get totalRequired =>
+      requiredRoles.values.fold(0, (sum, count) => sum + count);
+
   bool get isFullyStaffed => totalAssigned >= totalRequired;
-  
+
   bool get isOverStaffed => totalAssigned > totalRequired;
 
   int getRequiredCountForRole(String roleId) => requiredRoles[roleId] ?? 0;
-  
-  int getAssignedCountForRole(String roleId, Map<String, List<String>> userRoleMap) {
+
+  int getAssignedCountForRole(
+    String roleId,
+    Map<String, List<String>> userRoleMap,
+  ) {
     return assignedUserIds.where((userId) {
       final userRoles = userRoleMap[userId] ?? [];
       return userRoles.contains(roleId);
@@ -94,19 +108,19 @@ class ScheduleEntryData {
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
-    
+
     return other is ScheduleEntryData &&
-      other.id == id &&
-      other.dayShiftKey == dayShiftKey &&
-      other.scheduleId == scheduleId &&
-      other.shiftId == shiftId;
+        other.id == id &&
+        other.dayShiftKey == dayShiftKey &&
+        other.scheduleId == scheduleId &&
+        other.shiftId == shiftId;
   }
 
   @override
   int get hashCode {
     return id.hashCode ^
-      dayShiftKey.hashCode ^
-      scheduleId.hashCode ^
-      shiftId.hashCode;
+        dayShiftKey.hashCode ^
+        scheduleId.hashCode ^
+        shiftId.hashCode;
   }
 }

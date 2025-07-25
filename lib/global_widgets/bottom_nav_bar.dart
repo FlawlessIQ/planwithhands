@@ -24,7 +24,10 @@ class BottomNavBar extends ConsumerWidget {
         context.go(AppRoutes.schedulePage.path);
         break;
       case 4:
-        context.go(AppRoutes.trainingMaterialsPage.path, extra: {'userRole': userRole}); // Pass userRole to training materials page
+        context.go(
+          AppRoutes.trainingMaterialsPage.path,
+          extra: {'userRole': userRole},
+        ); // Pass userRole to training materials page
         break;
     }
   }
@@ -36,38 +39,50 @@ class BottomNavBar extends ConsumerWidget {
     final int role = userRole ?? 0;
     final List<BottomNavigationBarItem> items = [];
     final List<int> tabMap = [];
+
     // Always add User tab
-    items.add(const BottomNavigationBarItem(
-      icon: Icon(Icons.dashboard),
-      label: 'User',
-    ));
+    items.add(
+      const BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'User'),
+    );
     tabMap.add(0);
+
     // Add Manager tab for role 1 and 2
     if (role >= 1) {
-      items.add(const BottomNavigationBarItem(
-        icon: Icon(Icons.dashboard_customize),
-        label: 'Manager',
-      ));
+      items.add(
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.dashboard_customize),
+          label: 'Manager',
+        ),
+      );
       tabMap.add(1);
     }
+
     // Add Admin tab for role 2 only
-    if (role == 2) {
-      items.add(const BottomNavigationBarItem(
-        icon: Icon(Icons.admin_panel_settings),
-        label: 'Admin',
-      ));
+    if (role >= 2) {
+      items.add(
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.admin_panel_settings),
+          label: 'Admin',
+        ),
+      );
       tabMap.add(2);
     }
+
     // Always add Schedule and Documents tabs
-    items.add(const BottomNavigationBarItem(
-      icon: Icon(Icons.calendar_today),
-      label: 'Schedule',
-    ));
+    items.add(
+      const BottomNavigationBarItem(
+        icon: Icon(Icons.calendar_today),
+        label: 'Schedule',
+      ),
+    );
     tabMap.add(3);
-    items.add(const BottomNavigationBarItem(
-      icon: Icon(Icons.description),
-      label: 'Documents',
-    ));
+
+    items.add(
+      const BottomNavigationBarItem(
+        icon: Icon(Icons.description),
+        label: 'Documents',
+      ),
+    );
     tabMap.add(4);
 
     // Map currentIndex to filtered tab index

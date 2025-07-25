@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hands_app/routing/routes.dart';
 import 'dart:developer';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 class PaymentSuccessPage extends StatefulWidget {
   const PaymentSuccessPage({super.key});
@@ -35,10 +35,11 @@ class _PaymentSuccessPageState extends State<PaymentSuccessPage> {
       }
 
       // Get user's organization ID
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
+      final userDoc =
+          await FirestoreEnforcer.instance
+              .collection('users')
+              .doc(user.uid)
+              .get();
 
       if (!userDoc.exists) {
         setState(() {
@@ -58,10 +59,11 @@ class _PaymentSuccessPageState extends State<PaymentSuccessPage> {
       }
 
       // Check organization subscription status
-      final orgDoc = await FirebaseFirestore.instance
-          .collection('organizations')
-          .doc(orgId)
-          .get();
+      final orgDoc =
+          await FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(orgId)
+              .get();
 
       if (!orgDoc.exists) {
         setState(() {
@@ -71,16 +73,17 @@ class _PaymentSuccessPageState extends State<PaymentSuccessPage> {
         return;
       }
 
-      final subscriptionStatus = orgDoc.data()?['subscriptionStatus'] as String? ?? 'pending';
-      
+      final subscriptionStatus =
+          orgDoc.data()?['subscriptionStatus'] as String? ?? 'pending';
+
       log('Subscription status: $subscriptionStatus');
 
-      if (subscriptionStatus == 'active') {
+      if (subscriptionStatus == 'active' || subscriptionStatus == 'trialing') {
         setState(() {
           _subscriptionActive = true;
           _isLoading = false;
         });
-        
+
         // Auto-navigate to admin dashboard after 2 seconds
         Future.delayed(const Duration(seconds: 2), () {
           if (mounted) {
@@ -128,11 +131,7 @@ class _PaymentSuccessPageState extends State<PaymentSuccessPage> {
                   textAlign: TextAlign.center,
                 ),
               ] else if (_subscriptionActive) ...[
-                Icon(
-                  Icons.check_circle,
-                  color: Colors.green,
-                  size: 80,
-                ),
+                Icon(Icons.check_circle, color: Colors.green, size: 80),
                 const SizedBox(height: 24),
                 Text(
                   'Payment Successful!',
@@ -156,11 +155,7 @@ class _PaymentSuccessPageState extends State<PaymentSuccessPage> {
                   child: const Text('Go to Dashboard'),
                 ),
               ] else if (_errorMessage != null) ...[
-                Icon(
-                  Icons.error,
-                  color: Colors.red,
-                  size: 80,
-                ),
+                Icon(Icons.error, color: Colors.red, size: 80),
                 const SizedBox(height: 24),
                 Text(
                   'Verification Error',

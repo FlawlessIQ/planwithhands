@@ -44,9 +44,7 @@ class ShiftProgressBar extends StatelessWidget {
                     color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
-                Text(
-                  isExpired ? 'Ended' : _getTimeRemaining(),
-                ),
+                Text(isExpired ? 'Ended' : _getTimeRemaining()),
               ],
             ),
           const SizedBox(height: 8),

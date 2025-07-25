@@ -15,17 +15,10 @@ class UnifiedMenuButton extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final unreadCountAsync = ref.watch(unreadNotificationsCountProvider);
 
-    // Debug output
-    print('[UnifiedMenuButton] Received userRole: $userRole');
-    print('[UnifiedMenuButton] Provider state: $unreadCountAsync');
-    unreadCountAsync.when(
-      data: (count) => print('[UnifiedMenuButton] Unread count: $count'),
-      loading: () => print('[UnifiedMenuButton] Loading unread count...'),
-      error: (err, stack) => print('[UnifiedMenuButton] Error loading unread count: $err'),
+    final hasUnread = unreadCountAsync.maybeWhen(
+      data: (count) => count > 0,
+      orElse: () => false,
     );
-
-    final hasUnread = unreadCountAsync.maybeWhen(data: (count) => count > 0, orElse: () => false);
-    final unreadCount = unreadCountAsync.maybeWhen(data: (count) => count, orElse: () => 0);
     return PopupMenuButton<_MenuAction>(
       icon: Stack(
         children: [
@@ -78,14 +71,23 @@ class UnifiedMenuButton extends ConsumerWidget {
       },
       itemBuilder: (context) {
         final int role = userRole ?? 0;
-        print('[UnifiedMenuButton] Building menu items with role: $role (original userRole: $userRole)');
-        final items = <PopupMenuEntry<_MenuAction>>[
+        final items = <PopupMenuEntry<_MenuAction>>[];
+
+        // Always available for all users (role 0, 1, 2)
+        items.add(
           const PopupMenuItem(
             value: _MenuAction.viewMessages,
             child: Text('View messages'),
           ),
-        ];
-        if (role == 2) {
+        );
+
+        // Manager and Admin features (role >= 1)
+        if (role >= 1) {
+          // Add manager-specific items here if needed in the future
+        }
+
+        // Admin-only features (role >= 2)
+        if (role >= 2) {
           items.addAll([
             const PopupMenuItem(
               value: _MenuAction.sendNotification,
@@ -97,6 +99,8 @@ class UnifiedMenuButton extends ConsumerWidget {
             ),
           ]);
         }
+
+        // Always available for all users
         items.addAll([
           const PopupMenuItem(
             value: _MenuAction.schedulingPreferences,
@@ -107,6 +111,7 @@ class UnifiedMenuButton extends ConsumerWidget {
             child: Text('Settings'),
           ),
         ]);
+
         return items;
       },
     );

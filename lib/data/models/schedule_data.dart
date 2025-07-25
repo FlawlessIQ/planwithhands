@@ -9,8 +9,14 @@ ScheduleData fromFirestore(DocumentSnapshot doc) {
     published: data['published'] ?? false,
     organizationId: data['organizationId'] ?? '',
     locationId: data['locationId'] ?? '',
-    createdAt: data['createdAt'] != null ? (data['createdAt'] as Timestamp).toDate() : null,
-    updatedAt: data['updatedAt'] != null ? (data['updatedAt'] as Timestamp).toDate() : null,
+    createdAt:
+        data['createdAt'] != null
+            ? (data['createdAt'] as Timestamp).toDate()
+            : null,
+    updatedAt:
+        data['updatedAt'] != null
+            ? (data['updatedAt'] as Timestamp).toDate()
+            : null,
   );
 }
 
@@ -43,8 +49,14 @@ class ScheduleData {
       published: map['published'] ?? false,
       organizationId: map['organizationId'] ?? '',
       locationId: map['locationId'] ?? '',
-      createdAt: map['createdAt'] != null ? (map['createdAt'] as Timestamp).toDate() : null,
-      updatedAt: map['updatedAt'] != null ? (map['updatedAt'] as Timestamp).toDate() : null,
+      createdAt:
+          map['createdAt'] != null
+              ? (map['createdAt'] as Timestamp).toDate()
+              : null,
+      updatedAt:
+          map['updatedAt'] != null
+              ? (map['updatedAt'] as Timestamp).toDate()
+              : null,
     );
   }
 
@@ -55,7 +67,10 @@ class ScheduleData {
       'published': published,
       'organizationId': organizationId,
       'locationId': locationId,
-      'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : FieldValue.serverTimestamp(),
+      'createdAt':
+          createdAt != null
+              ? Timestamp.fromDate(createdAt!)
+              : FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     };
   }
@@ -90,23 +105,23 @@ class ScheduleData {
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
-    
+
     return other is ScheduleData &&
-      other.id == id &&
-      other.startDate == startDate &&
-      other.endDate == endDate &&
-      other.published == published &&
-      other.organizationId == organizationId &&
-      other.locationId == locationId;
+        other.id == id &&
+        other.startDate == startDate &&
+        other.endDate == endDate &&
+        other.published == published &&
+        other.organizationId == organizationId &&
+        other.locationId == locationId;
   }
 
   @override
   int get hashCode {
     return id.hashCode ^
-      startDate.hashCode ^
-      endDate.hashCode ^
-      published.hashCode ^
-      organizationId.hashCode ^
-      locationId.hashCode;
+        startDate.hashCode ^
+        endDate.hashCode ^
+        published.hashCode ^
+        organizationId.hashCode ^
+        locationId.hashCode;
   }
 }

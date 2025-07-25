@@ -41,49 +41,48 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyBTpidNnWhAhsJrp81ICRoJd_4f57TYmYk',
-    appId: '1:960378428314:web:9d46f0045b848db0a4f823',
-    messagingSenderId: '960378428314',
-    projectId: 'handstest-3c95b',
-    authDomain: 'handstest-3c95b.firebaseapp.com',
-    storageBucket: 'handstest-3c95b.firebasestorage.app',
-    measurementId: 'G-0L6D9H5DE2',
+    apiKey: 'AIzaSyDIYzHMKb-VI9W2bz2MPQzVevH58YFAM6A',
+    appId: '1:948527720669:web:6c46317a79c64ea0ba9334',
+    messagingSenderId: '948527720669',
+    projectId: 'plan-with-hands',
+    authDomain: 'plan-with-hands.firebaseapp.com',
+    storageBucket: 'plan-with-hands.firebasestorage.app',
+    measurementId: 'G-NQ57SGRHWC',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyCKwe3EikYMnjjFLzxmnKIBlaUSFYVOjhI',
-    appId: '1:960378428314:android:184053b56b1ee805a4f823',
-    messagingSenderId: '960378428314',
-    projectId: 'handstest-3c95b',
-    storageBucket: 'handstest-3c95b.firebasestorage.app',
+    apiKey: 'AIzaSyCu9ydPiUXB_qwv3r9FnzimixyCl2Rlz7A',
+    appId: '1:948527720669:android:a94ba3a6a0036547ba9334',
+    messagingSenderId: '948527720669',
+    projectId: 'plan-with-hands',
+    storageBucket: 'plan-with-hands.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyA4bUwl8cNDiGApUgFspAPChDRX9SL4oj8',
-    appId: '1:960378428314:ios:7b975be166f95cc8a4f823',
-    messagingSenderId: '960378428314',
-    projectId: 'handstest-3c95b',
-    storageBucket: 'handstest-3c95b.firebasestorage.app',
-    iosBundleId: 'com.example.handsApp',
+    apiKey: 'AIzaSyATMTdvZkoxuoMiGDxPCc7Jxk3Z6oXBUcY',
+    appId: '1:948527720669:ios:9b42e5a6ae865655ba9334',
+    messagingSenderId: '948527720669',
+    projectId: 'plan-with-hands',
+    storageBucket: 'plan-with-hands.firebasestorage.app',
+    iosBundleId: 'com.example.handsClean',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyA4bUwl8cNDiGApUgFspAPChDRX9SL4oj8',
-    appId: '1:960378428314:ios:7b975be166f95cc8a4f823',
-    messagingSenderId: '960378428314',
-    projectId: 'handstest-3c95b',
-    storageBucket: 'handstest-3c95b.firebasestorage.app',
-    iosBundleId: 'com.example.handsApp',
+    apiKey: 'AIzaSyATMTdvZkoxuoMiGDxPCc7Jxk3Z6oXBUcY',
+    appId: '1:948527720669:ios:9b42e5a6ae865655ba9334',
+    messagingSenderId: '948527720669',
+    projectId: 'plan-with-hands',
+    storageBucket: 'plan-with-hands.firebasestorage.app',
+    iosBundleId: 'com.example.handsClean',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyBTpidNnWhAhsJrp81ICRoJd_4f57TYmYk',
-    appId: '1:960378428314:web:cba6f027557b82c3a4f823',
-    messagingSenderId: '960378428314',
-    projectId: 'handstest-3c95b',
-    authDomain: 'handstest-3c95b.firebaseapp.com',
-    storageBucket: 'handstest-3c95b.firebasestorage.app',
-    measurementId: 'G-Q2JYNGQWKD',
+    apiKey: 'AIzaSyDIYzHMKb-VI9W2bz2MPQzVevH58YFAM6A',
+    appId: '1:948527720669:web:5bd1ef5be8a88a0eba9334',
+    messagingSenderId: '948527720669',
+    projectId: 'plan-with-hands',
+    authDomain: 'plan-with-hands.firebaseapp.com',
+    storageBucket: 'plan-with-hands.firebasestorage.app',
+    measurementId: 'G-F6TK9E5D7P',
   );
-
 }

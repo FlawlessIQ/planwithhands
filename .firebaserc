@@ -1,5 +1,15 @@
 {
   "projects": {
     "default": "plan-with-hands"
-  }
+  },
+  "targets": {
+    "plan-with-hands": {
+      "hosting": {
+        "plan-with-hands": [
+          "plan-with-hands"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

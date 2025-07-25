@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 class SignInPage extends StatefulWidget {
   const SignInPage({super.key});
@@ -14,7 +15,7 @@ class _SignInPageState extends State<SignInPage> {
   final _formKey = GlobalKey<FormState>();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  
+
   String? email;
   String? uid;
   String? orgId;
@@ -46,33 +47,36 @@ class _SignInPageState extends State<SignInPage> {
       // Check if this is a pending invite
       if (inviteId != null) {
         // Look for pending user data
-        final pendingUserQuery = await FirebaseFirestore.instance
-            .collection('pendingUsers')
-            .where('emailAddress', isEqualTo: email!.toLowerCase())
-            .where('inviteId', isEqualTo: inviteId)
-            .limit(1)
-            .get();
+        final pendingUserQuery =
+            await FirestoreEnforcer.instance
+                .collection('pendingUsers')
+                .where('emailAddress', isEqualTo: email!.toLowerCase())
+                .where('inviteId', isEqualTo: inviteId)
+                .limit(1)
+                .get();
 
         if (pendingUserQuery.docs.isNotEmpty) {
           final pendingUserDoc = pendingUserQuery.docs.first;
           final pendingUserData = pendingUserDoc.data();
-          
+
           // Store pending user data for later use
           final firstName = pendingUserData['firstName'] ?? '';
           final lastName = pendingUserData['lastName'] ?? '';
           userName = '$firstName $lastName'.trim();
           orgId = pendingUserData['organizationId'];
-          
+
           // Get organization name if orgId is available
           if (orgId != null) {
             try {
-              final orgDoc = await FirebaseFirestore.instance
-                  .collection('organizations')
-                  .doc(orgId)
-                  .get();
-              
+              final orgDoc =
+                  await FirestoreEnforcer.instance
+                      .collection('organizations')
+                      .doc(orgId)
+                      .get();
+
               if (orgDoc.exists) {
-                organizationName = orgDoc.data()?['organizationName'] ?? 'Your Organization';
+                organizationName =
+                    orgDoc.data()?['organizationName'] ?? 'Your Organization';
               }
             } catch (e) {
               organizationName = 'Your Organization';
@@ -81,27 +85,27 @@ class _SignInPageState extends State<SignInPage> {
         }
       } else if (uid != null) {
         // Legacy flow - load user profile from Firestore
-        final userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(uid)
-            .get();
+        final userDoc =
+            await FirestoreEnforcer.instance.collection('users').doc(uid).get();
 
         if (userDoc.exists) {
           final userData = userDoc.data() as Map<String, dynamic>;
           final firstName = userData['firstName'] ?? '';
           final lastName = userData['lastName'] ?? '';
           userName = '$firstName $lastName'.trim();
-          
+
           // Get organization name if orgId is available
           if (orgId != null) {
             try {
-              final orgDoc = await FirebaseFirestore.instance
-                  .collection('organizations')
-                  .doc(orgId)
-                  .get();
-              
+              final orgDoc =
+                  await FirestoreEnforcer.instance
+                      .collection('organizations')
+                      .doc(orgId)
+                      .get();
+
               if (orgDoc.exists) {
-                organizationName = orgDoc.data()?['organizationName'] ?? 'Your Organization';
+                organizationName =
+                    orgDoc.data()?['organizationName'] ?? 'Your Organization';
               }
             } catch (e) {
               organizationName = 'Your Organization';
@@ -134,30 +138,33 @@ class _SignInPageState extends State<SignInPage> {
         email: email!,
         emailLink: Uri.base.toString(),
       );
-      
+
       // Now update the password
       final user = FirebaseAuth.instance.currentUser!;
       await user.updatePassword(_passwordController.text);
-      
+
       // Get query parameters to check for invite
       final queryParameters = Uri.base.queryParameters;
       final inviteId = queryParameters['inviteId'];
-      
+
       if (inviteId != null) {
         // This is a new invite - move pending user data to users collection
-        final pendingUserQuery = await FirebaseFirestore.instance
-            .collection('pendingUsers')
-            .where('emailAddress', isEqualTo: email!.toLowerCase())
-            .where('inviteId', isEqualTo: inviteId)
-            .limit(1)
-            .get();
+        final pendingUserQuery =
+            await FirestoreEnforcer.instance
+                .collection('pendingUsers')
+                .where('emailAddress', isEqualTo: email!.toLowerCase())
+                .where('inviteId', isEqualTo: inviteId)
+                .limit(1)
+                .get();
 
         if (pendingUserQuery.docs.isNotEmpty) {
           final pendingUserDoc = pendingUserQuery.docs.first;
           final pendingUserData = pendingUserDoc.data();
-          
+
           // Create user document with the authenticated user's UID
-          final userDoc = FirebaseFirestore.instance.collection('users').doc(user.uid);
+          final userDoc = FirestoreEnforcer.instance
+              .collection('users')
+              .doc(user.uid);
           await userDoc.set({
             'userId': user.uid,
             'firstName': pendingUserData['firstName'],
@@ -174,27 +181,24 @@ class _SignInPageState extends State<SignInPage> {
             'lastLogin': FieldValue.serverTimestamp(),
             'inviteSent': true,
           });
-          
+
           // Delete the pending user document
           await pendingUserDoc.reference.delete();
-          
+
           uid = user.uid; // Set uid for later use
         }
       } else {
         // Legacy flow - update existing user document
         if (uid != null) {
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(uid)
-              .update({
+          await FirestoreEnforcer.instance.collection('users').doc(uid).update({
             'setupCompleted': true,
             'lastLogin': FieldValue.serverTimestamp(),
           });
         }
       }
-      
+
       _showSuccess('Password set successfully! Welcome to Hands App.');
-      
+
       // Show app installation dialog after a short delay
       await Future.delayed(const Duration(seconds: 1));
       if (mounted) {
@@ -245,10 +249,7 @@ class _SignInPageState extends State<SignInPage> {
                     Expanded(
                       child: Text(
                         'Use the same email and password to sign in on the mobile app.',
-                        style: TextStyle(
-                          color: Colors.blue[700],
-                          fontSize: 13,
-                        ),
+                        style: TextStyle(color: Colors.blue[700], fontSize: 13),
                       ),
                     ),
                   ],
@@ -303,7 +304,8 @@ class _SignInPageState extends State<SignInPage> {
   }
 
   Future<void> _launchAppStore() async {
-    const url = 'https://apps.apple.com/app/hands-app/id123456789'; // Replace with actual App Store URL
+    const url =
+        'https://apps.apple.com/app/hands-app/id123456789'; // Replace with actual App Store URL
     if (await canLaunchUrl(Uri.parse(url))) {
       await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     } else {
@@ -312,7 +314,8 @@ class _SignInPageState extends State<SignInPage> {
   }
 
   Future<void> _launchPlayStore() async {
-    const url = 'https://play.google.com/store/apps/details?id=com.conorlawless.hands_app'; // Replace with actual Play Store URL
+    const url =
+        'https://play.google.com/store/apps/details?id=com.conorlawless.hands_app'; // Replace with actual Play Store URL
     if (await canLaunchUrl(Uri.parse(url))) {
       await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     } else {
@@ -389,7 +392,7 @@ class _SignInPageState extends State<SignInPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
@@ -399,167 +402,172 @@ class _SignInPageState extends State<SignInPage> {
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const SizedBox(height: 20),
-                    
-                    // Welcome Card
-                    Card(
-                      elevation: 4,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(24.0),
-                        child: Column(
-                          children: [
-                            Icon(
-                              Icons.waving_hand,
-                              size: 48,
-                              color: theme.primaryColor,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'Welcome, ${userName ?? 'User'}!',
-                              style: theme.textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
+      body:
+          isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                padding: const EdgeInsets.all(24.0),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(height: 20),
+
+                      // Welcome Card
+                      Card(
+                        elevation: 4,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(24.0),
+                          child: Column(
+                            children: [
+                              Icon(
+                                Icons.waving_hand,
+                                size: 48,
                                 color: theme.primaryColor,
                               ),
-                              textAlign: TextAlign.center,
-                            ),
-                            if (organizationName != null) ...[
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 16),
                               Text(
-                                'You\'ve been added to $organizationName',
-                                style: theme.textTheme.bodyLarge?.copyWith(
+                                'Welcome, ${userName ?? 'User'}!',
+                                style: theme.textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.primaryColor,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              if (organizationName != null) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  'You\'ve been added to $organizationName',
+                                  style: theme.textTheme.bodyLarge?.copyWith(
+                                    color: Colors.grey[600],
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                              const SizedBox(height: 12),
+                              Text(
+                                'Please set your password to complete your account setup.',
+                                style: theme.textTheme.bodyMedium?.copyWith(
                                   color: Colors.grey[600],
-                                  fontWeight: FontWeight.w500,
                                 ),
                                 textAlign: TextAlign.center,
                               ),
                             ],
-                            const SizedBox(height: 12),
-                            Text(
-                              'Please set your password to complete your account setup.',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: Colors.grey[600],
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Email field (read-only)
+                      TextFormField(
+                        initialValue: email ?? '',
+                        readOnly: true,
+                        decoration: InputDecoration(
+                          labelText: 'Email Address',
+                          border: const OutlineInputBorder(),
+                          prefixIcon: const Icon(Icons.email),
+                          filled: true,
+                          fillColor: Colors.grey[100],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // New Password field
+                      TextFormField(
+                        controller: _passwordController,
+                        obscureText: true,
+                        validator: _validatePassword,
+                        decoration: const InputDecoration(
+                          labelText: 'Create Password',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.lock),
+                          helperText:
+                              'At least 8 characters with uppercase, lowercase, and number',
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Confirm Password field
+                      TextFormField(
+                        controller: _confirmPasswordController,
+                        obscureText: true,
+                        validator: _validateConfirmPassword,
+                        decoration: const InputDecoration(
+                          labelText: 'Confirm Password',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.lock_outline),
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+
+                      // Set Password button
+                      ElevatedButton(
+                        onPressed: isSettingPassword ? null : _setPassword,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: theme.primaryColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          elevation: 2,
+                        ),
+                        child:
+                            isSettingPassword
+                                ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                )
+                                : const Text(
+                                  'Set Password & Continue',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Security note
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.blue[50],
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.blue[200]!),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.security, color: Colors.blue[600]),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Your password will be securely encrypted. You can change it later in your account settings.',
+                                style: TextStyle(
+                                  color: Colors.blue[700],
+                                  fontSize: 14,
+                                ),
                               ),
-                              textAlign: TextAlign.center,
                             ),
                           ],
                         ),
                       ),
-                    ),
-                    
-                    const SizedBox(height: 24),
-                    
-                    // Email field (read-only)
-                    TextFormField(
-                      initialValue: email ?? '',
-                      readOnly: true,
-                      decoration: InputDecoration(
-                        labelText: 'Email Address',
-                        border: const OutlineInputBorder(),
-                        prefixIcon: const Icon(Icons.email),
-                        filled: true,
-                        fillColor: Colors.grey[100],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // New Password field
-                    TextFormField(
-                      controller: _passwordController,
-                      obscureText: true,
-                      validator: _validatePassword,
-                      decoration: const InputDecoration(
-                        labelText: 'Create Password',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.lock),
-                        helperText: 'At least 8 characters with uppercase, lowercase, and number',
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // Confirm Password field
-                    TextFormField(
-                      controller: _confirmPasswordController,
-                      obscureText: true,
-                      validator: _validateConfirmPassword,
-                      decoration: const InputDecoration(
-                        labelText: 'Confirm Password',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.lock_outline),
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-                    
-                    // Set Password button
-                    ElevatedButton(
-                      onPressed: isSettingPassword ? null : _setPassword,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: theme.primaryColor,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        elevation: 2,
-                      ),
-                      child: isSettingPassword
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : const Text(
-                              'Set Password & Continue',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                    ),
-                    const SizedBox(height: 24),
-                    
-                    // Security note
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.blue[50],
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.blue[200]!),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.security, color: Colors.blue[600]),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Your password will be securely encrypted. You can change it later in your account settings.',
-                              style: TextStyle(
-                                color: Colors.blue[700],
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
     );
   }
 }

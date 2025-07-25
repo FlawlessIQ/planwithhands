@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/state/user_state.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 /// Provides the count of unread (and unarchived) notifications for the current user
 final unreadNotificationsCountProvider = StreamProvider<int>((ref) {
@@ -23,7 +23,7 @@ final unreadNotificationsCountProvider = StreamProvider<int>((ref) {
     return Stream.value(0);
   }
   print('[unreadNotificationsCountProvider] Subscribing for orgId: $orgId, userId: ${user.uid}');
-  return FirebaseFirestore.instance
+  return FirestoreEnforcer.instance
       .collection('organizations')
       .doc(orgId)
       .collection('notifications')

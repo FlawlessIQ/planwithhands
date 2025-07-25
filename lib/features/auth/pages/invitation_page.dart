@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hands_app/routing/routes.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 class InvitationPage extends StatefulWidget {
   final String? token;
@@ -25,7 +26,11 @@ class _InvitationPageState extends State<InvitationPage> {
 
   Future<DocumentSnapshot?> _verifyToken(String token) async {
     try {
-      final doc = await FirebaseFirestore.instance.collection('invites').doc(token).get();
+      final doc =
+          await FirestoreEnforcer.instance
+              .collection('invites')
+              .doc(token)
+              .get();
       if (doc.exists) {
         final data = doc.data() as Map<String, dynamic>;
         final expiresAt = (data['expiresAt'] as Timestamp).toDate();
@@ -56,7 +61,9 @@ class _InvitationPageState extends State<InvitationPage> {
         }
 
         if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
-          return _buildErrorScaffold('This invitation is invalid or has expired.');
+          return _buildErrorScaffold(
+            'This invitation is invalid or has expired.',
+          );
         }
 
         // If the token is valid, redirect to the sign-up page
@@ -77,9 +84,7 @@ class _InvitationPageState extends State<InvitationPage> {
         });
 
         // Show a loading indicator while redirecting
-        return const Scaffold(
-          body: Center(child: CircularProgressIndicator()),
-        );
+        return const Scaffold(body: Center(child: CircularProgressIndicator()));
       },
     );
   }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/data/models/shift_data.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 class ShiftTemplateBottomSheet extends StatefulWidget {
   final String? shiftId;
@@ -19,7 +21,8 @@ class ShiftTemplateBottomSheet extends StatefulWidget {
   });
 
   @override
-  State<ShiftTemplateBottomSheet> createState() => _ShiftTemplateBottomSheetState();
+  State<ShiftTemplateBottomSheet> createState() =>
+      _ShiftTemplateBottomSheetState();
 }
 
 class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
@@ -35,7 +38,13 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
   bool _repeatsDaily = false;
   final Set<String> _selectedDays = {};
   final List<String> _weekDays = [
-    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
   ];
 
   // Step 2: Locations
@@ -45,10 +54,19 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
   List<String> selectedJobTypes = [];
   Map<String, int> staffingLevels = {};
   List<String> availableJobTypes = [
-    'Manager', 'Server', 'Cook', 'Bartender', 'Host/Hostess',
-    'Dishwasher', 'Food Runner', 'Busser', 'Cashier', 'Cleaner',
+    'Manager',
+    'Server',
+    'Cook',
+    'Bartender',
+    'Host/Hostess',
+    'Dishwasher',
+    'Food Runner',
+    'Busser',
+    'Cashier',
+    'Cleaner',
   ];
-  final TextEditingController _customJobTypeController = TextEditingController();
+  final TextEditingController _customJobTypeController =
+      TextEditingController();
 
   // Step 4: Checklist Templates
   List<String> selectedChecklistTemplateIds = [];
@@ -59,6 +77,10 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
     isEditing = widget.shiftId != null;
     if (isEditing && widget.shiftData != null) {
       _populateFields();
+    }
+    // Auto-select single location if only one
+    if (!isEditing && widget.availableLocations.length == 1) {
+      selectedLocationIds = [widget.availableLocations.first['id'] as String];
     }
   }
 
@@ -71,7 +93,9 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
     _selectedDays.addAll(shift.days);
     selectedLocationIds = List<String>.from(shift.locationIds);
     selectedJobTypes = List<String>.from(shift.jobType);
-    selectedChecklistTemplateIds = List<String>.from(shift.checklistTemplateIds);
+    selectedChecklistTemplateIds = List<String>.from(
+      shift.checklistTemplateIds,
+    );
     // Add custom types
     for (final jobType in selectedJobTypes) {
       if (!availableJobTypes.contains(jobType)) {
@@ -107,21 +131,58 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
     }
   }
 
+  // Helper to pick time using CupertinoDatePicker
+  Future<void> _pickTime(TextEditingController controller) async {
+    final initial = controller.text.isNotEmpty
+        ? TimeOfDay(
+            hour: int.parse(controller.text.split(':')[0]),
+            minute: int.parse(controller.text.split(':')[1]),
+          )
+        : TimeOfDay.now();
+    await showCupertinoModalPopup(
+      context: context,
+      builder: (_) => Container(
+        height: 250,
+        color: Colors.white,
+        child: CupertinoDatePicker(
+          mode: CupertinoDatePickerMode.time,
+          initialDateTime: DateTime(
+            DateTime.now().year,
+            DateTime.now().month,
+            DateTime.now().day,
+            initial.hour,
+            initial.minute,
+          ),
+          onDateTimeChanged: (dt) {
+            final formatted = '${dt.hour.toString().padLeft(2,'0')}:'
+                '${dt.minute.toString().padLeft(2,'0')}';
+            setState(() => controller.text = formatted);
+          },
+        ),
+      ),
+    );
+  }
+
   bool _validateCurrentStep() {
     switch (_currentStep) {
-      case 0:
-        if (!_formKey.currentState!.validate()) return false;
-        if (!_repeatsDaily && _selectedDays.isEmpty) {
+      case 1:
+        // Allow skip when single location
+        if (widget.availableLocations.length > 1 && selectedLocationIds.isEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Please select days or choose Repeats Daily')),
+            const SnackBar(
+              content: Text('Please select at least one location'),
+            ),
           );
           return false;
         }
         return true;
-      case 1:
-        if (widget.availableLocations.length > 1 && selectedLocationIds.isEmpty) {
+      case 0:
+        if (!_formKey.currentState!.validate()) return false;
+        if (!_repeatsDaily && _selectedDays.isEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Please select at least one location')),
+            const SnackBar(
+              content: Text('Please select days or choose Repeats Daily'),
+            ),
           );
           return false;
         }
@@ -149,16 +210,19 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
       'endTime': _endTimeController.text.trim(),
       'days': _selectedDays.toList(),
       'repeatsDaily': _repeatsDaily,
-      'locationIds': selectedLocationIds.isNotEmpty
-          ? selectedLocationIds
-          : widget.availableLocations.map((l) => l['id'] as String).toList(),
+      'locationIds':
+          selectedLocationIds.isNotEmpty
+              ? selectedLocationIds
+              : widget.availableLocations
+                  .map((l) => l['id'] as String)
+                  .toList(),
       'jobType': selectedJobTypes,
       'staffingLevels': staffingLevels,
       'checklistTemplateIds': selectedChecklistTemplateIds,
       'updatedAt': FieldValue.serverTimestamp(),
     };
     try {
-      final coll = FirebaseFirestore.instance
+      final coll = FirestoreEnforcer.instance
           .collection('organizations')
           .doc(widget.organizationId)
           .collection('shifts');
@@ -175,7 +239,10 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error saving shift: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Error saving shift: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -218,10 +285,7 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
                   Step(
                     title: const Text('Info'),
                     isActive: _currentStep >= 0,
-                    content: Form(
-                      key: _formKey,
-                      child: _buildInfoStep(),
-                    ),
+                    content: Form(key: _formKey, child: _buildInfoStep()),
                   ),
                   Step(
                     title: const Text('Locations'),
@@ -254,7 +318,9 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
         TextFormField(
           controller: _shiftNameController,
           decoration: const InputDecoration(labelText: 'Shift Name *'),
-          validator: (v) => v!=null&&v.trim().isNotEmpty ? null : 'Enter shift name',
+          validator:
+              (v) =>
+                  v != null && v.trim().isNotEmpty ? null : 'Enter shift name',
         ),
         const SizedBox(height: 16),
         Row(
@@ -263,7 +329,12 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
               child: TextFormField(
                 controller: _startTimeController,
                 decoration: const InputDecoration(labelText: 'Start Time *'),
-                validator: (v) => v!=null&&v.trim().isNotEmpty ? null : 'Enter start time',
+                readOnly: true,
+                onTap: () => _pickTime(_startTimeController),
+                validator: (v) =>
+                    v != null && v.trim().isNotEmpty
+                        ? null
+                        : 'Enter start time',
               ),
             ),
             const SizedBox(width: 16),
@@ -271,7 +342,12 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
               child: TextFormField(
                 controller: _endTimeController,
                 decoration: const InputDecoration(labelText: 'End Time *'),
-                validator: (v) => v!=null&&v.trim().isNotEmpty ? null : 'Enter end time',
+                readOnly: true,
+                onTap: () => _pickTime(_endTimeController),
+                validator: (v) =>
+                    v != null && v.trim().isNotEmpty
+                        ? null
+                        : 'Enter end time',
               ),
             ),
           ],
@@ -290,37 +366,55 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
         const SizedBox(height: 12),
         Wrap(
           spacing: 8,
-          children: _weekDays.map((d) => FilterChip(
-            label: Text(d),
-            selected: _selectedDays.contains(d),
-            onSelected: _repeatsDaily ? null : (s) {
-              setState(() => s ? _selectedDays.add(d) : _selectedDays.remove(d));
-            },
-          )).toList(),
+          children:
+              _weekDays
+                  .map(
+                    (d) => FilterChip(
+                      label: Text(d),
+                      selected: _selectedDays.contains(d),
+                      onSelected:
+                          _repeatsDaily
+                              ? null
+                              : (s) {
+                                setState(
+                                  () =>
+                                      s
+                                          ? _selectedDays.add(d)
+                                          : _selectedDays.remove(d),
+                                );
+                              },
+                    ),
+                  )
+                  .toList(),
         ),
       ],
     );
   }
 
   Widget _buildLocationStep() {
+    // Hide location selection if only one location
+    if (widget.availableLocations.length <= 1) {
+      return const SizedBox.shrink();
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: widget.availableLocations.map((loc) => Padding(
-        padding: const EdgeInsets.only(bottom: 8.0),
-        child: CheckboxListTile(
-          title: Text(loc['name'] as String),
-          value: selectedLocationIds.contains(loc['id']),
-          onChanged: (v) {
-            setState(() {
-              if (v!) {
-                selectedLocationIds.add(loc['id']);
-              } else {
-                selectedLocationIds.remove(loc['id']);
-              }
-            });
-          },
-        ),
-      )).toList(),
+      children: widget.availableLocations.map((loc) =>
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8.0),
+          child: CheckboxListTile(
+            title: Text(loc['name'] as String),
+            value: selectedLocationIds.contains(loc['id']),
+            onChanged: (v) {
+              setState(() {
+                if (v!) {
+                  selectedLocationIds.add(loc['id']);
+                } else {
+                  selectedLocationIds.remove(loc['id']);
+                }
+              });
+            },
+          ),
+        )).toList(),
     );
   }
 
@@ -329,7 +423,10 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Job Types & Staffing', style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            'Job Types & Staffing',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: 8),
           ...selectedJobTypes.map((jt) {
             final count = staffingLevels[jt] ?? 1;
@@ -339,12 +436,21 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
                 children: [
                   Expanded(child: Text(jt)),
                   IconButton(
-                    onPressed: count>1?(){ setState(()=> staffingLevels[jt]=count-1);} : null,
-                    icon: const Icon(Icons.remove)),
+                    onPressed:
+                        count > 1
+                            ? () {
+                              setState(() => staffingLevels[jt] = count - 1);
+                            }
+                            : null,
+                    icon: const Icon(Icons.remove),
+                  ),
                   Text('$count'),
                   IconButton(
-                    onPressed: (){ setState(()=> staffingLevels[jt]=count+1);},
-                    icon: const Icon(Icons.add)),
+                    onPressed: () {
+                      setState(() => staffingLevels[jt] = count + 1);
+                    },
+                    icon: const Icon(Icons.add),
+                  ),
                 ],
               ),
             );
@@ -357,7 +463,10 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
             onSubmitted: (_) => _addCustomJobType(),
           ),
           const SizedBox(height: 8),
-          ElevatedButton(onPressed: _addCustomJobType, child: const Text('Add Job Type')),
+          ElevatedButton(
+            onPressed: _addCustomJobType,
+            child: const Text('Add Job Type'),
+          ),
         ],
       ),
     );
@@ -365,27 +474,36 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
 
   Widget _buildChecklistStep() {
     return FutureBuilder<QuerySnapshot>(
-      future: FirebaseFirestore.instance
-          .collection('organizations')
-          .doc(widget.organizationId)
-          .collection('checklist_templates')
-          .get(),
-      builder: (context,s) {
-        if(!s.hasData) return const Center(child: CircularProgressIndicator());
+      future:
+          FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(widget.organizationId)
+              .collection('checklist_templates')
+              .get(),
+      builder: (context, s) {
+        if (!s.hasData) return const Center(child: CircularProgressIndicator());
         final docs = s.data!.docs;
         return Column(
-          children: docs.map((d) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8.0),
-              child: CheckboxListTile(
-                title: Text(d['name'] ?? 'Checklist'),
-                value: selectedChecklistTemplateIds.contains(d.id),
-                onChanged: (v){ setState(()=> v! ? selectedChecklistTemplateIds.add(d.id) : selectedChecklistTemplateIds.remove(d.id));},
-              ),
-            );
-          }).toList(),
+          children:
+              docs.map((d) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8.0),
+                  child: CheckboxListTile(
+                    title: Text(d['name'] ?? 'Checklist'),
+                    value: selectedChecklistTemplateIds.contains(d.id),
+                    onChanged: (v) {
+                      setState(
+                        () =>
+                            v!
+                                ? selectedChecklistTemplateIds.add(d.id)
+                                : selectedChecklistTemplateIds.remove(d.id),
+                      );
+                    },
+                  ),
+                );
+              }).toList(),
         );
-      }
+      },
     );
   }
 

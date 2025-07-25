@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hands_app/data/models/schedule_entry_data.dart';
 import 'package:hands_app/data/models/extended_user_data.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 class ShiftBottomSheet extends StatefulWidget {
   final String scheduleId;
@@ -43,24 +44,25 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
   @override
   void initState() {
     super.initState();
-    requiredRoles = Map<String, int>.from(widget.existingEntry?.requiredRoles ?? widget.defaultParLevels);
-    assignedUserIds = Set<String>.from(widget.existingEntry?.assignedUserIds ?? []);
+    requiredRoles = Map<String, int>.from(
+      widget.existingEntry?.requiredRoles ?? widget.defaultParLevels,
+    );
+    assignedUserIds = Set<String>.from(
+      widget.existingEntry?.assignedUserIds ?? [],
+    );
     _loadData();
   }
 
   Future<void> _loadData() async {
     setState(() => isLoading = true);
-    
+
     try {
-      await Future.wait([
-        _loadRoleNames(),
-        _loadAvailableUsers(),
-      ]);
+      await Future.wait([_loadRoleNames(), _loadAvailableUsers()]);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading data: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error loading data: $e')));
       }
     } finally {
       if (mounted) {
@@ -74,26 +76,28 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
       // Since we now use role names directly as keys in requiredRoles,
       // we can create a simple mapping of name -> name
       final names = <String, String>{};
-      
+
       // For each role in requiredRoles, map the name to itself
       for (final roleName in requiredRoles.keys) {
         names[roleName] = roleName;
       }
-      
+
       // Also try to load from the old system for backward compatibility
-      var rolesSnapshot = await FirebaseFirestore.instance
-          .collection('organizations')
-          .doc(widget.organizationId)
-          .collection('roles')
-          .get();
+      var rolesSnapshot =
+          await FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(widget.organizationId)
+              .collection('roles')
+              .get();
 
       // Fallback to jobTypes if roles collection is empty
       if (rolesSnapshot.docs.isEmpty) {
-        rolesSnapshot = await FirebaseFirestore.instance
-            .collection('organizations')
-            .doc(widget.organizationId)
-            .collection('jobTypes')
-            .get();
+        rolesSnapshot =
+            await FirestoreEnforcer.instance
+                .collection('organizations')
+                .doc(widget.organizationId)
+                .collection('jobTypes')
+                .get();
       }
 
       // Add any role definitions from the database
@@ -103,7 +107,7 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
         // Also map the name to itself for direct lookup
         names[roleName] = roleName;
       }
-      
+
       if (mounted) {
         setState(() => roleNames = names);
       }
@@ -122,20 +126,25 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
 
   Future<void> _loadAvailableUsers() async {
     try {
-      debugPrint('Loading users for org: ${widget.organizationId}, location: ${widget.locationId}, dayShiftKey: ${widget.dayShiftKey}');
-      
+      debugPrint(
+        'Loading users for org: ${widget.organizationId}, location: ${widget.locationId}, dayShiftKey: ${widget.dayShiftKey}',
+      );
+
       // Debug: Check current user authentication and role
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser != null) {
         debugPrint('Current user UID: ${currentUser.uid}');
         try {
-          final currentUserDoc = await FirebaseFirestore.instance
-              .collection('users')
-              .doc(currentUser.uid)
-              .get();
+          final currentUserDoc =
+              await FirestoreEnforcer.instance
+                  .collection('users')
+                  .doc(currentUser.uid)
+                  .get();
           if (currentUserDoc.exists) {
             final userData = currentUserDoc.data()!;
-            debugPrint('Current user role: ${userData['userRole']}, org: ${userData['organizationId']}');
+            debugPrint(
+              'Current user role: ${userData['userRole']}, org: ${userData['organizationId']}',
+            );
           }
         } catch (e) {
           debugPrint('Error getting current user data: $e');
@@ -143,22 +152,26 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
       } else {
         debugPrint('No authenticated user found');
       }
-      
-      final usersSnapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .where('organizationId', isEqualTo: widget.organizationId)
-          .get();
+
+      final usersSnapshot =
+          await FirestoreEnforcer.instance
+              .collection('users')
+              .where('organizationId', isEqualTo: widget.organizationId)
+              .get();
 
       debugPrint('Found ${usersSnapshot.docs.length} users in organization');
 
       final users = <ExtendedUserData>[];
       for (final doc in usersSnapshot.docs) {
         final userData = ExtendedUserData.fromMap(doc.data(), doc.id);
-        debugPrint('Processing user: ${userData.fullName}, roles: ${userData.jobTypes}, userRole: ${userData.userRole}');
+        debugPrint(
+          'Processing user: ${userData.fullName}, roles: ${userData.jobTypes}, userRole: ${userData.userRole}',
+        );
         // Filter users by availability if provided
         final userRoles = Set<String>.from(userData.jobTypes);
         final shiftRoles = Set<String>.from(requiredRoles.keys);
-        final hasRelevantRole = shiftRoles.isEmpty || userRoles.intersection(shiftRoles).isNotEmpty;
+        final hasRelevantRole =
+            shiftRoles.isEmpty || userRoles.intersection(shiftRoles).isNotEmpty;
         bool isAvailable = false;
         if (widget.availability != null) {
           isAvailable = widget.availability![widget.dayShiftKey] ?? false;
@@ -175,11 +188,15 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
           hasLocationAccess = userData.locationId == widget.locationId;
         }
         // Include users who: have relevant role OR are already assigned, AND have location access, AND (are available OR already assigned)
-        if (hasRelevantRole && hasLocationAccess && (isAvailable || assignedUserIds.contains(userData.userId))) {
+        if (hasRelevantRole &&
+            hasLocationAccess &&
+            (isAvailable || assignedUserIds.contains(userData.userId))) {
           users.add(userData);
           debugPrint('\u2713 Added user: ${userData.fullName}');
         } else {
-          debugPrint('\u2717 Excluded user: ${userData.fullName} - hasRelevantRole=$hasRelevantRole, hasLocationAccess=$hasLocationAccess, isAvailable=$isAvailable, isAssigned=${assignedUserIds.contains(userData.userId)}');
+          debugPrint(
+            '\u2717 Excluded user: ${userData.fullName} - hasRelevantRole=$hasRelevantRole, hasLocationAccess=$hasLocationAccess, isAvailable=$isAvailable, isAssigned=${assignedUserIds.contains(userData.userId)}',
+          );
         }
       }
 
@@ -189,10 +206,10 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
       users.sort((a, b) {
         final aAssigned = assignedUserIds.contains(a.userId);
         final bAssigned = assignedUserIds.contains(b.userId);
-        
+
         if (aAssigned && !bAssigned) return -1;
         if (!aAssigned && bAssigned) return 1;
-        
+
         return a.fullName.compareTo(b.fullName);
       });
 
@@ -207,23 +224,27 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
   Future<List<ExtendedUserData>> _getAssignedUsers() async {
     try {
       final assignedUsers = <ExtendedUserData>[];
-      
+
       // Get user data for all assigned user IDs
       for (final userId in assignedUserIds) {
-        final userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(userId)
-            .get();
-        
+        final userDoc =
+            await FirestoreEnforcer.instance
+                .collection('users')
+                .doc(userId)
+                .get();
+
         if (userDoc.exists) {
-          final userData = ExtendedUserData.fromMap(userDoc.data()!, userDoc.id);
+          final userData = ExtendedUserData.fromMap(
+            userDoc.data()!,
+            userDoc.id,
+          );
           assignedUsers.add(userData);
         }
       }
-      
+
       // Sort by name
       assignedUsers.sort((a, b) => a.fullName.compareTo(b.fullName));
-      
+
       return assignedUsers;
     } catch (e) {
       debugPrint('Error loading assigned users: $e');
@@ -255,8 +276,9 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
     setState(() => isSaving = true);
 
     try {
-      final entryId = widget.existingEntry?.id ?? 
-                      FirebaseFirestore.instance.collection('temp').doc().id;
+      final entryId =
+          widget.existingEntry?.id ??
+          FirestoreEnforcer.instance.collection('temp').doc().id;
 
       final entryData = ScheduleEntryData(
         id: entryId,
@@ -267,10 +289,10 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
         shiftId: widget.shiftId,
       );
 
-      final batch = FirebaseFirestore.instance.batch();
+      final batch = FirestoreEnforcer.instance.batch();
 
       // Save the schedule entry
-      final entryRef = FirebaseFirestore.instance
+      final entryRef = FirestoreEnforcer.instance
           .collection('organizations')
           .doc(widget.organizationId)
           .collection('locations')
@@ -279,11 +301,11 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
           .doc(widget.scheduleId)
           .collection('entries')
           .doc(entryId);
-      
+
       batch.set(entryRef, entryData.toMap());
 
       // Create or update the schedule document (mark as draft by default)
-      final scheduleRef = FirebaseFirestore.instance
+      final scheduleRef = FirestoreEnforcer.instance
           .collection('organizations')
           .doc(widget.organizationId)
           .collection('locations')
@@ -294,11 +316,22 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
       // Extract date from dayShiftKey (format: "YYYY-MM-DD_shiftId")
       final datePart = widget.dayShiftKey.split('_')[0];
       final scheduleDate = DateTime.parse(datePart);
-      
+
       batch.set(scheduleRef, {
         'id': widget.scheduleId,
-        'startDate': Timestamp.fromDate(DateTime(scheduleDate.year, scheduleDate.month, scheduleDate.day)),
-        'endDate': Timestamp.fromDate(DateTime(scheduleDate.year, scheduleDate.month, scheduleDate.day, 23, 59, 59)),
+        'startDate': Timestamp.fromDate(
+          DateTime(scheduleDate.year, scheduleDate.month, scheduleDate.day),
+        ),
+        'endDate': Timestamp.fromDate(
+          DateTime(
+            scheduleDate.year,
+            scheduleDate.month,
+            scheduleDate.day,
+            23,
+            59,
+            59,
+          ),
+        ),
         'published': false, // Default to draft mode
         'organizationId': widget.organizationId,
         'locationId': widget.locationId,
@@ -315,9 +348,9 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error saving schedule: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error saving schedule: $e')));
       }
     } finally {
       if (mounted) {
@@ -329,48 +362,56 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
   void _showAddRoleDialog() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add Required Role'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: roleNames.length,
-            itemBuilder: (context, index) {
-              final roleId = roleNames.keys.elementAt(index);
-              final roleName = roleNames[roleId]!;
-              final isAlreadyAdded = requiredRoles.containsKey(roleId);
-              
-              return ListTile(
-                title: Text(roleName),
-                subtitle: isAlreadyAdded ? const Text('Already added') : null,
-                trailing: isAlreadyAdded 
-                    ? const Icon(Icons.check, color: Colors.green)
-                    : null,
-                onTap: isAlreadyAdded ? null : () {
-                  Navigator.pop(context);
-                  setState(() {
-                    requiredRoles[roleId] = 1; // Default to 1 person needed
-                  });
-                  // Reload users to reflect new role requirements
-                  _loadAvailableUsers();
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Add Required Role'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: roleNames.length,
+                itemBuilder: (context, index) {
+                  final roleId = roleNames.keys.elementAt(index);
+                  final roleName = roleNames[roleId]!;
+                  final isAlreadyAdded = requiredRoles.containsKey(roleId);
+
+                  return ListTile(
+                    title: Text(roleName),
+                    subtitle:
+                        isAlreadyAdded ? const Text('Already added') : null,
+                    trailing:
+                        isAlreadyAdded
+                            ? const Icon(Icons.check, color: Colors.green)
+                            : null,
+                    onTap:
+                        isAlreadyAdded
+                            ? null
+                            : () {
+                              Navigator.pop(context);
+                              setState(() {
+                                requiredRoles[roleId] =
+                                    1; // Default to 1 person needed
+                              });
+                              // Reload users to reflect new role requirements
+                              _loadAvailableUsers();
+                            },
+                    enabled: !isAlreadyAdded,
+                  );
                 },
-                enabled: !isAlreadyAdded,
-              );
-            },
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+            ],
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-        ],
-      ),
     );
   }
 
-  int get totalRequired => requiredRoles.values.fold(0, (total, roleCount) => total + roleCount);
+  int get totalRequired =>
+      requiredRoles.values.fold(0, (total, roleCount) => total + roleCount);
   int get totalAssigned => assignedUserIds.length;
 
   @override
@@ -423,34 +464,38 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: totalAssigned >= totalRequired 
-                        ? Colors.green.withOpacity(0.1)
-                        : Colors.orange.withOpacity(0.1),
+                    color:
+                        totalAssigned >= totalRequired
+                            ? Colors.green.withOpacity(0.1)
+                            : Colors.orange.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: totalAssigned >= totalRequired 
-                          ? Colors.green.withOpacity(0.3)
-                          : Colors.orange.withOpacity(0.3),
+                      color:
+                          totalAssigned >= totalRequired
+                              ? Colors.green.withOpacity(0.3)
+                              : Colors.orange.withOpacity(0.3),
                     ),
                   ),
                   child: Row(
                     children: [
                       Icon(
-                        totalAssigned >= totalRequired 
-                            ? Icons.check_circle 
+                        totalAssigned >= totalRequired
+                            ? Icons.check_circle
                             : Icons.schedule,
-                        color: totalAssigned >= totalRequired 
-                            ? Colors.green 
-                            : Colors.orange,
+                        color:
+                            totalAssigned >= totalRequired
+                                ? Colors.green
+                                : Colors.orange,
                       ),
                       const SizedBox(width: 8),
                       Text(
                         '$totalAssigned of $totalRequired assigned',
                         style: TextStyle(
                           fontWeight: FontWeight.w600,
-                          color: totalAssigned >= totalRequired 
-                              ? Colors.green[700] 
-                              : Colors.orange[700],
+                          color:
+                              totalAssigned >= totalRequired
+                                  ? Colors.green[700]
+                                  : Colors.orange[700],
                         ),
                       ),
                     ],
@@ -462,181 +507,260 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
 
           // Content
           Expanded(
-            child: isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Required roles section
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Required Roles',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            TextButton.icon(
-                              onPressed: _showAddRoleDialog,
-                              icon: const Icon(Icons.add, size: 16),
-                              label: const Text('Add Role'),
-                              style: TextButton.styleFrom(
-                                foregroundColor: theme.primaryColor,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        if (requiredRoles.isEmpty)
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[100],
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.grey.shade300),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(Icons.info_outline, color: Colors.grey[600]),
-                                const SizedBox(width: 8),
-                                const Expanded(
-                                  child: Text(
-                                    'No roles assigned to this shift. Tap "Add Role" to add required positions.',
-                                    style: TextStyle(color: Colors.grey),
-                                  ),
+            child:
+                isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Required roles section
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Required Roles',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
                                 ),
-                              ],
-                            ),
-                          )
-                        else
-                          ...requiredRoles.entries.map((entry) => _buildRoleRequirement(entry.key, entry.value)),
-                        
-                        const SizedBox(height: 24),
-                        
-                        // Assigned users section
-                        Text(
-                          'Assigned Users',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: Colors.blue[700],
+                              ),
+                              TextButton.icon(
+                                onPressed: _showAddRoleDialog,
+                                icon: const Icon(Icons.add, size: 16),
+                                label: const Text('Add Role'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: theme.primaryColor,
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        if (assignedUserIds.isEmpty)
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            child: const Text(
-                              'No users assigned yet.',
-                              style: TextStyle(color: Colors.grey),
+                          const SizedBox(height: 12),
+                          if (requiredRoles.isEmpty)
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[100],
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.grey.shade300),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.info_outline,
+                                    color: Colors.grey[600],
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Expanded(
+                                    child: Text(
+                                      'No roles assigned to this shift. Tap "Add Role" to add required positions.',
+                                      style: TextStyle(color: Colors.grey),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          else
+                            ...requiredRoles.entries.map(
+                              (entry) =>
+                                  _buildRoleRequirement(entry.key, entry.value),
                             ),
-                          )
-                        else
+
+                          const SizedBox(height: 24),
+
+                          // Assigned users section
+                          Text(
+                            'Assigned Users',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: Colors.blue[700],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          if (assignedUserIds.isEmpty)
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              child: const Text(
+                                'No users assigned yet.',
+                                style: TextStyle(color: Colors.grey),
+                              ),
+                            )
+                          else
+                            Builder(
+                              builder: (context) {
+                                // Get assigned users - first try from availableUsers, then fetch from Firestore if needed
+                                final assignedUsersFromAvailable =
+                                    availableUsers
+                                        .where(
+                                          (user) => assignedUserIds.contains(
+                                            user.userId,
+                                          ),
+                                        )
+                                        .toList();
+
+                                // If we have all assigned users in availableUsers, show them
+                                if (assignedUsersFromAvailable.length ==
+                                    assignedUserIds.length) {
+                                  return Column(
+                                    children:
+                                        assignedUsersFromAvailable
+                                            .map(
+                                              (user) =>
+                                                  _buildUserTileWithConflict(
+                                                    user,
+                                                  ),
+                                            )
+                                            .toList(),
+                                  );
+                                }
+
+                                // Otherwise, fetch the missing users from Firestore
+                                return FutureBuilder<List<ExtendedUserData>>(
+                                  future: _getAssignedUsers(),
+                                  builder: (context, snapshot) {
+                                    if (snapshot.connectionState ==
+                                        ConnectionState.waiting) {
+                                      return const Center(
+                                        child: CircularProgressIndicator(),
+                                      );
+                                    }
+
+                                    final assignedUsers = snapshot.data ?? [];
+                                    return Column(
+                                      children:
+                                          assignedUsers
+                                              .map(
+                                                (user) =>
+                                                    _buildUserTileWithConflict(
+                                                      user,
+                                                    ),
+                                              )
+                                              .toList(),
+                                    );
+                                  },
+                                );
+                              },
+                            ),
+
+                          const SizedBox(height: 24),
+                          Divider(thickness: 1, color: Colors.grey),
+                          const SizedBox(height: 12),
+                          // Available users section
+                          Text(
+                            'Available Users (Matching Roles)',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          ...availableUsers
+                              .where(
+                                (user) =>
+                                    !assignedUserIds.contains(user.userId),
+                              )
+                              .map((user) => _buildUserTileWithConflict(user)),
+
+                          // Divider and secondary section for non-matching users
+                          const SizedBox(height: 24),
+                          Divider(thickness: 1, color: Colors.grey),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Other Users (No Matching Role)',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey[700],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
                           Builder(
                             builder: (context) {
-                              // Get assigned users - first try from availableUsers, then fetch from Firestore if needed
-                              final assignedUsersFromAvailable = availableUsers.where((user) => assignedUserIds.contains(user.userId)).toList();
-                              
-                              // If we have all assigned users in availableUsers, show them
-                              if (assignedUsersFromAvailable.length == assignedUserIds.length) {
-                                return Column(
-                                  children: assignedUsersFromAvailable.map((user) => _buildUserTileWithConflict(user)).toList(),
-                                );
-                              }
-                              
-                              // Otherwise, fetch the missing users from Firestore
-                              return FutureBuilder<List<ExtendedUserData>>(
-                                future: _getAssignedUsers(),
+                              return FutureBuilder<QuerySnapshot>(
+                                future:
+                                    FirestoreEnforcer.instance
+                                        .collection('users')
+                                        .where(
+                                          'organizationId',
+                                          isEqualTo: widget.organizationId,
+                                        )
+                                        .get(),
                                 builder: (context, snapshot) {
-                                  if (snapshot.connectionState == ConnectionState.waiting) {
-                                    return const Center(child: CircularProgressIndicator());
+                                  if (!snapshot.hasData) {
+                                    return const Center(
+                                      child: CircularProgressIndicator(),
+                                    );
                                   }
-                                  
-                                  final assignedUsers = snapshot.data ?? [];
+                                  final allUsers =
+                                      snapshot.data!.docs
+                                          .map(
+                                            (doc) => ExtendedUserData.fromMap(
+                                              doc.data()
+                                                  as Map<String, dynamic>,
+                                              doc.id,
+                                            ),
+                                          )
+                                          .toList();
+                                  final matchingUserIds =
+                                      availableUsers
+                                          .map((u) => u.userId)
+                                          .toSet();
+                                  final alreadyAssigned = assignedUserIds;
+                                  final nonMatchingUsers =
+                                      allUsers.where((user) {
+                                        // Exclude users already shown or already assigned
+                                        if (matchingUserIds.contains(
+                                          user.userId,
+                                        )) {
+                                          return false;
+                                        }
+                                        if (alreadyAssigned.contains(
+                                          user.userId,
+                                        )) {
+                                          return false;
+                                        }
+                                        // Location access check
+                                        bool hasLocationAccess = false;
+                                        if (user.userRole == 2) {
+                                          hasLocationAccess = true;
+                                        } else if (user.userRole == 1 &&
+                                            user.locationIds != null) {
+                                          hasLocationAccess = user.locationIds!
+                                              .contains(widget.locationId);
+                                        } else if (user.userRole == 0 &&
+                                            user.locationId != null) {
+                                          hasLocationAccess =
+                                              user.locationId ==
+                                              widget.locationId;
+                                        }
+                                        return hasLocationAccess;
+                                      }).toList();
+                                  if (nonMatchingUsers.isEmpty) {
+                                    return Container(
+                                      padding: const EdgeInsets.all(16),
+                                      child: const Text(
+                                        'No other users available',
+                                        style: TextStyle(color: Colors.grey),
+                                      ),
+                                    );
+                                  }
                                   return Column(
-                                    children: assignedUsers.map((user) => _buildUserTileWithConflict(user)).toList(),
+                                    children:
+                                        nonMatchingUsers
+                                            .map(
+                                              (user) =>
+                                                  _buildUserTileWithConflict(
+                                                    user,
+                                                  ),
+                                            )
+                                            .toList(),
                                   );
                                 },
                               );
                             },
                           ),
-
-                        const SizedBox(height: 24),
-                        Divider(thickness: 1, color: Colors.grey),
-                        const SizedBox(height: 12),
-                        // Available users section
-                        Text(
-                          'Available Users (Matching Roles)',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        ...availableUsers.where((user) => !assignedUserIds.contains(user.userId)).map((user) => _buildUserTileWithConflict(user)),
-
-                        // Divider and secondary section for non-matching users
-                        const SizedBox(height: 24),
-                        Divider(thickness: 1, color: Colors.grey),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Other Users (No Matching Role)',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: Colors.grey[700],
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Builder(
-                          builder: (context) {
-                            return FutureBuilder<QuerySnapshot>(
-                              future: FirebaseFirestore.instance
-                                  .collection('users')
-                                  .where('organizationId', isEqualTo: widget.organizationId)
-                                  .get(),
-                              builder: (context, snapshot) {
-                                if (!snapshot.hasData) {
-                                  return const Center(child: CircularProgressIndicator());
-                                }
-                                final allUsers = snapshot.data!.docs.map((doc) => ExtendedUserData.fromMap(doc.data() as Map<String, dynamic>, doc.id)).toList();
-                                final matchingUserIds = availableUsers.map((u) => u.userId).toSet();
-                                final alreadyAssigned = assignedUserIds;
-                                final nonMatchingUsers = allUsers.where((user) {
-                                  // Exclude users already shown or already assigned
-                                  if (matchingUserIds.contains(user.userId)) return false;
-                                  if (alreadyAssigned.contains(user.userId)) return false;
-                                  // Location access check
-                                  bool hasLocationAccess = false;
-                                  if (user.userRole == 2) {
-                                    hasLocationAccess = true;
-                                  } else if (user.userRole == 1 && user.locationIds != null) {
-                                    hasLocationAccess = user.locationIds!.contains(widget.locationId);
-                                  } else if (user.userRole == 0 && user.locationId != null) {
-                                    hasLocationAccess = user.locationId == widget.locationId;
-                                  }
-                                  return hasLocationAccess;
-                                }).toList();
-                                if (nonMatchingUsers.isEmpty) {
-                                  return Container(
-                                    padding: const EdgeInsets.all(16),
-                                    child: const Text(
-                                      'No other users available',
-                                      style: TextStyle(color: Colors.grey),
-                                    ),
-                                  );
-                                }
-                                return Column(
-                                  children: nonMatchingUsers.map((user) => _buildUserTileWithConflict(user)).toList(),
-                                );
-                              },
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 100), // Space for button
-                      ],
+                          const SizedBox(height: 100), // Space for button
+                        ],
+                      ),
                     ),
-                  ),
           ),
 
           // Save button
@@ -650,22 +774,25 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
                   backgroundColor: theme.primaryColor,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
-                child: isSaving
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                child:
+                    isSaving
+                        ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
+                          ),
+                        )
+                        : const Text(
+                          'Save Schedule',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      )
-                    : const Text(
-                        'Save Schedule',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
               ),
             ),
           ),
@@ -676,7 +803,7 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
 
   Widget _buildRoleRequirement(String roleId, int count) {
     final roleName = roleNames[roleId] ?? 'Unknown Role';
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
@@ -696,10 +823,7 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
                 ),
                 Text(
                   'Required: $count',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                 ),
               ],
             ),
@@ -707,7 +831,10 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
           Row(
             children: [
               IconButton(
-                onPressed: count > 1 ? () => _updateRequiredCount(roleId, count - 1) : null,
+                onPressed:
+                    count > 1
+                        ? () => _updateRequiredCount(roleId, count - 1)
+                        : null,
                 icon: const Icon(Icons.remove_circle_outline),
                 iconSize: 20,
                 tooltip: 'Decrease count',
@@ -762,31 +889,33 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
           ),
           onTap: () => _toggleUserAssignment(user.userId),
           tileColor: isAssigned ? Colors.blue.withOpacity(0.1) : null,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       );
     }
 
     // Conflict indicator: check if user is already assigned to another shift that day
     return FutureBuilder<QuerySnapshot>(
-      future: FirebaseFirestore.instance
-          .collection('organizations')
-          .doc(widget.organizationId)
-          .collection('locations')
-          .doc(widget.locationId)
-          .collection('schedules')
-          .doc(widget.scheduleId)
-          .collection('entries')
-          .where('assignedUserIds', arrayContains: user.userId)
-          .get(),
+      future:
+          FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(widget.organizationId)
+              .collection('locations')
+              .doc(widget.locationId)
+              .collection('schedules')
+              .doc(widget.scheduleId)
+              .collection('entries')
+              .where('assignedUserIds', arrayContains: user.userId)
+              .get(),
       builder: (context, snapshot) {
         bool isDoubleBooked = false;
         if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
           // If the user is assigned to any other entry for this schedule (day)
           for (final doc in snapshot.data!.docs) {
-            final entry = ScheduleEntryData.fromMap(doc.data() as Map<String, dynamic>, doc.id);
+            final entry = ScheduleEntryData.fromMap(
+              doc.data() as Map<String, dynamic>,
+              doc.id,
+            );
             // Exclude current shift
             if (entry.shiftId != widget.shiftId) {
               isDoubleBooked = true;
@@ -799,7 +928,9 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
           child: ListTile(
             leading: CircleAvatar(
               child: Text(
-                user.firstName.isNotEmpty ? user.firstName[0].toUpperCase() : 'U',
+                user.firstName.isNotEmpty
+                    ? user.firstName[0].toUpperCase()
+                    : 'U',
               ),
             ),
             title: Row(
@@ -810,7 +941,11 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
                     padding: const EdgeInsets.only(left: 8.0),
                     child: Tooltip(
                       message: 'Already assigned to another shift this day',
-                      child: Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
+                      child: Icon(
+                        Icons.warning_amber_rounded,
+                        color: Colors.orange,
+                        size: 18,
+                      ),
                     ),
                   ),
               ],

@@ -3,18 +3,20 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hands_app/data/models/shift_data.dart';
 import 'package:hands_app/services/daily_checklist_service.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 class DebugShiftMigrationWidget extends StatefulWidget {
   const DebugShiftMigrationWidget({super.key});
 
   @override
-  State<DebugShiftMigrationWidget> createState() => _DebugShiftMigrationWidgetState();
+  State<DebugShiftMigrationWidget> createState() =>
+      _DebugShiftMigrationWidgetState();
 }
 
 class _DebugShiftMigrationWidgetState extends State<DebugShiftMigrationWidget> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore _firestore = FirestoreEnforcer.instance;
   final DailyChecklistService _dailyChecklistService = DailyChecklistService();
-  
+
   String? _organizationId;
   List<Map<String, dynamic>> _oldShifts = [];
   List<Map<String, dynamic>> _newShifts = [];
@@ -31,7 +33,8 @@ class _DebugShiftMigrationWidgetState extends State<DebugShiftMigrationWidget> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        final userDoc = await _firestore.collection('users').doc(user.uid).get();
+        final userDoc =
+            await _firestore.collection('users').doc(user.uid).get();
         if (userDoc.exists) {
           setState(() {
             _organizationId = userDoc.data()?['organizationId'];
@@ -54,21 +57,24 @@ class _DebugShiftMigrationWidgetState extends State<DebugShiftMigrationWidget> {
 
     try {
       // Find old structure shifts (in locations subcollection)
-      final locationsSnapshot = await _firestore
-          .collection('organizations')
-          .doc(_organizationId!)
-          .collection('locations')
-          .get();
+      final locationsSnapshot =
+          await _firestore
+              .collection('organizations')
+              .doc(_organizationId!)
+              .collection('locations')
+              .get();
 
       final oldShifts = <Map<String, dynamic>>[];
       for (final locationDoc in locationsSnapshot.docs) {
-        final shiftsSnapshot = await locationDoc.reference.collection('shifts').get();
+        final shiftsSnapshot =
+            await locationDoc.reference.collection('shifts').get();
         for (final shiftDoc in shiftsSnapshot.docs) {
           final data = shiftDoc.data();
           oldShifts.add({
             'id': shiftDoc.id,
             'locationId': locationDoc.id,
-            'locationName': locationDoc.data()['locationName'] ?? locationDoc.id,
+            'locationName':
+                locationDoc.data()['locationName'] ?? locationDoc.id,
             'data': data,
             'hasTemplate': data['checklistTemplateId'] != null,
             'hasMultipleTemplates': data['checklistTemplateIds'] != null,
@@ -77,11 +83,12 @@ class _DebugShiftMigrationWidgetState extends State<DebugShiftMigrationWidget> {
       }
 
       // Find new structure shifts (in organization/shifts)
-      final newShiftsSnapshot = await _firestore
-          .collection('organizations')
-          .doc(_organizationId!)
-          .collection('shifts')
-          .get();
+      final newShiftsSnapshot =
+          await _firestore
+              .collection('organizations')
+              .doc(_organizationId!)
+              .collection('shifts')
+              .get();
 
       final newShifts = <Map<String, dynamic>>[];
       for (final shiftDoc in newShiftsSnapshot.docs) {
@@ -90,8 +97,11 @@ class _DebugShiftMigrationWidgetState extends State<DebugShiftMigrationWidget> {
           'id': shiftDoc.id,
           'data': data,
           'locationIds': List<String>.from(data['locationIds'] ?? []),
-          'checklistTemplateIds': List<String>.from(data['checklistTemplateIds'] ?? []),
-          'missingTemplates': (data['checklistTemplateIds'] as List?)?.isEmpty ?? true,
+          'checklistTemplateIds': List<String>.from(
+            data['checklistTemplateIds'] ?? [],
+          ),
+          'missingTemplates':
+              (data['checklistTemplateIds'] as List?)?.isEmpty ?? true,
         });
       }
 
@@ -103,9 +113,12 @@ class _DebugShiftMigrationWidgetState extends State<DebugShiftMigrationWidget> {
       _addLog('Analysis complete:');
       _addLog('- Found ${oldShifts.length} shifts in old structure');
       _addLog('- Found ${newShifts.length} shifts in new structure');
-      _addLog('- Old shifts with templates: ${oldShifts.where((s) => s['hasTemplate']).length}');
-      _addLog('- New shifts missing templates: ${newShifts.where((s) => s['missingTemplates']).length}');
-
+      _addLog(
+        '- Old shifts with templates: ${oldShifts.where((s) => s['hasTemplate']).length}',
+      );
+      _addLog(
+        '- New shifts missing templates: ${newShifts.where((s) => s['missingTemplates']).length}',
+      );
     } catch (e) {
       _addLog('Error analyzing shifts: $e');
     } finally {
@@ -136,7 +149,9 @@ class _DebugShiftMigrationWidgetState extends State<DebugShiftMigrationWidget> {
         if (processedShifts.containsKey(shiftId)) {
           // Add this location to existing shift
           final existingShift = processedShifts[shiftId]!;
-          final locationIds = List<String>.from(existingShift['locationIds'] ?? []);
+          final locationIds = List<String>.from(
+            existingShift['locationIds'] ?? [],
+          );
           if (!locationIds.contains(locationId)) {
             locationIds.add(locationId);
             existingShift['locationIds'] = locationIds;
@@ -148,7 +163,9 @@ class _DebugShiftMigrationWidgetState extends State<DebugShiftMigrationWidget> {
             checklistTemplateIds.add(data['checklistTemplateId']);
           }
           if (data['checklistTemplateIds'] != null) {
-            checklistTemplateIds.addAll(List<String>.from(data['checklistTemplateIds']));
+            checklistTemplateIds.addAll(
+              List<String>.from(data['checklistTemplateIds']),
+            );
           }
 
           processedShifts[shiftId] = {
@@ -160,7 +177,18 @@ class _DebugShiftMigrationWidgetState extends State<DebugShiftMigrationWidget> {
             'startTime': data['startTime'] ?? '09:00',
             'endTime': data['endTime'] ?? '17:00',
             'jobType': List<String>.from(data['jobType'] ?? []),
-            'days': List<String>.from(data['days'] ?? ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']),
+            'days': List<String>.from(
+              data['days'] ??
+                  [
+                    'Monday',
+                    'Tuesday',
+                    'Wednesday',
+                    'Thursday',
+                    'Friday',
+                    'Saturday',
+                    'Sunday',
+                  ],
+            ),
             'repeatsDaily': data['repeatsDaily'] ?? true,
             'createdAt': data['createdAt'] ?? FieldValue.serverTimestamp(),
             'updatedAt': FieldValue.serverTimestamp(),
@@ -179,11 +207,12 @@ class _DebugShiftMigrationWidgetState extends State<DebugShiftMigrationWidget> {
       }
 
       await batch.commit();
-      _addLog('✅ Successfully migrated ${processedShifts.length} unique shifts');
-      
+      _addLog(
+        '✅ Successfully migrated ${processedShifts.length} unique shifts',
+      );
+
       // Refresh analysis
       await _analyzeShifts();
-
     } catch (e) {
       _addLog('❌ Error during migration: $e');
     } finally {
@@ -203,29 +232,35 @@ class _DebugShiftMigrationWidgetState extends State<DebugShiftMigrationWidget> {
     try {
       _addLog('Testing checklist generation...');
       final today = DateTime.now();
-      final dateString = '${today.year.toString().padLeft(4, '0')}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+      final dateString =
+          '${today.year.toString().padLeft(4, '0')}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
 
-      for (final shift in _newShifts.take(3)) { // Test first 3 shifts
+      for (final shift in _newShifts.take(3)) {
+        // Test first 3 shifts
         final shiftData = ShiftData.fromJson(shift['data']);
         final locationIds = List<String>.from(shift['locationIds']);
 
         for (final locationId in locationIds) {
           try {
-            final checklists = await _dailyChecklistService.generateDailyChecklists(
-              organizationId: _organizationId!,
-              locationId: locationId,
-              shiftId: shift['id'],
-              shiftData: shiftData,
-              date: dateString,
-            );
+            final checklists = await _dailyChecklistService
+                .generateDailyChecklists(
+                  organizationId: _organizationId!,
+                  locationId: locationId,
+                  shiftId: shift['id'],
+                  shiftData: shiftData,
+                  date: dateString,
+                );
 
-            _addLog('✅ Shift ${shiftData.shiftName} @ Location $locationId: ${checklists.length} checklists generated');
+            _addLog(
+              '✅ Shift ${shiftData.shiftName} @ Location $locationId: ${checklists.length} checklists generated',
+            );
           } catch (e) {
-            _addLog('❌ Error generating checklists for ${shiftData.shiftName}: $e');
+            _addLog(
+              '❌ Error generating checklists for ${shiftData.shiftName}: $e',
+            );
           }
         }
       }
-
     } catch (e) {
       _addLog('❌ Error testing checklist generation: $e');
     } finally {
@@ -240,18 +275,24 @@ class _DebugShiftMigrationWidgetState extends State<DebugShiftMigrationWidget> {
 
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Confirm Cleanup'),
-        content: const Text('This will DELETE all shifts from the old location-based structure. Make sure you have migrated them first. This action cannot be undone!'),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete Old Shifts'),
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Confirm Cleanup'),
+            content: const Text(
+              'This will DELETE all shifts from the old location-based structure. Make sure you have migrated them first. This action cannot be undone!',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                child: const Text('Delete Old Shifts'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
 
     if (confirm != true) return;
@@ -263,17 +304,19 @@ class _DebugShiftMigrationWidgetState extends State<DebugShiftMigrationWidget> {
     try {
       _addLog('Starting cleanup of old shift structure...');
 
-      final locationsSnapshot = await _firestore
-          .collection('organizations')
-          .doc(_organizationId!)
-          .collection('locations')
-          .get();
+      final locationsSnapshot =
+          await _firestore
+              .collection('organizations')
+              .doc(_organizationId!)
+              .collection('locations')
+              .get();
 
       int deletedCount = 0;
       final batch = _firestore.batch();
 
       for (final locationDoc in locationsSnapshot.docs) {
-        final shiftsSnapshot = await locationDoc.reference.collection('shifts').get();
+        final shiftsSnapshot =
+            await locationDoc.reference.collection('shifts').get();
         for (final shiftDoc in shiftsSnapshot.docs) {
           batch.delete(shiftDoc.reference);
           deletedCount++;
@@ -282,10 +325,9 @@ class _DebugShiftMigrationWidgetState extends State<DebugShiftMigrationWidget> {
 
       await batch.commit();
       _addLog('✅ Deleted $deletedCount old shifts from location structure');
-      
+
       // Refresh analysis
       await _analyzeShifts();
-
     } catch (e) {
       _addLog('❌ Error during cleanup: $e');
     } finally {
@@ -297,7 +339,9 @@ class _DebugShiftMigrationWidgetState extends State<DebugShiftMigrationWidget> {
 
   void _addLog(String message) {
     setState(() {
-      _migrationLog.add('${DateTime.now().toIso8601String().substring(11, 19)}: $message');
+      _migrationLog.add(
+        '${DateTime.now().toIso8601String().substring(11, 19)}: $message',
+      );
     });
   }
 
@@ -327,11 +371,16 @@ class _DebugShiftMigrationWidgetState extends State<DebugShiftMigrationWidget> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Organization: $_organizationId', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      Text(
+                        'Organization: $_organizationId',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
                       const SizedBox(height: 8),
                       Text('Old Structure Shifts: ${_oldShifts.length}'),
                       Text('New Structure Shifts: ${_newShifts.length}'),
-                      Text('New Shifts Missing Templates: ${_newShifts.where((s) => s['missingTemplates']).length}'),
+                      Text(
+                        'New Shifts Missing Templates: ${_newShifts.where((s) => s['missingTemplates']).length}',
+                      ),
                     ],
                   ),
                 ),
@@ -348,18 +397,33 @@ class _DebugShiftMigrationWidgetState extends State<DebugShiftMigrationWidget> {
                     child: const Text('Refresh Analysis'),
                   ),
                   ElevatedButton(
-                    onPressed: (_isLoading || _oldShifts.isEmpty) ? null : _migrateOldShifts,
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+                    onPressed:
+                        (_isLoading || _oldShifts.isEmpty)
+                            ? null
+                            : _migrateOldShifts,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                    ),
                     child: const Text('Migrate Old Shifts'),
                   ),
                   ElevatedButton(
-                    onPressed: (_isLoading || _newShifts.isEmpty) ? null : _testChecklistGeneration,
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                    onPressed:
+                        (_isLoading || _newShifts.isEmpty)
+                            ? null
+                            : _testChecklistGeneration,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                    ),
                     child: const Text('Test Checklists'),
                   ),
                   ElevatedButton(
-                    onPressed: (_isLoading || _oldShifts.isEmpty) ? null : _cleanupOldStructure,
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                    onPressed:
+                        (_isLoading || _oldShifts.isEmpty)
+                            ? null
+                            : _cleanupOldStructure,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                    ),
                     child: const Text('Cleanup Old'),
                   ),
                 ],
@@ -367,8 +431,7 @@ class _DebugShiftMigrationWidgetState extends State<DebugShiftMigrationWidget> {
 
               const SizedBox(height: 16),
 
-              if (_isLoading)
-                const LinearProgressIndicator(),
+              if (_isLoading) const LinearProgressIndicator(),
 
               const SizedBox(height: 16),
 
@@ -379,17 +442,25 @@ class _DebugShiftMigrationWidgetState extends State<DebugShiftMigrationWidget> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Migration Log:', style: TextStyle(fontWeight: FontWeight.bold)),
+                        const Text(
+                          'Migration Log:',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
                         const SizedBox(height: 8),
                         Expanded(
                           child: ListView.builder(
                             itemCount: _migrationLog.length,
                             itemBuilder: (context, index) {
                               return Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 2.0),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 2.0,
+                                ),
                                 child: Text(
                                   _migrationLog[index],
-                                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontFamily: 'monospace',
+                                  ),
                                 ),
                               );
                             },

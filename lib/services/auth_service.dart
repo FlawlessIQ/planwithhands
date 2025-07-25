@@ -1,8 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hands_app/services/web_optimized_firestore_service.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 class AuthService {
   static final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -12,15 +12,15 @@ class AuthService {
     try {
       // Clear any local caches
       WebOptimizedFirestoreService.clearCache();
-      
+
       // Sign out from Firebase
       await _auth.signOut();
-      
+
       // Force navigation to login page
       if (context.mounted) {
         // Clear the entire navigation stack and go to login
         context.go('/login');
-        
+
         // Additional navigation clearing as fallback
         Future.delayed(const Duration(milliseconds: 200), () {
           if (context.mounted) {
@@ -39,7 +39,10 @@ class AuthService {
   }
 
   /// Centralized account deletion function
-  static Future<void> deleteAccount(BuildContext context, String password) async {
+  static Future<void> deleteAccount(
+    BuildContext context,
+    String password,
+  ) async {
     try {
       final user = _auth.currentUser;
       if (user == null) {
@@ -57,15 +60,18 @@ class AuthService {
       WebOptimizedFirestoreService.clearCache();
 
       // Delete user document from Firestore first
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).delete();
-      
+      await FirestoreEnforcer.instance
+          .collection('users')
+          .doc(user.uid)
+          .delete();
+
       // Delete user authentication account
       await user.delete();
-      
+
       // Force navigation to login page
       if (context.mounted) {
         context.go('/login');
-        
+
         // Clear navigation stack
         Future.delayed(const Duration(milliseconds: 200), () {
           if (context.mounted) {

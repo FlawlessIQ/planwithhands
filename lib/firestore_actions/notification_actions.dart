@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 class NotificationActions {
   /// Create a notification with targets map and readBy array
@@ -7,7 +7,7 @@ class NotificationActions {
     required String notificationId,
     required Map<String, dynamic> notificationData, // Should include targets map and readBy array
   }) async {
-    final notifRef = FirebaseFirestore.instance
+    final notifRef = FirestoreEnforcer.instance
         .collection('organizations')
         .doc(orgId)
         .collection('notifications')
@@ -21,7 +21,7 @@ class NotificationActions {
     required String notificationId,
     required Map<String, dynamic> updates, // e.g., {'readBy': FieldValue.arrayUnion([userId])}
   }) async {
-    final notifRef = FirebaseFirestore.instance
+    final notifRef = FirestoreEnforcer.instance
         .collection('organizations')
         .doc(orgId)
         .collection('notifications')

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 class ChecklistBottomSheet extends StatefulWidget {
   final String organizationId;
@@ -25,11 +26,11 @@ class ChecklistBottomSheet extends StatefulWidget {
 
 class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
   int _currentStep = 0;
-  
+
   // Step 1: Checklist Info
   late TextEditingController _titleController;
   late TextEditingController _descriptionController;
-  
+
   // Step 2: Shift Assignment
   List<Map<String, dynamic>> _availableShifts = [];
   final Set<String> _selectedShiftIds = {};
@@ -37,18 +38,22 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
 
   // Step 3: Option to duplicate
   bool _duplicateToOtherLocations = false;
-  
+
   // Step 4: Tasks & Order
   List<Map<String, dynamic>> _tasks = [];
-  
+
   bool _loading = false;
   final List<TextEditingController> _taskControllers = [];
 
   @override
   void initState() {
     super.initState();
-    _titleController = TextEditingController(text: widget.initialData?['name'] ?? '');
-    _descriptionController = TextEditingController(text: widget.initialData?['description'] ?? '');
+    _titleController = TextEditingController(
+      text: widget.initialData?['name'] ?? '',
+    );
+    _descriptionController = TextEditingController(
+      text: widget.initialData?['description'] ?? '',
+    );
     if (widget.initialData?['tasks'] != null) {
       _tasks = List<Map<String, dynamic>>.from(widget.initialData!['tasks']);
     } else {
@@ -72,31 +77,35 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
   Future<void> _loadShiftsForCurrentLocation() async {
     setState(() => _loadingShifts = true);
     try {
-      final shiftsSnapshot = await FirebaseFirestore.instance
-          .collection('organizations')
-          .doc(widget.organizationId)
-          .collection('shifts')
-          .where('locationIds', arrayContains: widget.locationId)
-          .get();
+      final shiftsSnapshot =
+          await FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(widget.organizationId)
+              .collection('shifts')
+              .where('locationIds', arrayContains: widget.locationId)
+              .get();
 
       if (!mounted) return;
 
-      final shifts = shiftsSnapshot.docs.map((doc) {
-        final data = doc.data();
-        return {
-          'id': doc.id,
-          'name': data['shiftName'] ?? 'Unnamed Shift',
-          'startTime': data['startTime'] ?? '',
-          'endTime': data['endTime'] ?? '',
-        };
-      }).toList();
+      final shifts =
+          shiftsSnapshot.docs.map((doc) {
+            final data = doc.data();
+            return {
+              'id': doc.id,
+              'name': data['shiftName'] ?? 'Unnamed Shift',
+              'startTime': data['startTime'] ?? '',
+              'endTime': data['endTime'] ?? '',
+            };
+          }).toList();
 
       // If editing, pre-select shifts that have this checklist
       Set<String> preSelectedIds = {};
       if (widget.checklistId != null) {
         for (final shiftDoc in shiftsSnapshot.docs) {
           final shiftData = shiftDoc.data();
-          final checklistIds = List<String>.from(shiftData['checklistTemplateIds'] ?? []);
+          final checklistIds = List<String>.from(
+            shiftData['checklistTemplateIds'] ?? [],
+          );
           if (checklistIds.contains(widget.checklistId)) {
             preSelectedIds.add(shiftDoc.id);
           }
@@ -111,17 +120,20 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _loadingShifts = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading shifts: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error loading shifts: $e')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
-    final textScaler = mediaQuery.textScaler.clamp(minScaleFactor: 1.0, maxScaleFactor: 1.2);
-    
+    final textScaler = mediaQuery.textScaler.clamp(
+      minScaleFactor: 1.0,
+      maxScaleFactor: 1.2,
+    );
+
     return DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.9,
@@ -148,7 +160,9 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
+                    border: Border(
+                      bottom: BorderSide(color: Colors.grey[300]!),
+                    ),
                   ),
                   child: Row(
                     children: [
@@ -182,14 +196,18 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
                             )
                           else
                             ElevatedButton(
-                              onPressed: _loading ? null : details.onStepContinue,
-                              child: _loading
-                                  ? const SizedBox(
-                                      height: 16,
-                                      width: 16,
-                                      child: CircularProgressIndicator(strokeWidth: 2),
-                                    )
-                                  : const Text('Save Checklist'),
+                              onPressed:
+                                  _loading ? null : details.onStepContinue,
+                              child:
+                                  _loading
+                                      ? const SizedBox(
+                                        height: 16,
+                                        width: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                      : const Text('Save Checklist'),
                             ),
                           const SizedBox(width: 8),
                           if (details.stepIndex > 0)
@@ -202,18 +220,28 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
                     },
                     steps: [
                       Step(
-                        title: Text('1. Name & Description', textScaler: textScaler),
+                        title: Text(
+                          '1. Name & Description',
+                          textScaler: textScaler,
+                        ),
                         content: _buildInfoStep(),
                         isActive: _currentStep >= 0,
-                        state: _currentStep > 0 ? StepState.complete : StepState.indexed,
+                        state:
+                            _currentStep > 0
+                                ? StepState.complete
+                                : StepState.indexed,
                       ),
                       Step(
-                        title: Text('2. Assign to Shift(s)', textScaler: textScaler),
+                        title: Text(
+                          '2. Assign to Shift(s)',
+                          textScaler: textScaler,
+                        ),
                         content: _buildShiftAssignmentStep(),
                         isActive: _currentStep >= 1,
-                        state: _currentStep > 1
-                            ? StepState.complete
-                            : _currentStep == 1
+                        state:
+                            _currentStep > 1
+                                ? StepState.complete
+                                : _currentStep == 1
                                 ? StepState.indexed
                                 : StepState.disabled,
                       ),
@@ -221,9 +249,10 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
                         title: Text('3. Locations', textScaler: textScaler),
                         content: _buildLocationStep(),
                         isActive: _currentStep >= 2,
-                        state: _currentStep > 2
-                            ? StepState.complete
-                            : _currentStep == 2
+                        state:
+                            _currentStep > 2
+                                ? StepState.complete
+                                : _currentStep == 2
                                 ? StepState.indexed
                                 : StepState.disabled,
                       ),
@@ -231,7 +260,10 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
                         title: Text('4. Add Tasks', textScaler: textScaler),
                         content: _buildTasksStep(),
                         isActive: _currentStep >= 3,
-                        state: _currentStep == 3 ? StepState.indexed : StepState.disabled,
+                        state:
+                            _currentStep == 3
+                                ? StepState.indexed
+                                : StepState.disabled,
                       ),
                     ],
                   ),
@@ -248,7 +280,7 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
     if (_currentStep < 3) {
       if (_validateCurrentStep()) {
         setState(() => _currentStep++);
-        
+
         // Skip location step if only one location available
         if (_currentStep == 2 && widget.availableLocations.length <= 1) {
           setState(() => _currentStep++);
@@ -262,7 +294,7 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
   void _prevStep() {
     if (_currentStep > 0) {
       setState(() => _currentStep--);
-      
+
       // Skip location step if only one location available (going backwards)
       if (_currentStep == 2 && widget.availableLocations.length <= 1) {
         setState(() => _currentStep--);
@@ -294,7 +326,9 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
           );
           return false;
         }
-        if (_tasks.any((task) => task['name']?.toString().trim().isEmpty ?? true)) {
+        if (_tasks.any(
+          (task) => task['name']?.toString().trim().isEmpty ?? true,
+        )) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('All tasks must have names.')),
           );
@@ -343,14 +377,18 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
 
     if (_availableShifts.isEmpty) {
       return const Center(
-        child: Text('No shifts found for this location. Please create shifts first.'),
+        child: Text(
+          'No shifts found for this location. Please create shifts first.',
+        ),
       );
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Select which shifts at this location this checklist applies to:'),
+        const Text(
+          'Select which shifts at this location this checklist applies to:',
+        ),
         const SizedBox(height: 16),
         ...(_availableShifts.map((shift) {
           final shiftId = shift['id'] as String;
@@ -380,12 +418,18 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('This checklist will be saved for the currently selected location.'),
+        const Text(
+          'This checklist will be saved for the currently selected location.',
+        ),
         const SizedBox(height: 24),
         if (widget.availableLocations.length > 1)
           CheckboxListTile(
-            title: const Text('Duplicate this checklist to all other locations'),
-            subtitle: const Text('A copy will be created for each other location. This is useful for company-wide checklists.'),
+            title: const Text(
+              'Duplicate this checklist to all other locations',
+            ),
+            subtitle: const Text(
+              'A copy will be created for each other location. This is useful for company-wide checklists.',
+            ),
             value: _duplicateToOtherLocations,
             onChanged: (val) {
               setState(() {
@@ -396,7 +440,9 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
         else
           const Padding(
             padding: EdgeInsets.all(8.0),
-            child: Text('There are no other locations in this organization to duplicate to.'),
+            child: Text(
+              'There are no other locations in this organization to duplicate to.',
+            ),
           ),
       ],
     );
@@ -430,9 +476,14 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
                 return Card(
                   key: ValueKey(task),
                   margin: const EdgeInsets.symmetric(vertical: 4),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
@@ -528,15 +579,16 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
     final checklistPayload = {
       'name': _titleController.text.trim(),
       'description': _descriptionController.text.trim(),
-      'tasks': _tasks.asMap().entries.map((entry) {
-        int idx = entry.key;
-        Map<String, dynamic> task = entry.value;
-        return {
-          'name': task['name'] ?? '',
-          'photoRequired': task['photoRequired'] ?? false,
-          'order': idx,
-        };
-      }).toList(),
+      'tasks':
+          _tasks.asMap().entries.map((entry) {
+            int idx = entry.key;
+            Map<String, dynamic> task = entry.value;
+            return {
+              'name': task['name'] ?? '',
+              'photoRequired': task['photoRequired'] ?? false,
+              'order': idx,
+            };
+          }).toList(),
       'updatedAt': FieldValue.serverTimestamp(),
     };
 
@@ -551,7 +603,7 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
     };
 
     widget.onSave(result);
-    
+
     if (mounted) {
       setState(() => _loading = false);
       Navigator.of(context).pop();
@@ -566,7 +618,9 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
     // Add missing controllers
     while (_taskControllers.length < _tasks.length) {
       final idx = _taskControllers.length;
-      _taskControllers.add(TextEditingController(text: _tasks[idx]['name'] as String? ?? ''));
+      _taskControllers.add(
+        TextEditingController(text: _tasks[idx]['name'] as String? ?? ''),
+      );
     }
     // Update controller text if out of sync
     for (int i = 0; i < _tasks.length; i++) {

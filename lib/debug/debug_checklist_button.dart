@@ -5,7 +5,7 @@ class DebugChecklistButton extends StatelessWidget {
   final String organizationId;
   final String locationId;
   final String? shiftId;
-  
+
   const DebugChecklistButton({
     super.key,
     required this.organizationId,
@@ -39,49 +39,51 @@ class DebugChecklistButton extends StatelessWidget {
       );
 
       final today = DateTime.now();
-      final dateString = '${today.year.toString().padLeft(4, '0')}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-      
+      final dateString =
+          '${today.year.toString().padLeft(4, '0')}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+
       final forceCreator = ForceChecklistCreator();
       final checklists = await forceCreator.createEmergencyChecklists(
         organizationId,
         locationId,
         dateString,
       );
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('SUCCESS: Created ${checklists.length} emergency checklists!'),
+          content: Text(
+            'SUCCESS: Created ${checklists.length} emergency checklists!',
+          ),
           backgroundColor: Colors.green,
         ),
       );
-      
+
       // Show detailed results
       showDialog(
         context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Emergency Checklists Created'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Created ${checklists.length} checklists:'),
-              ...checklists.map((c) => Text('• ${c.templateName ?? "Checklist ${c.id}"}')),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('OK'),
+        builder:
+            (context) => AlertDialog(
+              title: const Text('Emergency Checklists Created'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Created ${checklists.length} checklists:'),
+                  ...checklists.map(
+                    (c) => Text('• ${c.templateName ?? "Checklist ${c.id}"}'),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
             ),
-          ],
-        ),
       );
-      
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('ERROR: $e'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text('ERROR: $e'), backgroundColor: Colors.red),
       );
     }
   }

@@ -417,9 +417,9 @@
     },
     {
       "name": "go_router",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/go_router-13.2.5",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/go_router-16.0.0",
       "packageUri": "lib/",
-      "languageVersion": "3.2"
+      "languageVersion": "3.6"
     },
     {
       "name": "google_fonts",

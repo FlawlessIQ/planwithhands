@@ -1,6 +1,7 @@
 // Export Stripe functions
 module.exports = {
   ...require("./stripe_functions"),
+  ...require("./user_functions"),
 };
 
 // Create and deploy your first functions

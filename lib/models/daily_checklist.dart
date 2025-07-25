@@ -28,7 +28,7 @@ class DailyChecklistTask {
       'taskId': taskId,
       'description': description,
       'title': description, // Standardize: always set title
-      'name': description,  // Standardize: always set name
+      'name': description, // Standardize: always set name
       'isCompleted': isCompleted,
       'completed': isCompleted, // Standardize: always set completed
       'completedBy': completedBy,
@@ -144,7 +144,8 @@ class DailyChecklist {
       'startedByUserId': startedByUserId,
       'startedAt': startedAt != null ? Timestamp.fromDate(startedAt!) : null,
       'completedByUserId': completedByUserId,
-      'completedAt': completedAt != null ? Timestamp.fromDate(completedAt!) : null,
+      'completedAt':
+          completedAt != null ? Timestamp.fromDate(completedAt!) : null,
       'tasks': tasks.map((task) => task.toMap()).toList(),
       'isCompleted': isCompleted,
       'createdAt': Timestamp.fromDate(createdAt),
@@ -179,13 +180,13 @@ class DailyChecklist {
       }
       throw Exception('Unsupported date type: ${value.runtimeType}');
     }
-    
+
     // Handle potentially null required dates with defaults
     final DateTime now = DateTime.now();
     final date = parseDateField(map['date']) ?? now;
     final createdAt = parseDateField(map['createdAt']) ?? now;
     final updatedAt = parseDateField(map['updatedAt']) ?? now;
-    
+
     return DailyChecklist(
       id: documentId,
       checklistTemplateId: map['checklistTemplateId'] ?? '',
@@ -198,9 +199,14 @@ class DailyChecklist {
       startedAt: parseDateField(map['startedAt']),
       completedByUserId: map['completedByUserId'],
       completedAt: parseDateField(map['completedAt']),
-      tasks: (map['tasks'] as List<dynamic>?)
-          ?.map((task) => DailyChecklistTask.fromMap(task as Map<String, dynamic>))
-          .toList() ?? [],
+      tasks:
+          (map['tasks'] as List<dynamic>?)
+              ?.map(
+                (task) =>
+                    DailyChecklistTask.fromMap(task as Map<String, dynamic>),
+              )
+              .toList() ??
+          [],
       isCompleted: map['isCompleted'] ?? false,
       createdAt: createdAt,
       updatedAt: updatedAt,

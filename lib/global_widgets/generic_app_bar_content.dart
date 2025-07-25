@@ -9,7 +9,11 @@ import 'package:hands_app/state/user_state.dart';
 class GenericAppBarContent extends ConsumerWidget {
   final String appBarTitle;
   final int? userRole;
-  const GenericAppBarContent({super.key, required this.appBarTitle, this.userRole});
+  const GenericAppBarContent({
+    super.key,
+    required this.appBarTitle,
+    this.userRole,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -33,9 +37,9 @@ class GenericAppBarContent extends ConsumerWidget {
           Expanded(
             child: Text(
               appBarTitle,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                color: Colors.white,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(color: Colors.white),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -44,8 +48,11 @@ class GenericAppBarContent extends ConsumerWidget {
             builder: (context, ref, _) {
               final userState = ref.watch(userStateProvider);
               // Use passed userRole if available, otherwise fallback to provider, then to role 0
-              final effectiveUserRole = userRole ?? userState.userData?.userRole ?? 0;
-              print('[GenericAppBarContent] Passed userRole: $userRole, UserState: ${userState.userData?.userRole}, effective role: $effectiveUserRole');
+              final effectiveUserRole =
+                  userRole ?? userState.userData?.userRole ?? 0;
+              print(
+                '[GenericAppBarContent] Passed userRole: $userRole, UserState: ${userState.userData?.userRole}, effective role: $effectiveUserRole',
+              );
               return UnifiedMenuButton(userRole: effectiveUserRole);
             },
           ),

@@ -5,6 +5,7 @@ import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:intl/intl.dart';
 import 'package:hands_app/services/daily_checklist_service.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 class ManagerDashboardPage extends StatefulWidget {
   final String organizationId;
@@ -15,7 +16,8 @@ class ManagerDashboardPage extends StatefulWidget {
 }
 
 class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
-  int userRole = 1;
+  int? userRole; // Changed from hardcoded 1 to nullable int
+  bool _isLoadingUserRole = true; // Add loading state for user role
   final DateFormat _dateFormat = DateFormat('yyyy-MM-dd');
   late final String _todayKey;
 
@@ -49,12 +51,26 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
   Future<void> _fetchUserRole() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+    if (user == null) {
+      setState(() {
+        _isLoadingUserRole = false;
+      });
+      return;
+    }
+    final userDoc =
+        await FirestoreEnforcer.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
     if (userDoc.exists) {
       final data = userDoc.data()!;
       setState(() {
         userRole = data['userRole'] ?? 1;
+        _isLoadingUserRole = false;
+      });
+    } else {
+      setState(() {
+        _isLoadingUserRole = false;
       });
     }
   }
@@ -64,7 +80,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
       final service = DailyChecklistService();
       await service.ensureDailyChecklistsExist(widget.organizationId);
       debugPrint(
-          'Daily checklist generation check completed for organization ${widget.organizationId}');
+        'Daily checklist generation check completed for organization ${widget.organizationId}',
+      );
     } catch (e) {
       debugPrint('Error ensuring daily checklists exist: $e');
     }
@@ -76,20 +93,22 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
     });
 
     try {
-      final locationsSnap = await FirebaseFirestore.instance
-          .collection('organizations')
-          .doc(widget.organizationId)
-          .collection('locations')
-          .get();
+      final locationsSnap =
+          await FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(widget.organizationId)
+              .collection('locations')
+              .get();
 
-      final locations = locationsSnap.docs.map((doc) {
-        final data = doc.data();
-        return {
-          'id': doc.id,
-          'name': data['locationName'] ?? 'Unnamed Location',
-          'isPrimary': data['isPrimary'] ?? false,
-        };
-      }).toList();
+      final locations =
+          locationsSnap.docs.map((doc) {
+            final data = doc.data();
+            return {
+              'id': doc.id,
+              'name': data['locationName'] ?? 'Unnamed Location',
+              'isPrimary': data['isPrimary'] ?? false,
+            };
+          }).toList();
 
       // Sort so primary location comes first
       locations.sort((a, b) {
@@ -121,9 +140,9 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
     } catch (e) {
       debugPrint('Error loading locations: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load locations: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to load locations: $e')));
       }
     } finally {
       setState(() {
@@ -134,40 +153,48 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
   Future<void> _loadFilterOptions() async {
     // Load shifts for the selected location
-    final shiftsSnap = await FirebaseFirestore.instance
-        .collection('organizations')
-        .doc(widget.organizationId)
-        .collection('shifts')
-        .where('locationIds', arrayContains: _selectedLocationId)
-        .get();
+    final shiftsSnap =
+        await FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(widget.organizationId)
+            .collection('shifts')
+            .where('locationIds', arrayContains: _selectedLocationId)
+            .get();
 
     // Load checklist templates
-    final templatesSnap = await FirebaseFirestore.instance
-        .collection('organizations')
-        .doc(widget.organizationId)
-        .collection('checklist_templates')
-        .get();
+    final templatesSnap =
+        await FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(widget.organizationId)
+            .collection('checklist_templates')
+            .get();
 
     setState(() {
-      _shifts = shiftsSnap.docs
-          .map((d) => {
-                'id': d.id,
-                'name': d.data()['shiftName']?.toString() ?? 'Unnamed Shift'
-              })
-          .toList();
+      _shifts =
+          shiftsSnap.docs
+              .map(
+                (d) => {
+                  'id': d.id,
+                  'name': d.data()['shiftName']?.toString() ?? 'Unnamed Shift',
+                },
+              )
+              .toList();
 
-      _checklists = templatesSnap.docs
-          .map((d) => {
-                'id': d.id,
-                'name': d.data()['name']?.toString() ?? 'Unnamed Checklist'
-              })
-          .toList();
+      _checklists =
+          templatesSnap.docs
+              .map(
+                (d) => {
+                  'id': d.id,
+                  'name': d.data()['name']?.toString() ?? 'Unnamed Checklist',
+                },
+              )
+              .toList();
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoadingLocations) {
+    if (_isLoadingLocations || _isLoadingUserRole) {
       return Scaffold(
         appBar: AppBar(
           title: const Text('Manager Dashboard'),
@@ -182,7 +209,10 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).primaryColor,
-        title: GenericAppBarContent(appBarTitle: 'Manager Dashboard', userRole: userRole),
+        title: GenericAppBarContent(
+          appBarTitle: 'Manager Dashboard',
+          userRole: userRole,
+        ),
         automaticallyImplyLeading: false,
         foregroundColor: Colors.white,
       ),
@@ -203,17 +233,15 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                     children: [
                       Row(
                         children: [
-                          Icon(Icons.location_on,
-                              color: Theme.of(context).primaryColor),
+                          Icon(
+                            Icons.location_on,
+                            color: Theme.of(context).primaryColor,
+                          ),
                           const SizedBox(width: 8),
                           Text(
                             'Location Selection',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.bold),
                           ),
                         ],
                       ),
@@ -225,20 +253,23 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.business),
                         ),
-                        items: _availableLocations
-                            .map((location) => DropdownMenuItem<String>(
-                                  value: location['id'] as String,
-                                  child: Text(location['name']! as String),
-                                ))
-                            .toList(),
+                        items:
+                            _availableLocations
+                                .map(
+                                  (location) => DropdownMenuItem<String>(
+                                    value: location['id'] as String,
+                                    child: Text(location['name']! as String),
+                                  ),
+                                )
+                                .toList(),
                         onChanged: (value) async {
                           setState(() {
                             _selectedLocationId = value;
                             _selectedLocationName =
                                 _availableLocations.firstWhere(
-                              (loc) => loc['id'] == value,
-                              orElse: () => {'name': 'Unknown Location'},
-                            )['name'];
+                                  (loc) => loc['id'] == value,
+                                  orElse: () => {'name': 'Unknown Location'},
+                                )['name'];
                           });
                           if (value != null) {
                             await _loadFilterOptions();
@@ -289,7 +320,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
           gradient: LinearGradient(
             colors: [
               Theme.of(context).primaryColor,
-              Theme.of(context).primaryColor.withValues(alpha: 0.8)
+              Theme.of(context).primaryColor.withValues(alpha: 0.8),
             ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -306,9 +337,9 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                 Text(
                   'Manager Dashboard',
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
@@ -316,52 +347,58 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
             Text(
               formattedDate,
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: Colors.white.withValues(alpha: 0.9),
-                  ),
+                color: Colors.white.withValues(alpha: 0.9),
+              ),
             ),
             if (_selectedLocationName != null) ...[
               const SizedBox(height: 4),
               Text(
                 'Location: $_selectedLocationName',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.white.withValues(alpha: 0.8),
-                    ),
+                  color: Colors.white.withValues(alpha: 0.8),
+                ),
               ),
             ],
             const SizedBox(height: 16),
             // Live organization stats filtered by location
             StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('users')
-                  .where('organizationId', isEqualTo: widget.organizationId)
-                  .snapshots(),
+              stream:
+                  FirestoreEnforcer.instance
+                      .collection('users')
+                      .where('organizationId', isEqualTo: widget.organizationId)
+                      .snapshots(),
               builder: (context, userSnapshot) {
                 return StreamBuilder<QuerySnapshot>(
-                  stream: _selectedLocationId != null
-                      ? FirebaseFirestore.instance
-                          .collection('organizations')
-                          .doc(widget.organizationId)
-                          .collection('locations')
-                          .doc(_selectedLocationId!)
-                          .collection('daily_checklists')
-                          .where('date', isEqualTo: _todayKey)
-                          .snapshots()
-                      : _getAllLocationChecklistsStream(),
+                  stream:
+                      _selectedLocationId != null
+                          ? FirestoreEnforcer.instance
+                              .collection('organizations')
+                              .doc(widget.organizationId)
+                              .collection('locations')
+                              .doc(_selectedLocationId!)
+                              .collection('daily_checklists')
+                              .where('date', isEqualTo: _todayKey)
+                              .snapshots()
+                          : _getAllLocationChecklistsStream(),
                   builder: (context, checklistSnapshot) {
                     // Count all users in organization (not filtered by location for total count)
                     final allUsers =
                         userSnapshot.hasData ? userSnapshot.data!.docs : [];
 
                     // If location is selected, filter users for that location
-                    final totalUsers = _selectedLocationId != null
-                        ? allUsers.where((doc) {
-                            final userData = doc.data() as Map<String, dynamic>;
-                            final userLocationIds = List<String>.from(
-                                userData['locationIds'] ?? []);
-                            return userLocationIds
-                                .contains(_selectedLocationId);
-                          }).length
-                        : allUsers.length;
+                    final totalUsers =
+                        _selectedLocationId != null
+                            ? allUsers.where((doc) {
+                              final userData =
+                                  doc.data() as Map<String, dynamic>;
+                              final userLocationIds = List<String>.from(
+                                userData['locationIds'] ?? [],
+                              );
+                              return userLocationIds.contains(
+                                _selectedLocationId,
+                              );
+                            }).length
+                            : allUsers.length;
 
                     // Count users who have been active today (either logged in or have checklists)
                     int activeToday = 0;
@@ -370,13 +407,21 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                       final todayStart = DateTime(now.year, now.month, now.day);
 
                       // Get users who have logged in today or have checklists today
-                      final usersWithChecklists = checklistSnapshot.hasData
-                          ? checklistSnapshot.data!.docs
-                              .map((d) => (d.data()
-                                  as Map<String, dynamic>)['userId'] as String?)
-                              .where((id) => id != null)
-                              .toSet()
-                          : <String>{};
+                      final usersWithChecklists =
+                          checklistSnapshot.hasData
+                              ? checklistSnapshot.data!.docs
+                                  .map(
+                                    (d) =>
+                                        (d.data()
+                                                as Map<
+                                                  String,
+                                                  dynamic
+                                                >)['userId']
+                                            as String?,
+                                  )
+                                  .where((id) => id != null)
+                                  .toSet()
+                              : <String>{};
 
                       for (final userDoc in allUsers) {
                         final userData = userDoc.data() as Map<String, dynamic>;
@@ -384,8 +429,9 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
                         // If location is selected, only count users for that location
                         if (_selectedLocationId != null) {
-                          final userLocationIds =
-                              List<String>.from(userData['locationIds'] ?? []);
+                          final userLocationIds = List<String>.from(
+                            userData['locationIds'] ?? [],
+                          );
                           if (!userLocationIds.contains(_selectedLocationId)) {
                             continue;
                           }
@@ -414,7 +460,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                             }
                           } catch (e) {
                             debugPrint(
-                                'Error parsing lastLogin for user $userId: $e');
+                              'Error parsing lastLogin for user $userId: $e',
+                            );
                           }
                         }
                       }
@@ -442,9 +489,11 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                           child: _buildStatChip(
                             icon: Icons.assignment_turned_in,
                             label: 'Checklists',
-                            value: checklistSnapshot.hasData
-                                ? checklistSnapshot.data!.docs.length.toString()
-                                : '0',
+                            value:
+                                checklistSnapshot.hasData
+                                    ? checklistSnapshot.data!.docs.length
+                                        .toString()
+                                    : '0',
                           ),
                         ),
                       ],
@@ -505,26 +554,27 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
             const SizedBox(width: 8),
             Text(
               'Current Shift Progress',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
             ),
           ],
         ),
         const SizedBox(height: 16),
         StreamBuilder<QuerySnapshot>(
-          stream: _selectedLocationId != null
-              ? FirebaseFirestore.instance
-                  .collection('organizations')
-                  .doc(widget.organizationId)
-                  .collection('shifts')
-                  .where('locationIds', arrayContains: _selectedLocationId)
-                  .snapshots()
-              : FirebaseFirestore.instance
-                  .collection('organizations')
-                  .doc(widget.organizationId)
-                  .collection('shifts')
-                  .snapshots(),
+          stream:
+              _selectedLocationId != null
+                  ? FirestoreEnforcer.instance
+                      .collection('organizations')
+                      .doc(widget.organizationId)
+                      .collection('shifts')
+                      .where('locationIds', arrayContains: _selectedLocationId)
+                      .snapshots()
+                  : FirestoreEnforcer.instance
+                      .collection('organizations')
+                      .doc(widget.organizationId)
+                      .collection('shifts')
+                      .snapshots(),
           builder: (context, snapshot) {
             if (!snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
@@ -535,17 +585,20 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
               return Card(
                 child: Padding(
                   padding: const EdgeInsets.all(20),
-                  child: Text(_selectedLocationId != null
-                      ? 'No shifts configured for this location'
-                      : 'No shifts configured'),
+                  child: Text(
+                    _selectedLocationId != null
+                        ? 'No shifts configured for this location'
+                        : 'No shifts configured',
+                  ),
                 ),
               );
             }
 
             return Column(
-              children: shifts
-                  .map((shiftDoc) => _buildShiftProgressCard(shiftDoc))
-                  .toList(),
+              children:
+                  shifts
+                      .map((shiftDoc) => _buildShiftProgressCard(shiftDoc))
+                      .toList(),
             );
           },
         ),
@@ -576,18 +629,14 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                     children: [
                       Text(
                         shiftName,
-                        style:
-                            Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.bold),
                       ),
                       if (startTime.isNotEmpty && endTime.isNotEmpty)
                         Text(
                           '$startTime - $endTime',
-                          style:
-                              Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: Colors.grey[600],
-                                  ),
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: Colors.grey[600]),
                         ),
                     ],
                   ),
@@ -597,17 +646,18 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
             ),
             const SizedBox(height: 16),
             StreamBuilder<QuerySnapshot>(
-              stream: _selectedLocationId != null
-                  ? FirebaseFirestore.instance
-                      .collection('organizations')
-                      .doc(widget.organizationId)
-                      .collection('locations')
-                      .doc(_selectedLocationId!)
-                      .collection('daily_checklists')
-                      .where('date', isEqualTo: _todayKey)
-                      .where('shiftId', isEqualTo: shiftDoc.id)
-                      .snapshots()
-                  : const Stream.empty(), // No location selected, no data
+              stream:
+                  _selectedLocationId != null
+                      ? FirestoreEnforcer.instance
+                          .collection('organizations')
+                          .doc(widget.organizationId)
+                          .collection('locations')
+                          .doc(_selectedLocationId!)
+                          .collection('daily_checklists')
+                          .where('date', isEqualTo: _todayKey)
+                          .where('shiftId', isEqualTo: shiftDoc.id)
+                          .snapshots()
+                      : const Stream.empty(), // No location selected, no data
               builder: (context, checklistSnapshot) {
                 if (!checklistSnapshot.hasData) {
                   return const LinearProgressIndicator(value: 0);
@@ -640,8 +690,9 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                     totalTasks += (data['totalItems'] ?? 0) as int;
                   } else {
                     // Fallback: calculate from tasks array
-                    final tasks =
-                        List<Map<String, dynamic>>.from(data['tasks'] ?? []);
+                    final tasks = List<Map<String, dynamic>>.from(
+                      data['tasks'] ?? [],
+                    );
                     totalTasks += tasks.length;
                     totalCompleted +=
                         tasks.where((task) => task['completed'] == true).length;
@@ -743,9 +794,9 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
             const SizedBox(width: 8),
             Text(
               'Historic Shift Performance',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -753,14 +804,15 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
         Text(
           'Swipe to explore performance insights',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.grey[600],
-                fontStyle: FontStyle.italic,
-              ),
+            color: Colors.grey[600],
+            fontStyle: FontStyle.italic,
+          ),
         ),
         const SizedBox(height: 16),
         FutureBuilder<Map<String, dynamic>>(
           key: ValueKey(
-              _selectedLocationId), // Force rebuild when location changes
+            _selectedLocationId,
+          ), // Force rebuild when location changes
           future: _calculateShiftPerformanceAnalytics(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
@@ -786,11 +838,16 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.analytics_outlined,
-                          size: 48, color: Colors.grey),
+                      Icon(
+                        Icons.analytics_outlined,
+                        size: 48,
+                        color: Colors.grey,
+                      ),
                       SizedBox(height: 8),
-                      Text('No historical data available yet',
-                          style: TextStyle(color: Colors.grey)),
+                      Text(
+                        'No historical data available yet',
+                        style: TextStyle(color: Colors.grey),
+                      ),
                     ],
                   ),
                 ),
@@ -810,14 +867,16 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
             // Top Performers Card
             if (topPerformers.isNotEmpty) {
-              performanceCards
-                  .add(_buildSwipeableTopPerformersCard(topPerformers));
+              performanceCards.add(
+                _buildSwipeableTopPerformersCard(topPerformers),
+              );
             }
 
             // Poor Performers Card
             if (poorPerformers.isNotEmpty) {
-              performanceCards
-                  .add(_buildSwipeablePoorPerformersCard(poorPerformers));
+              performanceCards.add(
+                _buildSwipeablePoorPerformersCard(poorPerformers),
+              );
             }
 
             // Day Analysis Cards (one for each problematic shift)
@@ -852,7 +911,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
         // Page indicator dots
         FutureBuilder<Map<String, dynamic>>(
           key: ValueKey(
-              '${_selectedLocationId}_dots'), // Force rebuild when location changes
+            '${_selectedLocationId}_dots',
+          ), // Force rebuild when location changes
           future: _calculateShiftPerformanceAnalytics(),
           builder: (context, snapshot) {
             if (!snapshot.hasData || snapshot.data!.isEmpty) {
@@ -879,17 +939,17 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: List.generate(
-                    cardCount,
-                    (index) => Container(
-                          width: 8,
-                          height: 8,
-                          margin: const EdgeInsets.symmetric(horizontal: 2),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color:
-                                Theme.of(context).primaryColor.withOpacity(0.3),
-                          ),
-                        )),
+                  cardCount,
+                  (index) => Container(
+                    width: 8,
+                    height: 8,
+                    margin: const EdgeInsets.symmetric(horizontal: 2),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Theme.of(context).primaryColor.withOpacity(0.3),
+                    ),
+                  ),
+                ),
               ),
             );
           },
@@ -899,7 +959,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
   }
 
   Widget _buildSwipeableTopPerformersCard(
-      List<Map<String, dynamic>> topPerformers) {
+    List<Map<String, dynamic>> topPerformers,
+  ) {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -940,17 +1001,18 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                     children: [
                       Text(
                         'Top Performers',
-                        style:
-                            Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.green.shade800,
-                                ),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green.shade800,
+                        ),
                       ),
                       Text(
                         'Best completion rates',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.green.shade700,
-                            ),
+                          color: Colors.green.shade700,
+                        ),
                       ),
                     ],
                   ),
@@ -1017,7 +1079,9 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.green.shade600,
                             borderRadius: BorderRadius.circular(12),
@@ -1044,7 +1108,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
   }
 
   Widget _buildSwipeablePoorPerformersCard(
-      List<Map<String, dynamic>> poorPerformers) {
+    List<Map<String, dynamic>> poorPerformers,
+  ) {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -1076,8 +1141,11 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                     color: Colors.orange.shade600,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child:
-                      const Icon(Icons.warning, color: Colors.white, size: 24),
+                  child: const Icon(
+                    Icons.warning,
+                    color: Colors.white,
+                    size: 24,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -1086,17 +1154,18 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                     children: [
                       Text(
                         'Needs Improvement',
-                        style:
-                            Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.orange.shade800,
-                                ),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orange.shade800,
+                        ),
                       ),
                       Text(
                         'Focus areas for training',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.orange.shade700,
-                            ),
+                          color: Colors.orange.shade700,
+                        ),
                       ),
                     ],
                   ),
@@ -1128,8 +1197,11 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: const Center(
-                            child: Icon(Icons.trending_down,
-                                color: Colors.white, size: 18),
+                            child: Icon(
+                              Icons.trending_down,
+                              color: Colors.white,
+                              size: 18,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -1158,7 +1230,9 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.orange.shade600,
                             borderRadius: BorderRadius.circular(12),
@@ -1218,8 +1292,11 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                       color: Colors.red.shade600,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.calendar_today,
-                        color: Colors.white, size: 24),
+                    child: const Icon(
+                      Icons.calendar_today,
+                      color: Colors.white,
+                      size: 24,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1228,17 +1305,20 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                       children: [
                         Text(
                           'Weekly Pattern Issue',
-                          style:
-                              Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.red.shade800,
-                                  ),
+                          style: Theme.of(
+                            context,
+                          ).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.red.shade800,
+                          ),
                         ),
                         Text(
                           '${analysis['shiftName']}',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Colors.red.shade700,
-                                fontWeight: FontWeight.w500,
+                          style: Theme.of(
+                            context,
+                          ).textTheme.bodySmall?.copyWith(
+                            color: Colors.red.shade700,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ],
@@ -1259,8 +1339,11 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.warning_amber_rounded,
-                            color: Colors.red.shade700, size: 18),
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          color: Colors.red.shade700,
+                          size: 18,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
@@ -1300,8 +1383,10 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                 style: TextButton.styleFrom(
                   foregroundColor: Colors.red.shade700,
                   backgroundColor: Colors.white,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                 ),
               ),
             ],
@@ -1347,18 +1432,15 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
             Text(
               'All Systems Green!',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue.shade800,
-                  ),
+                fontWeight: FontWeight.bold,
+                color: Colors.blue.shade800,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
               'No performance issues detected. All shifts are performing consistently across all days of the week.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.blue.shade700,
-                fontSize: 14,
-              ),
+              style: TextStyle(color: Colors.blue.shade700, fontSize: 14),
             ),
           ],
         ),
@@ -1376,9 +1458,9 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
             const SizedBox(width: 8),
             Text(
               'Audit Checklists & Tasks',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -1403,8 +1485,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                 prefixIcon: Icon(Icons.search),
                 border: OutlineInputBorder(),
               ),
-              onChanged: (value) =>
-                  setState(() => _searchTerm = value.toLowerCase()),
+              onChanged:
+                  (value) => setState(() => _searchTerm = value.toLowerCase()),
             ),
             const SizedBox(height: 16),
 
@@ -1413,30 +1495,38 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
               children: [
                 // Shift filter or loading
                 Expanded(
-                  child: _shifts.isEmpty
-                      ? const Center(child: CircularProgressIndicator())
-                      : DropdownButtonFormField<String>(
-                          value: _selectedShift,
-                          decoration: const InputDecoration(
-                            labelText: 'Shift',
-                            border: OutlineInputBorder(),
-                          ),
-                          style: const TextStyle(fontSize: 14),
-                          items: [
-                            const DropdownMenuItem(
-                              value: 'all',
-                              child: Text('All Shifts',
-                                  style: TextStyle(fontSize: 14)),
+                  child:
+                      _shifts.isEmpty
+                          ? const Center(child: CircularProgressIndicator())
+                          : DropdownButtonFormField<String>(
+                            value: _selectedShift,
+                            decoration: const InputDecoration(
+                              labelText: 'Shift',
+                              border: OutlineInputBorder(),
                             ),
-                            ..._shifts.map((shift) => DropdownMenuItem(
+                            style: const TextStyle(fontSize: 14),
+                            items: [
+                              const DropdownMenuItem(
+                                value: 'all',
+                                child: Text(
+                                  'All Shifts',
+                                  style: TextStyle(fontSize: 14),
+                                ),
+                              ),
+                              ..._shifts.map(
+                                (shift) => DropdownMenuItem(
                                   value: shift['id'],
-                                  child: Text(shift['name']!,
-                                      style: const TextStyle(fontSize: 14)),
-                                )),
-                          ],
-                          onChanged: (value) =>
-                              setState(() => _selectedShift = value!),
-                        ),
+                                  child: Text(
+                                    shift['name']!,
+                                    style: const TextStyle(fontSize: 14),
+                                  ),
+                                ),
+                              ),
+                            ],
+                            onChanged:
+                                (value) =>
+                                    setState(() => _selectedShift = value!),
+                          ),
                 ),
                 const SizedBox(width: 12),
 
@@ -1452,17 +1542,23 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                     items: [
                       const DropdownMenuItem(
                         value: 'all',
-                        child: Text('All Checklists',
-                            style: TextStyle(fontSize: 14)),
+                        child: Text(
+                          'All Checklists',
+                          style: TextStyle(fontSize: 14),
+                        ),
                       ),
-                      ..._checklists.map((c) => DropdownMenuItem(
-                            value: c['id'],
-                            child: Text(c['name']!,
-                                style: const TextStyle(fontSize: 14)),
-                          )),
+                      ..._checklists.map(
+                        (c) => DropdownMenuItem(
+                          value: c['id'],
+                          child: Text(
+                            c['name']!,
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ),
+                      ),
                     ],
-                    onChanged: (value) =>
-                        setState(() => _selectedChecklist = value!),
+                    onChanged:
+                        (value) => setState(() => _selectedChecklist = value!),
                   ),
                 ),
               ],
@@ -1484,27 +1580,35 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                     items: const [
                       DropdownMenuItem(
                         value: 'all',
-                        child:
-                            Text('All Tasks', style: TextStyle(fontSize: 14)),
+                        child: Text(
+                          'All Tasks',
+                          style: TextStyle(fontSize: 14),
+                        ),
                       ),
                       DropdownMenuItem(
                         value: 'completed',
-                        child: Text('Completed Only',
-                            style: TextStyle(fontSize: 14)),
+                        child: Text(
+                          'Completed Only',
+                          style: TextStyle(fontSize: 14),
+                        ),
                       ),
                       DropdownMenuItem(
                         value: 'incomplete',
-                        child: Text('Incomplete Only',
-                            style: TextStyle(fontSize: 14)),
+                        child: Text(
+                          'Incomplete Only',
+                          style: TextStyle(fontSize: 14),
+                        ),
                       ),
                       DropdownMenuItem(
                         value: 'incomplete_with_reason',
-                        child: Text('Incomplete (with Reason)',
-                            style: TextStyle(fontSize: 14)),
+                        child: Text(
+                          'Incomplete (with Reason)',
+                          style: TextStyle(fontSize: 14),
+                        ),
                       ),
                     ],
-                    onChanged: (value) =>
-                        setState(() => _selectedCompletion = value!),
+                    onChanged:
+                        (value) => setState(() => _selectedCompletion = value!),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1514,9 +1618,11 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                   child: OutlinedButton.icon(
                     onPressed: _selectDateRange,
                     icon: const Icon(Icons.date_range),
-                    label: Text(_selectedDateRange == null
-                        ? 'Select Date Range'
-                        : '${DateFormat('M/d').format(_selectedDateRange!.start)} - ${DateFormat('M/d').format(_selectedDateRange!.end)}'),
+                    label: Text(
+                      _selectedDateRange == null
+                          ? 'Select Date Range'
+                          : '${DateFormat('M/d').format(_selectedDateRange!.start)} - ${DateFormat('M/d').format(_selectedDateRange!.end)}',
+                    ),
                   ),
                 ),
               ],
@@ -1585,8 +1691,11 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                     padding: const EdgeInsets.all(20),
                     child: Column(
                       children: [
-                        Icon(Icons.error_outline,
-                            size: 48, color: Colors.red[400]),
+                        Icon(
+                          Icons.error_outline,
+                          size: 48,
+                          color: Colors.red[400],
+                        ),
                         const SizedBox(height: 8),
                         const Text('Error loading audit data'),
                         const SizedBox(height: 8),
@@ -1609,15 +1718,20 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                     padding: const EdgeInsets.all(20),
                     child: Column(
                       children: [
-                        Icon(Icons.search_off,
-                            size: 48, color: Colors.grey[400]),
+                        Icon(
+                          Icons.search_off,
+                          size: 48,
+                          color: Colors.grey[400],
+                        ),
                         const SizedBox(height: 8),
                         const Text('No results found with current filters'),
                         const SizedBox(height: 4),
                         Text(
                           'Found ${checklists.length} checklists but no matching tasks',
-                          style:
-                              TextStyle(color: Colors.grey[600], fontSize: 12),
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 12,
+                          ),
                         ),
                         const SizedBox(height: 8),
                         TextButton(
@@ -1634,17 +1748,17 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                 children: [
                   Text(
                     'Found ${filteredResults.length} tasks from ${checklists.length} checklists',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey[600],
-                        ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
                   ),
                   const SizedBox(height: 12),
                   ListView.separated(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount: filteredResults.length,
-                    separatorBuilder: (context, index) =>
-                        const Divider(height: 1),
+                    separatorBuilder:
+                        (context, index) => const Divider(height: 1),
                     itemBuilder: (context, index) {
                       final taskData = filteredResults[index];
                       return _buildAuditResultItem(taskData);
@@ -1694,9 +1808,9 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
           children: [
             Text(
               'Found ${filteredResults.length} tasks from ${checklists.length} checklists',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey[600],
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
             ),
             const SizedBox(height: 12),
             ListView.separated(
@@ -1730,7 +1844,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
     final startDateStr = DateFormat('yyyy-MM-dd').format(startDate);
     final endDateStr = DateFormat('yyyy-MM-dd').format(endDateForQuery);
 
-    var query = FirebaseFirestore.instance
+    var query = FirestoreEnforcer.instance
         .collection('organizations')
         .doc(widget.organizationId)
         .collection('locations')
@@ -1755,7 +1869,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
     final startDate = endDate.subtract(const Duration(days: 30));
     final startDateStr = DateFormat('yyyy-MM-dd').format(startDate);
 
-    var query = FirebaseFirestore.instance
+    var query = FirestoreEnforcer.instance
         .collection('organizations')
         .doc(widget.organizationId)
         .collection('locations')
@@ -1768,11 +1882,13 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
   }
 
   List<Map<String, dynamic>> _filterAuditResults(
-      List<QueryDocumentSnapshot> checklists) {
+    List<QueryDocumentSnapshot> checklists,
+  ) {
     List<Map<String, dynamic>> allTasks = [];
     for (final doc in checklists) {
       final data = doc.data() as Map<String, dynamic>;
-      final checklistName = data['templateName'] ??
+      final checklistName =
+          data['templateName'] ??
           data['checklistName'] ??
           data['name'] ??
           'Unnamed Checklist';
@@ -1793,7 +1909,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
       // Shift filter
       if (_selectedShift != 'all' && shiftId != _selectedShift) {
         debugPrint(
-            'Filtering out checklist ${doc.id} - shift $shiftId does not match selected shift $_selectedShift');
+          'Filtering out checklist ${doc.id} - shift $shiftId does not match selected shift $_selectedShift',
+        );
         continue;
       }
 
@@ -1803,7 +1920,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
         continue;
       }
 
-      final shiftName = _shifts.firstWhere(
+      final shiftName =
+          _shifts.firstWhere(
             (s) => s['id'] == shiftId,
             orElse: () => {'name': 'Unknown Shift'},
           )['name'] ??
@@ -1813,13 +1931,15 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
       final tasks = List<Map<String, dynamic>>.from(data['tasks'] ?? []);
 
       debugPrint(
-          'Processing checklist ${doc.id} (shift: $shiftName): ${tasks.length} tasks found');
+        'Processing checklist ${doc.id} (shift: $shiftName): ${tasks.length} tasks found',
+      );
 
       for (int i = 0; i < tasks.length; i++) {
         final task = tasks[i];
 
         // Try multiple possible field names for task description/name
-        final taskName = task['description'] ??
+        final taskName =
+            task['description'] ??
             task['title'] ??
             task['name'] ??
             task['taskName'] ??
@@ -1827,14 +1947,16 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
             'Unnamed Task';
 
         // Check multiple possible completion fields
-        final completed = task['isCompleted'] == true ||
+        final completed =
+            task['isCompleted'] == true ||
             task['completed'] == true ||
             task['status'] == 'completed' ||
             task['done'] == true;
         final reason = task['reason'] ?? task['incompleteReason'] ?? '';
 
         // Get completed by information with fallback logic
-        final completedBy = task['completedByUserName'] ??
+        final completedBy =
+            task['completedByUserName'] ??
             task['completedBy'] ??
             task['userName'] ??
             task['completedByUserId'] ??
@@ -1875,7 +1997,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
         final finalTimestamp = completedDateTime ?? fallbackDateTime;
 
         // Extract photo URL from task data
-        final photoUrl = task['photoUrl'] ??
+        final photoUrl =
+            task['photoUrl'] ??
             task['proofImageUrl'] ??
             task['imageUrl'] ??
             task['photo'] ??
@@ -1891,7 +2014,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
         // Apply search filter
         if (_searchTerm.isNotEmpty) {
-          final searchMatch = taskName.toLowerCase().contains(_searchTerm) ||
+          final searchMatch =
+              taskName.toLowerCase().contains(_searchTerm) ||
               checklistName.toLowerCase().contains(_searchTerm) ||
               completedBy.toLowerCase().contains(_searchTerm) ||
               shiftName.toLowerCase().contains(_searchTerm);
@@ -1996,7 +2120,9 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                     child: Text(
                       userName.isNotEmpty ? userName[0].toUpperCase() : '?',
                       style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 18),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
                     ),
                   ),
                 ),
@@ -2006,26 +2132,46 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(taskName,
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
-                      Text('Checklist: $checklistName',
-                          style: const TextStyle(
-                              fontSize: 12, color: Colors.grey)),
-                      Text('Shift: $shiftName',
-                          style: const TextStyle(
-                              fontSize: 12, color: Colors.grey)),
-                      Text('By: $userName',
-                          style: const TextStyle(
-                              fontSize: 12, color: Colors.grey)),
-                      Text('Date: $displayDate $time',
-                          style: const TextStyle(
-                              fontSize: 12, color: Colors.grey)),
+                      Text(
+                        taskName,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      Text(
+                        'Checklist: $checklistName',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      Text(
+                        'Shift: $shiftName',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      Text(
+                        'By: $userName',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      Text(
+                        'Date: $displayDate $time',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                      ),
                       // Show reason if task is incomplete and has a reason
                       if (!completed && reason.isNotEmpty) ...[
                         const SizedBox(height: 4),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.orange.shade50,
                             border: Border.all(color: Colors.orange.shade200),
@@ -2034,8 +2180,11 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.info_outline,
-                                  size: 14, color: Colors.orange.shade700),
+                              Icon(
+                                Icons.info_outline,
+                                size: 14,
+                                color: Colors.orange.shade700,
+                              ),
                               const SizedBox(width: 4),
                               Flexible(
                                 child: Text(
@@ -2062,11 +2211,14 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                     Container(
                       margin: const EdgeInsets.only(right: 8),
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
-                        color: completed
-                            ? Colors.green.shade50
-                            : Colors.red.shade50,
+                        color:
+                            completed
+                                ? Colors.green.shade50
+                                : Colors.red.shade50,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
@@ -2088,11 +2240,13 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: IconButton(
-                          icon: Icon(Icons.photo_camera,
-                              color: Colors.blue.shade700),
+                          icon: Icon(
+                            Icons.photo_camera,
+                            color: Colors.blue.shade700,
+                          ),
                           tooltip: 'View Task Photo',
-                          onPressed: () =>
-                              _showTaskPhotoDialog(photoUrl, taskName),
+                          onPressed:
+                              () => _showTaskPhotoDialog(photoUrl, taskName),
                           constraints: const BoxConstraints(
                             minWidth: 40,
                             minHeight: 40,
@@ -2113,136 +2267,146 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
   void _showTaskPhotoDialog(String photoUrl, String taskName) {
     showDialog(
       context: context,
-      builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Container(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.8,
-            maxWidth: MediaQuery.of(context).size.width * 0.9,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).primaryColor,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(12),
-                    topRight: Radius.circular(12),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.photo_camera, color: Colors.white),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Task Photo: $taskName',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
+      builder:
+          (context) => Dialog(
+            backgroundColor: Colors.transparent,
+            child: Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.8,
+                maxWidth: MediaQuery.of(context).size.width * 0.9,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Header
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).primaryColor,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(12),
+                        topRight: Radius.circular(12),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.photo_camera, color: Colors.white),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Task Photo: $taskName',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ],
-                ),
-              ),
-              // Photo content
-              Flexible(
-                child: Container(
-                  width: double.infinity,
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.only(
-                      bottomLeft: Radius.circular(12),
-                      bottomRight: Radius.circular(12),
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white),
+                          onPressed: () => Navigator.of(context).pop(),
+                        ),
+                      ],
                     ),
                   ),
-                  child: ClipRRect(
-                    borderRadius: const BorderRadius.only(
-                      bottomLeft: Radius.circular(12),
-                      bottomRight: Radius.circular(12),
-                    ),
-                    child: InteractiveViewer(
-                      minScale: 0.5,
-                      maxScale: 3.0,
-                      child: Image.network(
-                        photoUrl,
-                        fit: BoxFit.contain,
-                        loadingBuilder: (context, child, loadingProgress) {
-                          if (loadingProgress == null) return child;
-                          return SizedBox(
-                            height: 300,
-                            child: Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  CircularProgressIndicator(
-                                    value: loadingProgress.expectedTotalBytes !=
-                                            null
-                                        ? loadingProgress
-                                                .cumulativeBytesLoaded /
-                                            loadingProgress.expectedTotalBytes!
-                                        : null,
+                  // Photo content
+                  Flexible(
+                    child: Container(
+                      width: double.infinity,
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.only(
+                          bottomLeft: Radius.circular(12),
+                          bottomRight: Radius.circular(12),
+                        ),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: const BorderRadius.only(
+                          bottomLeft: Radius.circular(12),
+                          bottomRight: Radius.circular(12),
+                        ),
+                        child: InteractiveViewer(
+                          minScale: 0.5,
+                          maxScale: 3.0,
+                          child: Image.network(
+                            photoUrl,
+                            fit: BoxFit.contain,
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return SizedBox(
+                                height: 300,
+                                child: Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      CircularProgressIndicator(
+                                        value:
+                                            loadingProgress
+                                                        .expectedTotalBytes !=
+                                                    null
+                                                ? loadingProgress
+                                                        .cumulativeBytesLoaded /
+                                                    loadingProgress
+                                                        .expectedTotalBytes!
+                                                : null,
+                                      ),
+                                      const SizedBox(height: 16),
+                                      const Text('Loading photo...'),
+                                    ],
                                   ),
-                                  const SizedBox(height: 16),
-                                  const Text('Loading photo...'),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                        errorBuilder: (context, error, stackTrace) {
-                          return SizedBox(
-                            height: 300,
-                            child: Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.error_outline,
-                                      size: 48, color: Colors.red[400]),
-                                  const SizedBox(height: 16),
-                                  const Text(
-                                    'Error loading image',
-                                    style: TextStyle(fontSize: 16),
+                                ),
+                              );
+                            },
+                            errorBuilder: (context, error, stackTrace) {
+                              return SizedBox(
+                                height: 300,
+                                child: Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.error_outline,
+                                        size: 48,
+                                        color: Colors.red[400],
+                                      ),
+                                      const SizedBox(height: 16),
+                                      const Text(
+                                        'Error loading image',
+                                        style: TextStyle(fontSize: 16),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Please check your internet connection',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey[600],
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Please check your internet connection',
-                                    style: TextStyle(
-                                        fontSize: 12, color: Colors.grey[600]),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
+                                ),
+                              );
+                            },
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
     );
   }
 
   Future<Map<String, dynamic>> _calculateShiftPerformanceAnalytics() async {
     try {
       debugPrint(
-          'Starting shift performance analytics calculation for location: $_selectedLocationId');
+        'Starting shift performance analytics calculation for location: $_selectedLocationId',
+      );
 
       // Early return if no location selected
       if (_selectedLocationId == null) {
@@ -2261,17 +2425,20 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
       List<QueryDocumentSnapshot> allChecklists = [];
 
       // Query specific location only (since we always have a location selected)
-      var checklistsQuery = FirebaseFirestore.instance
+      var checklistsQuery = FirestoreEnforcer.instance
           .collection('organizations')
           .doc(widget.organizationId)
           .collection('locations')
           .doc(_selectedLocationId!)
           .collection('daily_checklists')
-          .where('date',
-              isGreaterThanOrEqualTo:
-                  DateFormat('yyyy-MM-dd').format(startDate))
-          .where('date',
-              isLessThanOrEqualTo: DateFormat('yyyy-MM-dd').format(endDate))
+          .where(
+            'date',
+            isGreaterThanOrEqualTo: DateFormat('yyyy-MM-dd').format(startDate),
+          )
+          .where(
+            'date',
+            isLessThanOrEqualTo: DateFormat('yyyy-MM-dd').format(endDate),
+          )
           .limit(500);
 
       final checklistsQueryResult = await checklistsQuery.get();
@@ -2281,7 +2448,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
       debugPrint('Found ${checklists.length} checklists for analytics');
       debugPrint(
-          'Available shifts: ${_shifts.length} (${_shifts.map((s) => s['name']).join(', ')})');
+        'Available shifts: ${_shifts.length} (${_shifts.map((s) => s['name']).join(', ')})',
+      );
 
       if (checklists.isEmpty) {
         debugPrint('No checklists found for performance analytics');
@@ -2314,17 +2482,21 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
         if (totalTasks == 0) continue; // Skip checklists with no tasks
 
-        final completedTasks = tasks
-            .where((t) =>
-                t['completed'] == true ||
-                t['isCompleted'] == true ||
-                t['status'] == 'completed')
-            .length;
+        final completedTasks =
+            tasks
+                .where(
+                  (t) =>
+                      t['completed'] == true ||
+                      t['isCompleted'] == true ||
+                      t['status'] == 'completed',
+                )
+                .length;
 
         final completionRate = completedTasks / totalTasks;
 
         debugPrint(
-            'Checklist ${doc.id}: $completedTasks/$totalTasks tasks completed (${(completionRate * 100).round()}%)');
+          'Checklist ${doc.id}: $completedTasks/$totalTasks tasks completed (${(completionRate * 100).round()}%)',
+        );
 
         // Group by shift
         shiftData.putIfAbsent(shiftId, () => []);
@@ -2354,21 +2526,24 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
         final performances = shiftData[shiftId]!;
         if (performances.isEmpty) continue;
 
-        final avgCompletionRate = performances
+        final avgCompletionRate =
+            performances
                 .map((p) => p['completionRate'] as double)
                 .reduce((a, b) => a + b) /
             performances.length;
 
         final totalSessions = performances.length;
-        final shiftName = _shifts.isNotEmpty
-            ? _shifts.firstWhere(
-                (s) => s['id'] == shiftId,
-                orElse: () => {'name': 'Unknown Shift ($shiftId)'},
-              )['name']
-            : 'Unknown Shift ($shiftId)';
+        final shiftName =
+            _shifts.isNotEmpty
+                ? _shifts.firstWhere(
+                  (s) => s['id'] == shiftId,
+                  orElse: () => {'name': 'Unknown Shift ($shiftId)'},
+                )['name']
+                : 'Unknown Shift ($shiftId)';
 
         debugPrint(
-            'Shift $shiftName: ${(avgCompletionRate * 100).round()}% avg completion ($totalSessions sessions)');
+          'Shift $shiftName: ${(avgCompletionRate * 100).round()}% avg completion ($totalSessions sessions)',
+        );
 
         shiftPerformances.add({
           'shiftId': shiftId,
@@ -2380,8 +2555,11 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
       }
 
       // Sort by performance
-      shiftPerformances.sort((a, b) => (b['avgCompletionRate'] as double)
-          .compareTo(a['avgCompletionRate'] as double));
+      shiftPerformances.sort(
+        (a, b) => (b['avgCompletionRate'] as double).compareTo(
+          a['avgCompletionRate'] as double,
+        ),
+      );
 
       // Get top and poor performers
       final topPerformers = shiftPerformances.take(3).toList();
@@ -2389,17 +2567,19 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
           shiftPerformances.reversed.take(3).toList().reversed.toList();
 
       debugPrint(
-          'Top performers: ${topPerformers.length}, Poor performers: ${poorPerformers.length}');
+        'Top performers: ${topPerformers.length}, Poor performers: ${poorPerformers.length}',
+      );
 
       // Calculate day-of-week analysis
       List<Map<String, dynamic>> dayAnalysis = [];
       for (final shiftId in dayOfWeekData.keys) {
-        final shiftName = _shifts.isNotEmpty
-            ? _shifts.firstWhere(
-                (s) => s['id'] == shiftId,
-                orElse: () => {'name': 'Unknown Shift ($shiftId)'},
-              )['name']
-            : 'Unknown Shift ($shiftId)';
+        final shiftName =
+            _shifts.isNotEmpty
+                ? _shifts.firstWhere(
+                  (s) => s['id'] == shiftId,
+                  orElse: () => {'name': 'Unknown Shift ($shiftId)'},
+                )['name']
+                : 'Unknown Shift ($shiftId)';
 
         final dayData = dayOfWeekData[shiftId]!;
         List<Map<String, dynamic>> dayPerformances = [];
@@ -2411,7 +2591,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
           'Thursday',
           'Friday',
           'Saturday',
-          'Sunday'
+          'Sunday',
         ]) {
           if (dayData.containsKey(day) && dayData[day]!.isNotEmpty) {
             final rates = dayData[day]!;
@@ -2426,8 +2606,11 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
         // Find the worst performing day for this shift
         if (dayPerformances.isNotEmpty) {
-          dayPerformances.sort((a, b) => (a['avgCompletionRate'] as double)
-              .compareTo(b['avgCompletionRate'] as double));
+          dayPerformances.sort(
+            (a, b) => (a['avgCompletionRate'] as double).compareTo(
+              b['avgCompletionRate'] as double,
+            ),
+          );
 
           final worstDay = dayPerformances.first;
           if ((worstDay['avgCompletionRate'] as double) < 0.8) {
@@ -2437,7 +2620,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
               'shiftName': shiftName,
               'worstDay': worstDay['day'],
               'worstDayRate': worstDay['avgCompletionRate'],
-                           'worstDaySessionCount': worstDay['sessionCount'],
+              'worstDaySessionCount': worstDay['sessionCount'],
               'allDayPerformances': dayPerformances,
             });
           }
@@ -2445,7 +2628,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
       }
 
       debugPrint(
-          'Analytics complete: ${topPerformers.length} top, ${poorPerformers.length} poor, ${dayAnalysis.length} day issues');
+        'Analytics complete: ${topPerformers.length} top, ${poorPerformers.length} poor, ${dayAnalysis.length} day issues',
+      );
 
       return {
         'topPerformers': topPerformers,
@@ -2469,61 +2653,61 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('${analysis['shiftName']} - Weekly Performance'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Performance by Day of Week',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+      builder:
+          (context) => AlertDialog(
+            title: Text('${analysis['shiftName']} - Weekly Performance'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Performance by Day of Week',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
-              ),
-              const SizedBox(height: 16),
-              ...allDayPerformances.map((dayPerf) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          flex: 2,
-                          child: Text(dayPerf['day']),
-                        ),
-                        Expanded(
-                          flex: 3,
-                          child: LinearProgressIndicator(
-                            value: dayPerf['avgCompletionRate'],
-                            backgroundColor: Colors.grey.shade300,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              dayPerf['avgCompletionRate'] < 0.8
-                                  ? Colors.red
-                                  : dayPerf['avgCompletionRate'] < 0.9
-                                      ? Colors.orange
-                                      : Colors.green,
+                  ),
+                  const SizedBox(height: 16),
+                  ...allDayPerformances.map(
+                    (dayPerf) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(flex: 2, child: Text(dayPerf['day'])),
+                          Expanded(
+                            flex: 3,
+                            child: LinearProgressIndicator(
+                              value: dayPerf['avgCompletionRate'],
+                              backgroundColor: Colors.grey.shade300,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                dayPerf['avgCompletionRate'] < 0.8
+                                    ? Colors.red
+                                    : dayPerf['avgCompletionRate'] < 0.9
+                                    ? Colors.orange
+                                    : Colors.green,
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '${(dayPerf['avgCompletionRate'] * 100).round()}%',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ],
+                          const SizedBox(width: 8),
+                          Text(
+                            '${(dayPerf['avgCompletionRate'] * 100).round()}%',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
                     ),
-                  )),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Close'),
+              ),
             ],
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
     );
   }
 

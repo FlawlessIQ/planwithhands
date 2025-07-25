@@ -8,12 +8,13 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hands_app/state/user_state.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 class UploadDocumentBottomSheet extends HookConsumerWidget {
   final Map<String, dynamic>? documentData;
   final String? documentId;
   final VoidCallback? onDocumentUploaded;
-  
+
   const UploadDocumentBottomSheet({
     super.key,
     this.documentData,
@@ -49,10 +50,11 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
           final currentUser = FirebaseAuth.instance.currentUser;
           debugPrint('Current user: ${FirebaseAuth.instance.currentUser}');
           if (currentUser != null) {
-            final userDoc = await FirebaseFirestore.instance
-                .collection('users')
-                .doc(currentUser.uid)
-                .get();
+            final userDoc =
+                await FirestoreEnforcer.instance
+                    .collection('users')
+                    .doc(currentUser.uid)
+                    .get();
             if (userDoc.exists) {
               final userData = userDoc.data() as Map<String, dynamic>;
               final orgId = userData['organizationId'] as String?;
@@ -65,6 +67,7 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
           isLoadingOrgId.value = false;
         }
       }
+
       loadOrganizationId();
       return null;
     }, [userState.userData?.organizationId]);
@@ -77,7 +80,7 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
       'Emergency Procedures',
       'Equipment Manuals',
       'Policy Documents',
-      'Other'
+      'Other',
     ];
 
     // Show loading while we're determining the organizationId
@@ -107,7 +110,9 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
             color: theme.canvasColor,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
-          child: const Center(child: Text('No organization found. Please contact support.')),
+          child: const Center(
+            child: Text('No organization found. Please contact support.'),
+          ),
         ),
       );
     }
@@ -116,7 +121,16 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
       try {
         final result = await FilePicker.platform.pickFiles(
           type: FileType.custom,
-          allowedExtensions: ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'mp4', 'mov'],
+          allowedExtensions: [
+            'pdf',
+            'doc',
+            'docx',
+            'jpg',
+            'jpeg',
+            'png',
+            'mp4',
+            'mov',
+          ],
           allowMultiple: false,
         );
         if (result != null && result.files.isNotEmpty) {
@@ -124,9 +138,9 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
         }
       } catch (e) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error picking file: $e')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Error picking file: $e')));
         }
       }
     }
@@ -139,15 +153,19 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
         return;
       }
       if (!isEditMode && selectedFile.value == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please select a file')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Please select a file')));
         return;
       }
       final orgId = organizationId.value;
       if (orgId == null || orgId.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Organization ID is missing. Cannot upload document.')),
+          const SnackBar(
+            content: Text(
+              'Organization ID is missing. Cannot upload document.',
+            ),
+          ),
         );
         return;
       }
@@ -160,7 +178,9 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
         if (selectedFile.value != null) {
           final file = selectedFile.value!;
           fileName = '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
-          final storageRef = FirebaseStorage.instance.ref().child('documents/$fileName');
+          final storageRef = FirebaseStorage.instance.ref().child(
+            'documents/$fileName',
+          );
           UploadTask uploadTask;
           if (kIsWeb) {
             uploadTask = storageRef.putData(file.bytes!);
@@ -191,7 +211,7 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
           'updatedAt': FieldValue.serverTimestamp(),
         };
         if (isEditMode) {
-          await FirebaseFirestore.instance
+          await FirestoreEnforcer.instance
               .collection('organizations')
               .doc(orgId)
               .collection('training_documents')
@@ -200,7 +220,7 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
         } else {
           docData['uploadedBy'] = userState.userData?.userId ?? 'unknown';
           docData['createdAt'] = FieldValue.serverTimestamp();
-          await FirebaseFirestore.instance
+          await FirestoreEnforcer.instance
               .collection('organizations')
               .doc(orgId)
               .collection('training_documents')
@@ -210,7 +230,13 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
           onDocumentUploaded?.call();
           Navigator.pop(context);
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(isEditMode ? 'Document updated successfully!' : 'Document uploaded successfully!')),
+            SnackBar(
+              content: Text(
+                isEditMode
+                    ? 'Document updated successfully!'
+                    : 'Document uploaded successfully!',
+              ),
+            ),
           );
         }
       } catch (e, stack) {
@@ -218,9 +244,9 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
         debugPrint('Upload failed: $e');
         debugPrintStack(stackTrace: stack);
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Upload failed: $e')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
         }
       } finally {
         isUploading.value = false;
@@ -245,6 +271,7 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
           return '📁';
       }
     }
+
     // ...existing code...
     return Padding(
       padding: MediaQuery.of(context).viewInsets,
@@ -310,12 +337,13 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
                           border: const OutlineInputBorder(),
                           prefixIcon: const Icon(Icons.category),
                         ),
-                        items: categories.map((category) {
-                          return DropdownMenuItem(
-                            value: category,
-                            child: Text(category),
-                          );
-                        }).toList(),
+                        items:
+                            categories.map((category) {
+                              return DropdownMenuItem(
+                                value: category,
+                                child: Text(category),
+                              );
+                            }).toList(),
                         onChanged: (value) => selectedCategory.value = value,
                         validator: (value) {
                           if (value == null) {
@@ -338,13 +366,15 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              isEditMode ? 'Change File (Optional)' : 'Select File',
+                              isEditMode
+                                  ? 'Change File (Optional)'
+                                  : 'Select File',
                               style: theme.textTheme.titleMedium?.copyWith(
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
                             const SizedBox(height: 12),
-                            
+
                             // Show existing file info for edit mode
                             if (isEditMode && selectedFile.value == null) ...[
                               Container(
@@ -353,33 +383,43 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
                                 decoration: BoxDecoration(
                                   color: Colors.blue.withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                                  border: Border.all(
+                                    color: Colors.blue.withOpacity(0.3),
+                                  ),
                                 ),
                                 child: Row(
                                   children: [
                                     Text(
-                                      getFileIcon(documentData?['fileName']?.split('.').last),
+                                      getFileIcon(
+                                        documentData?['fileName']
+                                            ?.split('.')
+                                            .last,
+                                      ),
                                       style: const TextStyle(fontSize: 24),
                                     ),
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            documentData?['fileName'] ?? 'Unknown file',
-                                            style: theme.textTheme.bodyMedium?.copyWith(
-                                              fontWeight: FontWeight.w500,
-                                            ),
+                                            documentData?['fileName'] ??
+                                                'Unknown file',
+                                            style: theme.textTheme.bodyMedium
+                                                ?.copyWith(
+                                                  fontWeight: FontWeight.w500,
+                                                ),
                                             maxLines: 2,
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                           if (documentData?['fileSize'] != null)
                                             Text(
                                               '${(documentData!['fileSize'] / 1024 / 1024).toStringAsFixed(2)} MB',
-                                              style: theme.textTheme.bodySmall?.copyWith(
-                                                color: Colors.grey.shade600,
-                                              ),
+                                              style: theme.textTheme.bodySmall
+                                                  ?.copyWith(
+                                                    color: Colors.grey.shade600,
+                                                  ),
                                             ),
                                         ],
                                       ),
@@ -398,12 +438,16 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
                                 onTap: pickFile,
                                 child: Container(
                                   width: double.infinity,
-                                  padding: const EdgeInsets.symmetric(vertical: 32),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 32,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: theme.primaryColor.withOpacity(0.1),
                                     borderRadius: BorderRadius.circular(8),
                                     border: Border.all(
-                                      color: theme.primaryColor.withOpacity(0.3),
+                                      color: theme.primaryColor.withOpacity(
+                                        0.3,
+                                      ),
                                       style: BorderStyle.solid,
                                     ),
                                   ),
@@ -417,17 +461,23 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
                                       const SizedBox(height: 12),
                                       Text(
                                         'Tap to select file',
-                                        style: theme.textTheme.bodyLarge?.copyWith(
-                                          color: theme.primaryColor,
-                                          fontWeight: FontWeight.w500,
-                                        ),
+                                        style: theme.textTheme.bodyLarge
+                                            ?.copyWith(
+                                              color: theme.primaryColor,
+                                              fontWeight: FontWeight.w500,
+                                            ),
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
                                         'PDF, DOC, Images, Videos',
-                                        style: theme.textTheme.bodySmall?.copyWith(
-                                          color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
-                                        ),
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: theme
+                                                  .textTheme
+                                                  .bodySmall
+                                                  ?.color
+                                                  ?.withOpacity(0.7),
+                                            ),
                                       ),
                                     ],
                                   ),
@@ -440,39 +490,50 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
                                 decoration: BoxDecoration(
                                   color: Colors.green.withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.green.withOpacity(0.3)),
+                                  border: Border.all(
+                                    color: Colors.green.withOpacity(0.3),
+                                  ),
                                 ),
                                 child: Row(
                                   children: [
                                     Text(
-                                      getFileIcon(selectedFile.value!.extension),
+                                      getFileIcon(
+                                        selectedFile.value!.extension,
+                                      ),
                                       style: const TextStyle(fontSize: 24),
                                     ),
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Text(
                                             selectedFile.value!.name,
-                                            style: theme.textTheme.bodyMedium?.copyWith(
-                                              fontWeight: FontWeight.w500,
-                                            ),
+                                            style: theme.textTheme.bodyMedium
+                                                ?.copyWith(
+                                                  fontWeight: FontWeight.w500,
+                                                ),
                                             maxLines: 2,
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                           Text(
                                             '${(selectedFile.value!.size / 1024 / 1024).toStringAsFixed(2)} MB',
-                                            style: theme.textTheme.bodySmall?.copyWith(
-                                              color: Colors.grey.shade600,
-                                            ),
+                                            style: theme.textTheme.bodySmall
+                                                ?.copyWith(
+                                                  color: Colors.grey.shade600,
+                                                ),
                                           ),
                                         ],
                                       ),
                                     ),
                                     IconButton(
-                                      icon: const Icon(Icons.close, color: Colors.red),
-                                      onPressed: () => selectedFile.value = null,
+                                      icon: const Icon(
+                                        Icons.close,
+                                        color: Colors.red,
+                                      ),
+                                      onPressed:
+                                          () => selectedFile.value = null,
                                     ),
                                   ],
                                 ),
@@ -498,7 +559,10 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
                 children: [
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: isUploading.value ? null : () => Navigator.pop(context),
+                      onPressed:
+                          isUploading.value
+                              ? null
+                              : () => Navigator.pop(context),
                       child: const Text('Cancel'),
                     ),
                   ),
@@ -511,22 +575,27 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
                         backgroundColor: theme.primaryColor,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
-                      child: isUploading.value
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      child:
+                          isUploading.value
+                              ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
+                                  ),
+                                ),
+                              )
+                              : Text(
+                                isEditMode
+                                    ? 'Update Document'
+                                    : 'Upload Document',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                            )
-                          : Text(
-                              isEditMode ? 'Update Document' : 'Upload Document',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
                     ),
                   ),
                 ],

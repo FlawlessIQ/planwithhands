@@ -25,18 +25,14 @@ class UserState extends _$UserState {
     ];
 
     state = state.copyWith(
-      userData: state.userData!.copyWith(
-        locationIds: updatedLocationIds,
-      ),
+      userData: state.userData!.copyWith(locationIds: updatedLocationIds),
     );
   }
 }
 
 @freezed
 class UserStateData with _$UserStateData {
-  factory UserStateData({
-    UserData? userData,
-  }) = _UserStateData;
+  factory UserStateData({UserData? userData}) = _UserStateData;
 
   factory UserStateData.fromJson(Map<String, dynamic> json) =>
       _$UserStateDataFromJson(json);

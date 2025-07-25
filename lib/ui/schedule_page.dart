@@ -8,6 +8,7 @@ import 'package:hands_app/data/models/schedule_entry_data.dart';
 import 'package:hands_app/ui/shift_bottom_sheet.dart';
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 class SchedulePage extends StatefulWidget {
   const SchedulePage({super.key});
@@ -48,10 +49,11 @@ class _SchedulePageState extends State<SchedulePage> {
     _userId = user.uid;
     // Get the user's organization ID and role from their user document
     try {
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
+      final userDoc =
+          await FirestoreEnforcer.instance
+              .collection('users')
+              .doc(user.uid)
+              .get();
       if (userDoc.exists) {
         final userData = userDoc.data()!;
         _orgId = userData['organizationId'] as String?;
@@ -62,35 +64,38 @@ class _SchedulePageState extends State<SchedulePage> {
     } catch (e) {
       debugPrint('Error getting user data: $e');
     }
-    
+
     // If no organization found, can't continue
     if (_orgId == null) {
       setState(() => _loadingSetup = false);
       return;
     }
-    
+
     // Fetch locations for this organization
     try {
-      final locSnap = await FirebaseFirestore.instance
-          .collection('organizations')
-          .doc(_orgId)
-          .collection('locations')
-          .get();
-      
+      final locSnap =
+          await FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(_orgId)
+              .collection('locations')
+              .get();
+
       // Map each doc to id and name
-      _locations = locSnap.docs.map((d) {
-        final data = d.data();
-        return {
-          'id': d.id,
-          'name': data['locationName'] ?? data['name'] ?? d.id,
-        };
-      }).toList();
-      
-      _selectedLocation = _locations.isNotEmpty ? _locations.first['id'] as String : null;
+      _locations =
+          locSnap.docs.map((d) {
+            final data = d.data();
+            return {
+              'id': d.id,
+              'name': data['locationName'] ?? data['name'] ?? d.id,
+            };
+          }).toList();
+
+      _selectedLocation =
+          _locations.isNotEmpty ? _locations.first['id'] as String : null;
     } catch (e) {
       debugPrint('Error loading locations: $e');
     }
-    
+
     // Default date range: next 7 days
     final today = DateTime.now();
     _selectedDateRange = DateTimeRange(
@@ -98,7 +103,7 @@ class _SchedulePageState extends State<SchedulePage> {
       end: today.add(const Duration(days: 6)),
     );
     _visibleDays = List.generate(7, (i) => today.add(Duration(days: i)));
-    
+
     setState(() => _loadingSetup = false);
   }
 
@@ -124,33 +129,44 @@ class _SchedulePageState extends State<SchedulePage> {
     final today = DateTime.now();
     _visibleDays.clear();
     for (var i = 0; i < 7; i++) {
-      _visibleDays.add(DateTime(today.year, today.month, today.day).add(Duration(days: i)));
+      _visibleDays.add(
+        DateTime(today.year, today.month, today.day).add(Duration(days: i)),
+      );
     }
   }
 
-  Future<void> _addOrEditShift([ScheduleEntryData? scheduleEntry, ShiftData? template]) async {
-    debugPrint("_addOrEditShift called with scheduleEntry: ${scheduleEntry?.toString()}, template: ${template?.shiftName}");
+  Future<void> _addOrEditShift([
+    ScheduleEntryData? scheduleEntry,
+    ShiftData? template,
+  ]) async {
+    debugPrint(
+      "_addOrEditShift called with scheduleEntry: ${scheduleEntry?.toString()}, template: ${template?.shiftName}",
+    );
     debugPrint("_orgId: $_orgId, _selectedLocation: $_selectedLocation");
-    
+
     // Find the template for this shift (needed for defaultParLevels and shiftName)
-    final shiftTemplatesSnap = await FirebaseFirestore.instance
-        .collection('organizations')
-        .doc(_orgId)
-        .collection('shifts')
-        .where('locationIds', arrayContains: _selectedLocation)
-        .get();
+    final shiftTemplatesSnap =
+        await FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(_orgId)
+            .collection('shifts')
+            .where('locationIds', arrayContains: _selectedLocation)
+            .get();
 
     final templates = shiftTemplatesSnap.docs;
     debugPrint("Found ${templates.length} shift templates");
-    
+
     Map<String, dynamic>? templateData;
     String? shiftId;
-    
+
     if (scheduleEntry != null) {
       // Editing existing schedule entry
       shiftId = scheduleEntry.shiftId;
-      final matchingTemplates = templates.where((doc) => doc.id == scheduleEntry.shiftId).toList();
-      debugPrint("Found ${matchingTemplates.length} matching templates for shiftId: ${scheduleEntry.shiftId}");
+      final matchingTemplates =
+          templates.where((doc) => doc.id == scheduleEntry.shiftId).toList();
+      debugPrint(
+        "Found ${matchingTemplates.length} matching templates for shiftId: ${scheduleEntry.shiftId}",
+      );
       if (matchingTemplates.isNotEmpty) {
         templateData = matchingTemplates.first.data();
         debugPrint("Template data found: ${templateData.keys}");
@@ -158,39 +174,53 @@ class _SchedulePageState extends State<SchedulePage> {
     } else if (template != null) {
       // Creating new schedule entry from template
       shiftId = template.shiftId;
-      final matchingTemplates = templates.where((doc) => doc.id == template.shiftId).toList();
-      debugPrint("Found ${matchingTemplates.length} matching templates for template shiftId: ${template.shiftId}");
+      final matchingTemplates =
+          templates.where((doc) => doc.id == template.shiftId).toList();
+      debugPrint(
+        "Found ${matchingTemplates.length} matching templates for template shiftId: ${template.shiftId}",
+      );
       if (matchingTemplates.isNotEmpty) {
         templateData = matchingTemplates.first.data();
         debugPrint("Template data found for new entry: ${templateData.keys}");
       }
     }
 
-    if ((scheduleEntry != null || template != null) && templateData != null && shiftId != null) {
+    if ((scheduleEntry != null || template != null) &&
+        templateData != null &&
+        shiftId != null) {
       debugPrint("Opening ShiftBottomSheet for shiftId: $shiftId");
       final shiftName = templateData['shiftName'] ?? 'Unnamed Shift';
-      final defaultParLevels = Map<String, int>.from(templateData['staffingLevels'] ?? {});
-      final dayShiftKey = scheduleEntry?.dayShiftKey ?? '${DateFormat('yyyy-MM-dd').format(_selectedDate)}_$shiftId';
-      final scheduleId = scheduleEntry?.scheduleId ?? 'schedule_${DateFormat('yyyy-MM-dd').format(_selectedDate)}_$_selectedLocation';
+      final defaultParLevels = Map<String, int>.from(
+        templateData['staffingLevels'] ?? {},
+      );
+      final dayShiftKey =
+          scheduleEntry?.dayShiftKey ??
+          '${DateFormat('yyyy-MM-dd').format(_selectedDate)}_$shiftId';
+      final scheduleId =
+          scheduleEntry?.scheduleId ??
+          'schedule_${DateFormat('yyyy-MM-dd').format(_selectedDate)}_$_selectedLocation';
       final locationId = _selectedLocation ?? '';
 
       await showModalBottomSheet(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
-        builder: (_) => ShiftBottomSheet(
-          scheduleId: scheduleId,
-          dayShiftKey: dayShiftKey,
-          shiftId: shiftId!,
-          shiftName: shiftName,
-          defaultParLevels: defaultParLevels,
-          organizationId: _orgId ?? '',
-          locationId: locationId,
-          existingEntry: scheduleEntry,
-        ),
+        builder:
+            (_) => ShiftBottomSheet(
+              scheduleId: scheduleId,
+              dayShiftKey: dayShiftKey,
+              shiftId: shiftId!,
+              shiftName: shiftName,
+              defaultParLevels: defaultParLevels,
+              organizationId: _orgId ?? '',
+              locationId: locationId,
+              existingEntry: scheduleEntry,
+            ),
       );
     } else {
-      debugPrint("Cannot open ShiftBottomSheet: scheduleEntry=${scheduleEntry != null}, template=${template != null}, templateData=${templateData != null}, shiftId=$shiftId");
+      debugPrint(
+        "Cannot open ShiftBottomSheet: scheduleEntry=${scheduleEntry != null}, template=${template != null}, templateData=${templateData != null}, shiftId=$shiftId",
+      );
       if (scheduleEntry == null && template == null) {
         debugPrint("Both scheduleEntry and template are null");
       }
@@ -199,7 +229,9 @@ class _SchedulePageState extends State<SchedulePage> {
       }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please create shift template first from admin dashboard'),
+          content: Text(
+            'Please create shift template first from admin dashboard',
+          ),
         ),
       );
     }
@@ -207,16 +239,16 @@ class _SchedulePageState extends State<SchedulePage> {
 
   Future<void> _publishAll() async {
     if (_orgId == null || _selectedLocation == null) return;
-    
+
     try {
-      final batch = FirebaseFirestore.instance.batch();
+      final batch = FirestoreEnforcer.instance.batch();
       Map<String, List<Map<String, String>>> userAssignments = {};
       DateTime startDate = _visibleDays.first;
       DateTime endDate = _visibleDays.last;
       for (final day in _visibleDays) {
         final dayKey = DateFormat('yyyy-MM-dd').format(day);
         final scheduleId = 'schedule_${dayKey}_$_selectedLocation';
-        final scheduleRef = FirebaseFirestore.instance
+        final scheduleRef = FirestoreEnforcer.instance
             .collection('organizations')
             .doc(_orgId)
             .collection('locations')
@@ -226,8 +258,12 @@ class _SchedulePageState extends State<SchedulePage> {
         batch.set(scheduleRef, {
           'id': scheduleId,
           'date': dayKey,
-          'startDate': Timestamp.fromDate(DateTime(day.year, day.month, day.day)),
-          'endDate': Timestamp.fromDate(DateTime(day.year, day.month, day.day, 23, 59, 59)),
+          'startDate': Timestamp.fromDate(
+            DateTime(day.year, day.month, day.day),
+          ),
+          'endDate': Timestamp.fromDate(
+            DateTime(day.year, day.month, day.day, 23, 59, 59),
+          ),
           'published': true,
           'organizationId': _orgId,
           'locationId': _selectedLocation,
@@ -235,15 +271,16 @@ class _SchedulePageState extends State<SchedulePage> {
           'updatedAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
         // Collect assignments for messaging
-        final entriesSnap = await FirebaseFirestore.instance
-            .collection('organizations')
-            .doc(_orgId)
-            .collection('locations')
-            .doc(_selectedLocation)
-            .collection('schedules')
-            .doc(scheduleId)
-            .collection('entries')
-            .get();
+        final entriesSnap =
+            await FirestoreEnforcer.instance
+                .collection('organizations')
+                .doc(_orgId)
+                .collection('locations')
+                .doc(_selectedLocation)
+                .collection('schedules')
+                .doc(scheduleId)
+                .collection('entries')
+                .get();
         for (final entryDoc in entriesSnap.docs) {
           final entry = entryDoc.data();
           if (entry['published'] == true && entry['assignedUserIds'] != null) {
@@ -264,11 +301,15 @@ class _SchedulePageState extends State<SchedulePage> {
       // Send in-app messages to users
       for (final userId in userAssignments.keys) {
         final assignments = userAssignments[userId]!;
-        final title = 'Your Schedule ${DateFormat('M/d/yy').format(startDate)} to ${DateFormat('M/d/yy').format(endDate)}';
-        final content = assignments.map((a) =>
-          '${a['date']}: ${a['shiftName']} (${a['startTime']} - ${a['endTime']})'
-        ).join('\n');
-        await FirebaseFirestore.instance
+        final title =
+            'Your Schedule ${DateFormat('M/d/yy').format(startDate)} to ${DateFormat('M/d/yy').format(endDate)}';
+        final content = assignments
+            .map(
+              (a) =>
+                  '${a['date']}: ${a['shiftName']} (${a['startTime']} - ${a['endTime']})',
+            )
+            .join('\n');
+        await FirestoreEnforcer.instance
             .collection('users')
             .doc(userId)
             .collection('messages')
@@ -302,12 +343,12 @@ class _SchedulePageState extends State<SchedulePage> {
 
   Future<void> _publishDay(DateTime day) async {
     if (_orgId == null || _selectedLocation == null) return;
-    
+
     try {
       final dayKey = DateFormat('yyyy-MM-dd').format(day);
       final scheduleId = 'schedule_${dayKey}_$_selectedLocation';
-      
-      await FirebaseFirestore.instance
+
+      await FirestoreEnforcer.instance
           .collection('organizations')
           .doc(_orgId)
           .collection('locations')
@@ -315,21 +356,27 @@ class _SchedulePageState extends State<SchedulePage> {
           .collection('schedules')
           .doc(scheduleId)
           .set({
-        'id': scheduleId,
-        'date': dayKey,
-        'startDate': Timestamp.fromDate(DateTime(day.year, day.month, day.day)),
-        'endDate': Timestamp.fromDate(DateTime(day.year, day.month, day.day, 23, 59, 59)),
-        'published': true,
-        'organizationId': _orgId,
-        'locationId': _selectedLocation,
-        'publishedAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-      
+            'id': scheduleId,
+            'date': dayKey,
+            'startDate': Timestamp.fromDate(
+              DateTime(day.year, day.month, day.day),
+            ),
+            'endDate': Timestamp.fromDate(
+              DateTime(day.year, day.month, day.day, 23, 59, 59),
+            ),
+            'published': true,
+            'organizationId': _orgId,
+            'locationId': _selectedLocation,
+            'publishedAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${DateFormat('MMM d').format(day)} schedule published!'),
+            content: Text(
+              '${DateFormat('MMM d').format(day)} schedule published!',
+            ),
             backgroundColor: Colors.green,
           ),
         );
@@ -347,7 +394,9 @@ class _SchedulePageState extends State<SchedulePage> {
   }
 
   Future<void> _showAssignmentSheet(
-      ShiftData shift, ScheduleEntryData entry) async {
+    ShiftData shift,
+    ScheduleEntryData entry,
+  ) async {
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -359,7 +408,9 @@ class _SchedulePageState extends State<SchedulePage> {
             return Container(
               decoration: BoxDecoration(
                 color: Theme.of(context).cardColor,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(16),
+                ),
               ),
               child: DefaultTabController(
                 length: 2,
@@ -375,7 +426,10 @@ class _SchedulePageState extends State<SchedulePage> {
                       ),
                     ),
                     const TabBar(
-                      tabs: [Tab(text: 'Available'), Tab(text: 'Other Qualified')],
+                      tabs: [
+                        Tab(text: 'Available'),
+                        Tab(text: 'Other Qualified'),
+                      ],
                     ),
                     Expanded(
                       child: TabBarView(
@@ -406,13 +460,15 @@ class _SchedulePageState extends State<SchedulePage> {
   }
 
   Stream<List<ScheduleEntryData>> _shiftsForDayStream(DateTime day) {
-    if (_orgId == null || _selectedLocation == null) return const Stream.empty();
-    
+    if (_orgId == null || _selectedLocation == null) {
+      return const Stream.empty();
+    }
+
     // Create the schedule ID for this day (this should match what's used in shift bottom sheet)
     final dayKey = DateFormat('yyyy-MM-dd').format(day);
     final scheduleId = 'schedule_${dayKey}_$_selectedLocation';
-    
-    return FirebaseFirestore.instance
+
+    return FirestoreEnforcer.instance
         .collection('organizations')
         .doc(_orgId)
         .collection('locations')
@@ -421,18 +477,23 @@ class _SchedulePageState extends State<SchedulePage> {
         .doc(scheduleId)
         .collection('entries')
         .snapshots()
-        .map((snap) => snap.docs
-            .map((doc) => ScheduleEntryData.fromMap(doc.data(), doc.id))
-            .toList());
+        .map(
+          (snap) =>
+              snap.docs
+                  .map((doc) => ScheduleEntryData.fromMap(doc.data(), doc.id))
+                  .toList(),
+        );
   }
 
   Stream<bool> _schedulePublishedStream(DateTime day) {
-    if (_orgId == null || _selectedLocation == null) return const Stream.empty();
-    
+    if (_orgId == null || _selectedLocation == null) {
+      return const Stream.empty();
+    }
+
     final dayKey = DateFormat('yyyy-MM-dd').format(day);
     final scheduleId = 'schedule_${dayKey}_$_selectedLocation';
-    
-    return FirebaseFirestore.instance
+
+    return FirestoreEnforcer.instance
         .collection('organizations')
         .doc(_orgId)
         .collection('locations')
@@ -459,9 +520,7 @@ class _SchedulePageState extends State<SchedulePage> {
   // Admin/Manager schedule editor UI
   Widget _buildEditorView() {
     if (_loadingSetup) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     if (_orgId == null) {
@@ -475,12 +534,17 @@ class _SchedulePageState extends State<SchedulePage> {
     final maxDays = 3;
     final totalDays = _visibleDays.length;
     int startIdx = _currentDayPage * maxDays;
-    int endIdx = (startIdx + maxDays) > totalDays ? totalDays : (startIdx + maxDays);
-    final daysToShow = isMobile ? _visibleDays.sublist(startIdx, endIdx) : _visibleDays;
+    int endIdx =
+        (startIdx + maxDays) > totalDays ? totalDays : (startIdx + maxDays);
+    final daysToShow =
+        isMobile ? _visibleDays.sublist(startIdx, endIdx) : _visibleDays;
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).primaryColor,
-        title: GenericAppBarContent(appBarTitle: 'Schedule Editor', userRole: _userRole),
+        title: GenericAppBarContent(
+          appBarTitle: 'Schedule Editor',
+          userRole: _userRole,
+        ),
         automaticallyImplyLeading: false,
         iconTheme: const IconThemeData(color: Colors.white),
         // Removed Publish button from actions
@@ -501,12 +565,13 @@ class _SchedulePageState extends State<SchedulePage> {
                       labelText: 'Location',
                       border: OutlineInputBorder(),
                     ),
-                    items: _locations.map((loc) {
-                      return DropdownMenuItem<String>(
-                        value: loc['id'] as String,
-                        child: Text(loc['name'] as String),
-                      );
-                    }).toList(),
+                    items:
+                        _locations.map((loc) {
+                          return DropdownMenuItem<String>(
+                            value: loc['id'] as String,
+                            child: Text(loc['name'] as String),
+                          );
+                        }).toList(),
                     onChanged: (value) {
                       setState(() {
                         _selectedLocation = value;
@@ -529,9 +594,11 @@ class _SchedulePageState extends State<SchedulePage> {
                     Expanded(
                       child: ElevatedButton.icon(
                         icon: const Icon(Icons.calendar_today),
-                        label: Text(_selectedDateRange != null 
-                          ? '${DateFormat('MMM d').format(_selectedDateRange!.start)} - ${DateFormat('MMM d').format(_selectedDateRange!.end)}'
-                          : 'Select Date Range'),
+                        label: Text(
+                          _selectedDateRange != null
+                              ? '${DateFormat('MMM d').format(_selectedDateRange!.start)} - ${DateFormat('MMM d').format(_selectedDateRange!.end)}'
+                              : 'Select Date Range',
+                        ),
                         onPressed: () => _selectDateRange(context),
                       ),
                     ),
@@ -558,24 +625,26 @@ class _SchedulePageState extends State<SchedulePage> {
                     children: [
                       IconButton(
                         icon: const Icon(Icons.chevron_left),
-                        onPressed: _currentDayPage > 0
-                            ? () {
-                                setState(() {
-                                  _currentDayPage--;
-                                });
-                              }
-                            : null,
+                        onPressed:
+                            _currentDayPage > 0
+                                ? () {
+                                  setState(() {
+                                    _currentDayPage--;
+                                  });
+                                }
+                                : null,
                       ),
                       Text('Days ${startIdx + 1}-$endIdx'),
                       IconButton(
                         icon: const Icon(Icons.chevron_right),
-                        onPressed: endIdx < totalDays
-                            ? () {
-                                setState(() {
-                                  _currentDayPage++;
-                                });
-                              }
-                            : null,
+                        onPressed:
+                            endIdx < totalDays
+                                ? () {
+                                  setState(() {
+                                    _currentDayPage++;
+                                  });
+                                }
+                                : null,
                       ),
                     ],
                   ),
@@ -584,24 +653,25 @@ class _SchedulePageState extends State<SchedulePage> {
           ),
           // Schedule Grid
           if (_selectedLocation != null && _visibleDays.isNotEmpty)
-            Expanded(
-              child: _buildScheduleGrid(daysToShow),
-            )
+            Expanded(child: _buildScheduleGrid(daysToShow))
           else
             const Expanded(
               child: Center(
-                child: Text('Select a location and date range to view schedule'),
+                child: Text(
+                  'Select a location and date range to view schedule',
+                ),
               ),
             ),
         ],
       ),
-      floatingActionButton: _isAdmin
-          ? FloatingActionButton.extended(
-              onPressed: _publishAll,
-              icon: const Icon(Icons.publish),
-              label: const Text('Publish Schedule'),
-            )
-          : null,
+      floatingActionButton:
+          _isAdmin
+              ? FloatingActionButton.extended(
+                onPressed: _publishAll,
+                icon: const Icon(Icons.publish),
+                label: const Text('Publish Schedule'),
+              )
+              : null,
     );
   }
 
@@ -609,9 +679,7 @@ class _SchedulePageState extends State<SchedulePage> {
 
   Widget _buildMyScheduleView() {
     if (_loadingSetup) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     if (_orgId == null || _selectedLocation == null) {
       return const Scaffold(
@@ -623,7 +691,10 @@ class _SchedulePageState extends State<SchedulePage> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).primaryColor,
-        title: GenericAppBarContent(appBarTitle: 'My Schedule', userRole: _userRole),
+        title: GenericAppBarContent(
+          appBarTitle: 'My Schedule',
+          userRole: _userRole,
+        ),
         automaticallyImplyLeading: false,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
@@ -635,15 +706,16 @@ class _SchedulePageState extends State<SchedulePage> {
           final dayKey = DateFormat('yyyy-MM-dd').format(day);
           final scheduleId = 'schedule_${dayKey}_$_selectedLocation';
           return FutureBuilder<QuerySnapshot>(
-            future: FirebaseFirestore.instance
-                .collection('organizations')
-                .doc(_orgId)
-                .collection('locations')
-                .doc(_selectedLocation)
-                .collection('schedules')
-                .doc(scheduleId)
-                .collection('entries')
-                .get(),
+            future:
+                FirestoreEnforcer.instance
+                    .collection('organizations')
+                    .doc(_orgId)
+                    .collection('locations')
+                    .doc(_selectedLocation)
+                    .collection('schedules')
+                    .doc(scheduleId)
+                    .collection('entries')
+                    .get(),
             builder: (context, entrySnap) {
               if (entrySnap.connectionState == ConnectionState.waiting) {
                 return const Padding(
@@ -652,10 +724,11 @@ class _SchedulePageState extends State<SchedulePage> {
                 );
               }
               final entries = entrySnap.data?.docs ?? [];
-              final publishedEntries = entries.where((doc) {
-                final data = doc.data() as Map<String, dynamic>;
-                return data['published'] == true;
-              }).toList();
+              final publishedEntries =
+                  entries.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    return data['published'] == true;
+                  }).toList();
               if (publishedEntries.isEmpty) {
                 return ListTile(
                   title: Text(DateFormat('EEE, MMM d').format(day)),
@@ -666,20 +739,38 @@ class _SchedulePageState extends State<SchedulePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-                    child: Text(DateFormat('EEE, MMM d').format(day), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 8.0,
+                      horizontal: 16.0,
+                    ),
+                    child: Text(
+                      DateFormat('EEE, MMM d').format(day),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
                   ),
                   ...publishedEntries.map((doc) {
                     final data = doc.data() as Map<String, dynamic>;
                     final shiftName = data['shiftName'] ?? 'Unnamed Shift';
                     final startTime = data['startTime'] ?? '';
                     final endTime = data['endTime'] ?? '';
-                    final assignedUserIds = List<String>.from(data['assignedUserIds'] ?? []);
-                    final isAssigned = userId != null && assignedUserIds.contains(userId);
+                    final assignedUserIds = List<String>.from(
+                      data['assignedUserIds'] ?? [],
+                    );
+                    final isAssigned =
+                        userId != null && assignedUserIds.contains(userId);
                     return Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 4,
+                      ),
                       child: ListTile(
-                        leading: Icon(isAssigned ? Icons.check_circle : Icons.group, color: isAssigned ? Colors.green : Colors.blue),
+                        leading: Icon(
+                          isAssigned ? Icons.check_circle : Icons.group,
+                          color: isAssigned ? Colors.green : Colors.blue,
+                        ),
                         title: Text(shiftName),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -691,7 +782,16 @@ class _SchedulePageState extends State<SchedulePage> {
                               Text('Users: ${assignedUserIds.join(", ")}'),
                           ],
                         ),
-                        trailing: isAssigned ? const Text('Assigned', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)) : null,
+                        trailing:
+                            isAssigned
+                                ? const Text(
+                                  'Assigned',
+                                  style: TextStyle(
+                                    color: Colors.green,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                )
+                                : null,
                       ),
                     );
                   }),
@@ -718,7 +818,10 @@ class _SchedulePageState extends State<SchedulePage> {
                 Container(
                   width: 120,
                   padding: const EdgeInsets.all(8),
-                  child: const Text('Shifts', style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: const Text(
+                    'Shifts',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ),
                 // Day headers
                 ...days.map((day) {
@@ -733,7 +836,10 @@ class _SchedulePageState extends State<SchedulePage> {
                         children: [
                           Text(
                             DateFormat.E().format(day),
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
                           ),
                           Text(
                             DateFormat.MMMd().format(day),
@@ -751,9 +857,14 @@ class _SchedulePageState extends State<SchedulePage> {
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Icon(
-                                    isPublished ? Icons.check_circle : Icons.radio_button_unchecked,
+                                    isPublished
+                                        ? Icons.check_circle
+                                        : Icons.radio_button_unchecked,
                                     size: 12,
-                                    color: isPublished ? Colors.green : Colors.grey,
+                                    color:
+                                        isPublished
+                                            ? Colors.green
+                                            : Colors.grey,
                                   ),
                                   const SizedBox(width: 2),
                                   if (_isAdmin)
@@ -778,154 +889,208 @@ class _SchedulePageState extends State<SchedulePage> {
             ),
           ),
           // Shifts Grid
-          FutureBuilder<QuerySnapshot>(
-            future: FirebaseFirestore.instance
-                .collection('organizations')
-                .doc(_orgId)
-                .collection('shifts')
-                .where('locationIds', arrayContains: _selectedLocation)
-                .get(),
-            builder: (context, shiftSnapshot) {
-              if (shiftSnapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (!shiftSnapshot.hasData || shiftSnapshot.data!.docs.isEmpty) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(32),
-                    child: Text(
-                      'No shift templates found for this location.\nCreate shift templates from the Admin Dashboard first.',
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                );
-              }
-              final shifts = shiftSnapshot.data!.docs.map((doc) {
-                final data = doc.data() as Map<String, dynamic>;
-                return ShiftData.fromJson({...data, 'shiftId': doc.id});
-              }).toList();
-              return Column(
-                children: shifts.map<Widget>((shift) {
-                  return SizedBox(
-                    height: 80,
-                    child: Row(
-                      children: [
-                        // Shift name column
-                        Container(
-                          width: 120,
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.grey.shade300),
-                            color: Colors.grey.shade50,
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                shift.shiftName,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
+      // Shift templates list with live updates (client-side filter)
+      StreamBuilder<QuerySnapshot>(
+        stream: FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(_orgId)
+            .collection('shifts')
+            .snapshots(),
+        builder: (context, shiftSnapshot) {
+          if (!shiftSnapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          // Filter templates for selected location
+          final allDocs = shiftSnapshot.data!.docs;
+          // Show all shift templates (remove filter for testing)
+          final docs = allDocs;
+          if (docs.isEmpty) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(32),
+                child: Text(
+                  'No shift templates found for this location.\nCreate shift templates from the Admin Dashboard first.',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            );
+          }
+          final shifts = docs.map((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            // Build activeDays list: prefer non-empty activeDays, otherwise fallback to days strings
+            final List<dynamic> storedActive = data['activeDays'] as List<dynamic>? ?? [];
+            final rawDays = storedActive.isNotEmpty
+                ? storedActive
+                : (data['days'] as List<dynamic>? ?? <dynamic>[]);
+            const nameMap = {
+              'Monday': DateTime.monday,
+              'Tuesday': DateTime.tuesday,
+              'Wednesday': DateTime.wednesday,
+              'Thursday': DateTime.thursday,
+              'Friday': DateTime.friday,
+              'Saturday': DateTime.saturday,
+              'Sunday': DateTime.sunday,
+            };
+            final activeDays = rawDays.map<int>((e) {
+              if (e is int) return e;
+              if (e is String && nameMap.containsKey(e)) return nameMap[e]!;
+              return int.tryParse(e.toString()) ?? 0;
+            }).where((d) => d >= DateTime.monday && d <= DateTime.sunday).toList();
+            final raw = Map<String, dynamic>.from(data)
+              ..['shiftId'] = doc.id
+              ..['activeDays'] = activeDays;
+            return ShiftData.fromJson(raw);
+          }).toList();
+          return Column(
+            children: shifts.map<Widget>((shift) {
+                      return SizedBox(
+                        height: 80,
+                        child: Row(
+                          children: [
+                            // Shift name column
+                            Container(
+                              width: 120,
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey.shade300),
+                                color: Colors.grey.shade50,
                               ),
-                              Text(
-                                '${shift.startTime} - ${shift.endTime}',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.grey.shade600,
-                                ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    shift.shiftName,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(
+                                    '${shift.startTime} - ${shift.endTime}',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                        ),
-                        // Day cells for this shift
-                        ...days.map<Widget>((day) {
-                          // Determine weekday int (1=Mon, 7=Sun)
-                          final weekday = day.weekday;
-                          // shift.activeDays is always a non-null List<int>
-                          final isActive = shift.activeDays.isEmpty
-                              ? true // fallback: show if not specified
-                              : shift.activeDays.contains(weekday);
-                          if (!isActive) {
-                            // Greyed out cell, no tap
-                            return Expanded(
-                              child: Container(
-                                margin: const EdgeInsets.all(2),
-                                decoration: BoxDecoration(
-                                  border: Border.all(color: Colors.grey.shade300),
-                                  color: Colors.grey.shade200,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: const Center(
-                                  child: Icon(Icons.block, color: Colors.grey),
-                                ),
-                              ),
-                            );
-                          }
-                          return Expanded(
-                            child: StreamBuilder<List<ScheduleEntryData>>(
-                              stream: _shiftsForDayStream(day),
-                              builder: (context, snapshot) {
-                                final entries = snapshot.data ?? [];
-                                final matchingEntries = entries.where((e) => e.shiftId == shift.shiftId);
-                                final entry = matchingEntries.isNotEmpty ? matchingEntries.first : null;
-                                return GestureDetector(
-                                  onTap: () {
-                                    if (entry != null) {
-                                      _addOrEditShift(entry);
-                                    } else {
-                                      setState(() {
-                                        _selectedDate = day;
-                                      });
-                                      _addOrEditShift(null, shift);
-                                    }
-                                  },
+                            ),
+                            // Day cells for this shift
+                            ...days.map<Widget>((day) {
+                              // Determine weekday int (1=Mon, 7=Sun)
+                              final weekday = day.weekday;
+                              // shift.activeDays is always a non-null List<int>
+                              final isActive =
+                                  shift.activeDays.isEmpty
+                                      ? true // fallback: show if not specified
+                                      : shift.activeDays.contains(weekday);
+                              if (!isActive) {
+                                // Greyed out cell, no tap
+                                return Expanded(
                                   child: Container(
                                     margin: const EdgeInsets.all(2),
                                     decoration: BoxDecoration(
-                                      border: Border.all(color: Colors.grey.shade300),
-                                      color: entry != null ? Colors.blue.shade50 : Colors.white,
+                                      border: Border.all(
+                                        color: Colors.grey.shade300,
+                                      ),
+                                      color: Colors.grey.shade200,
                                       borderRadius: BorderRadius.circular(4),
                                     ),
-                                    child: Center(
-                                      child: entry != null
-                                          ? Column(
-                                              mainAxisAlignment: MainAxisAlignment.center,
-                                              children: [
-                                                Text(
-                                                  '${entry.assignedUserIds.length}',
-                                                  style: TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    color: Colors.blue.shade700,
-                                                  ),
-                                                ),
-                                                Text(
-                                                  'assigned',
-                                                  style: TextStyle(
-                                                    fontSize: 10,
-                                                    color: Colors.blue.shade600,
-                                                  ),
-                                                ),
-                                              ],
-                                            )
-                                          : Icon(
-                                              Icons.add,
-                                              color: Colors.grey.shade400,
-                                            ),
+                                    child: const Center(
+                                      child: Icon(
+                                        Icons.block,
+                                        color: Colors.grey,
+                                      ),
                                     ),
                                   ),
                                 );
-                              },
-                            ),
-                          );
-                        }),
-                      ],
-                    ),
-                  );
-                }).toList(),
+                              }
+                              return Expanded(
+                                child: StreamBuilder<List<ScheduleEntryData>>(
+                                  stream: _shiftsForDayStream(day),
+                                  builder: (context, snapshot) {
+                                    final entries = snapshot.data ?? [];
+                                    final matchingEntries = entries.where(
+                                      (e) => e.shiftId == shift.shiftId,
+                                    );
+                                    final entry =
+                                        matchingEntries.isNotEmpty
+                                            ? matchingEntries.first
+                                            : null;
+                                    return GestureDetector(
+                                      onTap: () {
+                                        if (entry != null) {
+                                          _addOrEditShift(entry);
+                                        } else {
+                                          setState(() {
+                                            _selectedDate = day;
+                                          });
+                                          _addOrEditShift(null, shift);
+                                        }
+                                      },
+                                      child: Container(
+                                        margin: const EdgeInsets.all(2),
+                                        decoration: BoxDecoration(
+                                          border: Border.all(
+                                            color: Colors.grey.shade300,
+                                          ),
+                                          color:
+                                              entry != null
+                                                  ? Colors.blue.shade50
+                                                  : Colors.white,
+                                          borderRadius: BorderRadius.circular(
+                                            4,
+                                          ),
+                                        ),
+                                        child: Center(
+                                          child:
+                                              entry != null
+                                                  ? Column(
+                                                    mainAxisAlignment:
+                                                        MainAxisAlignment
+                                                            .center,
+                                                    children: [
+                                                      Text(
+                                                        '${entry.assignedUserIds.length}',
+                                                        style: TextStyle(
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          color:
+                                                              Colors
+                                                                  .blue
+                                                                  .shade700,
+                                                        ),
+                                                      ),
+                                                      Text(
+                                                        'assigned',
+                                                        style: TextStyle(
+                                                          fontSize: 10,
+                                                          color:
+                                                              Colors
+                                                                  .blue
+                                                                  .shade600,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  )
+                                                  : Icon(
+                                                    Icons.add,
+                                                    color: Colors.grey.shade400,
+                                                  ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              );
+                            }),
+                          ],
+                        ),
+                      );
+                    }).toList(),
               );
             },
           ),
@@ -934,22 +1099,4 @@ class _SchedulePageState extends State<SchedulePage> {
     );
   }
 
-  Future<List<ScheduleEntryData>> _fetchMyScheduleEntries(List<String> scheduleIds) async {
-    if (_orgId == null || _selectedLocation == null || _userId == null) return [];
-    List<ScheduleEntryData> allEntries = [];
-    for (final scheduleId in scheduleIds) {
-      final entriesSnap = await FirebaseFirestore.instance
-          .collection('organizations')
-          .doc(_orgId)
-          .collection('locations')
-          .doc(_selectedLocation)
-          .collection('schedules')
-          .doc(scheduleId)
-          .collection('entries')
-          .where('assignedUserIds', arrayContains: _userId)
-          .get();
-      allEntries.addAll(entriesSnap.docs.map((d) => ScheduleEntryData.fromMap(d.data(), d.id)));
-    }
-    return allEntries;
-  }
 }

@@ -1,10 +1,10 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:hands_app/data/models/extended_user_data.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 class ScheduleNotificationService {
   static final FirebaseFunctions _functions = FirebaseFunctions.instance;
-  static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  static final _firestore = FirestoreEnforcer.instance;
 
   /// Send notifications to all users assigned to shifts in a published schedule
   static Future<void> sendSchedulePublishedNotifications({
@@ -17,48 +17,55 @@ class ScheduleNotificationService {
   }) async {
     try {
       // Get organization name
-      final orgDoc = await _firestore
-          .collection('organizations')
-          .doc(organizationId)
-          .get();
-      
-      final organizationName = orgDoc.data()?['organizationName'] ?? 'Your Organization';
-      
+      final orgDoc =
+          await _firestore
+              .collection('organizations')
+              .doc(organizationId)
+              .get();
+
+      final organizationName =
+          orgDoc.data()?['organizationName'] ?? 'Your Organization';
+
       // Get location name
-      final locationDoc = await _firestore
-          .collection('organizations')
-          .doc(organizationId)
-          .collection('locations')
-          .doc(locationId)
-          .get();
-      
-      final locationName = locationDoc.data()?['locationName'] ?? 'Your Location';
-      
+      final locationDoc =
+          await _firestore
+              .collection('organizations')
+              .doc(organizationId)
+              .collection('locations')
+              .doc(locationId)
+              .get();
+
+      final locationName =
+          locationDoc.data()?['locationName'] ?? 'Your Location';
+
       // Get user data for all assigned users
       final userDocs = await Future.wait(
-        assignedUserIds.map((userId) => 
-          _firestore.collection('users').doc(userId).get()
-        )
+        assignedUserIds.map(
+          (userId) => _firestore.collection('users').doc(userId).get(),
+        ),
       );
-      
+
       final notifications = <Map<String, dynamic>>[];
-      
+
       for (final userDoc in userDocs) {
         if (!userDoc.exists) continue;
-        
+
         final userData = ExtendedUserData.fromMap(userDoc.data()!, userDoc.id);
-        
+
         // Check user's notification preferences
-        final wantsScheduleUpdates = userData.notificationSettings['scheduleUpdates'] ?? true;
-        final wantsEmailNotifications = userData.notificationSettings['emailNotifications'] ?? true;
-        final wantsPushNotifications = userData.notificationSettings['pushNotifications'] ?? true;
-        
+        final wantsScheduleUpdates =
+            userData.notificationSettings['scheduleUpdates'] ?? true;
+        final wantsEmailNotifications =
+            userData.notificationSettings['emailNotifications'] ?? true;
+        final wantsPushNotifications =
+            userData.notificationSettings['pushNotifications'] ?? true;
+
         if (!wantsScheduleUpdates) continue;
-        
+
         // Format date range for display
         final weekStartFormatted = _formatDate(weekStart);
         final weekEndFormatted = _formatDate(weekEnd);
-        
+
         final notification = {
           'userId': userData.userId,
           'email': userData.emailAddress,
@@ -71,10 +78,10 @@ class ScheduleNotificationService {
           'sendEmail': wantsEmailNotifications,
           'sendPush': wantsPushNotifications,
         };
-        
+
         notifications.add(notification);
       }
-      
+
       if (notifications.isNotEmpty) {
         // Call cloud function to send notifications
         final callable = _functions.httpsCallable('sendScheduleNotifications');
@@ -103,42 +110,49 @@ class ScheduleNotificationService {
   }) async {
     try {
       // Get organization and location names
-      final orgDoc = await _firestore
-          .collection('organizations')
-          .doc(organizationId)
-          .get();
-      
-      final locationDoc = await _firestore
-          .collection('organizations')
-          .doc(organizationId)
-          .collection('locations')
-          .doc(locationId)
-          .get();
-      
-      final organizationName = orgDoc.data()?['organizationName'] ?? 'Your Organization';
-      final locationName = locationDoc.data()?['locationName'] ?? 'Your Location';
-      
+      final orgDoc =
+          await _firestore
+              .collection('organizations')
+              .doc(organizationId)
+              .get();
+
+      final locationDoc =
+          await _firestore
+              .collection('organizations')
+              .doc(organizationId)
+              .collection('locations')
+              .doc(locationId)
+              .get();
+
+      final organizationName =
+          orgDoc.data()?['organizationName'] ?? 'Your Organization';
+      final locationName =
+          locationDoc.data()?['locationName'] ?? 'Your Location';
+
       // Get user data for all assigned users
       final userDocs = await Future.wait(
-        assignedUserIds.map((userId) => 
-          _firestore.collection('users').doc(userId).get()
-        )
+        assignedUserIds.map(
+          (userId) => _firestore.collection('users').doc(userId).get(),
+        ),
       );
-      
+
       final reminders = <Map<String, dynamic>>[];
-      
+
       for (final userDoc in userDocs) {
         if (!userDoc.exists) continue;
-        
+
         final userData = ExtendedUserData.fromMap(userDoc.data()!, userDoc.id);
-        
+
         // Check user's notification preferences
-        final wantsShiftReminders = userData.notificationSettings['shiftReminders'] ?? true;
-        final wantsEmailNotifications = userData.notificationSettings['emailNotifications'] ?? true;
-        final wantsPushNotifications = userData.notificationSettings['pushNotifications'] ?? true;
-        
+        final wantsShiftReminders =
+            userData.notificationSettings['shiftReminders'] ?? true;
+        final wantsEmailNotifications =
+            userData.notificationSettings['emailNotifications'] ?? true;
+        final wantsPushNotifications =
+            userData.notificationSettings['pushNotifications'] ?? true;
+
         if (!wantsShiftReminders) continue;
-        
+
         final reminder = {
           'userId': userData.userId,
           'email': userData.emailAddress,
@@ -151,10 +165,10 @@ class ScheduleNotificationService {
           'sendEmail': wantsEmailNotifications,
           'sendPush': wantsPushNotifications,
         };
-        
+
         reminders.add(reminder);
       }
-      
+
       if (reminders.isNotEmpty) {
         // Call cloud function to send reminders
         final callable = _functions.httpsCallable('sendShiftReminders');
@@ -174,10 +188,20 @@ class ScheduleNotificationService {
 
   static String _formatDate(DateTime date) {
     final months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
     ];
-    
+
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }
 }

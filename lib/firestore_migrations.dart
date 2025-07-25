@@ -1,8 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 /// Migrates the users collection to the new schema.
 Future<void> migrateUsersCollection() async {
-  final users = await FirebaseFirestore.instance.collection('users').get();
+  final users = await FirestoreEnforcer.instance.collection('users').get();
   for (final doc in users.docs) {
     final data = doc.data();
     final updates = <String, dynamic>{};
@@ -17,7 +18,9 @@ Future<void> migrateUsersCollection() async {
     if (data.containsKey('userEmail') || data.containsKey('email')) {
       final email = data['userEmail'] ?? data['email'];
       updates['emailAddress'] = email;
-      if (data.containsKey('userEmail')) updates['userEmail'] = FieldValue.delete();
+      if (data.containsKey('userEmail')) {
+        updates['userEmail'] = FieldValue.delete();
+      }
       if (data.containsKey('email')) updates['email'] = FieldValue.delete();
     }
 
@@ -48,11 +51,12 @@ Future<void> migrateUsersCollection() async {
 
 /// Migrates checklists by moving tasks array to a subcollection.
 Future<void> migrateChecklistsToSubcollections(String orgId) async {
-  final checklists = await FirebaseFirestore.instance
-      .collection('organizations')
-      .doc(orgId)
-      .collection('checklists')
-      .get();
+  final checklists =
+      await FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(orgId)
+          .collection('checklists')
+          .get();
 
   for (final checklistDoc in checklists.docs) {
     final data = checklistDoc.data();
@@ -73,16 +77,18 @@ Future<void> migrateChecklistsToSubcollections(String orgId) async {
 
 /// Migrates all checklists in all locations and shifts to use tasks subcollections (nested schema).
 Future<void> migrateAllChecklistsToSubcollections(String orgId) async {
-  final firestore = FirebaseFirestore.instance;
-  final locationsSnap = await firestore
-      .collection('organizations')
-      .doc(orgId)
-      .collection('locations')
-      .get();
+  final firestore = FirestoreEnforcer.instance;
+  final locationsSnap =
+      await firestore
+          .collection('organizations')
+          .doc(orgId)
+          .collection('locations')
+          .get();
   for (final locationDoc in locationsSnap.docs) {
     final shiftsSnap = await locationDoc.reference.collection('shifts').get();
     for (final shiftDoc in shiftsSnap.docs) {
-      final checklistsSnap = await shiftDoc.reference.collection('checklists').get();
+      final checklistsSnap =
+          await shiftDoc.reference.collection('checklists').get();
       for (final checklistDoc in checklistsSnap.docs) {
         final data = checklistDoc.data();
         final tasks = data['tasks'] as List? ?? [];
@@ -91,8 +97,12 @@ Future<void> migrateAllChecklistsToSubcollections(String orgId) async {
           await checklistDoc.reference.update({'tasks': FieldValue.delete()});
           // Fan out tasks into subcollection
           for (final task in tasks) {
-            final taskId = task['taskId'] ?? firestore.collection('dummy').doc().id;
-            await checklistDoc.reference.collection('tasks').doc(taskId).set(task);
+            final taskId =
+                task['taskId'] ?? firestore.collection('dummy').doc().id;
+            await checklistDoc.reference
+                .collection('tasks')
+                .doc(taskId)
+                .set(task);
           }
         }
       }
@@ -102,11 +112,12 @@ Future<void> migrateAllChecklistsToSubcollections(String orgId) async {
 
 /// Migrates shifts to use Timestamp fields and new field names.
 Future<void> migrateShiftsToTimestamps(String orgId) async {
-  final shifts = await FirebaseFirestore.instance
-      .collection('organizations')
-      .doc(orgId)
-      .collection('shifts')
-      .get();
+  final shifts =
+      await FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(orgId)
+          .collection('shifts')
+          .get();
 
   for (final shiftDoc in shifts.docs) {
     final data = shiftDoc.data();
@@ -114,7 +125,9 @@ Future<void> migrateShiftsToTimestamps(String orgId) async {
 
     // Convert startTime/endTime from string to Timestamp
     if (data['startTime'] is String) {
-      updates['startTime'] = Timestamp.fromDate(DateTime.parse(data['startTime']));
+      updates['startTime'] = Timestamp.fromDate(
+        DateTime.parse(data['startTime']),
+      );
     }
     if (data['endTime'] is String) {
       updates['endTime'] = Timestamp.fromDate(DateTime.parse(data['endTime']));
@@ -128,7 +141,9 @@ Future<void> migrateShiftsToTimestamps(String orgId) async {
 
     // Rename shiftDate -> startDate as Timestamp
     if (data['shiftDate'] is String) {
-      updates['startDate'] = Timestamp.fromDate(DateTime.parse(data['shiftDate']));
+      updates['startDate'] = Timestamp.fromDate(
+        DateTime.parse(data['shiftDate']),
+      );
       updates['shiftDate'] = FieldValue.delete();
     }
 
@@ -140,11 +155,12 @@ Future<void> migrateShiftsToTimestamps(String orgId) async {
 
 /// Migrates notifications to use targets map and readBy array.
 Future<void> migrateNotifications(String orgId) async {
-  final notifs = await FirebaseFirestore.instance
-      .collection('organizations')
-      .doc(orgId)
-      .collection('notifications')
-      .get();
+  final notifs =
+      await FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(orgId)
+          .collection('notifications')
+          .get();
 
   for (final notifDoc in notifs.docs) {
     final data = notifDoc.data();
@@ -176,7 +192,7 @@ Future<void> migrateNotifications(String orgId) async {
 
 /// Adds timestamps and orgId to all docs in a collection.
 Future<void> addTimestampsAndOrgIdToCollection(String collection) async {
-  final docs = await FirebaseFirestore.instance.collection(collection).get();
+  final docs = await FirestoreEnforcer.instance.collection(collection).get();
   for (final doc in docs.docs) {
     final data = doc.data();
     final updates = <String, dynamic>{};

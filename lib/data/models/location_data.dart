@@ -5,7 +5,6 @@ import 'package:hands_app/data/models/shift_data_converter.dart';
 part 'location_data.freezed.dart';
 part 'location_data.g.dart';
 
-
 @freezed
 class LocationData with _$LocationData {
   factory LocationData({
@@ -19,4 +18,3 @@ class LocationData with _$LocationData {
   factory LocationData.fromJson(Map<String, Object?> json) =>
       _$LocationDataFromJson(json);
 }
-

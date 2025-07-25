@@ -33,13 +33,56 @@ class _LocationBottomSheetState extends State<LocationBottomSheet> {
 
   // US States list
   final List<String> _usStates = [
-    'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut', 'Delaware',
-    'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa', 'Kansas', 'Kentucky',
-    'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan', 'Minnesota', 'Mississippi',
-    'Missouri', 'Montana', 'Nebraska', 'Nevada', 'New Hampshire', 'New Jersey', 'New Mexico',
-    'New York', 'North Carolina', 'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania',
-    'Rhode Island', 'South Carolina', 'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont',
-    'Virginia', 'Washington', 'West Virginia', 'Wisconsin', 'Wyoming'
+    'Alabama',
+    'Alaska',
+    'Arizona',
+    'Arkansas',
+    'California',
+    'Colorado',
+    'Connecticut',
+    'Delaware',
+    'Florida',
+    'Georgia',
+    'Hawaii',
+    'Idaho',
+    'Illinois',
+    'Indiana',
+    'Iowa',
+    'Kansas',
+    'Kentucky',
+    'Louisiana',
+    'Maine',
+    'Maryland',
+    'Massachusetts',
+    'Michigan',
+    'Minnesota',
+    'Mississippi',
+    'Missouri',
+    'Montana',
+    'Nebraska',
+    'Nevada',
+    'New Hampshire',
+    'New Jersey',
+    'New Mexico',
+    'New York',
+    'North Carolina',
+    'North Dakota',
+    'Ohio',
+    'Oklahoma',
+    'Oregon',
+    'Pennsylvania',
+    'Rhode Island',
+    'South Carolina',
+    'South Dakota',
+    'Tennessee',
+    'Texas',
+    'Utah',
+    'Vermont',
+    'Virginia',
+    'Washington',
+    'West Virginia',
+    'Wisconsin',
+    'Wyoming',
   ];
 
   @override
@@ -64,9 +107,9 @@ class _LocationBottomSheetState extends State<LocationBottomSheet> {
   void _save() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedState == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a state.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please select a state.')));
       return;
     }
     setState(() => _loading = true);
@@ -81,16 +124,19 @@ class _LocationBottomSheetState extends State<LocationBottomSheet> {
       Navigator.of(context).pop();
     } catch (e) {
       setState(() => _loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error saving: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error saving: $e')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
-    final textScaler = mediaQuery.textScaler.clamp(minScaleFactor: 1.0, maxScaleFactor: 1.2);
+    final textScaler = mediaQuery.textScaler.clamp(
+      minScaleFactor: 1.0,
+      maxScaleFactor: 1.2,
+    );
     return DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.7,
@@ -102,7 +148,12 @@ class _LocationBottomSheetState extends State<LocationBottomSheet> {
             borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
             elevation: 8,
             child: Padding(
-              padding: const EdgeInsets.only(left: 16, right: 16, top: 8, bottom: 16),
+              padding: const EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 8,
+                bottom: 16,
+              ),
               child: Form(
                 key: _formKey,
                 child: ListView(
@@ -119,37 +170,65 @@ class _LocationBottomSheetState extends State<LocationBottomSheet> {
                         ),
                       ),
                     ),
-                    Text('Location Details', style: Theme.of(context).textTheme.titleLarge, textScaler: textScaler),
+                    Text(
+                      'Location Details',
+                      style: Theme.of(context).textTheme.titleLarge,
+                      textScaler: textScaler,
+                    ),
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _nameController,
-                      decoration: const InputDecoration(labelText: 'Location Name', border: OutlineInputBorder()),
-                      validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                      decoration: const InputDecoration(
+                        labelText: 'Location Name',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator:
+                          (v) =>
+                              v == null || v.trim().isEmpty ? 'Required' : null,
                       textInputAction: TextInputAction.next,
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: _streetController,
-                      decoration: const InputDecoration(labelText: 'Street Address', border: OutlineInputBorder()),
-                      validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                      decoration: const InputDecoration(
+                        labelText: 'Street Address',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator:
+                          (v) =>
+                              v == null || v.trim().isEmpty ? 'Required' : null,
                       textInputAction: TextInputAction.next,
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: _cityController,
-                      decoration: const InputDecoration(labelText: 'City', border: OutlineInputBorder()),
-                      validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                      decoration: const InputDecoration(
+                        labelText: 'City',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator:
+                          (v) =>
+                              v == null || v.trim().isEmpty ? 'Required' : null,
                       textInputAction: TextInputAction.next,
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       value: _selectedState,
-                      decoration: const InputDecoration(labelText: 'State', border: OutlineInputBorder()),
-                      validator: (v) => v == null ? 'Please select a state' : null,
-                      items: _usStates.map((state) => DropdownMenuItem(
-                        value: state,
-                        child: Text(state),
-                      )).toList(),
+                      decoration: const InputDecoration(
+                        labelText: 'State',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator:
+                          (v) => v == null ? 'Please select a state' : null,
+                      items:
+                          _usStates
+                              .map(
+                                (state) => DropdownMenuItem(
+                                  value: state,
+                                  child: Text(state),
+                                ),
+                              )
+                              .toList(),
                       onChanged: (value) {
                         setState(() {
                           _selectedState = value;
@@ -159,10 +238,15 @@ class _LocationBottomSheetState extends State<LocationBottomSheet> {
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: _zipController,
-                      decoration: const InputDecoration(labelText: 'ZIP Code', border: OutlineInputBorder()),
+                      decoration: const InputDecoration(
+                        labelText: 'ZIP Code',
+                        border: OutlineInputBorder(),
+                      ),
                       keyboardType: TextInputType.number,
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                      validator:
+                          (v) =>
+                              v == null || v.trim().isEmpty ? 'Required' : null,
                       textInputAction: TextInputAction.done,
                     ),
                     const SizedBox(height: 24),
@@ -170,9 +254,16 @@ class _LocationBottomSheetState extends State<LocationBottomSheet> {
                       width: double.infinity,
                       child: ElevatedButton(
                         onPressed: _loading ? null : _save,
-                        child: _loading
-                            ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                            : const Text('Save'),
+                        child:
+                            _loading
+                                ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                                : const Text('Save'),
                       ),
                     ),
                   ],

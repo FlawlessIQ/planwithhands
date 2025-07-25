@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 
 class EmployeePricingWidget extends StatefulWidget {
   final TextEditingController? controller;
-  
+
   const EmployeePricingWidget({super.key, this.controller});
-  
+
   @override
   _EmployeePricingWidgetState createState() => _EmployeePricingWidgetState();
 }
@@ -14,20 +14,20 @@ class _EmployeePricingWidgetState extends State<EmployeePricingWidget> {
   int _count = 0;
 
   final List<_Tier> _tiers = [
-    _Tier(min: 1,   max: 10,   price: 49),
-    _Tier(min: 11,  max: 25,   price: 99),
-    _Tier(min: 26,  max: 50,   price: 179),
-    _Tier(min: 51,  max: 100,  price: 299),
+    _Tier(min: 1, max: 10, price: 49),
+    _Tier(min: 11, max: 25, price: 99),
+    _Tier(min: 26, max: 50, price: 179),
+    _Tier(min: 51, max: 100, price: 299),
     _Tier(min: 101, max: null, price: 0), // custom
   ];
 
   _Tier get _currentTier {
-    return _tiers.firstWhere((t) =>
-      (t.max ?? double.infinity) >= _count && _count >= t.min,
+    return _tiers.firstWhere(
+      (t) => (t.max ?? double.infinity) >= _count && _count >= t.min,
       orElse: () => _tiers.last,
     );
   }
-  
+
   @override
   void initState() {
     super.initState();
@@ -47,9 +47,10 @@ class _EmployeePricingWidgetState extends State<EmployeePricingWidget> {
     final tier = _currentTier;
     final isCustom = tier.max == null;
     final monthly = isCustom ? '--' : '\$${tier.price.toStringAsFixed(0)}';
-    final perEmp = isCustom
-      ? 'Contact Us'
-      : '\$${(tier.price / tier.max!).toStringAsFixed(2)}';
+    final perEmp =
+        isCustom
+            ? 'Contact Us'
+            : '\$${(tier.price / tier.max!).toStringAsFixed(2)}';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -98,38 +99,45 @@ class _EmployeePricingWidgetState extends State<EmployeePricingWidget> {
   void _showPricingTable(BuildContext context) {
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Pricing Matrix'),
-        content: SingleChildScrollView(
-          child: DataTable(
-            columns: const [
-              DataColumn(label: Text('Employees')),
-              DataColumn(label: Text('Price / Month')),
-              DataColumn(label: Text('Per Employee')),
+      builder:
+          (_) => AlertDialog(
+            title: const Text('Pricing Matrix'),
+            content: SingleChildScrollView(
+              child: DataTable(
+                columns: const [
+                  DataColumn(label: Text('Employees')),
+                  DataColumn(label: Text('Price / Month')),
+                  DataColumn(label: Text('Per Employee')),
+                ],
+                rows:
+                    _tiers.map((t) {
+                      final empRange =
+                          t.max == null ? '${t.min}+' : '${t.min}-${t.max}';
+                      final priceText =
+                          t.max == null
+                              ? 'Custom Pricing'
+                              : '\$${t.price.toStringAsFixed(0)}';
+                      final perEmpText =
+                          t.max == null
+                              ? 'Contact Us'
+                              : '\$${(t.price / t.max!).toStringAsFixed(2)}';
+                      return DataRow(
+                        cells: [
+                          DataCell(Text(empRange)),
+                          DataCell(Text(priceText)),
+                          DataCell(Text(perEmpText)),
+                        ],
+                      );
+                    }).toList(),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
             ],
-            rows: _tiers.map((t) {
-              final empRange = t.max == null ? '${t.min}+' : '${t.min}-${t.max}';
-              final priceText = t.max == null
-                ? 'Custom Pricing'
-                : '\$${t.price.toStringAsFixed(0)}';
-              final perEmpText = t.max == null
-                ? 'Contact Us'
-                : '\$${(t.price / t.max!).toStringAsFixed(2)}';
-              return DataRow(cells: [
-                DataCell(Text(empRange)),
-                DataCell(Text(priceText)),
-                DataCell(Text(perEmpText)),
-              ]);
-            }).toList(),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context), 
-            child: const Text('Close')
-          ),
-        ],
-      ),
     );
   }
 }

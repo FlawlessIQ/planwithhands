@@ -53,9 +53,10 @@ class _GenericTextFieldState extends State<GenericTextField> {
       autofocus: widget.isAutofocused,
       focusNode: _focusNode,
       decoration: InputDecoration(
-        fillColor: widget.isShaded
-            ? Theme.of(context).colorScheme.secondary
-            : Theme.of(context).colorScheme.surface,
+        fillColor:
+            widget.isShaded
+                ? Theme.of(context).colorScheme.secondary
+                : Theme.of(context).colorScheme.surface,
         filled: true,
         contentPadding: EdgeInsets.symmetric(vertical: 20, horizontal: 16),
         hintText: widget.hintText,

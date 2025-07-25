@@ -1,4 +1,3 @@
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:json_annotation/json_annotation.dart';
 
@@ -13,12 +12,15 @@ class NullableTimestampConverter implements JsonConverter<DateTime?, Object?> {
     } else if (value is String) {
       return DateTime.parse(value);
     } else {
-      throw Exception('NullableTimestampConverter: Unexpected type: ${value.runtimeType}');
+      throw Exception(
+        'NullableTimestampConverter: Unexpected type: ${value.runtimeType}',
+      );
     }
   }
 
   @override
-  Object? toJson(DateTime? date) => date == null ? null : Timestamp.fromDate(date);
+  Object? toJson(DateTime? date) =>
+      date == null ? null : Timestamp.fromDate(date);
 }
 
 class TimestampConverter implements JsonConverter<DateTime, Object?> {
@@ -27,14 +29,18 @@ class TimestampConverter implements JsonConverter<DateTime, Object?> {
   @override
   DateTime fromJson(Object? value) {
     if (value == null) {
-      throw Exception('TimestampConverter: value is null for a required DateTime field');
+      throw Exception(
+        'TimestampConverter: value is null for a required DateTime field',
+      );
     }
     if (value is Timestamp) {
       return value.toDate();
     } else if (value is String) {
       return DateTime.parse(value);
     } else {
-      throw Exception('TimestampConverter: Unexpected type: ${value.runtimeType}');
+      throw Exception(
+        'TimestampConverter: Unexpected type: ${value.runtimeType}',
+      );
     }
   }
 

@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hands_app/global_widgets/hands_icon.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 class WelcomePage extends ConsumerStatefulWidget {
   final String? email;
@@ -61,23 +62,25 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
 
     try {
       // First try to load from pendingUsers collection (new flow)
-      final pendingUserQuery = await FirebaseFirestore.instance
-          .collection('pendingUsers')
-          .where('emailAddress', isEqualTo: widget.email)
-          .where('organizationId', isEqualTo: widget.organizationId)
-          .limit(1)
-          .get();
+      final pendingUserQuery =
+          await FirestoreEnforcer.instance
+              .collection('pendingUsers')
+              .where('emailAddress', isEqualTo: widget.email)
+              .where('organizationId', isEqualTo: widget.organizationId)
+              .limit(1)
+              .get();
 
       if (pendingUserQuery.docs.isNotEmpty) {
         _pendingUser = pendingUserQuery.docs.first.data();
       } else {
         // Fallback: try to load from users collection (existing flow)
-        final userQuery = await FirebaseFirestore.instance
-            .collection('users')
-            .where('email', isEqualTo: widget.email)
-            .where('orgId', isEqualTo: widget.organizationId)
-            .limit(1)
-            .get();
+        final userQuery =
+            await FirestoreEnforcer.instance
+                .collection('users')
+                .where('email', isEqualTo: widget.email)
+                .where('orgId', isEqualTo: widget.organizationId)
+                .limit(1)
+                .get();
 
         if (userQuery.docs.isNotEmpty) {
           final userData = userQuery.docs.first.data();
@@ -86,7 +89,8 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
           final nameParts = displayName.split(' ');
           _pendingUser = {
             'firstName': nameParts.isNotEmpty ? nameParts[0] : '',
-            'lastName': nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '',
+            'lastName':
+                nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '',
             'userRole': userData['userRole'] ?? 0,
             'jobType': userData['jobType'] ?? [],
             'locationId': userData['locationId'],
@@ -103,13 +107,15 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
       }
 
       // Load organization name
-      final orgDoc = await FirebaseFirestore.instance
-          .collection('organizations')
-          .doc(widget.organizationId)
-          .get();
+      final orgDoc =
+          await FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(widget.organizationId)
+              .get();
 
       if (orgDoc.exists) {
-        _organizationName = orgDoc.data()?['organizationName'] ?? 'Unknown Organization';
+        _organizationName =
+            orgDoc.data()?['organizationName'] ?? 'Unknown Organization';
       }
     } catch (e) {
       _showErrorDialog('Failed to load invite details: ${e.toString()}');
@@ -132,7 +138,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
     try {
       // For the existing createUser flow, the user already exists in Firebase Auth
       // We need to sign them in with their temporary password and update to new password
-      
+
       // First, try to sign in with the temporary password
       await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: widget.email!,
@@ -146,29 +152,29 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
       }
 
       // Update user document in Firestore to mark setup as completed
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user!.uid)
-          .update({
+      await FirestoreEnforcer.instance.collection('users').doc(user!.uid).update({
         'setupCompleted': true,
         'isActive': true,
         'updatedAt': FieldValue.serverTimestamp(),
         // Add default availability and notification settings if they don't exist
         'availability': _pendingUser?['availability'] ?? <String, bool>{},
         'earliestStart': _pendingUser?['earliestStart'] ?? <String, String>{},
-        'notificationSettings': _pendingUser?['notificationSettings'] ?? {
-          'pushNotificationsEnabled': true,
-          'emailNotificationsEnabled': false,
-          'reminderHoursBefore': 1,
-        },
+        'notificationSettings':
+            _pendingUser?['notificationSettings'] ??
+            {
+              'pushNotificationsEnabled': true,
+              'emailNotificationsEnabled': false,
+              'reminderHoursBefore': 1,
+            },
       });
 
       // Clean up pending user data if it exists
-      final pendingUserQuery = await FirebaseFirestore.instance
-          .collection('pendingUsers')
-          .where('emailAddress', isEqualTo: widget.email)
-          .where('organizationId', isEqualTo: widget.organizationId)
-          .get();
+      final pendingUserQuery =
+          await FirestoreEnforcer.instance
+              .collection('pendingUsers')
+              .where('emailAddress', isEqualTo: widget.email)
+              .where('organizationId', isEqualTo: widget.organizationId)
+              .get();
 
       for (final doc in pendingUserQuery.docs) {
         await doc.reference.delete();
@@ -178,8 +184,10 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
       _showSuccessDialog();
     } catch (e) {
       String errorMessage = 'Failed to set up account: ${e.toString()}';
-      if (e.toString().contains('wrong-password') || e.toString().contains('user-not-found')) {
-        errorMessage = 'Invalid temporary password. Please check the email sent to you or contact your administrator.';
+      if (e.toString().contains('wrong-password') ||
+          e.toString().contains('user-not-found')) {
+        errorMessage =
+            'Invalid temporary password. Please check the email sent to you or contact your administrator.';
       }
       _showErrorDialog(errorMessage);
     } finally {
@@ -192,19 +200,20 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
   void _showErrorDialog(String message) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Error'),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              context.go('/login');
-            },
-            child: const Text('OK'),
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Error'),
+            content: Text(message),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  context.go('/login');
+                },
+                child: const Text('OK'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
@@ -212,30 +221,29 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Welcome to Hands!'),
-        content: const Text('Your account has been created successfully. You can now sign in with your credentials.'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              context.go('/login');
-            },
-            child: const Text('Sign In'),
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Welcome to Hands!'),
+            content: const Text(
+              'Your account has been created successfully. You can now sign in with your credentials.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  context.go('/login');
+                },
+                child: const Text('Sign In'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     if (_pendingUser == null) {
@@ -244,11 +252,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(
-                Icons.error_outline,
-                size: 64,
-                color: Colors.red,
-              ),
+              const Icon(Icons.error_outline, size: 64, color: Colors.red),
               const SizedBox(height: 16),
               const Text(
                 'Invalid or expired invite',
@@ -280,9 +284,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   // Logo
-                  const Center(
-                    child: HandsIcon(size: 120),
-                  ),
+                  const Center(child: HandsIcon(size: 120)),
                   const SizedBox(height: 32),
 
                   // Welcome text
@@ -312,16 +314,25 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                         children: [
                           Text(
                             'Account Details',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(height: 12),
                           _buildInfoRow('Email', widget.email ?? ''),
-                          _buildInfoRow('Name', '${_pendingUser?['firstName'] ?? ''} ${_pendingUser?['lastName'] ?? ''}'),
-                          _buildInfoRow('Role', _getRoleDisplayName(_pendingUser?['userRole'])),
-                          if (_pendingUser?['jobType'] != null && (_pendingUser!['jobType'] as List).isNotEmpty)
-                            _buildInfoRow('Job Types', (_pendingUser!['jobType'] as List).join(', ')),
+                          _buildInfoRow(
+                            'Name',
+                            '${_pendingUser?['firstName'] ?? ''} ${_pendingUser?['lastName'] ?? ''}',
+                          ),
+                          _buildInfoRow(
+                            'Role',
+                            _getRoleDisplayName(_pendingUser?['userRole']),
+                          ),
+                          if (_pendingUser?['jobType'] != null &&
+                              (_pendingUser!['jobType'] as List).isNotEmpty)
+                            _buildInfoRow(
+                              'Job Types',
+                              (_pendingUser!['jobType'] as List).join(', '),
+                            ),
                         ],
                       ),
                     ),
@@ -336,16 +347,14 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                       children: [
                         Text(
                           'Complete Your Account Setup',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           'Enter the temporary password from your email, then set a new password.',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.grey[600],
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: Colors.grey[600]),
                         ),
                         const SizedBox(height: 16),
 
@@ -358,7 +367,11 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                             hintText: 'Enter the password from your email',
                             border: const OutlineInputBorder(),
                             suffixIcon: IconButton(
-                              icon: Icon(_obscureTempPassword ? Icons.visibility : Icons.visibility_off),
+                              icon: Icon(
+                                _obscureTempPassword
+                                    ? Icons.visibility
+                                    : Icons.visibility_off,
+                              ),
                               onPressed: () {
                                 setState(() {
                                   _obscureTempPassword = !_obscureTempPassword;
@@ -384,7 +397,11 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                             hintText: 'Create a new password',
                             border: const OutlineInputBorder(),
                             suffixIcon: IconButton(
-                              icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off),
+                              icon: Icon(
+                                _obscurePassword
+                                    ? Icons.visibility
+                                    : Icons.visibility_off,
+                              ),
                               onPressed: () {
                                 setState(() {
                                   _obscurePassword = !_obscurePassword;
@@ -413,10 +430,15 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                             hintText: 'Confirm your new password',
                             border: const OutlineInputBorder(),
                             suffixIcon: IconButton(
-                              icon: Icon(_obscureConfirmPassword ? Icons.visibility : Icons.visibility_off),
+                              icon: Icon(
+                                _obscureConfirmPassword
+                                    ? Icons.visibility
+                                    : Icons.visibility_off,
+                              ),
                               onPressed: () {
                                 setState(() {
-                                  _obscureConfirmPassword = !_obscureConfirmPassword;
+                                  _obscureConfirmPassword =
+                                      !_obscureConfirmPassword;
                                 });
                               },
                             ),
@@ -442,13 +464,16 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                               borderRadius: BorderRadius.circular(8),
                             ),
                           ),
-                          child: _isLoading
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Text('Complete Setup'),
+                          child:
+                              _isLoading
+                                  ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                  : const Text('Complete Setup'),
                         ),
                       ],
                     ),
@@ -482,9 +507,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
               style: const TextStyle(fontWeight: FontWeight.w500),
             ),
           ),
-          Expanded(
-            child: Text(value.isNotEmpty ? value : 'Not specified'),
-          ),
+          Expanded(child: Text(value.isNotEmpty ? value : 'Not specified')),
         ],
       ),
     );

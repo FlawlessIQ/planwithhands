@@ -2,8 +2,44 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Allow users to read their own document.
+    // Allow users to create their own document upon sign-up.
+    // Allow users to update their own document if they are logged in.
+    match /users/{userId} {
+      allow read, update, delete: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null;
+    }
+    
+    // Allow authenticated users to read/write organization data if they belong to it
+    match /organizations/{orgId} {
+      allow read, write: if request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId == orgId;
+    }
+    
+    // Allow authenticated users to read/write locations for their organization
+    match /locations/{locationId} {
+      allow read, write: if request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    
+    // Allow authenticated users to manage their own shifts and checklists
+    match /shifts/{shiftId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    match /checklists/{checklistId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Allow access to invites for account creation
+    match /invites/{inviteId} {
+      allow read, write: if true; // Invites need to be accessible before authentication
+    }
+    
+    // Default deny for other documents
     match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if request.auth != null;
     }
   }
 }

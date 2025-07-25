@@ -19,18 +19,24 @@ void main() async {
   // Initialize Firebase
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // Initialize Stripe
-  StripeService.initStripe();
+  // Initialize Stripe only on supported platforms (iOS/Android)
+  if (!kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.android)) {
+    StripeService.initStripe();
+  }
 
   // Initialize Crashlytics with a more defensive approach
   bool crashlyticsEnabled = false;
-  
+
   try {
     // Only try to enable crashlytics in production mode
     if (!kDebugMode) {
       if (!kIsWeb) {
         // On mobile platforms, this should work reliably
-        await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
+        await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(
+          true,
+        );
         crashlyticsEnabled = true;
       } else {
         // On web, we need to be more careful as the plugin might not be fully initialized
@@ -56,21 +62,21 @@ void main() async {
   }
 
   // Set up error handlers based on Crashlytics availability
-  if (crashlyticsEnabled && !kIsWeb) {
-    // Only use Crashlytics handlers on non-web platforms for now
+  if (crashlyticsEnabled) {
+    // Use Crashlytics handlers on all platforms
     FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
-    
+
     PlatformDispatcher.instance.onError = (error, stack) {
       FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
       return true;
     };
   } else {
-    // Use console logging for errors in debug mode or on web
+    // Use console logging for errors when Crashlytics is disabled
     FlutterError.onError = (FlutterErrorDetails details) {
       FlutterError.presentError(details);
       debugPrint('Flutter error: ${details.exception}');
     };
-    
+
     PlatformDispatcher.instance.onError = (error, stack) {
       debugPrint('Uncaught platform error: $error\n$stack');
       return true;
@@ -89,13 +95,15 @@ void main() async {
     debugPrint('Running on web - applying performance optimizations');
   }
 
-  runApp(ProviderScope(
-    overrides: [
-      // Make Crashlytics availability status globally accessible
-      crashlyticsEnabledProvider.overrideWith((ref) => crashlyticsEnabled),
-    ],
-    child: const MyApp(),
-  ));
+  runApp(
+    ProviderScope(
+      overrides: [
+        // Make Crashlytics availability status globally accessible
+        crashlyticsEnabledProvider.overrideWith((ref) => crashlyticsEnabled),
+      ],
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
