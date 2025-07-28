@@ -1019,11 +1019,29 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             final locationsToShow =
                 locations.map((doc) {
                   final locationData = doc.data() as Map<String, dynamic>;
-                  final name =
-                      locationData['locationName'] ?? 'Unnamed Location';
-                  // Handle both old and new field names
-                  final address = locationData['street'] ?? locationData['address'] ?? '';
-                  final city = locationData['city'] ?? '';
+                  
+                  // Debug logging
+                  debugPrint('[AdminDashboard] Processing location ${doc.id}: $locationData');
+                  
+                  // Safe string extraction function
+                  String safeGetString(dynamic value) {
+                    if (value == null) return '';
+                    if (value is String) return value;
+                    if (value is Map) {
+                      // Handle nested objects - extract any string values
+                      final values = value.values.where((v) => v is String);
+                      return values.isNotEmpty ? values.first.toString() : '';
+                    }
+                    return value.toString();
+                  }
+                  
+                  final name = safeGetString(locationData['locationName']);
+                  final displayName = name.isNotEmpty ? name : 'Unnamed Location';
+                  // Handle both old and new field names with safe extraction
+                  final address = safeGetString(locationData['street']).isNotEmpty 
+                                 ? safeGetString(locationData['street'])
+                                 : safeGetString(locationData['address']);
+                  final city = safeGetString(locationData['city']);
                   
                   // Create clean address display without curly braces
                   String addressDisplay = '';
@@ -1037,7 +1055,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
                   return ListTile(
                     leading: const Icon(Icons.location_on),
-                    title: Text(name),
+                    title: Text(displayName),
                     subtitle: Text(addressDisplay.isEmpty ? 'No address provided' : addressDisplay),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
