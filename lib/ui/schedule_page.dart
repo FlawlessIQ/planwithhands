@@ -504,6 +504,99 @@ class _SchedulePageState extends State<SchedulePage> {
         .map((snap) => snap.exists && snap.data()?['published'] == true);
   }
 
+  Color _getShiftCardColor(ScheduleEntryData? entry, ShiftData shift) {
+    if (entry == null) {
+      // No shift entry scheduled
+      return Colors.white;
+    }
+
+    // Get the total assigned users
+    final assignedCount = entry.assignedUserIds.length;
+    
+    // Calculate recommended staffing level from either entry requirements or shift template
+    int recommendedTotal = 0;
+    
+    // First try to get from entry's required roles
+    if (entry.requiredRoles.isNotEmpty) {
+      recommendedTotal = entry.requiredRoles.values.fold<int>(0, (sum, count) => sum + count);
+    } else {
+      // Fallback to shift template staffing levels
+      recommendedTotal = shift.staffingLevels.values.fold<int>(0, (sum, count) => sum + count);
+    }
+    
+    // If no staffing levels defined, default to basic logic
+    if (recommendedTotal == 0) {
+      return assignedCount > 0 ? Colors.green.shade50 : Colors.orange.shade50;
+    }
+
+    // For now, assume all entries shown are published (since we're in schedule editor)
+    // You can enhance this later by checking the schedule's published status
+    
+    // Color based on staffing level comparison
+    if (assignedCount >= recommendedTotal) {
+      // Fully staffed or overstaffed - light green
+      return Colors.green.shade50;
+    } else if (assignedCount > 0) {
+      // Partially staffed - light red
+      return Colors.red.shade50;
+    } else {
+      // No one assigned - light orange
+      return Colors.orange.shade50;
+    }
+  }
+
+  Color _getTextColor(ScheduleEntryData? entry, ShiftData shift) {
+    if (entry == null) return Colors.grey.shade600;
+    
+    final assignedCount = entry.assignedUserIds.length;
+    int recommendedTotal = 0;
+    
+    if (entry.requiredRoles.isNotEmpty) {
+      recommendedTotal = entry.requiredRoles.values.fold<int>(0, (sum, count) => sum + count);
+    } else {
+      recommendedTotal = shift.staffingLevels.values.fold<int>(0, (sum, count) => sum + count);
+    }
+    
+    if (recommendedTotal == 0) {
+      return assignedCount > 0 ? Colors.green.shade700 : Colors.orange.shade700;
+    }
+    
+    if (assignedCount >= recommendedTotal) {
+      return Colors.green.shade700;  // Fully staffed - dark green text
+    } else if (assignedCount > 0) {
+      return Colors.red.shade700;    // Understaffed - dark red text
+    } else {
+      return Colors.orange.shade700; // No assignments - dark orange text
+    }
+  }
+
+  Widget _getStaffingIcon(ScheduleEntryData? entry, ShiftData shift) {
+    if (entry == null) return const SizedBox.shrink();
+    
+    final assignedCount = entry.assignedUserIds.length;
+    int recommendedTotal = 0;
+    
+    if (entry.requiredRoles.isNotEmpty) {
+      recommendedTotal = entry.requiredRoles.values.fold<int>(0, (sum, count) => sum + count);
+    } else {
+      recommendedTotal = shift.staffingLevels.values.fold<int>(0, (sum, count) => sum + count);
+    }
+    
+    if (recommendedTotal == 0) {
+      return assignedCount > 0 
+          ? Icon(Icons.check_circle, size: 12, color: Colors.green.shade700)
+          : const SizedBox.shrink();
+    }
+    
+    if (assignedCount >= recommendedTotal) {
+      return Icon(Icons.check_circle, size: 12, color: Colors.green.shade700);
+    } else if (assignedCount > 0) {
+      return Icon(Icons.warning, size: 12, color: Colors.red.shade700);
+    } else {
+      return Icon(Icons.error_outline, size: 12, color: Colors.orange.shade700);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // After you've loaded _userRole and _schedule…
@@ -1037,10 +1130,7 @@ class _SchedulePageState extends State<SchedulePage> {
                                           border: Border.all(
                                             color: Colors.grey.shade300,
                                           ),
-                                          color:
-                                              entry != null
-                                                  ? Colors.blue.shade50
-                                                  : Colors.white,
+                                          color: _getShiftCardColor(entry, shift),
                                           borderRadius: BorderRadius.circular(
                                             4,
                                           ),
@@ -1053,25 +1143,26 @@ class _SchedulePageState extends State<SchedulePage> {
                                                         MainAxisAlignment
                                                             .center,
                                                     children: [
-                                                      Text(
-                                                        '${entry.assignedUserIds.length}',
-                                                        style: TextStyle(
-                                                          fontWeight:
-                                                              FontWeight.bold,
-                                                          color:
-                                                              Colors
-                                                                  .blue
-                                                                  .shade700,
-                                                        ),
+                                                      Row(
+                                                        mainAxisAlignment: MainAxisAlignment.center,
+                                                        children: [
+                                                          Text(
+                                                            '${entry.assignedUserIds.length}',
+                                                            style: TextStyle(
+                                                              fontWeight:
+                                                                  FontWeight.bold,
+                                                              color: _getTextColor(entry, shift),
+                                                            ),
+                                                          ),
+                                                          const SizedBox(width: 2),
+                                                          _getStaffingIcon(entry, shift),
+                                                        ],
                                                       ),
                                                       Text(
                                                         'assigned',
                                                         style: TextStyle(
                                                           fontSize: 10,
-                                                          color:
-                                                              Colors
-                                                                  .blue
-                                                                  .shade600,
+                                                          color: _getTextColor(entry, shift),
                                                         ),
                                                       ),
                                                     ],
