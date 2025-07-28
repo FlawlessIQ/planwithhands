@@ -19,9 +19,6 @@ import 'package:hands_app/utils/firestore_enforcer.dart';
 class UserDashboardPage extends HookConsumerWidget {
   const UserDashboardPage({super.key});
 
-  static const String organizationId = '5dQCGM4MTiJsqVoedI04';
-  static const String defaultLocationId = 'uWvZCOadBCowwIh86tfq';
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isLoading = useState(true);
@@ -31,6 +28,7 @@ class UserDashboardPage extends HookConsumerWidget {
     final allChecklists = useState<List<List<DailyChecklist>>>([]);
     final hasLoadedOnce = useState(false);
     final userRole = useState<int>(0);
+    final organizationId = useState<String?>(null);
 
     final now = DateTime.now();
     final todayString = DateFormat('yyyy-MM-dd').format(now);
@@ -47,6 +45,7 @@ class UserDashboardPage extends HookConsumerWidget {
       if (userDoc.exists) {
         final data = userDoc.data()!;
         userRole.value = data['userRole'] ?? 0;
+        organizationId.value = data['organizationId'] as String?;
       }
     }
 
@@ -62,6 +61,18 @@ class UserDashboardPage extends HookConsumerWidget {
             isLoading.value = false;
             return;
           }
+
+          // Wait for organization ID to be loaded
+          if (organizationId.value == null) {
+            await fetchUserRole();
+          }
+
+          if (organizationId.value == null) {
+            errorMessage.value = "Unable to load organization data.";
+            isLoading.value = false;
+            return;
+          }
+
           try {
             // Find all assigned shifts for today
             List<ShiftData> foundShifts = await _getAllShiftsForToday(
@@ -84,7 +95,7 @@ class UserDashboardPage extends HookConsumerWidget {
                       (shift) =>
                           shift.locationIds.isNotEmpty
                               ? shift.locationIds.first
-                              : defaultLocationId,
+                              : 'default', // fallback location ID
                     )
                     .toList();
             // Load checklists for each shift
@@ -96,6 +107,7 @@ class UserDashboardPage extends HookConsumerWidget {
                 shift,
                 locationId,
                 todayString,
+                organizationId.value!,
               );
               checklistGroups.add(checklists);
             }
@@ -167,6 +179,7 @@ class UserDashboardPage extends HookConsumerWidget {
                                             () => _leaveVolunteerShift(
                                               context,
                                               shift,
+                                              organizationId.value!,
                                             ),
                                       ),
                                       if (checklists.isNotEmpty)
@@ -193,6 +206,7 @@ class UserDashboardPage extends HookConsumerWidget {
                                                   shift,
                                                   locationId,
                                                   todayString,
+                                                  organizationId.value!,
                                                 );
                                             allChecklists.value[shiftIndex] =
                                                 refreshed;
@@ -250,7 +264,7 @@ class UserDashboardPage extends HookConsumerWidget {
                           builder: (_) {
                             debugPrint("[Dashboard] Building _HelpOutSheet");
                             return _HelpOutSheet(
-                              organizationId: UserDashboardPage.organizationId,
+                              organizationId: organizationId.value!,
                               todayDayName: todayDayName,
                             );
                           },
@@ -277,6 +291,7 @@ class UserDashboardPage extends HookConsumerWidget {
                                 shift,
                                 locationId,
                                 todayString,
+                                organizationId.value!,
                               );
                           allChecklists.value = [
                             ...allChecklists.value,
@@ -590,12 +605,13 @@ Future<List<DailyChecklist>> _loadChecklistsForShiftSimple(
   ShiftData shift,
   String locationId,
   String todayString,
+  String organizationId,
 ) async {
   try {
     final checklistSnapshot =
         await FirestoreEnforcer.instance
             .collection('organizations')
-            .doc(UserDashboardPage.organizationId)
+            .doc(organizationId)
             .collection('locations')
             .doc(locationId)
             .collection('daily_checklists')
@@ -611,7 +627,7 @@ Future<List<DailyChecklist>> _loadChecklistsForShiftSimple(
       final dailyChecklistService = DailyChecklistService();
       final generatedChecklists = await dailyChecklistService
           .generateDailyChecklists(
-            organizationId: UserDashboardPage.organizationId,
+            organizationId: organizationId,
             locationId: locationId,
             shiftId: shift.shiftId,
             shiftData: shift,
@@ -633,13 +649,14 @@ Future<void> _showHelpOutSheet(
   String todayString,
   ValueNotifier<String> selectedLocationId,
   ValueNotifier<ShiftData?> helpingShift,
+  String organizationId,
 ) async {
   final result = await showModalBottomSheet<Map<String, dynamic>>(
     context: context,
     isScrollControlled: true,
     builder:
         (_) => _HelpOutSheet(
-          organizationId: UserDashboardPage.organizationId,
+          organizationId: organizationId,
           todayDayName: DateFormat('EEEE').format(DateTime.now()),
         ),
   );
@@ -658,12 +675,13 @@ Future<void> _showHelpOutSheet(
       shift,
       locationId,
       todayString,
+      organizationId,
     );
   }
 }
 
 // Method to leave a volunteer shift (removes user from volunteers array)
-Future<void> _leaveVolunteerShift(BuildContext context, ShiftData shift) async {
+Future<void> _leaveVolunteerShift(BuildContext context, ShiftData shift, String organizationId) async {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -701,7 +719,7 @@ Future<void> _leaveVolunteerShift(BuildContext context, ShiftData shift) async {
     // Remove user from volunteers array
     await FirestoreEnforcer.instance
         .collection('organizations')
-        .doc(UserDashboardPage.organizationId)
+        .doc(organizationId)
         .collection('shifts')
         .doc(shift.shiftId)
         .update({
@@ -731,6 +749,7 @@ Future<void> _leaveVolunteerShift(BuildContext context, ShiftData shift) async {
 Future<ShiftData?> _checkShiftTemplates(
   String userId,
   String todayDayName,
+  String organizationId,
 ) async {
   try {
     debugPrint(
@@ -738,12 +757,12 @@ Future<ShiftData?> _checkShiftTemplates(
     );
     final assignedShiftsQuery = FirestoreEnforcer.instance
         .collection('organizations')
-        .doc(UserDashboardPage.organizationId)
+        .doc(organizationId)
         .collection('shifts')
         .where('assignedUserIds', arrayContains: userId);
     final volunteeredShiftsQuery = FirestoreEnforcer.instance
         .collection('organizations')
-        .doc(UserDashboardPage.organizationId)
+        .doc(organizationId)
         .collection('shifts')
         .where('volunteers', arrayContains: userId);
 
@@ -838,6 +857,7 @@ Future<ShiftData?> _checkShiftTemplates(
 Future<ShiftData?> _checkScheduleEntries(
   String userId,
   String todayString,
+  String organizationId,
 ) async {
   try {
     debugPrint(
@@ -868,7 +888,7 @@ Future<ShiftData?> _checkScheduleEntries(
       final locationsSnapshot =
           await FirestoreEnforcer.instance
               .collection('organizations')
-              .doc(UserDashboardPage.organizationId)
+              .doc(organizationId)
               .collection('locations')
               .get();
       locationsToCheck = locationsSnapshot.docs.map((doc) => doc.id).toList();
@@ -898,7 +918,7 @@ Future<ShiftData?> _checkScheduleEntries(
         final entriesSnapshot =
             await FirestoreEnforcer.instance
                 .collection('organizations')
-                .doc(UserDashboardPage.organizationId)
+                .doc(organizationId)
                 .collection('locations')
                 .doc(locationId)
                 .collection('schedules')
@@ -930,7 +950,7 @@ Future<ShiftData?> _checkScheduleEntries(
               final shiftDoc =
                   await FirestoreEnforcer.instance
                       .collection('organizations')
-                      .doc(UserDashboardPage.organizationId)
+                      .doc(organizationId)
                       .collection('shifts')
                       .doc(shiftId)
                       .get();
@@ -2236,7 +2256,7 @@ class _LocationPicker extends StatelessWidget {
       future:
           FirestoreEnforcer.instance
               .collection('organizations')
-              .doc(UserDashboardPage.organizationId)
+              .doc(organizationId)
               .collection('locations')
               .get(),
       builder: (context, snapshot) {
@@ -2284,7 +2304,7 @@ class _ShiftPicker extends StatelessWidget {
       future:
           FirestoreEnforcer.instance
               .collection('organizations')
-              .doc(UserDashboardPage.organizationId)
+              .doc(organizationId)
               .collection('shifts')
               .where('locationIds', arrayContains: location['id'])
               .get(),

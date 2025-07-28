@@ -428,14 +428,15 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
 
       await locationRef.set({
         'locationName': primaryLocationNameController.text.trim(),
-        'address': primaryLocationAddressController.text.trim(),
+        'street': primaryLocationAddressController.text.trim(),
         'city': primaryLocationCityController.text.trim(),
         'state': primaryLocationState,
-        'zip': primaryLocationZipController.text.trim(),
+        'zipCode': primaryLocationZipController.text.trim(),
         'isPrimary': true,
         'isActive': true,
         'createdAt': FieldValue.serverTimestamp(),
         'createdBy': user.uid,
+        'organizationId': orgId, // Add organizationId for easier querying
       });
       print('Location document created: $locationId');
 

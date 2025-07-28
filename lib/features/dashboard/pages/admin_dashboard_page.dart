@@ -136,13 +136,14 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       // Create a default location
       final defaultLocationData = {
         'locationName': 'Main Location',
-        'address': '',
+        'street': '',
         'city': '',
         'state': '',
-        'zip': '',
+        'zipCode': '',
         'isPrimary': true,
         'createdAt': FieldValue.serverTimestamp(),
         'isActive': true,
+        'organizationId': organizationId,
       };
 
       final newLocationRef = await FirestoreEnforcer.instance
@@ -174,6 +175,149 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to create default location: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _fixOrphanedUsers() async {
+    try {
+      if (organizationId == null || _availableLocations.isEmpty) return;
+
+      // First, ensure there's a primary location
+      await _ensurePrimaryLocation();
+
+      // Find the primary location, or use the first available location as fallback
+      final primaryLocation = _availableLocations.firstWhere(
+        (loc) => loc['isPrimary'] == true,
+        orElse: () => _availableLocations.first,
+      );
+      final primaryLocationId = primaryLocation['id'] as String;
+
+      debugPrint('[AdminDashboard] Using primary location for orphaned users: ${primaryLocation['name']} ($primaryLocationId)');
+
+      // Query all users in the organization
+      final usersSnapshot = await FirestoreEnforcer.instance
+          .collection('users')
+          .where('organizationId', isEqualTo: organizationId)
+          .get();
+
+      int fixedCount = 0;
+      
+      for (final userDoc in usersSnapshot.docs) {
+        final userData = userDoc.data();
+        final userLocationId = userData['locationId'] as String?;
+        final userRole = userData['userRole'] ?? 0;
+        
+        // Skip admins (role 2) as they have access to all locations
+        if (userRole == 2) continue;
+        
+        // Check if user has no location or an orphaned location
+        bool needsFix = false;
+        
+        if (userLocationId == null) {
+          debugPrint('[AdminDashboard] User ${userDoc.id} has no locationId - fixing');
+          needsFix = true;
+        } else {
+          // Check if locationId exists in current available locations
+          final locationExists = _availableLocations.any((loc) => loc['id'] == userLocationId);
+          if (!locationExists) {
+            debugPrint('[AdminDashboard] User ${userDoc.id} has orphaned locationId: $userLocationId - fixing');
+            needsFix = true;
+          }
+        }
+        
+        if (needsFix) {
+          await userDoc.reference.update({
+            'locationId': primaryLocationId,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+          fixedCount++;
+          debugPrint('[AdminDashboard] Fixed user ${userDoc.id} - assigned to location $primaryLocationId');
+        }
+      }
+
+      if (fixedCount > 0) {
+        debugPrint('[AdminDashboard] Fixed $fixedCount orphaned users');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Fixed $fixedCount orphaned users by assigning them to ${primaryLocation['name']}'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+        // Trigger a refresh to show updated user assignments
+        _refreshTrigger.value++;
+      } else {
+        debugPrint('[AdminDashboard] No orphaned users found to fix');
+      }
+    } catch (e) {
+      debugPrint('[AdminDashboard] Error fixing orphaned users: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to fix orphaned users: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _ensurePrimaryLocation() async {
+    try {
+      if (organizationId == null || _availableLocations.isEmpty) return;
+
+      // Check if any location is marked as primary
+      final hasPrimary = _availableLocations.any((loc) => loc['isPrimary'] == true);
+      
+      if (!hasPrimary) {
+        // No primary location found, set the first location as primary
+        final firstLocation = _availableLocations.first;
+        final locationId = firstLocation['id'] as String;
+        
+        debugPrint('[AdminDashboard] No primary location found - setting first location as primary: ${firstLocation['name']} ($locationId)');
+        
+        await FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(organizationId)
+            .collection('locations')
+            .doc(locationId)
+            .update({
+              'isPrimary': true,
+              'updatedAt': FieldValue.serverTimestamp(),
+            });
+
+        // Update the organization's primaryLocationId as well
+        await FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(organizationId!)
+            .update({
+              'primaryLocationId': locationId,
+              'updatedAt': FieldValue.serverTimestamp(),
+            });
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Set ${firstLocation['name']} as the primary location'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+        
+        // Reload locations to reflect the change
+        await _loadLocations();
+      }
+    } catch (e) {
+      debugPrint('[AdminDashboard] Error ensuring primary location: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to set primary location: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -407,10 +551,74 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   }
 
   Widget _buildUsersSection() {
-    return _buildSection(
-      'Users',
-      () => _showUserBottomSheet(),
-      _buildUsersList(),
+    return Card(
+      child: Column(
+        children: [
+          ListTile(
+            title: Text(
+              'Users',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: _fixOrphanedUsers,
+                  icon: const Icon(
+                    Icons.healing,
+                    size: 16,
+                    color: Colors.white,
+                  ),
+                  label: const Text(
+                    'Fix Orphaned',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    minimumSize: const Size(0, 32),
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(6)),
+                    ),
+                    elevation: 0,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  onPressed: () => _showUserBottomSheet(),
+                  icon: const Icon(
+                    Icons.add_circle_outline,
+                    size: 18,
+                    color: Colors.white,
+                  ),
+                  label: const Text(
+                    'Add New',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    minimumSize: const Size(0, 36),
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(8)),
+                    ),
+                    elevation: 0,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _buildUsersList(),
+        ],
+      ),
     );
   }
 
@@ -602,6 +810,17 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
               .where('organizationId', isEqualTo: organizationId)
               .snapshots(),
           builder: (context, snapshot) {
+            // Debug logging
+            debugPrint('[AdminDashboard] Organization ID: $organizationId');
+            debugPrint('[AdminDashboard] User snapshot has data: ${snapshot.hasData}');
+            if (snapshot.hasData) {
+              debugPrint('[AdminDashboard] Number of users found: ${snapshot.data!.docs.length}');
+              for (final doc in snapshot.data!.docs) {
+                final userData = doc.data() as Map<String, dynamic>;
+                debugPrint('[AdminDashboard] User ${doc.id}: ${userData['email']} - orgId: ${userData['organizationId']}');
+              }
+            }
+            
             if (snapshot.hasError) {
               return Padding(
                 padding: const EdgeInsets.all(16.0),
@@ -647,8 +866,20 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       if (_selectedLocationId == null) return true;
                       if (role == 2) return true; // Admins always show
                       if (role == 0) {
-                        // General user: only show if locationId matches
-                        return userData['locationId'] == _selectedLocationId;
+                        // General user: show if locationId matches selected location
+                        // OR if locationId doesn't match any current location (orphaned users)
+                        final userLocationId = userData['locationId'] as String?;
+                        if (userLocationId == null) return true; // No location data
+                        if (userLocationId == _selectedLocationId) return true; // Matches selected
+                        
+                        // Check if user's locationId exists in current available locations
+                        final locationExists = _availableLocations.any((loc) => loc['id'] == userLocationId);
+                        if (!locationExists) {
+                          debugPrint('[AdminDashboard] User ${doc.id} has orphaned locationId: $userLocationId - including anyway');
+                          return true; // Include orphaned users
+                        }
+                        
+                        return false; // User belongs to a different existing location
                       }
                       if (role == 1) {
                         // Manager: only show if locationIds contains selected location
@@ -790,14 +1021,24 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                   final locationData = doc.data() as Map<String, dynamic>;
                   final name =
                       locationData['locationName'] ?? 'Unnamed Location';
-                  final address = locationData['address'] ?? '';
+                  // Handle both old and new field names
+                  final address = locationData['street'] ?? locationData['address'] ?? '';
                   final city = locationData['city'] ?? '';
-                  final state = locationData['state'] ?? '';
+                  
+                  // Create clean address display without curly braces
+                  String addressDisplay = '';
+                  if (address.isNotEmpty && city.isNotEmpty) {
+                    addressDisplay = '$address, $city';
+                  } else if (address.isNotEmpty) {
+                    addressDisplay = address;
+                  } else if (city.isNotEmpty) {
+                    addressDisplay = city;
+                  }
 
                   return ListTile(
                     leading: const Icon(Icons.location_on),
                     title: Text(name),
-                    subtitle: Text('$address, $city, $state'),
+                    subtitle: Text(addressDisplay.isEmpty ? 'No address provided' : addressDisplay),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -1300,18 +1541,120 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     String? locationId,
     Map<String, dynamic>? locationData,
   ]) {
+    debugPrint('[AdminDashboard] Showing location bottom sheet');
+    debugPrint('[AdminDashboard] Location ID: $locationId');
+    debugPrint('[AdminDashboard] Location data: $locationData');
+    debugPrint('[AdminDashboard] Location data type: ${locationData.runtimeType}');
+    
+    // Helper function to safely extract string values
+    String? safeGetString(dynamic value) {
+      if (value == null) return null;
+      if (value is String) return value;
+      if (value is Map) return value['value']?.toString();
+      return value.toString();
+    }
+
+    final safeName = safeGetString(locationData?['locationName']);
+    final safeStreet = safeGetString(locationData?['street']) ?? safeGetString(locationData?['address']);
+    final safeCity = safeGetString(locationData?['city']);
+    final safeState = safeGetString(locationData?['state']);
+    final safeZip = safeGetString(locationData?['zipCode']) ?? safeGetString(locationData?['zip']);
+    
+    debugPrint('[AdminDashboard] Processed values:');
+    debugPrint('[AdminDashboard] - Name: $safeName');
+    debugPrint('[AdminDashboard] - Street: $safeStreet');
+    debugPrint('[AdminDashboard] - City: $safeCity');
+    debugPrint('[AdminDashboard] - State: $safeState');
+    debugPrint('[AdminDashboard] - Zip: $safeZip');
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       builder:
           (context) => LocationBottomSheet(
-            initialName: locationData?['locationName'],
-            initialStreet: locationData?['address'],
-            initialCity: locationData?['city'],
-            initialState: locationData?['state'],
-            initialZip: locationData?['zip'],
-            onSave: (updatedData) {
+            initialName: safeName,
+            initialStreet: safeStreet,
+            initialCity: safeCity,
+            initialState: safeState,
+            initialZip: safeZip,
+            onSave: (updatedData) async {
               // Handle save logic here
+              try {
+                debugPrint('[AdminDashboard] Saving location data: $updatedData');
+                
+                if (organizationId == null) {
+                  throw Exception('Organization ID not available');
+                }
+                
+                if (locationId != null) {
+                  // Update existing location
+                  await FirestoreEnforcer.instance
+                      .collection('organizations')
+                      .doc(organizationId)
+                      .collection('locations')
+                      .doc(locationId)
+                      .update({
+                    'locationName': updatedData['name'],
+                    'street': updatedData['street'],
+                    'city': updatedData['city'], 
+                    'state': updatedData['state'],
+                    'zipCode': updatedData['zip'],
+                    'updatedAt': FieldValue.serverTimestamp(),
+                  });
+                  
+                  debugPrint('[AdminDashboard] Location updated successfully');
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Location updated successfully'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                } else {
+                  // Create new location
+                  await FirestoreEnforcer.instance
+                      .collection('organizations')
+                      .doc(organizationId)
+                      .collection('locations')
+                      .add({
+                    'locationName': updatedData['name'],
+                    'street': updatedData['street'],
+                    'city': updatedData['city'],
+                    'state': updatedData['state'],
+                    'zipCode': updatedData['zip'],
+                    'isPrimary': false, // New locations are not primary by default
+                    'isActive': true,
+                    'organizationId': organizationId,
+                    'createdAt': FieldValue.serverTimestamp(),
+                    'createdBy': FirebaseAuth.instance.currentUser?.uid,
+                  });
+                  
+                  debugPrint('[AdminDashboard] Location created successfully');
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Location created successfully'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                }
+                
+                // Reload locations to reflect changes
+                await _loadLocations();
+                
+              } catch (e) {
+                debugPrint('[AdminDashboard] Error saving location: $e');
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error saving location: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
             },
           ),
     );

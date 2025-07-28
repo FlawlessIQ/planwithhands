@@ -88,6 +88,13 @@ class _LocationBottomSheetState extends State<LocationBottomSheet> {
   @override
   void initState() {
     super.initState();
+    debugPrint('[LocationBottomSheet] Initializing with:');
+    debugPrint('[LocationBottomSheet] - Name: ${widget.initialName}');
+    debugPrint('[LocationBottomSheet] - Street: ${widget.initialStreet}');
+    debugPrint('[LocationBottomSheet] - City: ${widget.initialCity}');
+    debugPrint('[LocationBottomSheet] - State: ${widget.initialState}');
+    debugPrint('[LocationBottomSheet] - Zip: ${widget.initialZip}');
+    
     _nameController = TextEditingController(text: widget.initialName ?? '');
     _streetController = TextEditingController(text: widget.initialStreet ?? '');
     _cityController = TextEditingController(text: widget.initialCity ?? '');

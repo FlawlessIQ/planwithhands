@@ -61,18 +61,60 @@ class UserManagementBottomSheet extends HookConsumerWidget {
 
     // Available roles
     final availableRoles = useState<List<String>>([]);
-    final selectedRoles = useState<Set<String>>(
-      Set<String>.from(userData?['jobType']?.cast<String>() ?? []),
-    );
+    
+    // Extract job types safely
+    Set<String> extractJobTypes(dynamic jobTypeData) {
+      if (jobTypeData == null) return <String>{};
+      if (jobTypeData is List) {
+        return Set<String>.from(jobTypeData.whereType<String>());
+      }
+      return <String>{};
+    }
+    
+    final selectedRoles = useState<Set<String>>(extractJobTypes(userData?['jobType']));
 
     // Available locations
     final availableLocations = useState<List<Map<String, dynamic>>>([]);
+    
+    // Extract location data safely
+    String? extractLocationId(dynamic locationData) {
+      if (locationData == null) return null;
+      if (locationData is String) return locationData;
+      if (locationData is Map) {
+        debugPrint('Warning: Location data is a Map: $locationData');
+        return locationData['id'] as String?;
+      }
+      debugPrint('Warning: Unexpected location data type: ${locationData.runtimeType}, value: $locationData');
+      return null;
+    }
+    
     // For managers (role 1), allow multiple locations
-    final selectedLocationIds = useState<Set<String>>(Set<String>.from(
-      userData?['locationIds']?.cast<String>() ?? (userData?['locationId'] != null ? [userData?['locationId']] : []),
-    ));
+    Set<String> extractLocationIds(dynamic locationIdsData, dynamic fallbackLocationId) {
+      Set<String> result = <String>{};
+      
+      // Try to extract from locationIds array first
+      if (locationIdsData is List) {
+        result.addAll(locationIdsData.whereType<String>());
+      }
+      
+      // If no locationIds but we have a single locationId, use that
+      if (result.isEmpty) {
+        final singleLocationId = extractLocationId(fallbackLocationId);
+        if (singleLocationId != null) {
+          result.add(singleLocationId);
+        }
+      }
+      
+      return result;
+    }
+    
+    final selectedLocationIds = useState<Set<String>>(
+      extractLocationIds(userData?['locationIds'], userData?['locationId'])
+    );
     // For general users (role 0), single location
-    final selectedLocationId = useState<String?>(userData?['locationId']);
+    final selectedLocationId = useState<String?>(
+      extractLocationId(userData?['locationId']) ?? extractLocationId(userData?['primaryLocationId'])
+    );
 
     final isLoading = useState(false);
     final isEditMode = userData != null;
@@ -606,74 +648,33 @@ class UserManagementBottomSheet extends HookConsumerWidget {
         return;
       }
 
-      final userEmail = emailController.text.trim().toLowerCase();
-      final tempPw = const Uuid().v4().substring(0, 8);
-      final orgName = await _getOrganizationName();
-      final adminEmail = FirebaseAuth.instance.currentUser?.email ?? '';
-      final templateId = 'd-575968e4e0c449f59ca89c1decdc8abc'; // <-- Updated to correct SendGrid template ID
-
-      // Generate secure onboarding token
-      final inviteToken = const Uuid().v4();
-      final inviteUrl = 'https://plan-with-hands.web.app/welcome?email=$userEmail&organizationId=$organizationId&inviteId=$inviteToken';
-
-      // Store invite in Firestore
-      await FirestoreEnforcer.instance.collection('invites').doc(inviteToken).set({
-        'email': userEmail,
-        'organizationId': organizationId,
-        'createdAt': FieldValue.serverTimestamp(),
-        'expiresAt': DateTime.now().add(const Duration(days: 7)),
-        'used': false,
-        'firstName': firstNameController.text.trim(),
-        'lastName': lastNameController.text.trim(),
-        'userRole': accessLevel,
-        'jobType': roles.toList(),
-        'locationId': locationId,
-        'locationIds': locationIds?.toList(),
-        'orgName': orgName,
-        'adminEmail': adminEmail,
-      });
-
-      final functions = FirebaseFunctions.instanceFor(region: 'us-central1');
-      final createUser = functions.httpsCallable('createUser');
-      
-      debugPrint('Calling createUser with payload: ${{
-        'email': userEmail,
-        'firstName': firstNameController.text.trim(),
-        'lastName': lastNameController.text.trim(),
-        'userRole': accessLevel,
-        'jobType': roles.toList(),
-        'organizationId': organizationId,
-        'locationId': locationId,
-        'locationIds': locationIds?.toList(),
-        'orgName': orgName,
-        'adminEmail': adminEmail,
-        'inviteUrl': inviteUrl,
-        'templateId': templateId,
-      }}');
-      
-      final result = await createUser.call({
-        'email': userEmail,
-        'password': tempPw,
-        'firstName': firstNameController.text.trim(),
-        'lastName': lastNameController.text.trim(),
-        'userRole': accessLevel,
-        'jobType': roles.toList(),
-        'organizationId': organizationId,
-        'locationId': locationId,
-        'locationIds': locationIds?.toList(),
-        'orgName': orgName,
-        'adminEmail': adminEmail,
-        'inviteUrl': inviteUrl,
-        'templateId': templateId,
-      });
-
-      debugPrint('createUser result: ${result.data}');
-
-      if (result.data != null && result.data['success'] == true) {
-        _showSnackBar(context, 'User created. A welcome email has been sent to $userEmail');
-        Navigator.pop(context, true);
+      if (isEditMode && userId != null) {
+        // Update existing user
+        await _updateExistingUser(
+          context,
+          userId,
+          firstNameController.text.trim(),
+          lastNameController.text.trim(),
+          accessLevel,
+          roles,
+          locationId,
+          locationIds,
+          organizationId,
+        );
       } else {
-        _showSnackBar(context, 'User creation failed. Please try again.', isError: true);
+        // Create new user
+        await _createNewUser(
+          context,
+          firstNameController.text.trim(),
+          lastNameController.text.trim(),
+          emailController.text.trim().toLowerCase(),
+          accessLevel,
+          roles,
+          locationId,
+          locationIds,
+          organizationId,
+          ref,
+        );
       }
     } catch (e, s) {
       final crashlyticsEnabled = ref.read(crashlyticsEnabledProvider);
@@ -697,7 +698,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
         showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: const Text('Error Creating User'),
+            title: Text(isEditMode ? 'Error Updating User' : 'Error Creating User'),
             content: Text(errorMsg),
             actions: [
               TextButton(
@@ -710,6 +711,142 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       }
     } finally {
       isLoading.value = false;
+    }
+  }
+
+  Future<void> _updateExistingUser(
+    BuildContext context,
+    String userId,
+    String firstName,
+    String lastName,
+    int accessLevel,
+    Set<String> roles,
+    String? locationId,
+    Set<String>? locationIds,
+    String organizationId,
+  ) async {
+    // Prepare update data
+    Map<String, dynamic> updateData = {
+      'firstName': firstName,
+      'lastName': lastName,
+      'userRole': accessLevel,
+      'jobType': roles.toList(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+
+    // Handle location assignment based on user role
+    if (accessLevel == 0) {
+      // General user - single location
+      updateData['locationId'] = locationId;
+      // Remove locationIds if it exists
+      updateData['locationIds'] = FieldValue.delete();
+    } else if (accessLevel == 1) {
+      // Manager - multiple locations
+      updateData['locationIds'] = locationIds?.toList() ?? [];
+      // Keep locationId for backwards compatibility (use first location)
+      updateData['locationId'] = locationIds?.isNotEmpty == true ? locationIds!.first : null;
+    } else {
+      // Admin - has access to all locations, but keep locationId for primary
+      if (locationId != null) {
+        updateData['locationId'] = locationId;
+      }
+    }
+
+    // Update user document in Firestore
+    await FirestoreEnforcer.instance
+        .collection('users')
+        .doc(userId)
+        .update(updateData);
+
+    if (context.mounted) {
+      _showSnackBar(context, 'User updated successfully');
+      Navigator.pop(context, true);
+    }
+  }
+
+  Future<void> _createNewUser(
+    BuildContext context,
+    String firstName,
+    String lastName,
+    String userEmail,
+    int accessLevel,
+    Set<String> roles,
+    String? locationId,
+    Set<String>? locationIds,
+    String organizationId,
+    WidgetRef ref,
+  ) async {
+    final tempPw = const Uuid().v4().substring(0, 8);
+    final orgName = await _getOrganizationName();
+    final adminEmail = FirebaseAuth.instance.currentUser?.email ?? '';
+    final templateId = 'd-575968e4e0c449f59ca89c1decdc8abc';
+
+    // Generate secure onboarding token
+    final inviteToken = const Uuid().v4();
+    final inviteUrl = 'https://plan-with-hands.web.app/welcome?email=$userEmail&organizationId=$organizationId&inviteId=$inviteToken';
+
+    // Store invite in Firestore
+    await FirestoreEnforcer.instance.collection('invites').doc(inviteToken).set({
+      'email': userEmail,
+      'organizationId': organizationId,
+      'createdAt': FieldValue.serverTimestamp(),
+      'expiresAt': DateTime.now().add(const Duration(days: 7)),
+      'used': false,
+      'firstName': firstName,
+      'lastName': lastName,
+      'userRole': accessLevel,
+      'jobType': roles.toList(),
+      'locationId': locationId,
+      'locationIds': locationIds?.toList(),
+      'orgName': orgName,
+      'adminEmail': adminEmail,
+    });
+
+    final functions = FirebaseFunctions.instanceFor(region: 'us-central1');
+    final createUser = functions.httpsCallable('createUser');
+    
+    debugPrint('Calling createUser with payload: ${{
+      'email': userEmail,
+      'firstName': firstName,
+      'lastName': lastName,
+      'userRole': accessLevel,
+      'jobType': roles.toList(),
+      'organizationId': organizationId,
+      'locationId': locationId,
+      'locationIds': locationIds?.toList(),
+      'orgName': orgName,
+      'adminEmail': adminEmail,
+      'inviteUrl': inviteUrl,
+      'templateId': templateId,
+    }}');
+    
+    final result = await createUser.call({
+      'email': userEmail,
+      'password': tempPw,
+      'firstName': firstName,
+      'lastName': lastName,
+      'userRole': accessLevel,
+      'jobType': roles.toList(),
+      'organizationId': organizationId,
+      'locationId': locationId,
+      'locationIds': locationIds?.toList(),
+      'orgName': orgName,
+      'adminEmail': adminEmail,
+      'inviteUrl': inviteUrl,
+      'templateId': templateId,
+    });
+
+    debugPrint('createUser result: ${result.data}');
+
+    if (result.data != null && result.data['success'] == true) {
+      if (context.mounted) {
+        _showSnackBar(context, 'User created. A welcome email has been sent to $userEmail');
+        Navigator.pop(context, true);
+      }
+    } else {
+      if (context.mounted) {
+        _showSnackBar(context, 'User creation failed. Please try again.', isError: true);
+      }
     }
   }
   }
