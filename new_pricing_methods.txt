@@ -1,0 +1,94 @@
+  void _showPricingMatrixDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Pricing Plans'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildPricingTier(
+                  'Starter',
+                  '\$29/month',
+                  'Up to 5 employees',
+                  'Perfect for small teams',
+                ),
+                _buildPricingTier(
+                  'Growth',
+                  '\$79/month',
+                  '6-20 employees',
+                  'Ideal for growing businesses',
+                ),
+                _buildPricingTier(
+                  'Professional',
+                  '\$149/month',
+                  '21-50 employees',
+                  'Advanced features',
+                ),
+                _buildPricingTier(
+                  'Enterprise',
+                  '\$249/month',
+                  '51-100 employees',
+                  'Full-featured solution',
+                ),
+                _buildPricingTier(
+                  'Custom',
+                  'Contact Us',
+                  '100+ employees',
+                  'Tailored solutions',
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildPricingTier(
+    String title,
+    String price,
+    String range,
+    String description,
+  ) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  price,
+                  style: const TextStyle(
+                    color: Colors.green,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            Text(
+              range,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            Text(description, style: const TextStyle(fontSize: 12)),
+          ],
+        ),
+      ),
+    );
+  }

@@ -13,6 +13,7 @@ import 'package:hands_app/services/daily_checklist_service.dart';
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/config/feature_flags.dart';
 
 // --- MAIN DASHBOARD PAGE ---
 
@@ -74,6 +75,13 @@ class UserDashboardPage extends HookConsumerWidget {
           }
 
           try {
+            // Scheduling feature flag
+            if (!enableScheduling) {
+              assignedShifts.value = [];
+              selectedLocationIds.value = [];
+              allChecklists.value = [];
+              return;
+            }
             // Find all assigned shifts for today
             List<ShiftData> foundShifts = await _getAllShiftsForToday(
               user.uid,
@@ -132,133 +140,117 @@ class UserDashboardPage extends HookConsumerWidget {
       appBar: AppBar(
         backgroundColor: Theme.of(context).primaryColor,
         title: GenericAppBarContent(
-          appBarTitle: 'Hands Dashboard',
+          appBarTitle: 'Task Workflow',
           userRole: userRole.value,
         ),
         automaticallyImplyLeading: false,
       ),
-      body:
-          isLoading.value
-              ? const Center(child: CircularProgressIndicator())
-              : Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (errorMessage.value != null)
-                      _InfoCard(
-                        message: errorMessage.value!,
-                        color: Colors.red,
-                      ),
-                    Expanded(
-                      child:
-                          assignedShifts.value.isNotEmpty
-                              ? ListView.builder(
-                                itemCount: assignedShifts.value.length,
-                                itemBuilder: (context, shiftIndex) {
-                                  final shift =
-                                      assignedShifts.value[shiftIndex];
-                                  final locationId =
-                                      selectedLocationIds.value[shiftIndex];
-                                  final checklists =
-                                      allChecklists.value.length > shiftIndex
-                                          ? allChecklists.value[shiftIndex]
-                                          : [];
-                                  return Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: [
-                                      _ShiftStatusCard(
-                                        title: "Your Assigned Shift",
-                                        shiftName: shift.shiftName,
-                                        timeRange:
-                                            "${shift.startTime} - ${shift.endTime}",
-                                        color: Colors.green,
-                                        icon: Icons.work_outline,
-                                        onClearShift:
-                                            () => _leaveVolunteerShift(
-                                              context,
-                                              shift,
-                                              organizationId.value!,
-                                            ),
-                                      ),
-                                      if (checklists.isNotEmpty)
-                                        Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            vertical: 8.0,
-                                          ),
-                                          child: Text(
-                                            "Today's Checklists",
-                                            style: Theme.of(
-                                              context,
-                                            ).textTheme.titleMedium?.copyWith(
+      body: isLoading.value
+          ? const Center(child: CircularProgressIndicator())
+          : Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (errorMessage.value != null)
+                    _InfoCard(
+                      message: errorMessage.value!,
+                      color: Colors.red,
+                    ),
+                  Expanded(
+                    child: assignedShifts.value.isNotEmpty
+                        ? ListView.builder(
+                            itemCount: assignedShifts.value.length,
+                            itemBuilder: (context, shiftIndex) {
+                              final shift = assignedShifts.value[shiftIndex];
+                              final locationId = selectedLocationIds.value[shiftIndex];
+                              final checklists = allChecklists.value.length > shiftIndex
+                                  ? allChecklists.value[shiftIndex]
+                                  : [];
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  _ShiftStatusCard(
+                                    title: "Your Assigned Shift",
+                                    shiftName: shift.shiftName,
+                                    timeRange: "${shift.startTime} - ${shift.endTime}",
+                                    color: Colors.green,
+                                    icon: Icons.work_outline,
+                                    onClearShift: () => _leaveVolunteerShift(
+                                      context,
+                                      shift,
+                                      organizationId.value!,
+                                    ),
+                                  ),
+                                  if (checklists.isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                      child: Text(
+                                        "Today's Checklists",
+                                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
                                               fontWeight: FontWeight.bold,
                                             ),
-                                          ),
-                                        ),
-                                      ...checklists.map(
-                                        (checklist) => _ChecklistCard(
-                                          checklist: checklist,
-                                          onTaskToggled: () async {
-                                            // Refresh only this shift's checklists
-                                            final refreshed =
-                                                await _loadChecklistsForShiftSimple(
-                                                  shift,
-                                                  locationId,
-                                                  todayString,
-                                                  organizationId.value!,
-                                                );
-                                            allChecklists.value[shiftIndex] =
-                                                refreshed;
-                                            allChecklists.value = List.from(
-                                              allChecklists.value,
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                    ],
-                                  );
-                                },
-                              )
-                              : const Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.work_off_outlined,
-                                      size: 64,
-                                      color: Colors.grey,
-                                    ),
-                                    SizedBox(height: 16),
-                                    Text(
-                                      "You don't have a shift assigned for today.",
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w500,
                                       ),
                                     ),
-                                    SizedBox(height: 8),
-                                    Text(
-                                      "Use the 'Help Out Another Shift' button below to join a shift.",
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        color: Colors.grey,
-                                      ),
+                                  ...checklists.map(
+                                    (checklist) => _ChecklistCard(
+                                      checklist: checklist,
+                                      onTaskToggled: () async {
+                                        // Refresh only this shift's checklists
+                                        final refreshed = await _loadChecklistsForShiftSimple(
+                                          shift,
+                                          locationId,
+                                          todayString,
+                                          organizationId.value!,
+                                        );
+                                        allChecklists.value[shiftIndex] = refreshed;
+                                        allChecklists.value = List.from(allChecklists.value);
+                                      },
                                     ),
-                                  ],
+                                  ),
+                                ],
+                              );
+                            },
+                          )
+                        : const Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.work_off_outlined,
+                                  size: 64,
+                                  color: Colors.grey,
                                 ),
-                              ),
-                    ),
-                    const SizedBox(height: 16),
-                    // Help Out Button (unchanged)
+                                SizedBox(height: 16),
+                                Text(
+                                  "You don't have a shift assigned for today.",
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  enableScheduling
+                                      ? "Use the 'Begin Working a Shift' button below to join a shift."
+                                      : "Scheduling is currently disabled.",
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                  ),
+                  const SizedBox(height: 16),
+                  if (enableScheduling)
                     ElevatedButton.icon(
                       onPressed: () async {
                         debugPrint("[Dashboard] Help Out button pressed");
-                        final result = await showModalBottomSheet<
-                          Map<String, dynamic>
-                        >(
+                        final result = await showModalBottomSheet<Map<String, dynamic>>(
                           context: context,
                           isScrollControlled: true,
                           builder: (_) {
@@ -286,13 +278,12 @@ class UserDashboardPage extends HookConsumerWidget {
                           ];
 
                           // Load the checklists for this new shift and add them
-                          final newChecklists =
-                              await _loadChecklistsForShiftSimple(
-                                shift,
-                                locationId,
-                                todayString,
-                                organizationId.value!,
-                              );
+                          final newChecklists = await _loadChecklistsForShiftSimple(
+                            shift,
+                            locationId,
+                            todayString,
+                            organizationId.value!,
+                          );
                           allChecklists.value = [
                             ...allChecklists.value,
                             newChecklists,
@@ -300,7 +291,7 @@ class UserDashboardPage extends HookConsumerWidget {
                         }
                       },
                       icon: const Icon(Icons.volunteer_activism),
-                      label: const Text("Help Out Another Shift"),
+                      label: const Text("Begin Working a Shift"),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Theme.of(context).primaryColor,
                         foregroundColor: Colors.white,
@@ -311,9 +302,9 @@ class UserDashboardPage extends HookConsumerWidget {
                         ),
                       ),
                     ),
-                  ],
-                ),
+                ],
               ),
+            ),
       // Floating action button removed
       bottomNavigationBar: BottomNavBar(
         currentIndex: 0,
@@ -329,6 +320,7 @@ Future<List<ShiftData>> _getAllShiftsForToday(
   String todayDayName,
   String todayString,
 ) async {
+  if (!enableScheduling) return [];
   debugPrint(
     "[Dashboard][DEBUG] _getAllShiftsForToday called for userId=$userId, todayDayName=$todayDayName, todayString=$todayString",
   );
@@ -1767,8 +1759,9 @@ class _PhotoDialog extends HookWidget {
                 onPressed: () => Navigator.pop(context, false),
                 child: const Text('Cancel'),
               ),
-              TextButton(
+              ElevatedButton(
                 onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                 child: const Text('Remove'),
               ),
             ],

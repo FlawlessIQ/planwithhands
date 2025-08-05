@@ -565,7 +565,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                     ),
                     const SizedBox(height: 12),
                     const Text(
-                      '✓ Schedule management\n✓ Time tracking\n✓ Team communication\n✓ Shift planning',
+                      '✓ Task management\n✓ Time tracking\n✓ Team communication\n✓ Shift planning',
                       style: TextStyle(fontSize: 14, color: Colors.white),
                     ),
                   ],
@@ -611,7 +611,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                     TextFormField(
                       controller: businessNameController,
                       decoration: const InputDecoration(
-                        labelText: 'Business Name',
+                        labelText: 'Business/LLC Name',
                         border: OutlineInputBorder(),
                       ),
                       textCapitalization: TextCapitalization.words,
@@ -782,7 +782,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                     TextFormField(
                       controller: primaryLocationNameController,
                       decoration: const InputDecoration(
-                        labelText: 'Location Name',
+                        labelText: 'Primary Location Name',
                         border: OutlineInputBorder(),
                       ),
                       textCapitalization: TextCapitalization.words,
@@ -1019,6 +1019,18 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                                   ? 'Complete Sign Up'
                                   : 'Create Account',
                             ),
+                  ),
+                  const SizedBox(height: 24),
+                  Center(
+                    child: TextButton(
+                      onPressed: () {
+                        context.go(AppRoutes.loginPage.path);
+                      },
+                      child: const Text(
+                        'Already have an account? Sign in',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                      ),
+                    ),
                   ),
                 ],
               ),

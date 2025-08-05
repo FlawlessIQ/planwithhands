@@ -1,0 +1,39 @@
+            title: const Text('Pricing Plans'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildPricingTier(
+                    'Starter',
+                    '\$29/month',
+                    'Up to 5 employees',
+                    'Perfect for small teams',
+                  ),
+                  _buildPricingTier(
+                    'Growth',
+                    '\$79/month',
+                    '6-20 employees',
+                    'Ideal for growing businesses',
+                  ),
+                  _buildPricingTier(
+                    'Professional',
+                    '\$149/month',
+                    '21-50 employees',
+                    'Advanced features',
+                  ),
+                  _buildPricingTier(
+                    'Enterprise',
+                    '\$249/month',
+                    '51-100 employees',
+                    'Full-featured solution',
+                  ),
+                  _buildPricingTier(
+                    'Custom',
+                    'Contact Us',
+                    '100+ employees',
+                    'Tailored solutions',
+                  ),
+                ],
+              ),
+            ),

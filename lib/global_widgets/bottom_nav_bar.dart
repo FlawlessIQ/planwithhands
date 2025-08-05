@@ -7,7 +7,11 @@ import 'package:hands_app/routing/routes.dart';
 class BottomNavBar extends ConsumerWidget {
   final int currentIndex;
   final int? userRole;
-  const BottomNavBar({super.key, required this.currentIndex, this.userRole});
+  const BottomNavBar({
+    super.key,
+    required this.currentIndex,
+    this.userRole,
+  });
 
   void _onItemTapped(BuildContext context, int index) {
     switch (index) {
@@ -42,7 +46,7 @@ class BottomNavBar extends ConsumerWidget {
 
     // Always add User tab
     items.add(
-      const BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'User'),
+      const BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Tasks'),
     );
     tabMap.add(0);
 
@@ -68,15 +72,7 @@ class BottomNavBar extends ConsumerWidget {
       tabMap.add(2);
     }
 
-    // Always add Schedule and Documents tabs
-    items.add(
-      const BottomNavigationBarItem(
-        icon: Icon(Icons.calendar_today),
-        label: 'Schedule',
-      ),
-    );
-    tabMap.add(3);
-
+    // Always add Documents tab
     items.add(
       const BottomNavigationBarItem(
         icon: Icon(Icons.description),

@@ -602,32 +602,35 @@ class DailyChecklistService {
 
       debugPrint('Found ${locationsQuery.docs.length} locations');
 
+      // Get all shifts in the organization (shifts are at org level, not per location)
+      final shiftsQuery = await _firestore
+          .collection('organizations')
+          .doc(organizationId)
+          .collection('shifts')
+          .get();
+
+      debugPrint('Found ${shiftsQuery.docs.length} shifts in organization');
+
       for (final locationDoc in locationsQuery.docs) {
         final locationId = locationDoc.id;
-
-        // Get all shifts for this location - CORRECTED PATH
-        final shiftsQuery =
-            await _firestore
-                .collection('organizations')
-                .doc(organizationId)
-                .collection('locations')
-                .doc(locationId)
-                .collection('shifts')
-                .get();
-
-        debugPrint(
-          'Found ${shiftsQuery.docs.length} shifts for location $locationId',
-        );
+        debugPrint('Processing location: $locationId');
 
         for (final shiftDoc in shiftsQuery.docs) {
           final shiftId = shiftDoc.id;
           final shiftData = ShiftData.fromJson(shiftDoc.data());
 
+          // Check if this shift applies to this location
+          final shiftLocationIds = shiftData.locationIds;
+          if (!shiftLocationIds.contains(locationId)) {
+            debugPrint('Shift $shiftId does not apply to location $locationId, skipping');
+            continue;
+          }
+
           debugPrint(
-            'Processing shift $shiftId with ${shiftData.checklistTemplateIds.length} templates',
+            'Processing shift $shiftId (${shiftData.shiftName}) for location $locationId with ${shiftData.checklistTemplateIds.length} templates',
           );
 
-          // Generate daily checklists for this shift
+          // Generate daily checklists for this shift at this location
           final checklists = await generateDailyChecklists(
             organizationId: organizationId,
             locationId: locationId,
@@ -638,7 +641,7 @@ class DailyChecklistService {
 
           allCreatedChecklists.addAll(checklists);
           debugPrint(
-            'Generated ${checklists.length} checklists for shift $shiftId',
+            'Generated ${checklists.length} checklists for shift $shiftId at location $locationId',
           );
         }
       }
@@ -657,51 +660,15 @@ class DailyChecklistService {
   /// Check if daily checklists have been generated for today, and generate them if not
   /// This should be called when the app starts or when a user first logs in
   Future<void> ensureDailyChecklistsExist(String organizationId) async {
-    final today = DateTime.now();
-    final dateString = _formatDate(today);
-
+    final dateString = _formatDate(DateTime.now());
     try {
-      // Check if any daily checklists exist for today across all locations
-      final locationsQuery =
-          await _firestore
-              .collection('organizations')
-              .doc(organizationId)
-              .collection('locations')
-              .get();
-
-      bool hasExistingChecklists = false;
-
-      for (final locationDoc in locationsQuery.docs) {
-        final locationId = locationDoc.id;
-
-        final existingChecklists =
-            await _firestore
-                .collection('organizations')
-                .doc(organizationId)
-                .collection('locations')
-                .doc(locationId)
-                .collection('daily_checklists')
-                .where('date', isEqualTo: dateString)
-                .limit(1)
-                .get();
-
-        if (existingChecklists.docs.isNotEmpty) {
-          hasExistingChecklists = true;
-          break;
-        }
-      }
-
-      if (!hasExistingChecklists) {
-        debugPrint(
-          'No daily checklists found for $dateString, generating now...',
-        );
-        await generateAllDailyChecklistsForDate(
-          organizationId: organizationId,
-          date: dateString,
-        );
-      } else {
-        debugPrint('Daily checklists already exist for $dateString');
-      }
+      debugPrint('Ensuring daily checklists for date: $dateString');
+      // Always generate checklists for today (idempotent)
+      await generateAllDailyChecklistsForDate(
+        organizationId: organizationId,
+        date: dateString,
+      );
+      debugPrint('Daily checklist generation completed for $dateString');
     } catch (e) {
       debugPrint('Error in ensureDailyChecklistsExist: $e');
     }

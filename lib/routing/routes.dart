@@ -325,7 +325,10 @@ final router = GoRouter(
     ),
     GoRoute(
       path: AppRoutes.trainingMaterialsPage.path,
-      builder: (context, state) => const AuthGate(child: ViewDocumentsPage()),
+      builder: (context, state) {
+        // Pass any extra data (like userRole) to the page
+        return const AuthGate(child: ViewDocumentsPage());
+      },
     ),
     GoRoute(
       path: AppRoutes.paymentSuccessPage.path,

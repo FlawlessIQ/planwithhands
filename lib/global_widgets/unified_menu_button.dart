@@ -3,7 +3,6 @@ import 'package:go_router/go_router.dart';
 import 'package:hands_app/routing/routes.dart';
 import 'package:hands_app/pages/admin/send_notification_sheet.dart';
 import 'package:hands_app/pages/admin/create_group_sheet.dart';
-import 'package:hands_app/ui/availability_bottom_sheet.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hands_app/state/notification_state.dart';
 
@@ -57,13 +56,6 @@ class UnifiedMenuButton extends ConsumerWidget {
               builder: (context) => const CreateGroupSheet(),
             );
             break;
-          case _MenuAction.schedulingPreferences:
-            showModalBottomSheet(
-              context: context,
-              isScrollControlled: true,
-              builder: (context) => const AvailabilityBottomSheet(),
-            );
-            break;
           case _MenuAction.settings:
             GoRouter.of(context).push(AppRoutes.settingsPage.path);
             break;
@@ -103,10 +95,6 @@ class UnifiedMenuButton extends ConsumerWidget {
         // Always available for all users
         items.addAll([
           const PopupMenuItem(
-            value: _MenuAction.schedulingPreferences,
-            child: Text('Scheduling preferences'),
-          ),
-          const PopupMenuItem(
             value: _MenuAction.settings,
             child: Text('Settings'),
           ),
@@ -122,6 +110,5 @@ enum _MenuAction {
   viewMessages,
   sendNotification,
   createGroup,
-  schedulingPreferences,
   settings,
 }

@@ -39,9 +39,10 @@ _$ShiftDataImpl _$$ShiftDataImplFromJson(Map<String, dynamic> json) =>
           const [],
       repeatsDaily: json['repeatsDaily'] as bool? ?? false,
       activeDays:
-          (json['activeDays'] as List<dynamic>)
-              .map((e) => (e as num).toInt())
-              .toList(),
+          (json['activeDays'] as List<dynamic>?)
+              ?.map((e) => (e as num).toInt())
+              .toList() ??
+          const [],
       assignedUserIds:
           (json['assignedUserIds'] as List<dynamic>?)
               ?.map((e) => e as String)

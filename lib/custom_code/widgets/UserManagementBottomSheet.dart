@@ -10,25 +10,365 @@ import 'package:flutter/foundation.dart';
 import 'package:hands_app/main.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 
-/// Placeholder dialog for managing job types.
-class JobTypeManagementDialog extends StatelessWidget {
+/// Dialog for managing job types with full CRUD functionality.
+class JobTypeManagementDialog extends StatefulWidget {
   final VoidCallback onJobTypesUpdated;
   const JobTypeManagementDialog({super.key, required this.onJobTypesUpdated});
 
   @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Manage Job Types'),
-      content: const Text('Job type management UI not implemented.'),
-      actions: [
-        TextButton(
-          onPressed: () {
-            onJobTypesUpdated();
-            Navigator.of(context).pop();
-          },
-          child: const Text('OK'),
+  State<JobTypeManagementDialog> createState() => _JobTypeManagementDialogState();
+}
+
+class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
+  final TextEditingController _newJobTypeController = TextEditingController();
+  final TextEditingController _editJobTypeController = TextEditingController();
+  List<Map<String, dynamic>> _jobTypes = [];
+  bool _isLoading = true;
+  String? _organizationId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadJobTypes();
+  }
+
+  @override
+  void dispose() {
+    _newJobTypeController.dispose();
+    _editJobTypeController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadJobTypes() async {
+    setState(() => _isLoading = true);
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser != null) {
+        final currentUserDoc = await FirestoreEnforcer.instance
+            .collection('users')
+            .doc(currentUser.uid)
+            .get();
+        _organizationId = currentUserDoc.data()?['organizationId'];
+      }
+
+      if (_organizationId == null || _organizationId!.isEmpty) {
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      final jobTypesSnapshot = await FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(_organizationId!)
+          .collection('jobTypes')
+          .orderBy('name')
+          .get();
+
+      final jobTypes = jobTypesSnapshot.docs.map((doc) {
+        final data = doc.data();
+        return {
+          'id': doc.id,
+          'name': data['name'] as String,
+          'createdAt': data['createdAt'],
+          'organizationId': data['organizationId'],
+        };
+      }).toList();
+
+      setState(() {
+        _jobTypes = jobTypes;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading job types: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _addJobType() async {
+    final name = _newJobTypeController.text.trim();
+    if (name.isEmpty) {
+      _showSnackBar('Please enter a job type name', isError: true);
+      return;
+    }
+
+    // Check for duplicates
+    if (_jobTypes.any((jt) => jt['name'].toLowerCase() == name.toLowerCase())) {
+      _showSnackBar('This job type already exists', isError: true);
+      return;
+    }
+
+    try {
+      await FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(_organizationId!)
+          .collection('jobTypes')
+          .add({
+        'name': name,
+        'createdAt': FieldValue.serverTimestamp(),
+        'organizationId': _organizationId!,
+      });
+
+      _newJobTypeController.clear();
+      _showSnackBar('Job type added successfully');
+      await _loadJobTypes();
+    } catch (e) {
+      print('Error adding job type: $e');
+      _showSnackBar('Failed to add job type', isError: true);
+    }
+  }
+
+  Future<void> _editJobType(String jobTypeId, String currentName) async {
+    _editJobTypeController.text = currentName;
+    
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Job Type'),
+        content: TextFormField(
+          controller: _editJobTypeController,
+          decoration: const InputDecoration(
+            labelText: 'Job Type Name',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
         ),
-      ],
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final newName = _editJobTypeController.text.trim();
+              if (newName.isNotEmpty) {
+                Navigator.pop(context, newName);
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result != currentName) {
+      // Check for duplicates
+      if (_jobTypes.any((jt) => jt['id'] != jobTypeId && jt['name'].toLowerCase() == result.toLowerCase())) {
+        _showSnackBar('This job type already exists', isError: true);
+        return;
+      }
+
+      try {
+        await FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(_organizationId!)
+            .collection('jobTypes')
+            .doc(jobTypeId)
+            .update({
+          'name': result,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        _showSnackBar('Job type updated successfully');
+        await _loadJobTypes();
+      } catch (e) {
+        print('Error updating job type: $e');
+        _showSnackBar('Failed to update job type', isError: true);
+      }
+    }
+  }
+
+  Future<void> _deleteJobType(String jobTypeId, String jobTypeName) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Job Type'),
+        content: Text('Are you sure you want to delete "$jobTypeName"?\n\nThis action cannot be undone and may affect existing users assigned to this role.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(_organizationId!)
+            .collection('jobTypes')
+            .doc(jobTypeId)
+            .delete();
+
+        _showSnackBar('Job type deleted successfully');
+        await _loadJobTypes();
+      } catch (e) {
+        print('Error deleting job type: $e');
+        _showSnackBar('Failed to delete job type', isError: true);
+      }
+    }
+  }
+
+  void _showSnackBar(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : Colors.green,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      child: Container(
+        width: 500,
+        height: 600,
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Manage Job Types',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () {
+                    widget.onJobTypesUpdated();
+                    Navigator.of(context).pop();
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // Add new job type section
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Add New Job Type',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _newJobTypeController,
+                            decoration: const InputDecoration(
+                              labelText: 'Job Type Name',
+                              border: OutlineInputBorder(),
+                              hintText: 'e.g., Sous Chef, Barista, etc.',
+                            ),
+                            onFieldSubmitted: (_) => _addJobType(),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        ElevatedButton.icon(
+                          onPressed: _addJobType,
+                          icon: const Icon(Icons.add),
+                          label: const Text('Add'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Existing job types list
+            const Text(
+              'Existing Job Types',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+
+            // Job types list
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _jobTypes.isEmpty
+                      ? const Center(
+                          child: Text(
+                            'No job types found.\nAdd your first job type above.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: _jobTypes.length,
+                          itemBuilder: (context, index) {
+                            final jobType = _jobTypes[index];
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              child: ListTile(
+                                leading: const Icon(Icons.work_outline),
+                                title: Text(
+                                  jobType['name'],
+                                  style: const TextStyle(fontWeight: FontWeight.w500),
+                                ),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.edit, color: Colors.blue),
+                                      tooltip: 'Edit',
+                                      onPressed: () => _editJobType(
+                                        jobType['id'],
+                                        jobType['name'],
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete, color: Colors.red),
+                                      tooltip: 'Delete',
+                                      onPressed: () => _deleteJobType(
+                                        jobType['id'],
+                                        jobType['name'],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+            ),
+
+            // Footer buttons
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                ElevatedButton(
+                  onPressed: () {
+                    widget.onJobTypesUpdated();
+                    Navigator.of(context).pop();
+                  },
+                  child: const Text('Done'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

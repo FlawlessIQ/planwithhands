@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
+import 'package:hands_app/global_widgets/location_selector.dart';
 import 'package:intl/intl.dart';
 import 'package:hands_app/services/daily_checklist_service.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
@@ -26,7 +27,6 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
   String? _selectedLocationName;
   List<Map<String, dynamic>> _availableLocations = [];
   bool _isLoadingLocations = true;
-  bool _showLocationSelector = false;
 
   // Audit filters (removed location filter)
   String _searchTerm = '';
@@ -119,8 +119,6 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
       setState(() {
         _availableLocations = locations;
-        _showLocationSelector =
-            locations.length > 1; // Show selector if multiple locations
 
         // Auto-select primary location or first location if available
         if (locations.isNotEmpty) {
@@ -223,75 +221,22 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Location selector at the top (only show if multiple locations)
-            if (_showLocationSelector) ...[
-              Card(
-                elevation: 3,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.location_on,
-                            color: Theme.of(context).primaryColor,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Location Selection',
-                            style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        value: _selectedLocationId,
-                        decoration: const InputDecoration(
-                          labelText: 'Select Location',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.business),
-                        ),
-                        items:
-                            _availableLocations
-                                .map(
-                                  (location) => DropdownMenuItem<String>(
-                                    value: location['id'] as String,
-                                    child: Text(location['name']! as String),
-                                  ),
-                                )
-                                .toList(),
-                        onChanged: (value) async {
-                          setState(() {
-                            _selectedLocationId = value;
-                            _selectedLocationName =
-                                _availableLocations.firstWhere(
-                                  (loc) => loc['id'] == value,
-                                  orElse: () => {'name': 'Unknown Location'},
-                                )['name'];
-                          });
-                          if (value != null) {
-                            await _loadFilterOptions();
-                          }
-                        },
-                      ),
-                      if (_selectedLocationName != null) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          'Viewing data for: $_selectedLocationName',
-                          style: TextStyle(
-                            color: Theme.of(context).primaryColor,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-            ],
+            LocationSelector(
+              selectedLocationId: _selectedLocationId,
+              availableLocations: _availableLocations,
+              onLocationChanged: (value) async {
+                setState(() {
+                  _selectedLocationId = value;
+                  _selectedLocationName =
+                      _availableLocations.firstWhere(
+                        (loc) => loc['id'] == value,
+                        orElse: () => {'name': 'Unknown Location'},
+                      )['name'];
+                });
+                await _loadFilterOptions();
+              },
+              isLoading: _isLoadingLocations,
+            ),
 
             // Today header
             _buildTodayHeader(),
@@ -368,6 +313,17 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                       .where('organizationId', isEqualTo: widget.organizationId)
                       .snapshots(),
               builder: (context, userSnapshot) {
+                // Debug logging
+                debugPrint('[ManagerDashboard] Organization ID: ${widget.organizationId}');
+                debugPrint('[ManagerDashboard] User snapshot has data: ${userSnapshot.hasData}');
+                if (userSnapshot.hasData) {
+                  debugPrint('[ManagerDashboard] Number of users found: ${userSnapshot.data!.docs.length}');
+                  for (final doc in userSnapshot.data!.docs) {
+                    final userData = doc.data() as Map<String, dynamic>;
+                    debugPrint('[ManagerDashboard] User ${doc.id}: ${userData['email']} - orgId: ${userData['organizationId']}');
+                  }
+                }
+                
                 return StreamBuilder<QuerySnapshot>(
                   stream:
                       _selectedLocationId != null
@@ -385,20 +341,46 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                     final allUsers =
                         userSnapshot.hasData ? userSnapshot.data!.docs : [];
 
+                    // Debug user location data
+                    debugPrint('[ManagerDashboard] Selected location ID: $_selectedLocationId');
+                    for (final doc in allUsers) {
+                      final userData = doc.data() as Map<String, dynamic>;
+                      final userLocationIds = userData['locationIds'];
+                      final primaryLocationId = userData['primaryLocationId'];
+                      debugPrint('[ManagerDashboard] User ${doc.id} (${userData['email']}): locationIds=$userLocationIds, primaryLocationId=$primaryLocationId');
+                    }
+
                     // If location is selected, filter users for that location
+                    // More inclusive filtering: if user has no location data, include them
                     final totalUsers =
                         _selectedLocationId != null
                             ? allUsers.where((doc) {
                               final userData =
                                   doc.data() as Map<String, dynamic>;
-                              final userLocationIds = List<String>.from(
-                                userData['locationIds'] ?? [],
-                              );
-                              return userLocationIds.contains(
-                                _selectedLocationId,
-                              );
+                              
+                              // Check both locationIds array and primaryLocationId
+                              final userLocationIds = userData['locationIds'] as List<dynamic>?;
+                              final primaryLocationId = userData['primaryLocationId'] as String?;
+                              
+                              // If user has no location data OR locationIds is null/empty, include them (for backwards compatibility)
+                              if ((userLocationIds == null || userLocationIds.isEmpty)) {
+                                debugPrint('[ManagerDashboard] User ${doc.id}: including due to no/null locationIds data');
+                                return true;
+                              }
+                              
+                              // Convert to String list safely
+                              final locationIds = List<String>.from(userLocationIds.map((e) => e.toString()));
+                              
+                              final hasLocationAccess = locationIds.contains(_selectedLocationId) ||
+                                  primaryLocationId == _selectedLocationId;
+                              
+                              debugPrint('[ManagerDashboard] User ${doc.id}: hasLocationAccess=$hasLocationAccess (locationIds=$locationIds, primary=$primaryLocationId, selected=$_selectedLocationId)');
+                              
+                              return hasLocationAccess;
                             }).length
                             : allUsers.length;
+
+                    debugPrint('[ManagerDashboard] Total users after inclusive location filtering: $totalUsers');
 
                     // Count users who have been active today (either logged in or have checklists)
                     int activeToday = 0;
@@ -427,15 +409,26 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                         final userData = userDoc.data() as Map<String, dynamic>;
                         final userId = userDoc.id;
 
-                        // If location is selected, only count users for that location
-                        if (_selectedLocationId != null) {
-                          final userLocationIds = List<String>.from(
-                            userData['locationIds'] ?? [],
-                          );
-                          if (!userLocationIds.contains(_selectedLocationId)) {
-                            continue;
+                          // If location is selected, only count users for that location
+                          if (_selectedLocationId != null) {
+                            final userLocationIds = userData['locationIds'] as List<dynamic>?;
+                            final primaryLocationId = userData['primaryLocationId'] as String?;
+                            
+                            // If user has no location data OR locationIds is null/empty, include them (for backwards compatibility)
+                            if ((userLocationIds == null || userLocationIds.isEmpty)) {
+                              debugPrint('[ManagerDashboard] Active count: including user ${userDoc.id} due to no/null locationIds data');
+                            } else {
+                              // Convert to String list safely
+                              final locationIds = List<String>.from(userLocationIds.map((e) => e.toString()));
+                              
+                              final hasLocationAccess = locationIds.contains(_selectedLocationId) ||
+                                  primaryLocationId == _selectedLocationId;
+                              
+                              if (!hasLocationAccess) {
+                                continue;
+                              }
+                            }
                           }
-                        }
 
                         // Check if user has checklists today
                         if (usersWithChecklists.contains(userId)) {

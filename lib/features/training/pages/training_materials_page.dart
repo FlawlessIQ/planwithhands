@@ -24,12 +24,22 @@ class ViewDocumentsPage extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final userState = ref.watch(userStateProvider);
+    
+    // Get userRole from multiple sources with fallback
     int userRole = userState.userData?.userRole ?? 0;
-    // Check for navigation argument (e.g., passed from admin dashboard)
+    
+    // Check for GoRouter extra parameter (from bottom nav)
+    final routeExtra = GoRouterState.of(context).extra;
+    if (routeExtra is Map<String, dynamic> && routeExtra.containsKey('userRole')) {
+      userRole = routeExtra['userRole'] as int? ?? userRole;
+    }
+    
+    // Check for navigation argument (legacy support)
     final navArgs = ModalRoute.of(context)?.settings.arguments;
     if (navArgs is int) {
       userRole = navArgs;
     }
+    
     final selectedCategory = useState<String>('All');
     final organizationId = useState<String?>(null);
     final isLoadingOrgId = useState<bool>(true);
@@ -305,6 +315,7 @@ class ViewDocumentsPage extends HookConsumerWidget {
                                             url: url,
                                             title: title,
                                             fileType: type,
+                                            userRole: userRole, // Pass userRole to viewer
                                           ),
                                     ),
                                   );
@@ -375,12 +386,14 @@ class DocumentViewerPage extends HookWidget {
   final String url;
   final String title;
   final String fileType;
+  final int userRole;
 
   const DocumentViewerPage({
     super.key,
     required this.url,
     required this.title,
     required this.fileType,
+    required this.userRole,
   });
 
   @override
@@ -521,13 +534,10 @@ class DocumentViewerPage extends HookWidget {
                 ),
               )
               : _buildDocumentViewer(context, localPath.value),
-      // Use userRole from userState or default to 0
+      // Use userRole from constructor parameter
       bottomNavigationBar: BottomNavBar(
         currentIndex: 4,
-        userRole:
-            (ModalRoute.of(context)?.settings.arguments is int)
-                ? ModalRoute.of(context)!.settings.arguments as int
-                : 0,
+        userRole: userRole,
       ),
     );
   }

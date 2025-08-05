@@ -331,11 +331,10 @@
     },
     {
       "name": "fl_chart",
-      "version": "1.0.0",
+      "version": "0.68.0",
       "dependencies": [
         "equatable",
-        "flutter",
-        "vector_math"
+        "flutter"
       ]
     },
     {

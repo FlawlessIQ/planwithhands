@@ -4,19 +4,24 @@ const functions = require("firebase-functions");
 const sgMail = require("@sendgrid/mail");
 
 // Set SendGrid API key from Firebase Functions config
-const sendgridApiKey = functions.config().sendgrid &&
-  functions.config().sendgrid.key;
-if (!sendgridApiKey) {
-  logger.error("SendGrid API key is not configured. Please set it with: " +
-    "firebase functions:config:set sendgrid.key=\"YOUR_API_KEY\"");
-} else {
-  sgMail.setApiKey(sendgridApiKey);
+let sendgridApiKey;
+try {
+  sendgridApiKey = functions.config().sendgrid &&
+    functions.config().sendgrid.key;
+  if (!sendgridApiKey) {
+    logger.warn("SendGrid API key is not configured. Email sending will be skipped.");
+  } else {
+    sgMail.setApiKey(sendgridApiKey);
+    logger.info("SendGrid API key configured successfully");
+  }
+} catch (error) {
+  logger.warn("Error configuring SendGrid:", error.message);
 }
 
 exports.createUser = functions.https.onCall(async (data, context) => {
   try {
     logger.info("createUser function called with data:", JSON.stringify(data));
-    
+
     // Check if user is authenticated and is admin
     if (!context.auth) {
       throw new functions.https.HttpsError(
@@ -91,9 +96,13 @@ exports.createUser = functions.https.onCall(async (data, context) => {
     if (templateId && sendgridApiKey) {
       try {
         logger.info("Sending welcome email...");
+        logger.info("Template ID:", templateId);
+        logger.info("SendGrid API key exists:", !!sendgridApiKey);
+        logger.info("Email recipient:", email);
+
         const msg = {
           to: email,
-          from: "noreply@plan-with-hands.web.app",
+          from: "noreply@em5998.planwithhands.com", // Using your verified SendGrid domain
           templateId: templateId,
           dynamicTemplateData: {
             firstName: firstName,
@@ -105,14 +114,23 @@ exports.createUser = functions.https.onCall(async (data, context) => {
           },
         };
 
+        logger.info("Email message object:", JSON.stringify(msg, null, 2));
         await sgMail.send(msg);
         logger.info(`Welcome email sent to ${email} using template ${templateId}`);
       } catch (emailError) {
         logger.error("Failed to send welcome email:", emailError);
+        logger.error("Email error details:", JSON.stringify(emailError, null, 2));
+        logger.error("Email error code:", emailError.code);
+        logger.error("Email error response:", emailError.response);
+        if (emailError.response && emailError.response.body) {
+          logger.error("SendGrid error body:", JSON.stringify(emailError.response.body, null, 2));
+        }
         // Don't fail the user creation if email fails
       }
     } else {
       logger.info("Skipping email send - no template ID or SendGrid API key");
+      logger.info("Template ID present:", !!templateId);
+      logger.info("SendGrid API key present:", !!sendgridApiKey);
     }
 
     logger.info("Function completed successfully");

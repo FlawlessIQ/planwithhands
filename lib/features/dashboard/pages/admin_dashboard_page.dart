@@ -10,6 +10,7 @@ import 'package:hands_app/ui/checklist_bottom_sheet.dart';
 import 'package:hands_app/features/shifts/shift_template_bottom_sheet.dart';
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
+import 'package:hands_app/global_widgets/location_selector.dart';
 import 'package:hands_app/data/models/shift_data.dart';
 import 'package:hands_app/debug/scheduling_test_data_seeder.dart';
 import 'package:hands_app/debug/role_diagnostic.dart';
@@ -32,7 +33,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   String? _selectedLocationId;
   String? _selectedLocationName;
   List<Map<String, dynamic>> _availableLocations = [];
-  bool _showLocationSelector = false;
 
   // Add refresh keys to force StreamBuilder updates
   final ValueNotifier<int> _refreshTrigger = ValueNotifier<int>(0);
@@ -90,8 +90,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       if (mounted) {
         setState(() {
           _availableLocations = locations;
-          _showLocationSelector =
-              locations.length > 1; // Show selector if multiple locations
 
           // Auto-select primary location or first location if available
           if (locations.isNotEmpty) {
@@ -175,149 +173,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to create default location: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _fixOrphanedUsers() async {
-    try {
-      if (organizationId == null || _availableLocations.isEmpty) return;
-
-      // First, ensure there's a primary location
-      await _ensurePrimaryLocation();
-
-      // Find the primary location, or use the first available location as fallback
-      final primaryLocation = _availableLocations.firstWhere(
-        (loc) => loc['isPrimary'] == true,
-        orElse: () => _availableLocations.first,
-      );
-      final primaryLocationId = primaryLocation['id'] as String;
-
-      debugPrint('[AdminDashboard] Using primary location for orphaned users: ${primaryLocation['name']} ($primaryLocationId)');
-
-      // Query all users in the organization
-      final usersSnapshot = await FirestoreEnforcer.instance
-          .collection('users')
-          .where('organizationId', isEqualTo: organizationId)
-          .get();
-
-      int fixedCount = 0;
-      
-      for (final userDoc in usersSnapshot.docs) {
-        final userData = userDoc.data();
-        final userLocationId = userData['locationId'] as String?;
-        final userRole = userData['userRole'] ?? 0;
-        
-        // Skip admins (role 2) as they have access to all locations
-        if (userRole == 2) continue;
-        
-        // Check if user has no location or an orphaned location
-        bool needsFix = false;
-        
-        if (userLocationId == null) {
-          debugPrint('[AdminDashboard] User ${userDoc.id} has no locationId - fixing');
-          needsFix = true;
-        } else {
-          // Check if locationId exists in current available locations
-          final locationExists = _availableLocations.any((loc) => loc['id'] == userLocationId);
-          if (!locationExists) {
-            debugPrint('[AdminDashboard] User ${userDoc.id} has orphaned locationId: $userLocationId - fixing');
-            needsFix = true;
-          }
-        }
-        
-        if (needsFix) {
-          await userDoc.reference.update({
-            'locationId': primaryLocationId,
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-          fixedCount++;
-          debugPrint('[AdminDashboard] Fixed user ${userDoc.id} - assigned to location $primaryLocationId');
-        }
-      }
-
-      if (fixedCount > 0) {
-        debugPrint('[AdminDashboard] Fixed $fixedCount orphaned users');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Fixed $fixedCount orphaned users by assigning them to ${primaryLocation['name']}'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-        // Trigger a refresh to show updated user assignments
-        _refreshTrigger.value++;
-      } else {
-        debugPrint('[AdminDashboard] No orphaned users found to fix');
-      }
-    } catch (e) {
-      debugPrint('[AdminDashboard] Error fixing orphaned users: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to fix orphaned users: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _ensurePrimaryLocation() async {
-    try {
-      if (organizationId == null || _availableLocations.isEmpty) return;
-
-      // Check if any location is marked as primary
-      final hasPrimary = _availableLocations.any((loc) => loc['isPrimary'] == true);
-      
-      if (!hasPrimary) {
-        // No primary location found, set the first location as primary
-        final firstLocation = _availableLocations.first;
-        final locationId = firstLocation['id'] as String;
-        
-        debugPrint('[AdminDashboard] No primary location found - setting first location as primary: ${firstLocation['name']} ($locationId)');
-        
-        await FirestoreEnforcer.instance
-            .collection('organizations')
-            .doc(organizationId)
-            .collection('locations')
-            .doc(locationId)
-            .update({
-              'isPrimary': true,
-              'updatedAt': FieldValue.serverTimestamp(),
-            });
-
-        // Update the organization's primaryLocationId as well
-        await FirestoreEnforcer.instance
-            .collection('organizations')
-            .doc(organizationId!)
-            .update({
-              'primaryLocationId': locationId,
-              'updatedAt': FieldValue.serverTimestamp(),
-            });
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Set ${firstLocation['name']} as the primary location'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-        
-        // Reload locations to reflect the change
-        await _loadLocations();
-      }
-    } catch (e) {
-      debugPrint('[AdminDashboard] Error ensuring primary location: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to set primary location: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -525,10 +380,12 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         child: Column(
           children: [
             // Location selector (only show if multiple locations)
-            if (_showLocationSelector) ...[
-              _buildLocationSelector(),
-              const SizedBox(height: 16),
-            ],
+            LocationSelector(
+              selectedLocationId: _selectedLocationId,
+              availableLocations: _availableLocations,
+              onLocationChanged: _onLocationSelected,
+              isLoading: false,
+            ),
             _buildUsersSection(),
             const SizedBox(height: 16),
             _buildShiftsSection(),
@@ -559,61 +416,30 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
               'Users',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ElevatedButton.icon(
-                  onPressed: _fixOrphanedUsers,
-                  icon: const Icon(
-                    Icons.healing,
-                    size: 16,
-                    color: Colors.white,
-                  ),
-                  label: const Text(
-                    'Fix Orphaned',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    minimumSize: const Size(0, 32),
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(6)),
-                    ),
-                    elevation: 0,
-                  ),
+            trailing: ElevatedButton.icon(
+              onPressed: () => _showUserBottomSheet(),
+              icon: const Icon(
+                Icons.add_circle_outline,
+                size: 18,
+                color: Colors.white,
+              ),
+              label: const Text(
+                'Add New',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
                 ),
-                const SizedBox(width: 8),
-                ElevatedButton.icon(
-                  onPressed: () => _showUserBottomSheet(),
-                  icon: const Icon(
-                    Icons.add_circle_outline,
-                    size: 18,
-                    color: Colors.white,
-                  ),
-                  label: const Text(
-                    'Add New',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    minimumSize: const Size(0, 36),
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(8)),
-                    ),
-                    elevation: 0,
-                  ),
+                minimumSize: const Size(0, 36),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(8)),
                 ),
-              ],
+                elevation: 0,
+              ),
             ),
           ),
           _buildUsersList(),
@@ -1029,7 +855,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                     if (value is String) return value;
                     if (value is Map) {
                       // Handle nested objects - extract any string values
-                      final values = value.values.where((v) => v is String);
+                      final values = value.values.whereType<String>();
                       return values.isNotEmpty ? values.first.toString() : '';
                     }
                     return value.toString();
@@ -1192,9 +1018,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                   final locationIds = List<String>.from(
                     shiftData['locationIds'] ?? [],
                   );
-                  final staffingLevels = Map<String, dynamic>.from(
-                    shiftData['staffingLevels'] ?? {},
-                  );
 
                   // Get location names for this shift
                   final locationNames =
@@ -1206,12 +1029,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                         return location['name'] as String;
                       }).toList();
 
-                  // Calculate total suggested staff
-                  final totalStaff = staffingLevels.values.fold<int>(
-                    0,
-                    (total, staffCount) => total + (staffCount as int? ?? 0),
-                  );
-
                   return ListTile(
                     leading: const Icon(Icons.schedule),
                     title: Text(name),
@@ -1219,15 +1036,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text('$startTime - $endTime • ${roles.join(', ')}'),
-                        if (totalStaff > 0)
-                          Text(
-                            'Suggested staff: $totalStaff people',
-                            style: TextStyle(
-                              color: Colors.orange[700],
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
                         if (locationNames.isNotEmpty)
                           Text(
                             'Locations: ${locationNames.join(', ')}',
@@ -2064,34 +1872,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         );
       }
     }
-  }
-
-  Widget _buildLocationSelector() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: DropdownButtonFormField<String>(
-          value: _selectedLocationId,
-          onChanged: (value) {
-            if (value != null) {
-              _onLocationSelected(value);
-            }
-          },
-          items:
-              _availableLocations.map((location) {
-                return DropdownMenuItem<String>(
-                  value: location['id'],
-                  child: Text(location['name']),
-                );
-              }).toList(),
-          decoration: const InputDecoration(
-            labelText: 'Select Location',
-            border: InputBorder.none,
-            icon: Icon(Icons.location_pin),
-          ),
-        ),
-      ),
-    );
   }
 
   Widget _buildDebugSection() {

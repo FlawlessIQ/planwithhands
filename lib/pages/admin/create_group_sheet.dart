@@ -5,7 +5,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 
 class CreateGroupSheet extends ConsumerStatefulWidget {
-  const CreateGroupSheet({super.key});
+  final String? groupId;
+  final Map<String, dynamic>? groupData;
+  
+  const CreateGroupSheet({
+    super.key,
+    this.groupId,
+    this.groupData,
+  });
 
   @override
   ConsumerState<CreateGroupSheet> createState() => _CreateGroupSheetState();
@@ -20,11 +27,23 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
   List<Map<String, String>> _users = [];
   bool _isLoading = true;
   String _searchQuery = '';
+  bool get _isEditMode => widget.groupId != null && widget.groupData != null;
 
   @override
   void initState() {
     super.initState();
+    _initializeForm();
     _fetchUsers();
+  }
+
+  void _initializeForm() {
+    if (_isEditMode && widget.groupData != null) {
+      _groupNameController.text = widget.groupData!['name'] ?? '';
+      final memberIds = widget.groupData!['memberIds'];
+      if (memberIds is List) {
+        _selectedUserIds.addAll(memberIds.cast<String>());
+      }
+    }
   }
 
   @override
@@ -73,7 +92,7 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
     });
   }
 
-  Future<void> _createGroup() async {
+  Future<void> _saveGroup() async {
     final name = _groupNameController.text.trim();
     if (name.isEmpty || _selectedUserIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -96,17 +115,31 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
     final orgId = userDoc.data()?['organizationId'] as String?;
     if (orgId == null) return;
 
-    await FirestoreEnforcer.instance
-        .collection('organizations')
-        .doc(orgId)
-        .collection('groups')
-        .add({
-          'name': name,
-          'memberIds': _selectedUserIds.toList(),
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+    final groupData = {
+      'name': name,
+      'memberIds': _selectedUserIds.toList(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
 
-    if (mounted) Navigator.of(context).pop();
+    if (_isEditMode) {
+      // Update existing group
+      await FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(orgId)
+          .collection('groups')
+          .doc(widget.groupId!)
+          .update(groupData);
+    } else {
+      // Create new group
+      groupData['createdAt'] = FieldValue.serverTimestamp();
+      await FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(orgId)
+          .collection('groups')
+          .add(groupData);
+    }
+
+    if (mounted) Navigator.of(context).pop(true);
   }
 
   @override
@@ -132,9 +165,20 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Create Group',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    _isEditMode ? 'Edit Group' : 'Create Group',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.of(context).pop(),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
               ),
               const SizedBox(height: 16),
               TextField(
@@ -182,8 +226,8 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _createGroup,
-                  child: const Text('Create Group'),
+                  onPressed: _saveGroup,
+                  child: Text(_isEditMode ? 'Update Group' : 'Create Group'),
                 ),
               ),
             ],

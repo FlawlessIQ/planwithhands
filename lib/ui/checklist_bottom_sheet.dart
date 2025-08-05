@@ -462,6 +462,7 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
           SizedBox(
             height: 300, // Fixed height for scrollable area
             child: ReorderableListView.builder(
+              buildDefaultDragHandles: false,
               itemCount: _tasks.length,
               onReorder: (oldIndex, newIndex) {
                 setState(() {
@@ -507,7 +508,7 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
                             onChanged: (value) => task['name'] = value,
                           ),
                         ),
-                        // Photo required checkbox
+                        // Photo required checkbox with improved label
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 8.0),
                           child: Column(
@@ -521,9 +522,16 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
                                   });
                                 },
                               ),
-                              const Text(
-                                'Photo',
-                                style: TextStyle(fontSize: 10),
+                              LayoutBuilder(
+                                builder: (context, constraints) {
+                                  // Use shorter label if not enough space
+                                  final label = constraints.maxWidth < 60 ? 'Photo Req' : 'Photo Required';
+                                  return Text(
+                                    label,
+                                    style: const TextStyle(fontSize: 10),
+                                    overflow: TextOverflow.ellipsis,
+                                  );
+                                },
                               ),
                             ],
                           ),
@@ -539,6 +547,7 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
                             });
                           },
                         ),
+                        // (Removed drag handle/double line button from right side)
                       ],
                     ),
                   ),
