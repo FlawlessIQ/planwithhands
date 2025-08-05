@@ -1,0 +1,23 @@
+// **************************************************************************
+// RiverpodGenerator
+// **************************************************************************
+
+String _$operationalStateHash() => r'10bd842b9f75c1acfc5a8fd94c379810689eb8f8';
+
+/// See also [OperationalState].
+@ProviderFor(OperationalState)
+final operationalStateProvider =
+    NotifierProvider<OperationalState, OperationalStateData>.internal(
+      OperationalState.new,
+      name: r'operationalStateProvider',
+      debugGetCreateSourceHash:
+          const bool.fromEnvironment('dart.vm.product')
+              ? null
+              : _$operationalStateHash,
+      dependencies: null,
+      allTransitiveDependencies: null,
+    );
+
+typedef _$OperationalState = Notifier<OperationalStateData>;
+// ignore_for_file: type=lint
+// ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member, deprecated_member_use_from_same_package

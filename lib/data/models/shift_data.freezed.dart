@@ -389,7 +389,7 @@ class _$ShiftDataImpl implements _ShiftData {
     final Map<String, int> staffingLevels = const {},
     final List<String> days = const [],
     this.repeatsDaily = false,
-    final List<int> activeDays = const [],
+    required final List<int> activeDays,
     final List<String> assignedUserIds = const [],
     final List<String> volunteers = const [],
     this.published = false,
@@ -476,7 +476,6 @@ class _$ShiftDataImpl implements _ShiftData {
   final bool repeatsDaily;
   final List<int> _activeDays;
   @override
-  @JsonKey()
   List<int> get activeDays {
     if (_activeDays is EqualUnmodifiableListView) return _activeDays;
     // ignore: implicit_dynamic_type
@@ -619,7 +618,7 @@ abstract class _ShiftData implements ShiftData {
     final Map<String, int> staffingLevels,
     final List<String> days,
     final bool repeatsDaily,
-    final List<int> activeDays,
+    required final List<int> activeDays,
     final List<String> assignedUserIds,
     final List<String> volunteers,
     final bool published,

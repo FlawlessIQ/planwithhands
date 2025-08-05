@@ -31,7 +31,20 @@ mixin _$TaskData {
   bool get photoRequired => throw _privateConstructorUsedError;
   String? get completedBy => throw _privateConstructorUsedError;
   String? get photoUrl => throw _privateConstructorUsedError;
-  String get description => throw _privateConstructorUsedError;
+  String get description =>
+      throw _privateConstructorUsedError; // Carry-forward fields
+  bool get isCarryForward => throw _privateConstructorUsedError;
+  @TimestampConverter()
+  DateTime? get originalDate => throw _privateConstructorUsedError;
+  String? get originalChecklistId => throw _privateConstructorUsedError;
+  String? get originalTaskId => throw _privateConstructorUsedError;
+  @TimestampConverter()
+  DateTime? get carriedIntoDate => throw _privateConstructorUsedError;
+  bool get carryForwardAttempted => throw _privateConstructorUsedError;
+  bool get excludedFromMetrics => throw _privateConstructorUsedError;
+  bool get resolvedLate => throw _privateConstructorUsedError;
+  @TimestampConverter()
+  DateTime? get resolvedAt => throw _privateConstructorUsedError;
 
   /// Serializes this TaskData to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -58,6 +71,15 @@ abstract class $TaskDataCopyWith<$Res> {
     String? completedBy,
     String? photoUrl,
     String description,
+    bool isCarryForward,
+    @TimestampConverter() DateTime? originalDate,
+    String? originalChecklistId,
+    String? originalTaskId,
+    @TimestampConverter() DateTime? carriedIntoDate,
+    bool carryForwardAttempted,
+    bool excludedFromMetrics,
+    bool resolvedLate,
+    @TimestampConverter() DateTime? resolvedAt,
   });
 }
 
@@ -85,6 +107,15 @@ class _$TaskDataCopyWithImpl<$Res, $Val extends TaskData>
     Object? completedBy = freezed,
     Object? photoUrl = freezed,
     Object? description = null,
+    Object? isCarryForward = null,
+    Object? originalDate = freezed,
+    Object? originalChecklistId = freezed,
+    Object? originalTaskId = freezed,
+    Object? carriedIntoDate = freezed,
+    Object? carryForwardAttempted = null,
+    Object? excludedFromMetrics = null,
+    Object? resolvedLate = null,
+    Object? resolvedAt = freezed,
   }) {
     return _then(
       _value.copyWith(
@@ -133,6 +164,51 @@ class _$TaskDataCopyWithImpl<$Res, $Val extends TaskData>
                     ? _value.description
                     : description // ignore: cast_nullable_to_non_nullable
                         as String,
+            isCarryForward:
+                null == isCarryForward
+                    ? _value.isCarryForward
+                    : isCarryForward // ignore: cast_nullable_to_non_nullable
+                        as bool,
+            originalDate:
+                freezed == originalDate
+                    ? _value.originalDate
+                    : originalDate // ignore: cast_nullable_to_non_nullable
+                        as DateTime?,
+            originalChecklistId:
+                freezed == originalChecklistId
+                    ? _value.originalChecklistId
+                    : originalChecklistId // ignore: cast_nullable_to_non_nullable
+                        as String?,
+            originalTaskId:
+                freezed == originalTaskId
+                    ? _value.originalTaskId
+                    : originalTaskId // ignore: cast_nullable_to_non_nullable
+                        as String?,
+            carriedIntoDate:
+                freezed == carriedIntoDate
+                    ? _value.carriedIntoDate
+                    : carriedIntoDate // ignore: cast_nullable_to_non_nullable
+                        as DateTime?,
+            carryForwardAttempted:
+                null == carryForwardAttempted
+                    ? _value.carryForwardAttempted
+                    : carryForwardAttempted // ignore: cast_nullable_to_non_nullable
+                        as bool,
+            excludedFromMetrics:
+                null == excludedFromMetrics
+                    ? _value.excludedFromMetrics
+                    : excludedFromMetrics // ignore: cast_nullable_to_non_nullable
+                        as bool,
+            resolvedLate:
+                null == resolvedLate
+                    ? _value.resolvedLate
+                    : resolvedLate // ignore: cast_nullable_to_non_nullable
+                        as bool,
+            resolvedAt:
+                freezed == resolvedAt
+                    ? _value.resolvedAt
+                    : resolvedAt // ignore: cast_nullable_to_non_nullable
+                        as DateTime?,
           )
           as $Val,
     );
@@ -158,6 +234,15 @@ abstract class _$$TaskDataImplCopyWith<$Res>
     String? completedBy,
     String? photoUrl,
     String description,
+    bool isCarryForward,
+    @TimestampConverter() DateTime? originalDate,
+    String? originalChecklistId,
+    String? originalTaskId,
+    @TimestampConverter() DateTime? carriedIntoDate,
+    bool carryForwardAttempted,
+    bool excludedFromMetrics,
+    bool resolvedLate,
+    @TimestampConverter() DateTime? resolvedAt,
   });
 }
 
@@ -184,6 +269,15 @@ class __$$TaskDataImplCopyWithImpl<$Res>
     Object? completedBy = freezed,
     Object? photoUrl = freezed,
     Object? description = null,
+    Object? isCarryForward = null,
+    Object? originalDate = freezed,
+    Object? originalChecklistId = freezed,
+    Object? originalTaskId = freezed,
+    Object? carriedIntoDate = freezed,
+    Object? carryForwardAttempted = null,
+    Object? excludedFromMetrics = null,
+    Object? resolvedLate = null,
+    Object? resolvedAt = freezed,
   }) {
     return _then(
       _$TaskDataImpl(
@@ -232,6 +326,51 @@ class __$$TaskDataImplCopyWithImpl<$Res>
                 ? _value.description
                 : description // ignore: cast_nullable_to_non_nullable
                     as String,
+        isCarryForward:
+            null == isCarryForward
+                ? _value.isCarryForward
+                : isCarryForward // ignore: cast_nullable_to_non_nullable
+                    as bool,
+        originalDate:
+            freezed == originalDate
+                ? _value.originalDate
+                : originalDate // ignore: cast_nullable_to_non_nullable
+                    as DateTime?,
+        originalChecklistId:
+            freezed == originalChecklistId
+                ? _value.originalChecklistId
+                : originalChecklistId // ignore: cast_nullable_to_non_nullable
+                    as String?,
+        originalTaskId:
+            freezed == originalTaskId
+                ? _value.originalTaskId
+                : originalTaskId // ignore: cast_nullable_to_non_nullable
+                    as String?,
+        carriedIntoDate:
+            freezed == carriedIntoDate
+                ? _value.carriedIntoDate
+                : carriedIntoDate // ignore: cast_nullable_to_non_nullable
+                    as DateTime?,
+        carryForwardAttempted:
+            null == carryForwardAttempted
+                ? _value.carryForwardAttempted
+                : carryForwardAttempted // ignore: cast_nullable_to_non_nullable
+                    as bool,
+        excludedFromMetrics:
+            null == excludedFromMetrics
+                ? _value.excludedFromMetrics
+                : excludedFromMetrics // ignore: cast_nullable_to_non_nullable
+                    as bool,
+        resolvedLate:
+            null == resolvedLate
+                ? _value.resolvedLate
+                : resolvedLate // ignore: cast_nullable_to_non_nullable
+                    as bool,
+        resolvedAt:
+            freezed == resolvedAt
+                ? _value.resolvedAt
+                : resolvedAt // ignore: cast_nullable_to_non_nullable
+                    as DateTime?,
       ),
     );
   }
@@ -250,6 +389,15 @@ class _$TaskDataImpl implements _TaskData {
     this.completedBy,
     this.photoUrl,
     this.description = '',
+    this.isCarryForward = false,
+    @TimestampConverter() this.originalDate,
+    this.originalChecklistId,
+    this.originalTaskId,
+    @TimestampConverter() this.carriedIntoDate,
+    this.carryForwardAttempted = false,
+    this.excludedFromMetrics = false,
+    this.resolvedLate = false,
+    @TimestampConverter() this.resolvedAt,
   });
 
   factory _$TaskDataImpl.fromJson(Map<String, dynamic> json) =>
@@ -278,10 +426,36 @@ class _$TaskDataImpl implements _TaskData {
   @override
   @JsonKey()
   final String description;
+  // Carry-forward fields
+  @override
+  @JsonKey()
+  final bool isCarryForward;
+  @override
+  @TimestampConverter()
+  final DateTime? originalDate;
+  @override
+  final String? originalChecklistId;
+  @override
+  final String? originalTaskId;
+  @override
+  @TimestampConverter()
+  final DateTime? carriedIntoDate;
+  @override
+  @JsonKey()
+  final bool carryForwardAttempted;
+  @override
+  @JsonKey()
+  final bool excludedFromMetrics;
+  @override
+  @JsonKey()
+  final bool resolvedLate;
+  @override
+  @TimestampConverter()
+  final DateTime? resolvedAt;
 
   @override
   String toString() {
-    return 'TaskData(taskId: $taskId, taskName: $taskName, createdAt: $createdAt, dueDate: $dueDate, completed: $completed, photoRequired: $photoRequired, completedBy: $completedBy, photoUrl: $photoUrl, description: $description)';
+    return 'TaskData(taskId: $taskId, taskName: $taskName, createdAt: $createdAt, dueDate: $dueDate, completed: $completed, photoRequired: $photoRequired, completedBy: $completedBy, photoUrl: $photoUrl, description: $description, isCarryForward: $isCarryForward, originalDate: $originalDate, originalChecklistId: $originalChecklistId, originalTaskId: $originalTaskId, carriedIntoDate: $carriedIntoDate, carryForwardAttempted: $carryForwardAttempted, excludedFromMetrics: $excludedFromMetrics, resolvedLate: $resolvedLate, resolvedAt: $resolvedAt)';
   }
 
   @override
@@ -304,7 +478,25 @@ class _$TaskDataImpl implements _TaskData {
             (identical(other.photoUrl, photoUrl) ||
                 other.photoUrl == photoUrl) &&
             (identical(other.description, description) ||
-                other.description == description));
+                other.description == description) &&
+            (identical(other.isCarryForward, isCarryForward) ||
+                other.isCarryForward == isCarryForward) &&
+            (identical(other.originalDate, originalDate) ||
+                other.originalDate == originalDate) &&
+            (identical(other.originalChecklistId, originalChecklistId) ||
+                other.originalChecklistId == originalChecklistId) &&
+            (identical(other.originalTaskId, originalTaskId) ||
+                other.originalTaskId == originalTaskId) &&
+            (identical(other.carriedIntoDate, carriedIntoDate) ||
+                other.carriedIntoDate == carriedIntoDate) &&
+            (identical(other.carryForwardAttempted, carryForwardAttempted) ||
+                other.carryForwardAttempted == carryForwardAttempted) &&
+            (identical(other.excludedFromMetrics, excludedFromMetrics) ||
+                other.excludedFromMetrics == excludedFromMetrics) &&
+            (identical(other.resolvedLate, resolvedLate) ||
+                other.resolvedLate == resolvedLate) &&
+            (identical(other.resolvedAt, resolvedAt) ||
+                other.resolvedAt == resolvedAt));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -320,6 +512,15 @@ class _$TaskDataImpl implements _TaskData {
     completedBy,
     photoUrl,
     description,
+    isCarryForward,
+    originalDate,
+    originalChecklistId,
+    originalTaskId,
+    carriedIntoDate,
+    carryForwardAttempted,
+    excludedFromMetrics,
+    resolvedLate,
+    resolvedAt,
   );
 
   /// Create a copy of TaskData
@@ -347,6 +548,15 @@ abstract class _TaskData implements TaskData {
     final String? completedBy,
     final String? photoUrl,
     final String description,
+    final bool isCarryForward,
+    @TimestampConverter() final DateTime? originalDate,
+    final String? originalChecklistId,
+    final String? originalTaskId,
+    @TimestampConverter() final DateTime? carriedIntoDate,
+    final bool carryForwardAttempted,
+    final bool excludedFromMetrics,
+    final bool resolvedLate,
+    @TimestampConverter() final DateTime? resolvedAt,
   }) = _$TaskDataImpl;
 
   factory _TaskData.fromJson(Map<String, dynamic> json) =
@@ -371,7 +581,28 @@ abstract class _TaskData implements TaskData {
   @override
   String? get photoUrl;
   @override
-  String get description;
+  String get description; // Carry-forward fields
+  @override
+  bool get isCarryForward;
+  @override
+  @TimestampConverter()
+  DateTime? get originalDate;
+  @override
+  String? get originalChecklistId;
+  @override
+  String? get originalTaskId;
+  @override
+  @TimestampConverter()
+  DateTime? get carriedIntoDate;
+  @override
+  bool get carryForwardAttempted;
+  @override
+  bool get excludedFromMetrics;
+  @override
+  bool get resolvedLate;
+  @override
+  @TimestampConverter()
+  DateTime? get resolvedAt;
 
   /// Create a copy of TaskData
   /// with the given fields replaced by the non-null parameter values.

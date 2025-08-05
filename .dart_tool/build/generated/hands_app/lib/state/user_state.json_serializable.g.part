@@ -1,0 +1,14 @@
+// **************************************************************************
+// JsonSerializableGenerator
+// **************************************************************************
+
+_$UserStateDataImpl _$$UserStateDataImplFromJson(Map<String, dynamic> json) =>
+    _$UserStateDataImpl(
+      userData:
+          json['userData'] == null
+              ? null
+              : UserData.fromJson(json['userData'] as Map<String, dynamic>),
+    );
+
+Map<String, dynamic> _$$UserStateDataImplToJson(_$UserStateDataImpl instance) =>
+    <String, dynamic>{'userData': instance.userData};

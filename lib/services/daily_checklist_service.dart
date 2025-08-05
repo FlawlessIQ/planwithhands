@@ -649,6 +649,20 @@ class DailyChecklistService {
       debugPrint(
         'Total daily checklists generated: ${allCreatedChecklists.length}',
       );
+
+      // After generating normal checklists, carry forward missed tasks from yesterday
+      if (allCreatedChecklists.isNotEmpty) {
+        try {
+          await carryForwardMissedTasks(
+            organizationId: organizationId,
+            targetDate: DateTime.parse(date),
+          );
+        } catch (e) {
+          debugPrint('Error during carry-forward process: $e');
+          // Don't fail the entire generation if carry-forward fails
+        }
+      }
+
       return allCreatedChecklists;
     } catch (e, stackTrace) {
       debugPrint('Error in generateAllDailyChecklistsForDate: $e');
@@ -671,6 +685,147 @@ class DailyChecklistService {
       debugPrint('Daily checklist generation completed for $dateString');
     } catch (e) {
       debugPrint('Error in ensureDailyChecklistsExist: $e');
+    }
+  }
+
+  /// Carry forward missed tasks from yesterday to today
+  /// This is idempotent - running twice on the same day should not duplicate carried tasks
+  Future<void> carryForwardMissedTasks({
+    required String organizationId,
+    required DateTime targetDate,
+  }) async {
+    debugPrint('[DailyChecklistService] Starting carry-forward process for date: ${_formatDate(targetDate)}');
+    
+    final yesterday = targetDate.subtract(const Duration(days: 1));
+    final yesterdayString = _formatDate(yesterday);
+    final targetDateString = _formatDate(targetDate);
+
+    try {
+      // Get all locations in the organization
+      final locationsQuery = await _firestore
+          .collection('organizations')
+          .doc(organizationId)
+          .collection('locations')
+          .get();
+
+      debugPrint('[DailyChecklistService] Found ${locationsQuery.docs.length} locations for carry-forward');
+
+      for (final locationDoc in locationsQuery.docs) {
+        final locationId = locationDoc.id;
+        
+        // Get yesterday's checklists for this location
+        final yesterdayChecklistsQuery = await _firestore
+            .collection('organizations')
+            .doc(organizationId)
+            .collection('locations')
+            .doc(locationId)
+            .collection('daily_checklists')
+            .where('date', isEqualTo: yesterdayString)
+            .get();
+
+        debugPrint('[DailyChecklistService] Found ${yesterdayChecklistsQuery.docs.length} checklists from yesterday for location $locationId');
+
+        for (final checklistDoc in yesterdayChecklistsQuery.docs) {
+          final checklistData = checklistDoc.data();
+          final checklist = DailyChecklist.fromMap(checklistData, checklistDoc.id);
+          
+          // Find incomplete tasks that haven't been carry-forward attempted
+          final incompleteTasks = checklist.tasks.where((task) =>
+              !task.isCompleted &&
+              !task.carryForwardAttempted &&
+              !task.isCarryForward // Never carry a task that's already a carry-forward
+          ).toList();
+
+          if (incompleteTasks.isEmpty) {
+            debugPrint('[DailyChecklistService] No incomplete tasks to carry forward from checklist ${checklist.id}');
+            continue;
+          }
+
+          debugPrint('[DailyChecklistService] Found ${incompleteTasks.length} incomplete tasks to carry forward from checklist ${checklist.id}');
+
+          // Create carry-forward tasks for today
+          final carriedTasks = <DailyChecklistTask>[];
+          
+          for (final task in incompleteTasks) {
+            final carriedTaskId = '${task.originalTaskId ?? task.taskId}-cf-${targetDateString.replaceAll('-', '')}';
+
+            carriedTasks.add(DailyChecklistTask(
+              taskId: carriedTaskId,
+              description: task.description,
+              isCompleted: false,
+              photoRequired: task.photoRequired,
+              notes: task.notes,
+              // Carry-forward specific fields
+              isCarryForward: true,
+              originalDate: task.originalDate ?? yesterday,
+              originalChecklistId: task.originalChecklistId ?? checklist.id,
+              originalTaskId: task.originalTaskId ?? task.taskId,
+              carriedIntoDate: targetDate,
+              excludedFromMetrics: true,
+            ));
+          }
+
+          // Create missed tasks checklist if we have tasks to carry forward
+          if (carriedTasks.isNotEmpty) {
+            final missedTasksChecklistId = '${organizationId}_${locationId}_${checklist.shiftId}_missed-tasks_$targetDateString';
+            
+            final missedTasksChecklist = DailyChecklist(
+              id: missedTasksChecklistId,
+              checklistTemplateId: 'missed-tasks-${checklist.shiftId}',
+              shiftId: checklist.shiftId,
+              locationId: locationId,
+              organizationId: organizationId,
+              date: targetDate,
+              tasks: carriedTasks,
+              isCompleted: false,
+              createdAt: DateTime.now(),
+              updatedAt: DateTime.now(),
+              templateName: 'Missed Tasks (Yesterday) - ${checklist.templateName ?? 'Unknown Shift'}',
+            );
+
+            // Save the missed tasks checklist
+            await _firestore
+                .collection('organizations')
+                .doc(organizationId)
+                .collection('locations')
+                .doc(locationId)
+                .collection('daily_checklists')
+                .doc(missedTasksChecklistId)
+                .set(missedTasksChecklist.toMap(), SetOptions(merge: true));
+
+            debugPrint('[DailyChecklistService] Created missed tasks checklist with ${carriedTasks.length} carried tasks');
+
+            // Mark original tasks as carry-forward attempted
+            final updatedOriginalTasks = checklist.tasks.map((task) {
+              if (incompleteTasks.contains(task)) {
+                return task.copyWith(carryForwardAttempted: true);
+              }
+              return task;
+            }).toList();
+
+            // Update the original checklist
+            await _firestore
+                .collection('organizations')
+                .doc(organizationId)
+                .collection('locations')
+                .doc(locationId)
+                .collection('daily_checklists')
+                .doc(checklist.id)
+                .update({
+              'tasks': updatedOriginalTasks.map((task) => task.toMap()).toList(),
+              'updatedAt': Timestamp.now(),
+            });
+
+            debugPrint('[DailyChecklistService] Marked ${incompleteTasks.length} original tasks as carry-forward attempted');
+          }
+        }
+      }
+
+      debugPrint('[DailyChecklistService] Carry-forward process completed successfully');
+    } catch (e, stackTrace) {
+      debugPrint('[DailyChecklistService] Error in carry-forward process: $e');
+      debugPrint('[DailyChecklistService] Stack trace: $stackTrace');
+      rethrow;
     }
   }
 }

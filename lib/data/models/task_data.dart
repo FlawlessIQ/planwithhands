@@ -16,6 +16,16 @@ class TaskData with _$TaskData {
     String? completedBy,
     String? photoUrl,
     @Default('') String description,
+    // Carry-forward fields
+    @Default(false) bool isCarryForward,
+    @TimestampConverter() DateTime? originalDate,
+    String? originalChecklistId,
+    String? originalTaskId,
+    @TimestampConverter() DateTime? carriedIntoDate,
+    @Default(false) bool carryForwardAttempted,
+    @Default(false) bool excludedFromMetrics,
+    @Default(false) bool resolvedLate,
+    @TimestampConverter() DateTime? resolvedAt,
   }) = _TaskData;
 
   factory TaskData.fromJson(Map<String, dynamic> json) =>

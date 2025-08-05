@@ -10,6 +10,16 @@ class DailyChecklistTask {
   final String? notes;
   final bool photoRequired;
   final String? notCompletedReason;
+  // Carry-forward fields
+  final bool isCarryForward;
+  final DateTime? originalDate;
+  final String? originalChecklistId;
+  final String? originalTaskId;
+  final DateTime? carriedIntoDate;
+  final bool carryForwardAttempted;
+  final bool excludedFromMetrics;
+  final bool resolvedLate;
+  final DateTime? resolvedAt;
 
   const DailyChecklistTask({
     required this.taskId,
@@ -21,6 +31,15 @@ class DailyChecklistTask {
     this.notes,
     this.photoRequired = false,
     this.notCompletedReason,
+    this.isCarryForward = false,
+    this.originalDate,
+    this.originalChecklistId,
+    this.originalTaskId,
+    this.carriedIntoDate,
+    this.carryForwardAttempted = false,
+    this.excludedFromMetrics = false,
+    this.resolvedLate = false,
+    this.resolvedAt,
   });
 
   Map<String, dynamic> toMap() {
@@ -37,6 +56,16 @@ class DailyChecklistTask {
       'notes': notes,
       'photoRequired': photoRequired,
       'notCompletedReason': notCompletedReason,
+      // Carry-forward fields
+      'isCarryForward': isCarryForward,
+      'originalDate': originalDate?.toIso8601String(),
+      'originalChecklistId': originalChecklistId,
+      'originalTaskId': originalTaskId,
+      'carriedIntoDate': carriedIntoDate?.toIso8601String(),
+      'carryForwardAttempted': carryForwardAttempted,
+      'excludedFromMetrics': excludedFromMetrics,
+      'resolvedLate': resolvedLate,
+      'resolvedAt': resolvedAt?.toIso8601String(),
     };
   }
 
@@ -67,6 +96,16 @@ class DailyChecklistTask {
       notes: map['notes'],
       photoRequired: map['photoRequired'] ?? false,
       notCompletedReason: map['notCompletedReason'],
+      // Carry-forward fields
+      isCarryForward: map['isCarryForward'] ?? false,
+      originalDate: parseTimestampField(map['originalDate']),
+      originalChecklistId: map['originalChecklistId'],
+      originalTaskId: map['originalTaskId'],
+      carriedIntoDate: parseTimestampField(map['carriedIntoDate']),
+      carryForwardAttempted: map['carryForwardAttempted'] ?? false,
+      excludedFromMetrics: map['excludedFromMetrics'] ?? false,
+      resolvedLate: map['resolvedLate'] ?? false,
+      resolvedAt: parseTimestampField(map['resolvedAt']),
     );
   }
 
@@ -80,6 +119,15 @@ class DailyChecklistTask {
     String? notes,
     bool? photoRequired,
     String? notCompletedReason,
+    bool? isCarryForward,
+    DateTime? originalDate,
+    String? originalChecklistId,
+    String? originalTaskId,
+    DateTime? carriedIntoDate,
+    bool? carryForwardAttempted,
+    bool? excludedFromMetrics,
+    bool? resolvedLate,
+    DateTime? resolvedAt,
   }) {
     return DailyChecklistTask(
       taskId: taskId ?? this.taskId,
@@ -91,6 +139,15 @@ class DailyChecklistTask {
       notes: notes ?? this.notes,
       photoRequired: photoRequired ?? this.photoRequired,
       notCompletedReason: notCompletedReason ?? this.notCompletedReason,
+      isCarryForward: isCarryForward ?? this.isCarryForward,
+      originalDate: originalDate ?? this.originalDate,
+      originalChecklistId: originalChecklistId ?? this.originalChecklistId,
+      originalTaskId: originalTaskId ?? this.originalTaskId,
+      carriedIntoDate: carriedIntoDate ?? this.carriedIntoDate,
+      carryForwardAttempted: carryForwardAttempted ?? this.carryForwardAttempted,
+      excludedFromMetrics: excludedFromMetrics ?? this.excludedFromMetrics,
+      resolvedLate: resolvedLate ?? this.resolvedLate,
+      resolvedAt: resolvedAt ?? this.resolvedAt,
     );
   }
 }
