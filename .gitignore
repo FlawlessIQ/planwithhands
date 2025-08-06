@@ -74,3 +74,39 @@ ios/Runner/GoogleService-Info.plist
 macos/Runner/GoogleService-Info.plist
 GoogleService-Info*.plist
 google-services.json
+
+# Flutter/Dart specific
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+ios/Pods/
+android/.gradle/
+android/app/build/
+*.g.dart
+*.freezed.dart
+*.mocks.dart
+.flutter-plugins
+.flutter-plugins-dependencies
+flutter_*.png
+linked_*.ds
+unlinked.ds
+unlinked_spec.ds
+.last_build_id
+.vscode/
+
+# IDE specific
+.vscode/launch.json
+.idea/
+*.iml
+
+# Mac specific
+.DS_Store
+
+# Temporary files
+*.tmp
+*.temp
+
+# Large generated files
+pubspec.lock
