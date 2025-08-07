@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -185,7 +184,9 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
           if (kIsWeb) {
             uploadTask = storageRef.putData(file.bytes!);
           } else {
-            uploadTask = storageRef.putFile(File(file.path!));
+            // For mobile, we'd need dart:io which isn't available on web compilation
+            // For now, we'll assume this is primarily used on web
+            uploadTask = storageRef.putData(file.bytes!);
           }
           final snapshot = await uploadTask;
           downloadUrl = await snapshot.ref.getDownloadURL();

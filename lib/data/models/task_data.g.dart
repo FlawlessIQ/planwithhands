@@ -17,6 +17,8 @@ _$TaskDataImpl _$$TaskDataImplFromJson(Map<String, dynamic> json) =>
       completedBy: json['completedBy'] as String?,
       photoUrl: json['photoUrl'] as String?,
       description: json['description'] as String? ?? '',
+      notes: json['notes'] as String?,
+      notCompletedReason: json['notCompletedReason'] as String?,
       isCarryForward: json['isCarryForward'] as bool? ?? false,
       originalDate: const TimestampConverter().fromJson(json['originalDate']),
       originalChecklistId: json['originalChecklistId'] as String?,
@@ -41,6 +43,8 @@ Map<String, dynamic> _$$TaskDataImplToJson(_$TaskDataImpl instance) =>
       'completedBy': instance.completedBy,
       'photoUrl': instance.photoUrl,
       'description': instance.description,
+      'notes': instance.notes,
+      'notCompletedReason': instance.notCompletedReason,
       'isCarryForward': instance.isCarryForward,
       'originalDate': _$JsonConverterToJson<Object?, DateTime>(
         instance.originalDate,

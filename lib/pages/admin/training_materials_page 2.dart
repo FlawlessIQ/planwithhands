@@ -9,8 +9,6 @@ import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:video_player/video_player.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:go_router/go_router.dart';
-import 'dart:io';
-import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
@@ -292,33 +290,10 @@ class DocumentViewerPage extends HookWidget {
           return url;
         }
 
-        // For PDFs on mobile, we need to download and cache locally
+        // For PDFs on mobile, we'll also just use the URL for now
+        // TODO: Implement proper mobile file caching if needed
         if (fileType.toLowerCase() == 'document') {
-          try {
-            // Use HTTP client instead of Firebase Storage getData for better compatibility
-            final http = HttpClient();
-            final request = await http.getUrl(Uri.parse(url));
-            final response = await request.close();
-
-            if (response.statusCode == 200) {
-              final dir = await getTemporaryDirectory();
-              final file = File(
-                '${dir.path}/temp_document_${DateTime.now().millisecondsSinceEpoch}.pdf',
-              );
-
-              final bytes = await consolidateHttpClientResponseBytes(response);
-              await file.writeAsBytes(bytes);
-              return file.path;
-            } else {
-              throw Exception(
-                'Failed to download PDF: Status ${response.statusCode}',
-              );
-            }
-          } catch (e) {
-            // Fallback to direct URL if download fails
-            debugPrint('PDF download failed, using direct URL: $e');
-            return url;
-          }
+          return url;
         }
 
         // For videos, return the URL directly

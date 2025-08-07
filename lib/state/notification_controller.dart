@@ -19,28 +19,43 @@ class NotificationController {
     if (user == null) {
       throw Exception('User not signed in');
     }
-    final userDoc = await FirestoreEnforcer.instance
-        .collection('users')
-        .doc(user.uid)
-        .get();
+    final userDoc = await FirestoreEnforcer.instance.collection('users').doc(user.uid).get();
     final orgId = userDoc.data()?['organizationId'] as String?;
     if (orgId == null) {
       throw Exception('Organization ID not found for user');
     }
+
     // Prepare notification data
-    final notifRef = FirestoreEnforcer.instance
-        .collection('organizations')
-        .doc(orgId)
-        .collection('notifications')
-        .doc();
-    await notifRef.set({
+    final notifRef =
+        FirestoreEnforcer.instance.collection('organizations').doc(orgId).collection('notifications').doc();
+
+    // Build targeting data based on recipient type
+    Map<String, dynamic> notificationData = {
       'title': title,
       'message': body,
-      'recipientId': recipientId,
-      'groupId': groupId ?? '',
       'createdAt': FieldValue.serverTimestamp(),
       'readBy': <String>[],
       'archivedBy': <String>[],
-    });
+    };
+
+    // Handle different targeting types
+    if (groupId != null && groupId.isNotEmpty) {
+      // Group notification
+      notificationData['targetType'] = 'group';
+      notificationData['targetId'] = groupId;
+      notificationData['recipientId'] = 'all'; // Legacy field
+      notificationData['groupId'] = groupId; // Legacy field
+    } else if (recipientId == 'all' || recipientId.isEmpty) {
+      // All users notification
+      notificationData['targetType'] = 'all';
+      notificationData['recipientId'] = 'all';
+    } else {
+      // Location notification (recipientId contains location ID)
+      notificationData['targetType'] = 'location';
+      notificationData['targetId'] = recipientId;
+      notificationData['recipientId'] = recipientId; // Legacy field
+    }
+
+    await notifRef.set(notificationData);
   }
 }

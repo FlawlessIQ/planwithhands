@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/data/models/missed_tasks_section.dart';
 import 'package:hands_app/data/models/task_data.dart';
+import 'package:hands_app/services/daily_background_service.dart';
 
 class DailyChecklistService {
   final FirebaseFirestore _firestore = FirestoreEnforcer.instance;
@@ -303,6 +304,19 @@ class DailyChecklistService {
         if (allCompleted) 'completedAt': Timestamp.now(),
       });
     });
+
+    // If checklist is completed, potentially trigger daily summary check
+    // This is done outside the transaction to avoid conflicts
+    if (completed) {
+      final checklistDoc = await checklistRef.get();
+      if (checklistDoc.exists) {
+        final data = checklistDoc.data()!;
+        final isCompleted = data['isCompleted'] as bool? ?? false;
+        if (isCompleted) {
+          _triggerDailySummaryCheck(organizationId);
+        }
+      }
+    }
   }
 
   /// Update task photo
@@ -522,6 +536,22 @@ class DailyChecklistService {
   /// Format date as YYYY-MM-DD
   String _formatDate(DateTime date) {
     return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
+
+  /// Trigger daily summary check when tasks are completed
+  void _triggerDailySummaryCheck(String organizationId) {
+    try {
+      // Don't block the main operation - run in background
+      Future.delayed(Duration.zero, () {
+        DailyBackgroundService.instance.onShiftEnded(
+          organizationId: organizationId,
+          shiftId: 'task_completion_trigger', // Generic trigger
+        );
+      });
+    } catch (e) {
+      debugPrint('[DailyChecklistService] Error triggering daily summary check: $e');
+      // Don't throw - this is a background operation
+    }
   }
 
   /// Helper method to parse DateTime from various formats
@@ -843,42 +873,77 @@ class DailyChecklistService {
     int days = 30,
     int limit = 10,
   }) async {
-    final cutoff = DateTime.now().subtract(Duration(days: days));
+    final today = DateTime.now();
+    final yesterday = today.subtract(Duration(days: 1));
+    final cutoff = today.subtract(Duration(days: days));
     final cutoffStr = _formatDate(cutoff);
+    final yesterdayStr = _formatDate(yesterday);
 
     debugPrint(
-      '[DailyChecklistService] getFrequentlyMissedTasks: orgId=$organizationId, locationId=$locationId, days=$days',
+      '[DailyChecklistService] getFrequentlyMissedTasks: orgId=$organizationId, locationId=$locationId, days=$days, cutoffDate=$cutoffStr, endDate=$yesterdayStr',
     );
 
     try {
       if (locationId != null) {
-        // Query specific location
+        // Query specific location - only look at past dates (not today)
         final query = _firestore
             .collection('organizations')
             .doc(organizationId)
             .collection('locations')
             .doc(locationId)
             .collection('daily_checklists')
-            .where('date', isGreaterThanOrEqualTo: cutoffStr);
+            .where('date', isGreaterThanOrEqualTo: cutoffStr)
+            .where('date', isLessThanOrEqualTo: yesterdayStr); // Only past dates
 
         final snaps = await query.get();
+        debugPrint(
+          '[DailyChecklistService] Found ${snaps.docs.length} checklists for location $locationId (past dates only)',
+        );
+
         final counts = <String, int>{};
 
         for (final doc in snaps.docs) {
           final data = doc.data();
+          final docDate = data['date'] as String?;
+          final shiftId = data['shiftId'] as String?;
           final tasksList = List<Map<String, dynamic>>.from(data['tasks'] ?? []);
+          debugPrint(
+            '[DailyChecklistService] Processing checklist ${doc.id} for date $docDate, shift $shiftId with ${tasksList.length} tasks',
+          );
+
           for (final taskData in tasksList) {
-            final t = TaskData.fromJson(taskData);
-            if (!t.completed && !t.isCarryForward) {
-              counts[t.taskName] = (counts[t.taskName] ?? 0) + 1;
+            try {
+              // Handle DailyChecklistTask format instead of TaskData
+              final completed = taskData['completed'] as bool? ?? taskData['isCompleted'] as bool? ?? false;
+              final isCarryForward = taskData['isCarryForward'] as bool? ?? false;
+
+              if (!completed && !isCarryForward) {
+                // Get task name from various possible field names
+                final taskName =
+                    taskData['description'] as String? ??
+                    taskData['title'] as String? ??
+                    taskData['name'] as String? ??
+                    taskData['taskName'] as String? ??
+                    'Unknown Task';
+                counts[taskName] = (counts[taskName] ?? 0) + 1;
+                debugPrint(
+                  '[DailyChecklistService] Found missed task: "$taskName" on $docDate (count now: ${counts[taskName]})',
+                );
+              }
+            } catch (e) {
+              debugPrint('[DailyChecklistService] Error processing task in getFrequentlyMissedTasks: $e');
+              debugPrint('[DailyChecklistService] Task data: $taskData');
             }
           }
         }
+
+        debugPrint('[DailyChecklistService] Task frequency counts: $counts');
 
         final sorted =
             counts.entries.toList().map((e) => {'taskName': e.key, 'missedCount': e.value}).toList()
               ..sort((a, b) => (b['missedCount'] as int).compareTo(a['missedCount'] as int));
 
+        debugPrint('[DailyChecklistService] Returning ${sorted.length} frequently missed tasks (limited to $limit)');
         return sorted.take(limit).toList();
       } else {
         // Query all locations - this requires aggregating across locations
@@ -902,9 +967,24 @@ class DailyChecklistService {
             final data = doc.data();
             final tasksList = List<Map<String, dynamic>>.from(data['tasks'] ?? []);
             for (final taskData in tasksList) {
-              final t = TaskData.fromJson(taskData);
-              if (!t.completed && !t.isCarryForward) {
-                counts[t.taskName] = (counts[t.taskName] ?? 0) + 1;
+              try {
+                // Handle DailyChecklistTask format instead of TaskData
+                final completed = taskData['completed'] as bool? ?? taskData['isCompleted'] as bool? ?? false;
+                final isCarryForward = taskData['isCarryForward'] as bool? ?? false;
+
+                if (!completed && !isCarryForward) {
+                  // Get task name from various possible field names
+                  final taskName =
+                      taskData['description'] as String? ??
+                      taskData['title'] as String? ??
+                      taskData['name'] as String? ??
+                      taskData['taskName'] as String? ??
+                      'Unknown Task';
+                  counts[taskName] = (counts[taskName] ?? 0) + 1;
+                }
+              } catch (e) {
+                debugPrint('[DailyChecklistService] Error processing task in getFrequentlyMissedTasks: $e');
+                debugPrint('[DailyChecklistService] Task data: $taskData');
               }
             }
           }
@@ -970,7 +1050,7 @@ class DailyChecklistService {
                 final completed = taskData['completed'] as bool? ?? taskData['isCompleted'] as bool? ?? false;
                 final isCarryForward = taskData['isCarryForward'] as bool? ?? false;
 
-                if (!completed && !isCarryForward) {
+                if (!completed && isCarryForward) {
                   // Get task name from various possible field names
                   final taskName =
                       taskData['taskName'] as String? ??
@@ -1035,7 +1115,7 @@ class DailyChecklistService {
                   final completed = taskData['completed'] as bool? ?? taskData['isCompleted'] as bool? ?? false;
                   final isCarryForward = taskData['isCarryForward'] as bool? ?? false;
 
-                  if (!completed && !isCarryForward) {
+                  if (!completed && isCarryForward) {
                     // Get task name from various possible field names
                     final taskName =
                         taskData['taskName'] as String? ??

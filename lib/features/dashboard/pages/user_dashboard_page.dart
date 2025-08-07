@@ -6,12 +6,15 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:async';
 import 'package:hands_app/data/models/shift_data.dart';
 import 'package:hands_app/models/daily_checklist.dart';
 import 'package:hands_app/services/daily_checklist_service.dart';
+import 'package:hands_app/services/app_permission_service.dart';
+import 'package:hands_app/widgets/permission_handler.dart';
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
-import 'package:hands_app/global_widgets/location_selector.dart';
+import 'package:hands_app/global_widgets/unified_menu_button.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/config/feature_flags.dart';
 import 'package:hands_app/data/models/missed_tasks_section.dart';
@@ -138,54 +141,6 @@ class UserDashboardPage extends HookConsumerWidget {
       }
     }
 
-    Future<void> loadMissedTasks() async {
-      if (organizationId.value == null) return;
-
-      missedTasksLoading.value = true;
-      try {
-        final user = FirebaseAuth.instance.currentUser;
-        if (user == null) return;
-
-        // Get user's location
-        final userDoc = await FirestoreEnforcer.instance.collection('users').doc(user.uid).get();
-        if (!userDoc.exists) return;
-
-        final userData = userDoc.data()!;
-        String? userLocationId;
-
-        if (userData['locationId'] != null) {
-          userLocationId = userData['locationId'] as String;
-        } else if (userData['locationIds'] != null) {
-          final locationIds = List<String>.from(userData['locationIds']);
-          userLocationId = locationIds.isNotEmpty ? locationIds.first : null;
-        }
-
-        if (userLocationId == null) return;
-
-        // Calculate yesterday's date
-        final yesterday = DateTime.now().subtract(const Duration(days: 1));
-        final yesterdayString = DateFormat('yyyy-MM-dd').format(yesterday);
-
-        debugPrint("[Dashboard] Loading missed tasks for location: $userLocationId, date: $yesterdayString");
-
-        // Query missed tasks from DailyChecklistService
-        final dailyChecklistService = DailyChecklistService();
-        final missedTasks = await dailyChecklistService.loadMissedTasksForToday(
-          organizationId: organizationId.value!,
-          targetDate: yesterday,
-          locationId: userLocationId,
-        );
-
-        missedTasksSections.value = missedTasks;
-        debugPrint("[Dashboard] Loaded ${missedTasks.length} missed task sections");
-      } catch (e) {
-        debugPrint("[Dashboard] Error loading missed tasks: $e");
-        errorMessage.value = "Failed to load missed tasks";
-      } finally {
-        missedTasksLoading.value = false;
-      }
-    }
-
     Future<void> loadDashboardData() async {
       isLoading.value = true;
       errorMessage.value = null;
@@ -234,13 +189,24 @@ class UserDashboardPage extends HookConsumerWidget {
           return;
         }
 
+        // Perform daily volunteer cleanup to remove expired volunteer assignments
+        // This ensures users don't see shifts from yesterday that have already ended
+        // Only run cleanup once per day to avoid interfering with active work
+        // DISABLED: Cleanup is too aggressive and removes users from active shifts
+        // TODO: Implement a more conservative cleanup that only runs overnight
+        debugPrint("[Dashboard] ===== DAILY SHIFT CLEANUP DISABLED =====");
+        // await _performDailyVolunteerCleanupIfNeeded(organizationId.value!, lastCleanupDate, todayString);
+        debugPrint("[Dashboard] ===== DAILY SHIFT CLEANUP SKIPPED =====");
+
         // Always start with empty shifts for a fresh daily experience
         // Users must actively select or be assigned shifts each day
+        // This ensures expired volunteer shifts don't carry over automatically
         assignedShifts.value = [];
         allChecklists.value = [];
         selectedLocationIds.value = [];
 
-        // Filter shifts for the selected location only
+        // Get today's shifts with proper time-based validation
+        // This will automatically clean up expired volunteer shifts
         List<ShiftData> foundShifts = await _getAllShiftsForToday(user.uid, todayDayName, todayString);
         debugPrint("[Dashboard][DEBUG] Found ${foundShifts.length} shifts after querying for today");
         foundShifts =
@@ -269,18 +235,19 @@ class UserDashboardPage extends HookConsumerWidget {
           missedTasksLoading.value = true;
           debugPrint("[Dashboard] Starting to load missed tasks...");
           final dailyChecklistService = DailyChecklistService();
-          final yesterday = DateTime.now().subtract(Duration(days: 1));
-          debugPrint("[Dashboard] Calling getMissedTasksForDate for yesterday...");
+          final today = DateTime.now();
+          debugPrint("[Dashboard] Calling getMissedTasksForDate for today to find yesterday's carry-forward tasks...");
           debugPrint(
-            "[Dashboard] Parameters: orgId=${organizationId.value}, locationId=${selectedLocationId.value}, date=yesterday",
+            "[Dashboard] Parameters: orgId=${organizationId.value}, locationId=${selectedLocationId.value}, date=today",
           );
           final missedTasksData = await dailyChecklistService.getMissedTasksForDate(
             organizationId: organizationId.value!,
-            date: yesterday,
+            date: today,
             locationId: selectedLocationId.value,
           );
           debugPrint("[Dashboard] getMissedTasksForDate completed with ${missedTasksData.length} missed task entries");
           final sectionsMap = <String, MissedTasksSection>{};
+          final yesterday = DateTime.now().subtract(Duration(days: 1));
           for (final missedTaskData in missedTasksData) {
             final shiftId = missedTaskData['shiftId'] as String? ?? 'unknown';
             final shiftName = missedTaskData['shiftName'] as String? ?? 'Unknown Shift';
@@ -363,6 +330,22 @@ class UserDashboardPage extends HookConsumerWidget {
       return null;
     }, [todayString]);
 
+    // Auto-refresh timer for periodic updates
+    useEffect(() {
+      Timer? refreshTimer;
+      if (hasLoadedOnce.value) {
+        // Refresh every 5 minutes
+        refreshTimer = Timer.periodic(const Duration(minutes: 5), (timer) {
+          debugPrint("[Dashboard] Auto-refresh triggered");
+          loadDashboardData();
+        });
+      }
+
+      return () {
+        refreshTimer?.cancel();
+      };
+    }, [hasLoadedOnce.value]);
+
     // --- UI BUILD METHOD ---
     return Scaffold(
       appBar: AppBar(
@@ -370,63 +353,40 @@ class UserDashboardPage extends HookConsumerWidget {
         title: GenericAppBarContent(appBarTitle: 'Task Workflow', userRole: userRole.value),
         automaticallyImplyLeading: false,
         actions: [
-          // DEBUGGING: Add a location icon always visible
-          IconButton(
-            icon: const Icon(Icons.location_on),
-            onPressed: () {
-              // Print debug info
-              debugPrint("DEBUG: availableLocations.length = ${availableLocations.value.length}");
-              debugPrint("DEBUG: selectedLocationId = ${selectedLocationId.value}");
-              debugPrint("DEBUG: selectedLocationName = ${selectedLocationName.value}");
-              // Show a snackbar with debug info
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    "Locations: ${availableLocations.value.length}, Selected: ${selectedLocationName.value ?? 'None'}",
-                  ),
-                  duration: const Duration(seconds: 3),
-                ),
-              );
-            },
-          ),
-          // Always show the location selector, even if availableLocations is empty
+          // Compact location selector for mobile
           Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.red, // Debug color to make it very visible
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: PopupMenuButton<String>(
-                enabled: availableLocations.value.isNotEmpty,
-                onSelected: (value) async {
-                  selectedLocationId.value = value;
-                  final selected = availableLocations.value.firstWhere(
-                    (loc) => loc['id'] == value,
-                    orElse: () => {'name': 'Unknown Location'},
-                  );
-                  selectedLocationName.value = selected['name'];
-                  isLoading.value = true;
-                  await loadDashboardData();
-                  isLoading.value = false;
-                },
-                itemBuilder:
-                    (context) =>
-                        availableLocations.value.map((location) {
-                          return PopupMenuItem<String>(
-                            value: location['id'],
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.location_on,
-                                  color:
-                                      location['id'] == selectedLocationId.value
-                                          ? Theme.of(context).primaryColor
-                                          : Colors.grey[600],
-                                  size: 16,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: PopupMenuButton<String>(
+              enabled: availableLocations.value.isNotEmpty,
+              onSelected: (value) async {
+                selectedLocationId.value = value;
+                final selected = availableLocations.value.firstWhere(
+                  (loc) => loc['id'] == value,
+                  orElse: () => {'name': 'Unknown Location'},
+                );
+                selectedLocationName.value = selected['name'];
+                isLoading.value = true;
+                await loadDashboardData();
+                isLoading.value = false;
+              },
+              itemBuilder:
+                  (context) =>
+                      availableLocations.value.map((location) {
+                        return PopupMenuItem<String>(
+                          value: location['id'],
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.location_on,
+                                color:
+                                    location['id'] == selectedLocationId.value
+                                        ? Theme.of(context).primaryColor
+                                        : Colors.grey[600],
+                                size: 16,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
                                   location['name'],
                                   style: TextStyle(
                                     fontWeight:
@@ -434,38 +394,61 @@ class UserDashboardPage extends HookConsumerWidget {
                                             ? FontWeight.bold
                                             : FontWeight.normal,
                                   ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                if (location['id'] == selectedLocationId.value)
-                                  const Padding(padding: EdgeInsets.only(left: 8), child: Icon(Icons.check, size: 16)),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.location_on, color: Colors.white, size: 18),
-                      const SizedBox(width: 6),
-                      Text(
-                        selectedLocationName.value?.isNotEmpty == true
-                            ? selectedLocationName.value!
-                            : 'Select Location',
-                        style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+                              ),
+                              if (location['id'] == selectedLocationId.value)
+                                const Padding(padding: EdgeInsets.only(left: 8), child: Icon(Icons.check, size: 16)),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+              child: Builder(
+                builder: (context) {
+                  final screenWidth = MediaQuery.of(context).size.width;
+                  final isNarrowScreen = screenWidth < 400;
+
+                  if (isNarrowScreen) {
+                    // Compact mobile version - just location icon
+                    return Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
                       ),
-                      const SizedBox(width: 4),
-                      const Icon(Icons.arrow_drop_down, color: Colors.white, size: 16),
-                    ],
-                  ),
-                ),
+                      child: const Icon(Icons.location_on, color: Colors.white, size: 20),
+                    );
+                  } else {
+                    // Full desktop version
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.location_on, color: Colors.white, size: 18),
+                          const SizedBox(width: 6),
+                          Text(
+                            selectedLocationName.value?.isNotEmpty == true
+                                ? selectedLocationName.value!
+                                : 'Select Location',
+                            style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.arrow_drop_down, color: Colors.white, size: 16),
+                        ],
+                      ),
+                    );
+                  }
+                },
               ),
             ),
           ),
+          // Menu button
+          UnifiedMenuButton(userRole: userRole.value),
         ],
       ),
       body:
@@ -477,41 +460,7 @@ class UserDashboardPage extends HookConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Debug info card
-                      Container(
-                        padding: const EdgeInsets.all(8.0),
-                        decoration: BoxDecoration(
-                          color: Colors.amber[100],
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.amber[800]!),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "DEBUG INFO",
-                              style: Theme.of(
-                                context,
-                              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.amber[900]),
-                            ),
-                            const SizedBox(height: 4),
-                            Text("Available Locations: ${availableLocations.value.length}"),
-                            Text("Selected Location: ${selectedLocationName.value ?? 'None'}"),
-                            Text("Location IDs: ${availableLocations.value.map((loc) => loc['id']).join(', ')}"),
-                            const SizedBox(height: 8),
-                            ElevatedButton(
-                              onPressed: () async {
-                                await loadLocations();
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text("Reloaded locations: ${availableLocations.value.length}")),
-                                );
-                              },
-                              child: const Text("Reload Locations"),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
+                      // ...existing code...
                       if (errorMessage.value != null) _InfoCard(message: errorMessage.value!, color: Colors.red),
 
                       // Assigned shifts and today's checklists/tasks
@@ -616,47 +565,8 @@ class UserDashboardPage extends HookConsumerWidget {
                           (section) => _MissedTasksShiftCard(
                             section: section,
                             onUpdate: () async {
-                              // Refresh missed tasks when a task is updated
-                              try {
-                                missedTasksLoading.value = true;
-
-                                final user = FirebaseAuth.instance.currentUser;
-                                if (user == null || organizationId.value == null) return;
-
-                                // Get user's location
-                                final userDoc =
-                                    await FirestoreEnforcer.instance.collection('users').doc(user.uid).get();
-                                if (!userDoc.exists) return;
-
-                                final userData = userDoc.data()!;
-                                String? userLocationId = userData['locationId'];
-
-                                // If no direct location, get from organization (for admins)
-                                if (userLocationId == null) {
-                                  final locationIds = List<String>.from(userData['locationIds'] ?? []);
-                                  userLocationId = locationIds.isNotEmpty ? locationIds.first : null;
-                                }
-
-                                if (userLocationId == null) return;
-
-                                // Calculate yesterday's date
-                                final yesterday = DateTime.now().subtract(const Duration(days: 1));
-
-                                // Query missed tasks from DailyChecklistService
-                                final dailyChecklistService = DailyChecklistService();
-                                final missedTasks = await dailyChecklistService.loadMissedTasksForToday(
-                                  organizationId: organizationId.value!,
-                                  targetDate: yesterday,
-                                  locationId: userLocationId,
-                                );
-
-                                missedTasksSections.value = missedTasks;
-                                debugPrint("[Dashboard] Reloaded ${missedTasks.length} missed task sections");
-                              } catch (e) {
-                                debugPrint("[Dashboard] Error reloading missed tasks: $e");
-                              } finally {
-                                missedTasksLoading.value = false;
-                              }
+                              // Reload dashboard to fetch updated missed tasks via getMissedTasksForDate
+                              await loadDashboardData();
                             },
                           ),
                         ),
@@ -711,11 +621,11 @@ class UserDashboardPage extends HookConsumerWidget {
                                   // Show success message
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
-                                      content: Text('Successfully joined ${shift.shiftName}! Please refresh the page.'),
+                                      content: Text('Successfully joined ${shift.shiftName}!'),
                                       backgroundColor: Colors.green,
+                                      duration: const Duration(seconds: 2),
                                     ),
                                   );
-
                                   debugPrint("[Dashboard] Successfully added user to shift volunteers");
 
                                   // Refresh the dashboard to show the new volunteer shift
@@ -874,178 +784,271 @@ Future<List<ShiftData>> _getAllShiftsForToday(String userId, String todayDayName
     debugPrint(
       "[Dashboard][DEBUG][ERROR] No published schedules found for today. org=$organizationId, locationIds=$locationIds, date=$todayString",
     );
-    return []; // No published schedules, so no shifts to show
+    debugPrint("[Dashboard][DEBUG] No published schedules, but checking for volunteer shifts...");
+    // Continue to check volunteer shifts even if no published schedules
+  } else {
+    debugPrint("[Dashboard][DEBUG] Found published schedule IDs: $publishedScheduleIds");
   }
-  debugPrint("[Dashboard][DEBUG] Found published schedule IDs: $publishedScheduleIds");
 
   // 2. Get schedule entries for the user that are part of a published schedule
   debugPrint("[Dashboard][DEBUG] Querying entries for org=$organizationId, userId=$userId, date=$todayString");
 
-  try {
-    // For collection group queries, we can't filter by organizationId/date since entries don't have these fields
-    // Instead, we'll query by assignedUserIds and filter the results
-    final querySnapshot =
-        await FirestoreEnforcer.instance
-            .collectionGroup('entries')
-            .where('assignedUserIds', arrayContains: userId)
-            .get();
-    debugPrint("[Dashboard][DEBUG] entries querySnapshot.docs.length=${querySnapshot.docs.length}");
+  List<ShiftData> allShifts = [];
 
-    for (final doc in querySnapshot.docs) {
-      final data = doc.data();
-      debugPrint("[Dashboard][DEBUG] schedule_entry doc.id=${doc.id}, data=$data");
-      if (!data.containsKey('organizationId')) {
-        debugPrint(
-          "[Dashboard][DEBUG][ERROR] schedule_entry doc.id=${doc.id} is missing organizationId field! data: $data",
-        );
-      }
-      if (!data.containsKey('locationId')) {
-        debugPrint(
-          "[Dashboard][DEBUG][ERROR] schedule_entry doc.id=${doc.id} is missing locationId field! data: $data",
-        );
-      }
-      if (!data.containsKey('date')) {
-        debugPrint("[Dashboard][DEBUG][ERROR] schedule_entry doc.id=${doc.id} is missing date field! data: $data");
-      }
-      if (!data.containsKey('assignedUserIds')) {
-        debugPrint(
-          "[Dashboard][DEBUG][ERROR] schedule_entry doc.id=${doc.id} is missing assignedUserIds field! data: $data",
-        );
-      }
-    }
+  // Only query scheduled shifts if there are published schedules
+  if (publishedScheduleIds.isNotEmpty) {
+    try {
+      // For collection group queries, we can't filter by organizationId/date since entries don't have these fields
+      // Instead, we'll query by assignedUserIds and filter the results
+      final querySnapshot =
+          await FirestoreEnforcer.instance
+              .collectionGroup('entries')
+              .where('assignedUserIds', arrayContains: userId)
+              .get();
+      debugPrint("[Dashboard][DEBUG] entries querySnapshot.docs.length=${querySnapshot.docs.length}");
 
-    // Convert entries to shifts by fetching the actual shift documents
-    final shifts = <ShiftData>[];
-    for (final doc in querySnapshot.docs) {
-      final data = doc.data();
-      final entryScheduleId = data['scheduleId'] as String?;
-      final shiftId = data['shiftId'] as String?;
-
-      debugPrint("[Dashboard][DEBUG] Processing entry doc.id=${doc.id}, scheduleId=$entryScheduleId, shiftId=$shiftId");
-
-      if (entryScheduleId == null || shiftId == null) continue;
-
-      // Check if this entry belongs to one of today's published schedules
-      if (!publishedScheduleIds.contains(entryScheduleId)) {
-        debugPrint("[Dashboard][DEBUG] Entry ${doc.id} not in published schedules, skipping");
-        continue;
-      }
-
-      // Fetch the actual shift document
-      try {
-        final shiftDoc =
-            await FirestoreEnforcer.instance
-                .collection('organizations')
-                .doc(organizationId)
-                .collection('shifts')
-                .doc(shiftId)
-                .get();
-
-        if (shiftDoc.exists) {
-          final shift = ShiftData.fromJson(shiftDoc.data()!).copyWith(shiftId: shiftDoc.id);
-          shifts.add(shift);
-          debugPrint("[Dashboard][DEBUG] Added shift from collection group: ${shift.shiftName}");
+      for (final doc in querySnapshot.docs) {
+        final data = doc.data();
+        debugPrint("[Dashboard][DEBUG] schedule_entry doc.id=${doc.id}, data=$data");
+        if (!data.containsKey('organizationId')) {
+          debugPrint(
+            "[Dashboard][DEBUG][ERROR] schedule_entry doc.id=${doc.id} is missing organizationId field! data: $data",
+          );
         }
-      } catch (e) {
-        debugPrint("[Dashboard][DEBUG] Error fetching shift $shiftId: $e");
+        if (!data.containsKey('locationId')) {
+          debugPrint(
+            "[Dashboard][DEBUG][ERROR] schedule_entry doc.id=${doc.id} is missing locationId field! data: $data",
+          );
+        }
+        if (!data.containsKey('date')) {
+          debugPrint("[Dashboard][DEBUG][ERROR] schedule_entry doc.id=${doc.id} is missing date field! data: $data");
+        }
+        if (!data.containsKey('assignedUserIds')) {
+          debugPrint(
+            "[Dashboard][DEBUG][ERROR] schedule_entry doc.id=${doc.id} is missing assignedUserIds field! data: $data",
+          );
+        }
       }
-    }
 
-    debugPrint("[Dashboard][DEBUG] Found ${shifts.length} published shifts for the user.");
-    return shifts;
-  } catch (e, stack) {
-    debugPrint("[Dashboard][DEBUG][ERROR] Error in collectionGroup query: $e\n$stack");
-    debugPrint("[Dashboard][DEBUG] Falling back to direct location queries...");
+      // Convert entries to shifts by fetching the actual shift documents
+      for (final doc in querySnapshot.docs) {
+        final data = doc.data();
+        final entryScheduleId = data['scheduleId'] as String?;
+        final shiftId = data['shiftId'] as String?;
 
-    // Fallback: Query each location directly instead of using collectionGroup
-    List<ShiftData> allShifts = [];
-    for (final locationId in locationIds) {
-      final scheduleId = 'schedule_${todayString}_$locationId';
-      if (publishedScheduleIds.contains(scheduleId)) {
+        debugPrint(
+          "[Dashboard][DEBUG] Processing entry doc.id=${doc.id}, scheduleId=$entryScheduleId, shiftId=$shiftId",
+        );
+
+        if (entryScheduleId == null || shiftId == null) continue;
+
+        // Check if this entry belongs to one of today's published schedules
+        if (!publishedScheduleIds.contains(entryScheduleId)) {
+          debugPrint("[Dashboard][DEBUG] Entry ${doc.id} not in published schedules, skipping");
+          continue;
+        }
+
+        // Fetch the actual shift document
         try {
-          final entriesSnapshot =
+          final shiftDoc =
               await FirestoreEnforcer.instance
                   .collection('organizations')
                   .doc(organizationId)
-                  .collection('locations')
-                  .doc(locationId)
-                  .collection('schedules')
-                  .doc(scheduleId)
-                  .collection('entries')
-                  .where('assignedUserIds', arrayContains: userId)
+                  .collection('shifts')
+                  .doc(shiftId)
                   .get();
 
-          debugPrint("[Dashboard][DEBUG] Found ${entriesSnapshot.docs.length} entries in location $locationId");
-
-          for (final entryDoc in entriesSnapshot.docs) {
-            final entryData = entryDoc.data();
-            debugPrint("[Dashboard][DEBUG] Entry in $locationId: ${entryDoc.id}, data=$entryData");
-
-            if (entryData.containsKey('shiftId')) {
-              final shiftId = entryData['shiftId'] as String;
-              final shiftDoc =
-                  await FirestoreEnforcer.instance
-                      .collection('organizations')
-                      .doc(organizationId)
-                      .collection('shifts')
-                      .doc(shiftId)
-                      .get();
-
-              if (shiftDoc.exists) {
-                final shift = ShiftData.fromJson(shiftDoc.data()!).copyWith(shiftId: shiftDoc.id);
-                allShifts.add(shift);
-                debugPrint("[Dashboard][DEBUG] Added shift: ${shift.shiftName}");
-              }
-            }
+          if (shiftDoc.exists) {
+            final shift = ShiftData.fromJson(shiftDoc.data()!).copyWith(shiftId: shiftDoc.id);
+            allShifts.add(shift);
+            debugPrint("[Dashboard][DEBUG] Added shift from collection group: ${shift.shiftName}");
           }
         } catch (e) {
-          debugPrint("[Dashboard][DEBUG] Error querying location $locationId: $e");
+          debugPrint("[Dashboard][DEBUG] Error fetching shift $shiftId: $e");
         }
       }
-    }
 
-    debugPrint("[Dashboard][DEBUG] Fallback found ${allShifts.length} shifts");
-
-    // Also check for volunteer shifts where user is in the volunteers array
-    debugPrint("[Dashboard][DEBUG] Checking for volunteer shifts...");
-    try {
-      final volunteeredShiftsQuery = FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(organizationId)
-          .collection('shifts')
-          .where('volunteers', arrayContains: userId);
-
-      final volunteeredShiftsSnapshot = await volunteeredShiftsQuery.get();
-      debugPrint("[Dashboard][DEBUG] Found ${volunteeredShiftsSnapshot.docs.length} volunteer shifts");
-
-      for (final doc in volunteeredShiftsSnapshot.docs) {
-        try {
-          final data = doc.data();
-          debugPrint("[Dashboard][DEBUG] Volunteer shift doc.id=${doc.id}, data=$data");
-          final shift = ShiftData.fromJson(data).copyWith(shiftId: doc.id);
-          final isToday = shift.repeatsDaily || shift.days.contains(todayDayName);
-          if (isToday) {
-            debugPrint("[Dashboard][DEBUG] Found volunteer shift for today: ${shift.shiftName} (ID: ${shift.shiftId})");
-            // Check if this shift is not already in the list
-            if (!allShifts.any((existingShift) => existingShift.shiftId == shift.shiftId)) {
-              allShifts.add(shift);
-              debugPrint("[Dashboard][DEBUG] Added volunteer shift to list: ${shift.shiftName}");
-            } else {
-              debugPrint("[Dashboard][DEBUG] Volunteer shift already in list: ${shift.shiftName}");
-            }
-          } else {
-            debugPrint("[Dashboard][DEBUG] Volunteer shift ${shift.shiftName} is not for today");
-          }
-        } catch (e, stack) {
-          debugPrint("[Dashboard][DEBUG] Failed to parse volunteer shift doc ${doc.id}: $e\n$stack");
-        }
-      }
+      debugPrint("[Dashboard][DEBUG] Found ${allShifts.length} published shifts for the user.");
     } catch (e, stack) {
-      debugPrint("[Dashboard][DEBUG] Error checking volunteer shifts: $e\n$stack");
+      debugPrint("[Dashboard][DEBUG][ERROR] Error in collectionGroup query: $e\n$stack");
+      debugPrint("[Dashboard][DEBUG] Falling back to direct location queries...");
+
+      // Fallback: Query each location directly instead of using collectionGroup
+      for (final locationId in locationIds) {
+        final scheduleId = 'schedule_${todayString}_$locationId';
+        if (publishedScheduleIds.contains(scheduleId)) {
+          try {
+            final entriesSnapshot =
+                await FirestoreEnforcer.instance
+                    .collection('organizations')
+                    .doc(organizationId)
+                    .collection('locations')
+                    .doc(locationId)
+                    .collection('schedules')
+                    .doc(scheduleId)
+                    .collection('entries')
+                    .where('assignedUserIds', arrayContains: userId)
+                    .get();
+
+            debugPrint("[Dashboard][DEBUG] Found ${entriesSnapshot.docs.length} entries in location $locationId");
+
+            for (final entryDoc in entriesSnapshot.docs) {
+              final entryData = entryDoc.data();
+              debugPrint("[Dashboard][DEBUG] Entry in $locationId: ${entryDoc.id}, data=$entryData");
+
+              if (entryData.containsKey('shiftId')) {
+                final shiftId = entryData['shiftId'] as String;
+                final shiftDoc =
+                    await FirestoreEnforcer.instance
+                        .collection('organizations')
+                        .doc(organizationId)
+                        .collection('shifts')
+                        .doc(shiftId)
+                        .get();
+
+                if (shiftDoc.exists) {
+                  final shift = ShiftData.fromJson(shiftDoc.data()!).copyWith(shiftId: shiftDoc.id);
+                  allShifts.add(shift);
+                  debugPrint("[Dashboard][DEBUG] Added shift: ${shift.shiftName}");
+                }
+              }
+            }
+          } catch (e) {
+            debugPrint("[Dashboard][DEBUG] Error querying location $locationId: $e");
+          }
+        }
+      }
+
+      debugPrint("[Dashboard][DEBUG] Fallback found ${allShifts.length} shifts");
+    }
+  }
+
+  // Always check for volunteer shifts where user is in the volunteers array
+  debugPrint("[Dashboard][DEBUG] Checking for volunteer shifts...");
+  try {
+    final volunteeredShiftsQuery = FirestoreEnforcer.instance
+        .collection('organizations')
+        .doc(organizationId)
+        .collection('shifts')
+        .where('volunteers', arrayContains: userId);
+
+    final volunteeredShiftsSnapshot = await volunteeredShiftsQuery.get();
+    debugPrint("[Dashboard][DEBUG] Found ${volunteeredShiftsSnapshot.docs.length} volunteer shifts");
+
+    for (final doc in volunteeredShiftsSnapshot.docs) {
+      try {
+        final data = doc.data();
+        debugPrint("[Dashboard][DEBUG] Volunteer shift doc.id=${doc.id}, data=$data");
+        final shift = ShiftData.fromJson(data).copyWith(shiftId: doc.id);
+
+        // Check if this shift is active for today
+        final isActiveToday = await _isShiftActiveForToday(shift, todayDayName, todayString, isVolunteerShift: true);
+
+        if (isActiveToday) {
+          debugPrint(
+            "[Dashboard][DEBUG] Found active volunteer shift for today: ${shift.shiftName} (ID: ${shift.shiftId})",
+          );
+          // Check if this shift is not already in the list
+          if (!allShifts.any((existingShift) => existingShift.shiftId == shift.shiftId)) {
+            allShifts.add(shift);
+            debugPrint("[Dashboard][DEBUG] Added volunteer shift to list: ${shift.shiftName}");
+          } else {
+            debugPrint("[Dashboard][DEBUG] Volunteer shift already in list: ${shift.shiftName}");
+          }
+        } else {
+          debugPrint("[Dashboard][DEBUG] Volunteer shift ${shift.shiftName} is not active today");
+          // DISABLED: Cleanup during navigation is too aggressive
+          // await _cleanupExpiredVolunteerShift(shift, userId, organizationId, todayString);
+        }
+      } catch (e, stack) {
+        debugPrint("[Dashboard][DEBUG] Failed to parse volunteer shift doc ${doc.id}: $e\n$stack");
+      }
+    }
+  } catch (e, stack) {
+    debugPrint("[Dashboard][DEBUG] Error checking volunteer shifts: $e\n$stack");
+  }
+
+  debugPrint("[Dashboard][DEBUG] Final total with volunteers: ${allShifts.length} shifts");
+  return allShifts;
+}
+
+// Helper function to check if a shift is active for today
+Future<bool> _isShiftActiveForToday(
+  ShiftData shift,
+  String todayDayName,
+  String todayString, {
+  bool isVolunteerShift = false,
+}) async {
+  try {
+    debugPrint(
+      "[Dashboard] Checking if shift ${shift.shiftName} is active for today ($todayString, $todayDayName), isVolunteerShift: $isVolunteerShift",
+    );
+
+    // Parse today's date
+    final today = DateTime.parse(todayString);
+    final now = DateTime.now();
+
+    // Check if shift is scheduled for today
+    final isScheduledToday = shift.repeatsDaily || shift.days.contains(todayDayName);
+
+    if (!isScheduledToday) {
+      debugPrint("[Dashboard] Shift ${shift.shiftName} is not scheduled for $todayDayName");
+      return false;
     }
 
-    debugPrint("[Dashboard][DEBUG] Final total with volunteers: ${allShifts.length} shifts");
-    return allShifts;
+    // For volunteer shifts, if the user has already volunteered for today, show it regardless of time
+    if (isVolunteerShift) {
+      debugPrint("[Dashboard] Volunteer shift ${shift.shiftName} is scheduled for today - showing regardless of time");
+      return true;
+    }
+
+    // Parse shift times
+    final startTimeParts = shift.startTime.split(':');
+    final endTimeParts = shift.endTime.split(':');
+
+    if (startTimeParts.length != 2 || endTimeParts.length != 2) {
+      debugPrint("[Dashboard] Invalid time format for shift ${shift.shiftName}: ${shift.startTime} - ${shift.endTime}");
+      return false;
+    }
+
+    final startHour = int.tryParse(startTimeParts[0]) ?? 0;
+    final startMinute = int.tryParse(startTimeParts[1]) ?? 0;
+    final endHour = int.tryParse(endTimeParts[0]) ?? 0;
+    final endMinute = int.tryParse(endTimeParts[1]) ?? 0;
+
+    // Create DateTime objects for shift start and end
+    var shiftStart = DateTime(today.year, today.month, today.day, startHour, startMinute);
+    var shiftEnd = DateTime(today.year, today.month, today.day, endHour, endMinute);
+
+    // Handle shifts that end after midnight (e.g., 10 PM - 2 AM)
+    if (shiftEnd.isBefore(shiftStart)) {
+      // Shift ends the next day
+      shiftEnd = shiftEnd.add(const Duration(days: 1));
+      debugPrint("[Dashboard] Shift ${shift.shiftName} spans midnight: $shiftStart to $shiftEnd");
+    }
+
+    // If current time is within the shift window, always consider it active
+    if (now.isAfter(shiftStart) && now.isBefore(shiftEnd)) {
+      debugPrint("[Dashboard] Currently within shift ${shift.shiftName} time window");
+      return true;
+    }
+
+    // Check if shift has ended
+    final hasEnded = now.isAfter(shiftEnd);
+
+    debugPrint("[Dashboard] Shift ${shift.shiftName}: start=$shiftStart, end=$shiftEnd, now=$now, hasEnded=$hasEnded");
+
+    // If shift has ended, it's not active
+    if (hasEnded) {
+      debugPrint("[Dashboard] Shift ${shift.shiftName} has ended");
+      return false;
+    }
+
+    // Shift is active if it's scheduled for today and hasn't ended yet
+    return !hasEnded;
+  } catch (e, stack) {
+    debugPrint("[Dashboard] Error checking if shift is active: $e\n$stack");
+    return false;
   }
 }
 
@@ -1222,187 +1225,869 @@ Future<void> _leaveVolunteerShift(
   }
 }
 
-// Helper method to check shift templates (original system)
-Future<ShiftData?> _checkShiftTemplates(String userId, String todayDayName, String organizationId) async {
-  try {
-    debugPrint("[Dashboard][DEBUG] Checking shift templates for user $userId, todayDayName=$todayDayName");
-    final assignedShiftsQuery = FirestoreEnforcer.instance
-        .collection('organizations')
-        .doc(organizationId)
-        .collection('shifts')
-        .where('assignedUserIds', arrayContains: userId);
-    final volunteeredShiftsQuery = FirestoreEnforcer.instance
-        .collection('organizations')
-        .doc(organizationId)
-        .collection('shifts')
-        .where('volunteers', arrayContains: userId);
+// STUBS: Add missing widget classes and extensions for missing getters
 
-    final assignedShiftsSnapshot = await assignedShiftsQuery.get();
-    debugPrint("[Dashboard][DEBUG] assignedShiftsSnapshot.docs.length=${assignedShiftsSnapshot.docs.length}");
-    final volunteeredShiftsSnapshot = await volunteeredShiftsQuery.get();
-    debugPrint("[Dashboard][DEBUG] volunteeredShiftsSnapshot.docs.length=${volunteeredShiftsSnapshot.docs.length}");
+// Sheet for selecting shifts to help with
+class _HelpOutSheet extends StatelessWidget {
+  final String organizationId;
+  final String todayDayName;
+  final String? selectedLocationId;
+  final String selectedLocationName;
 
-    for (final doc in assignedShiftsSnapshot.docs) {
-      try {
-        final data = doc.data();
-        debugPrint("[Dashboard][DEBUG] assigned shift doc.id=${doc.id}, data=$data");
-        if (!data.containsKey('assignedUserIds')) {
-          debugPrint("[Dashboard][DEBUG][ERROR] assigned shift doc.id=${doc.id} missing assignedUserIds field!");
-        }
-        if (!data.containsKey('days')) {
-          debugPrint("[Dashboard][DEBUG][ERROR] assigned shift doc.id=${doc.id} missing days field!");
-        }
-        final shift = ShiftData.fromJson(data).copyWith(shiftId: doc.id);
-        final isToday = shift.repeatsDaily || shift.days.contains(todayDayName);
-        if (isToday) {
-          final assignedUserIds = List<String>.from(shift.assignedUserIds);
-          if (assignedUserIds.contains(userId)) {
-            debugPrint(
-              "[Dashboard][DEBUG] Found assigned shift in templates: ${shift.shiftName} (ID: ${shift.shiftId})",
-            );
-            return shift;
-          }
-        }
-      } catch (e, stack) {
-        debugPrint("[Dashboard][DEBUG] Failed to parse assigned shift doc ${doc.id}: $e\n$stack");
-      }
-    }
+  const _HelpOutSheet({
+    Key? key,
+    required this.organizationId,
+    required this.todayDayName,
+    this.selectedLocationId,
+    required this.selectedLocationName,
+  }) : super(key: key);
 
-    for (final doc in volunteeredShiftsSnapshot.docs) {
-      try {
-        final data = doc.data();
-        debugPrint("[Dashboard][DEBUG] volunteered shift doc.id=${doc.id}, data=$data");
-        if (!data.containsKey('volunteers')) {
-          debugPrint("[Dashboard][DEBUG][ERROR] volunteered shift doc.id=${doc.id} missing volunteers field!");
-        }
-        if (!data.containsKey('days')) {
-          debugPrint("[Dashboard][DEBUG][ERROR] volunteered shift doc.id=${doc.id} missing days field!");
-        }
-        final shift = ShiftData.fromJson(data).copyWith(shiftId: doc.id);
-        final isToday = shift.repeatsDaily || shift.days.contains(todayDayName);
-        if (isToday) {
-          final volunteers = List<String>.from(shift.volunteers);
-          if (volunteers.contains(userId)) {
-            debugPrint(
-              "[Dashboard][DEBUG] Found volunteered shift in templates: ${shift.shiftName} (ID: ${shift.shiftId})",
-            );
-            return shift;
-          }
-        }
-      } catch (e, stack) {
-        debugPrint("[Dashboard][DEBUG] Failed to parse volunteered shift doc ${doc.id}: $e\n$stack");
-      }
-    }
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7,
+      maxChildSize: 0.9,
+      minChildSize: 0.5,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.only(top: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
+              ),
+              // Header
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Available Shifts',
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Select a shift to begin working at $selectedLocationName',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(),
+              // Shifts list
+              Expanded(
+                child: FutureBuilder<List<ShiftData>>(
+                  future: _getAvailableShifts(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
 
-    debugPrint("[Dashboard][DEBUG] No shifts found in templates for user $userId");
-    return null;
-  } catch (e, stack) {
-    debugPrint("[Dashboard][DEBUG] Error checking shift templates: $e\n$stack");
-    return null;
-  }
-}
+                    if (snapshot.hasError) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.error_outline, size: 48, color: Colors.grey[400]),
+                            const SizedBox(height: 16),
+                            Text('Error loading shifts', style: TextStyle(color: Colors.grey[600])),
+                          ],
+                        ),
+                      );
+                    }
 
-// Helper method to check schedule entries for today's date
-Future<ShiftData?> _checkScheduleEntries(String userId, String todayString, String organizationId) async {
-  try {
-    debugPrint("[Dashboard][DEBUG] Checking schedule entries for user $userId on $todayString");
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      debugPrint("[Dashboard][DEBUG][ERROR] No authenticated user found.");
-      return null;
-    }
-    final userDoc = await FirestoreEnforcer.instance.collection('users').doc(user.uid).get();
-    debugPrint("[Dashboard][DEBUG] userDoc.exists=${userDoc.exists}");
-    if (!userDoc.exists) {
-      debugPrint("[Dashboard][DEBUG][ERROR] No user document found for userId=${user.uid}");
-      return null;
-    }
-    final userData = userDoc.data()!;
-    debugPrint("[Dashboard][DEBUG] userData: $userData");
-    final userRole = userData['userRole'] ?? 0;
-    List<String> locationsToCheck = [];
-    if (userRole == 2) {
-      final locationsSnapshot =
-          await FirestoreEnforcer.instance
-              .collection('organizations')
-              .doc(organizationId)
-              .collection('locations')
-              .get();
-      locationsToCheck = locationsSnapshot.docs.map((doc) => doc.id).toList();
-      debugPrint("[Dashboard][DEBUG] Admin locationsToCheck: $locationsToCheck");
-    } else if (userRole == 1 && userData['locationIds'] != null) {
-      locationsToCheck = List<String>.from(userData['locationIds']);
-      debugPrint("[Dashboard][DEBUG] Manager locationsToCheck: $locationsToCheck");
-    } else if (userData['locationId'] != null) {
-      locationsToCheck = [userData['locationId']];
-      debugPrint("[Dashboard][DEBUG] General user locationsToCheck: $locationsToCheck");
-    }
-    debugPrint("[Dashboard][DEBUG] Checking ${locationsToCheck.length} locations for schedule entries");
-    for (final locationId in locationsToCheck) {
-      final scheduleId = 'schedule_${todayString}_$locationId';
-      debugPrint("[Dashboard][DEBUG] Checking scheduleId=$scheduleId for locationId=$locationId");
-      try {
-        final entriesSnapshot =
-            await FirestoreEnforcer.instance
-                .collection('organizations')
-                .doc(organizationId)
-                .collection('locations')
-                .doc(locationId)
-                .collection('schedules')
-                .doc(scheduleId)
-                .collection('entries')
-                .where('assignedUserIds', arrayContains: userId)
-                .get();
-        debugPrint(
-          "[Dashboard][DEBUG] Found ${entriesSnapshot.docs.length} schedule entries for user in location $locationId",
+                    final shifts = snapshot.data ?? [];
+
+                    if (shifts.isEmpty) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.work_off, size: 48, color: Colors.grey[400]),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No available shifts',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: Colors.grey[600]),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'There are no shifts available for you to join today.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.grey[500]),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    return ListView.builder(
+                      controller: scrollController,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: shifts.length,
+                      itemBuilder: (context, index) {
+                        final shift = shifts[index];
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: Theme.of(context).primaryColor,
+                              child: const Icon(Icons.work, color: Colors.white, size: 20),
+                            ),
+                            title: Text(shift.shiftName, style: const TextStyle(fontWeight: FontWeight.w500)),
+                            subtitle: Text('${shift.startTime} - ${shift.endTime}'),
+                            trailing: ElevatedButton(
+                              onPressed: () {
+                                Navigator.of(context).pop({'shift': shift, 'locationId': selectedLocationId});
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Theme.of(context).primaryColor,
+                                foregroundColor: Colors.white,
+                              ),
+                              child: const Text('Join'),
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
         );
-        for (final entryDoc in entriesSnapshot.docs) {
-          try {
-            final entryData = entryDoc.data();
-            debugPrint("[Dashboard][DEBUG] schedule entry doc.id=${entryDoc.id}, data=$entryData");
-            if (!entryData.containsKey('shiftId')) {
-              debugPrint("[Dashboard][DEBUG][ERROR] schedule entry doc.id=${entryDoc.id} missing shiftId field!");
-            }
-            if (!entryData.containsKey('assignedUserIds')) {
-              debugPrint(
-                "[Dashboard][DEBUG][ERROR] schedule entry doc.id=${entryDoc.id} missing assignedUserIds field!",
-              );
-            }
-            final shiftId = entryData['shiftId'] as String?;
-            if (shiftId != null) {
-              final shiftDoc =
-                  await FirestoreEnforcer.instance
-                      .collection('organizations')
-                      .doc(organizationId)
-                      .collection('shifts')
-                      .doc(shiftId)
-                      .get();
-              debugPrint("[Dashboard][DEBUG] shiftDoc.exists=${shiftDoc.exists} for shiftId=$shiftId");
-              if (shiftDoc.exists) {
-                final shift = ShiftData.fromJson(shiftDoc.data()!).copyWith(shiftId: shiftDoc.id);
-                debugPrint(
-                  "[Dashboard][DEBUG] Found assigned shift in schedule entries: ${shift.shiftName} (ID: ${shift.shiftId}) at location $locationId",
-                );
-                return shift;
-              } else {
-                debugPrint("[Dashboard][DEBUG][ERROR] shiftDoc not found for shiftId=$shiftId");
-              }
-            }
-          } catch (e, stack) {
-            debugPrint("[Dashboard][DEBUG] Error processing schedule entry ${entryDoc.id}: $e\n$stack");
+      },
+    );
+  }
+
+  Future<List<ShiftData>> _getAvailableShifts() async {
+    try {
+      if (selectedLocationId == null) return [];
+
+      // Get all shifts for the organization that apply to this location
+      final shiftsQuery = FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(organizationId)
+          .collection('shifts')
+          .where('locationIds', arrayContains: selectedLocationId);
+
+      final shiftsSnapshot = await shiftsQuery.get();
+      final shifts = <ShiftData>[];
+
+      for (final doc in shiftsSnapshot.docs) {
+        try {
+          final data = doc.data();
+          final shift = ShiftData.fromJson(data).copyWith(shiftId: doc.id);
+
+          // Check if shift is active for today
+          if (shift.repeatsDaily || shift.days.contains(todayDayName)) {
+            shifts.add(shift);
           }
+        } catch (e) {
+          debugPrint('[HelpOutSheet] Error parsing shift ${doc.id}: $e');
         }
-      } catch (e, stack) {
-        debugPrint("[Dashboard][DEBUG] Error checking location $locationId: $e\n$stack");
       }
+
+      shifts.sort((a, b) => a.startTime.compareTo(b.startTime));
+      return shifts;
+    } catch (e) {
+      debugPrint('[HelpOutSheet] Error loading shifts: $e');
+      return [];
     }
-    debugPrint("[Dashboard][DEBUG] No shifts found in schedule entries for user $userId");
-    return null;
-  } catch (e, stack) {
-    debugPrint("[Dashboard][DEBUG] Error checking schedule entries: $e\n$stack");
-    return null;
   }
 }
+
+// Photo upload dialog widget
+class _PhotoDialog extends StatefulWidget {
+  final dynamic task;
+  final dynamic checklist;
+  final VoidCallback onPhotoUpdated;
+
+  const _PhotoDialog({Key? key, required this.task, this.checklist, required this.onPhotoUpdated}) : super(key: key);
+
+  @override
+  State<_PhotoDialog> createState() => _PhotoDialogState();
+}
+
+class _PhotoDialogState extends State<_PhotoDialog> {
+  bool _isUploading = false;
+  String? _currentPhotoUrl;
+  final ImagePicker _picker = ImagePicker();
+
+  @override
+  void initState() {
+    super.initState();
+    _currentPhotoUrl = widget.task.photoUrl;
+  }
+
+  Future<void> _pickAndUploadPhoto() async {
+    try {
+      setState(() => _isUploading = true);
+
+      // Pick image from gallery or camera
+      final XFile? image = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1920,
+        maxHeight: 1080,
+        imageQuality: 80,
+      );
+
+      if (image == null) {
+        setState(() => _isUploading = false);
+        return;
+      }
+
+      // Upload to Firebase Storage
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final storageRef = FirebaseStorage.instance
+          .ref()
+          .child('task_photos')
+          .child('${widget.task.taskId}_${DateTime.now().millisecondsSinceEpoch}.jpg');
+
+      // Upload the file
+      final uploadTask = await storageRef.putData(await image.readAsBytes());
+      final downloadUrl = await uploadTask.ref.getDownloadURL();
+
+      // Update the task in Firestore
+      await _updateTaskPhoto(downloadUrl);
+
+      setState(() {
+        _currentPhotoUrl = downloadUrl;
+        _isUploading = false;
+      });
+
+      widget.onPhotoUpdated();
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Photo uploaded successfully!'), backgroundColor: Colors.green));
+      }
+    } catch (e) {
+      setState(() => _isUploading = false);
+      debugPrint('Error uploading photo: $e');
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error uploading photo: $e'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
+  Future<void> _takePhoto() async {
+    try {
+      setState(() => _isUploading = true);
+
+      // Take photo with camera
+      final XFile? image = await _picker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1920,
+        maxHeight: 1080,
+        imageQuality: 80,
+      );
+
+      if (image == null) {
+        setState(() => _isUploading = false);
+        return;
+      }
+
+      // Upload to Firebase Storage
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final storageRef = FirebaseStorage.instance
+          .ref()
+          .child('task_photos')
+          .child('${widget.task.taskId}_${DateTime.now().millisecondsSinceEpoch}.jpg');
+
+      // Upload the file
+      final uploadTask = await storageRef.putData(await image.readAsBytes());
+      final downloadUrl = await uploadTask.ref.getDownloadURL();
+
+      // Update the task in Firestore
+      await _updateTaskPhoto(downloadUrl);
+
+      setState(() {
+        _currentPhotoUrl = downloadUrl;
+        _isUploading = false;
+      });
+
+      widget.onPhotoUpdated();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Photo captured and uploaded successfully!'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      setState(() => _isUploading = false);
+      debugPrint('Error taking photo: $e');
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error taking photo: $e'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
+  Future<void> _updateTaskPhoto(String photoUrl) async {
+    // Update the task in the daily checklist
+    if (widget.checklist != null) {
+      await FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(widget.checklist.organizationId)
+          .collection('locations')
+          .doc(widget.checklist.locationId)
+          .collection('daily_checklists')
+          .doc(widget.checklist.id)
+          .update({
+            'tasks.${widget.task.taskId}.photoUrl': photoUrl,
+            'tasks.${widget.task.taskId}.photoUploadedAt': FieldValue.serverTimestamp(),
+          });
+    }
+  }
+
+  Future<void> _removePhoto() async {
+    try {
+      setState(() => _isUploading = true);
+
+      // Remove photo URL from Firestore
+      await _updateTaskPhoto('');
+
+      setState(() {
+        _currentPhotoUrl = null;
+        _isUploading = false;
+      });
+
+      widget.onPhotoUpdated();
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Photo removed successfully!'), backgroundColor: Colors.green));
+      }
+    } catch (e) {
+      setState(() => _isUploading = false);
+      debugPrint('Error removing photo: $e');
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error removing photo: $e'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Row(
+        children: [
+          const Icon(Icons.camera_alt, color: Colors.blue),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Task Photo',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Task: ${widget.task.taskName ?? 'Unknown Task'}', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 16),
+
+            // Current photo display
+            if (_currentPhotoUrl != null && _currentPhotoUrl!.isNotEmpty) ...[
+              Container(
+                height: 200,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey[300]!),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    _currentPhotoUrl!,
+                    fit: BoxFit.cover,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Center(
+                        child: CircularProgressIndicator(
+                          value:
+                              loadingProgress.expectedTotalBytes != null
+                                  ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                                  : null,
+                        ),
+                      );
+                    },
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        color: Colors.grey[200],
+                        child: const Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.error, color: Colors.red, size: 32),
+                              SizedBox(height: 8),
+                              Text('Failed to load image'),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ] else ...[
+              Container(
+                height: 150,
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey[300]!),
+                ),
+                child: const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.photo_camera_outlined, size: 48, color: Colors.grey),
+                      SizedBox(height: 8),
+                      Text('No photo uploaded', style: TextStyle(color: Colors.grey)),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+
+            // Upload progress indicator
+            if (_isUploading) ...[
+              const LinearProgressIndicator(),
+              const SizedBox(height: 16),
+              const Center(child: Text('Uploading photo...', style: TextStyle(color: Colors.blue))),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        // Cancel button
+        TextButton(onPressed: _isUploading ? null : () => Navigator.pop(context), child: const Text('Cancel')),
+
+        // Remove photo button (only show if photo exists)
+        if (_currentPhotoUrl != null && _currentPhotoUrl!.isNotEmpty)
+          TextButton(
+            onPressed: _isUploading ? null : _removePhoto,
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Remove'),
+          ),
+
+        // Camera button
+        ElevatedButton.icon(
+          onPressed: _isUploading ? null : _takePhoto,
+          icon: const Icon(Icons.camera_alt),
+          label: const Text('Camera'),
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+        ),
+
+        // Gallery button
+        ElevatedButton.icon(
+          onPressed: _isUploading ? null : _pickAndUploadPhoto,
+          icon: const Icon(Icons.photo_library),
+          label: const Text('Gallery'),
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+        ),
+      ],
+      actionsPadding: const EdgeInsets.all(16),
+    );
+  }
+}
+
+// Notes dialog widget
+class _NotesDialog extends StatefulWidget {
+  final dynamic task;
+  final dynamic checklist;
+  final VoidCallback onNotesUpdated;
+
+  const _NotesDialog({Key? key, required this.task, this.checklist, required this.onNotesUpdated}) : super(key: key);
+
+  @override
+  State<_NotesDialog> createState() => _NotesDialogState();
+}
+
+class _NotesDialogState extends State<_NotesDialog> {
+  late TextEditingController _notesController;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _notesController = TextEditingController(text: widget.task.notes ?? '');
+  }
+
+  @override
+  void dispose() {
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveNotes() async {
+    try {
+      setState(() => _isSaving = true);
+
+      final notes = _notesController.text.trim();
+
+      // Update the task notes in Firestore
+      if (widget.checklist != null) {
+        await FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(widget.checklist.organizationId)
+            .collection('locations')
+            .doc(widget.checklist.locationId)
+            .collection('daily_checklists')
+            .doc(widget.checklist.id)
+            .update({
+              'tasks.${widget.task.taskId}.notes': notes,
+              'tasks.${widget.task.taskId}.notesUpdatedAt': FieldValue.serverTimestamp(),
+            });
+      }
+
+      widget.onNotesUpdated();
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Notes saved successfully!'), backgroundColor: Colors.green));
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      debugPrint('Error saving notes: $e');
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error saving notes: $e'), backgroundColor: Colors.red));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Row(
+        children: [
+          const Icon(Icons.notes, color: Colors.blue),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Task Notes',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Task: ${widget.task.taskName ?? 'Unknown Task'}', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 16),
+            Text(
+              'Add notes or comments about this task:',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _notesController,
+              maxLines: 5,
+              decoration: InputDecoration(
+                hintText: 'Enter your notes here...',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                filled: true,
+                fillColor: Colors.grey[50],
+              ),
+            ),
+            if (_isSaving) ...[
+              const SizedBox(height: 16),
+              const LinearProgressIndicator(),
+              const SizedBox(height: 8),
+              const Center(child: Text('Saving notes...', style: TextStyle(color: Colors.blue))),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: _isSaving ? null : () => Navigator.pop(context), child: const Text('Cancel')),
+        ElevatedButton.icon(
+          onPressed: _isSaving ? null : _saveNotes,
+          icon: const Icon(Icons.save),
+          label: const Text('Save Notes'),
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+        ),
+      ],
+      actionsPadding: const EdgeInsets.all(16),
+    );
+  }
+}
+
+// Not completed reason dialog widget
+class _NotCompletedReasonDialog extends StatefulWidget {
+  final dynamic task;
+  final dynamic checklist;
+  final VoidCallback onReasonUpdated;
+
+  const _NotCompletedReasonDialog({Key? key, required this.task, this.checklist, required this.onReasonUpdated})
+    : super(key: key);
+
+  @override
+  State<_NotCompletedReasonDialog> createState() => _NotCompletedReasonDialogState();
+}
+
+class _NotCompletedReasonDialogState extends State<_NotCompletedReasonDialog> {
+  late TextEditingController _reasonController;
+  bool _isSaving = false;
+  String? _selectedPredefinedReason;
+
+  final List<String> _predefinedReasons = [
+    'Equipment not available',
+    'Supplies missing',
+    'Not enough time',
+    'Safety concern',
+    'Waiting for approval',
+    'Area blocked/inaccessible',
+    'Technical issue',
+    'Staff shortage',
+    'Emergency priority task',
+    'Weather conditions',
+    'Other (specify below)',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _reasonController = TextEditingController(text: widget.task.notCompletedReason ?? '');
+
+    // Check if current reason matches a predefined one
+    final currentReason = widget.task.notCompletedReason ?? '';
+    if (_predefinedReasons.contains(currentReason)) {
+      _selectedPredefinedReason = currentReason;
+    } else if (currentReason.isNotEmpty) {
+      _selectedPredefinedReason = 'Other (specify below)';
+    }
+  }
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveReason() async {
+    try {
+      setState(() => _isSaving = true);
+
+      String finalReason;
+      if (_selectedPredefinedReason == 'Other (specify below)') {
+        finalReason = _reasonController.text.trim();
+        if (finalReason.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please specify a reason in the text field'), backgroundColor: Colors.orange),
+          );
+          setState(() => _isSaving = false);
+          return;
+        }
+      } else {
+        finalReason = _selectedPredefinedReason ?? _reasonController.text.trim();
+      }
+
+      if (finalReason.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select or enter a reason'), backgroundColor: Colors.orange),
+        );
+        setState(() => _isSaving = false);
+        return;
+      }
+
+      // Update the task reason in Firestore
+      if (widget.checklist != null) {
+        await FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(widget.checklist.organizationId)
+            .collection('locations')
+            .doc(widget.checklist.locationId)
+            .collection('daily_checklists')
+            .doc(widget.checklist.id)
+            .update({
+              'tasks.${widget.task.taskId}.notCompletedReason': finalReason,
+              'tasks.${widget.task.taskId}.reasonUpdatedAt': FieldValue.serverTimestamp(),
+              'tasks.${widget.task.taskId}.completed': false, // Ensure task is marked as not completed
+            });
+      }
+
+      widget.onReasonUpdated();
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Reason saved successfully!'), backgroundColor: Colors.green));
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      debugPrint('Error saving not completed reason: $e');
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error saving reason: $e'), backgroundColor: Colors.red));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Row(
+        children: [
+          const Icon(Icons.error_outline, color: Colors.orange),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Task Not Completed',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Task: ${widget.task.taskName ?? 'Unknown Task'}', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 16),
+            Text(
+              'Why was this task not completed?',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 12),
+
+            // Predefined reasons
+            Container(
+              constraints: const BoxConstraints(maxHeight: 200),
+              child: SingleChildScrollView(
+                child: Column(
+                  children:
+                      _predefinedReasons.map((reason) {
+                        return RadioListTile<String>(
+                          title: Text(reason),
+                          value: reason,
+                          groupValue: _selectedPredefinedReason,
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedPredefinedReason = value;
+                              if (value != 'Other (specify below)') {
+                                _reasonController.clear();
+                              }
+                            });
+                          },
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                        );
+                      }).toList(),
+                ),
+              ),
+            ),
+
+            // Custom reason text field (only show if "Other" is selected)
+            if (_selectedPredefinedReason == 'Other (specify below)') ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _reasonController,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: 'Please specify the reason...',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  filled: true,
+                  fillColor: Colors.grey[50],
+                ),
+              ),
+            ],
+
+            if (_isSaving) ...[
+              const SizedBox(height: 16),
+              const LinearProgressIndicator(),
+              const SizedBox(height: 8),
+              const Center(child: Text('Saving reason...', style: TextStyle(color: Colors.blue))),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: _isSaving ? null : () => Navigator.pop(context), child: const Text('Cancel')),
+        ElevatedButton.icon(
+          onPressed: _isSaving ? null : _saveReason,
+          icon: const Icon(Icons.save),
+          label: const Text('Save Reason'),
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white),
+        ),
+      ],
+      actionsPadding: const EdgeInsets.all(16),
+    );
+  }
+}
+
+// Stub extension for missing getter on TaskData
+extension TaskDataExtensions on TaskData {
+  // Assuming TaskData should have these fields; adjust according to your model
+  String get name => '';
+  String get shiftId => '';
+  String get shiftName => '';
+  String get organizationId => '';
+  String get locationId => '';
+}
+
+// Stub method for _handleMenuAction inside _MissedTaskInteractionTile
+// Assuming _MissedTaskInteractionTile is a widget class defined in this file
+// We'll add an extension method to provide a default implementation
+extension MissedTaskInteractionTileExtension on _MissedTaskInteractionTile {
+  void _handleMenuAction(BuildContext context, String value) {
+    debugPrint('Menu action selected: $value');
+  }
+}
+
+// If _MissedTasksCard is not used, you may comment it out or leave as is.
 
 // --- UI WIDGETS ---
 
@@ -1794,7 +2479,7 @@ class _TaskTile extends HookWidget {
         return;
       }
 
-      // Update the task in Firestore
+      // Reference to the daily checklist document
       final checklistRef = FirestoreEnforcer.instance
           .collection('organizations')
           .doc(checklist.organizationId)
@@ -1803,7 +2488,7 @@ class _TaskTile extends HookWidget {
           .collection('daily_checklists')
           .doc(checklist.id);
 
-      // Find the task in the array and update it
+      // Update the task status in the array
       final updatedTasks =
           checklist.tasks.map((t) {
             if (t.taskId == task.taskId) {
@@ -1811,17 +2496,16 @@ class _TaskTile extends HookWidget {
                 isCompleted: isCompleted,
                 completedBy: isCompleted ? user.email ?? user.uid : null,
                 completedAt: isCompleted ? DateTime.now() : null,
-                // Clear not completed reason if task is now completed
                 notCompletedReason: isCompleted ? null : t.notCompletedReason,
               );
             }
             return t;
           }).toList();
 
-      // Check if all tasks are completed
+      // Determine if all tasks are completed
       final allCompleted = updatedTasks.every((t) => t.isCompleted);
 
-      // Update the document
+      // Commit the update to Firestore
       await checklistRef.update({
         'tasks': updatedTasks.map((t) => t.toMap()).toList(),
         'isCompleted': allCompleted,
@@ -1832,7 +2516,6 @@ class _TaskTile extends HookWidget {
 
       onTaskToggled();
 
-      // Show feedback
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(isCompleted ? "Task completed!" : "Task unchecked"),
@@ -1922,7 +2605,7 @@ class _MissedTaskInteractionTile extends HookWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey[300]!),
+        border: Border.all(color: Colors.orange[300]!),
         borderRadius: BorderRadius.circular(8),
         color: task.completed ? Colors.green[50] : Colors.red[50],
       ),
@@ -1968,46 +2651,51 @@ class _MissedTaskInteractionTile extends HookWidget {
   }
 
   Future<void> _handleTaskToggle(BuildContext context, bool isCompleted) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("You must be logged in to complete tasks")));
+      return;
+    }
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text("You must be logged in to complete tasks")));
-        return;
-      }
-
-      // Update the task in Firestore
-      final checklistRef = FirebaseFirestore.instance
+      // Reference to yesterday's missed tasks checklist
+      final yesterday = DateTime.now().subtract(const Duration(days: 1));
+      final checklistRef = FirestoreEnforcer.instance
           .collection('organizations')
           .doc(section.organizationId)
+          .collection('locations')
+          .doc(section.locationId)
           .collection('daily_checklists')
           .doc(section.checklistId);
-
-      await FirebaseFirestore.instance.runTransaction((transaction) async {
-        final doc = await transaction.get(checklistRef);
-        if (!doc.exists) return;
-
-        final tasks = List<Map<String, dynamic>>.from(doc.data()?['tasks'] ?? []);
-        final taskIndex = tasks.indexWhere((t) => t['taskId'] == task.taskId);
-
-        if (taskIndex != -1) {
-          // Update the specific task
-          tasks[taskIndex] = {
-            ...tasks[taskIndex],
-            'completed': isCompleted,
-            'completedBy': isCompleted ? user.uid : null,
-            'completedAt': isCompleted ? Timestamp.now() : null,
-          };
-          transaction.update(checklistRef, {'tasks': tasks});
-        }
+      // Create document if it doesn't exist
+      final snap = await checklistRef.get();
+      if (!snap.exists) {
+        await checklistRef.set({
+          'shiftId': section.shiftId,
+          'shiftName': section.shiftName,
+          'date': Timestamp.fromDate(yesterday),
+          'organizationId': section.organizationId,
+          'locationId': section.locationId,
+          'tasks': section.tasks.map((t) => t.toJson()).toList(),
+        });
+      }
+      // Update the specific task status
+      final updatedTasks =
+          section.tasks.map((t) {
+            if (t.taskId == task.taskId) {
+              return t.copyWith(completed: isCompleted);
+            }
+            return t;
+          }).toList();
+      await checklistRef.update({
+        'tasks': updatedTasks.map((t) => t.toJson()).toList(),
+        'updatedAt': FieldValue.serverTimestamp(),
       });
-
-      onUpdate(); // Trigger UI refresh
-
+      onUpdate();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(isCompleted ? "Task completed!" : "Task unchecked"),
+          content: Text(isCompleted ? 'Task completed!' : 'Task unchecked'),
           backgroundColor: isCompleted ? Colors.green : Colors.orange,
         ),
       );
@@ -2019,805 +2707,27 @@ class _MissedTaskInteractionTile extends HookWidget {
     }
   }
 
-  void _handleMenuAction(BuildContext context, String action) {
-    // Create temporary DailyChecklist and DailyChecklistTask objects to reuse existing dialogs
-    final tempChecklistTask = DailyChecklistTask.fromTaskData(
-      task,
-      section.checklistId ?? '',
-      section.organizationId,
-      section.locationId ?? 'unknown',
-    );
-
-    final tempChecklist = DailyChecklist(
-      id: section.checklistId ?? '',
-      organizationId: section.organizationId,
-      locationId: section.locationId ?? 'unknown',
-      shiftId: section.shiftId,
-      checklistTemplateId: 'missed_tasks',
-      date: task.dueDate,
-      tasks: [tempChecklistTask],
-      createdAt: task.createdAt,
-      updatedAt: DateTime.now(),
-      templateName: section.shiftName,
-    );
-
-    switch (action) {
+  void _handleMenuAction(BuildContext context, String value) {
+    switch (value) {
       case 'photo':
         showDialog(
           context: context,
-          builder:
-              (context) => _PhotoDialog(task: tempChecklistTask, checklist: tempChecklist, onPhotoUpdated: onUpdate),
+          builder: (_) => _PhotoDialog(task: task, checklist: null, onPhotoUpdated: onUpdate),
         );
         break;
       case 'notes':
         showDialog(
           context: context,
-          builder:
-              (context) => _NotesDialog(task: tempChecklistTask, checklist: tempChecklist, onNotesUpdated: onUpdate),
+          builder: (_) => _NotesDialog(task: task, checklist: null, onNotesUpdated: onUpdate),
         );
         break;
       case 'not_completed':
         showDialog(
           context: context,
-          builder:
-              (context) => _NotCompletedReasonDialog(
-                task: tempChecklistTask,
-                checklist: tempChecklist,
-                onReasonUpdated: onUpdate,
-              ),
+          builder: (_) => _NotCompletedReasonDialog(task: task, checklist: null, onReasonUpdated: onUpdate),
         );
         break;
     }
-  }
-}
-
-// --- TASK MANAGEMENT DIALOGS ---
-
-class _PhotoDialog extends HookWidget {
-  final DailyChecklistTask task;
-  final DailyChecklist checklist;
-  final VoidCallback onPhotoUpdated;
-
-  const _PhotoDialog({required this.task, required this.checklist, required this.onPhotoUpdated});
-
-  @override
-  Widget build(BuildContext context) {
-    final isUploading = useState(false);
-
-    return AlertDialog(
-      title: const Text('Task Photo'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (task.proofImageUrl != null) ...[
-              Image.network(task.proofImageUrl!, height: 200, width: double.infinity, fit: BoxFit.cover),
-              const SizedBox(height: 16),
-              // Replace/Remove buttons - use Column for better mobile compatibility
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: isUploading.value ? null : () => _replacePhoto(context, isUploading),
-                      icon: const Icon(Icons.camera_alt),
-                      label: const Text('Replace Photo'),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: isUploading.value ? null : () => _removePhoto(context, isUploading),
-                      icon: const Icon(Icons.delete),
-                      label: const Text('Remove Photo'),
-                    ),
-                  ),
-                ],
-              ),
-            ] else ...[
-              const Icon(Icons.camera_alt, size: 64, color: Colors.grey),
-              const SizedBox(height: 16),
-              Text(
-                task.photoRequired ? 'This task requires a photo to be completed' : 'Add a photo to document this task',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey[600]),
-              ),
-              const SizedBox(height: 16),
-              // Camera/Gallery buttons - use Column for better mobile compatibility
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: isUploading.value ? null : () => _addPhoto(context, ImageSource.camera, isUploading),
-                      icon: const Icon(Icons.camera_alt),
-                      label: const Text('Take Photo'),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: isUploading.value ? null : () => _addPhoto(context, ImageSource.gallery, isUploading),
-                      icon: const Icon(Icons.photo_library),
-                      label: const Text('Choose from Gallery'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-            if (isUploading.value) ...[
-              const SizedBox(height: 16),
-              const LinearProgressIndicator(),
-              const SizedBox(height: 8),
-              const Text('Uploading photo...'),
-            ],
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(onPressed: isUploading.value ? null : () => Navigator.pop(context), child: const Text('Close')),
-      ],
-    );
-  }
-
-  Future<void> _addPhoto(BuildContext context, ImageSource source, ValueNotifier<bool> isUploading) async {
-    try {
-      final picker = ImagePicker();
-      final pickedFile = await picker.pickImage(
-        source: source,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 85,
-        // Native photo picker properties for better UX
-        preferredCameraDevice: CameraDevice.rear,
-      );
-
-      if (pickedFile == null) {
-        // User cancelled - this is normal behavior
-        debugPrint('[PhotoUpload] User cancelled image selection');
-        return;
-      }
-
-      isUploading.value = true;
-
-      // Upload to Firebase Storage
-      final storageRef = FirebaseStorage.instance
-          .ref()
-          .child('task_photos')
-          .child(checklist.organizationId)
-          .child(checklist.id)
-          .child('${task.taskId}_${DateTime.now().millisecondsSinceEpoch}.jpg');
-
-      // Use putData for all platforms since it works universally
-      // and avoids the need for conditional dart:io imports
-      final imageBytes = await pickedFile.readAsBytes();
-      await storageRef.putData(
-        imageBytes,
-        SettableMetadata(
-          contentType: 'image/jpeg',
-          customMetadata: {
-            'taskId': task.taskId,
-            'checklistId': checklist.id,
-            'uploadedBy': FirebaseAuth.instance.currentUser?.uid ?? 'unknown',
-            'timestamp': DateTime.now().toIso8601String(),
-          },
-        ),
-      );
-
-      final downloadUrl = await storageRef.getDownloadURL();
-
-      // Update task in Firestore
-      await _updateTaskPhoto(downloadUrl);
-
-      onPhotoUpdated();
-
-      if (context.mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Photo uploaded successfully!'), backgroundColor: Colors.green));
-      }
-    } catch (e) {
-      debugPrint('Error uploading photo: $e');
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error uploading photo. Please try again.'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      isUploading.value = false;
-    }
-  }
-
-  Future<void> _replacePhoto(BuildContext context, ValueNotifier<bool> isUploading) async {
-    final source = await showDialog<ImageSource>(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Replace Photo'),
-            content: const Text('How would you like to replace the photo?'),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(context, ImageSource.camera), child: const Text('Camera')),
-              TextButton(onPressed: () => Navigator.pop(context, ImageSource.gallery), child: const Text('Gallery')),
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-            ],
-          ),
-    );
-
-    if (source != null) {
-      await _addPhoto(context, source, isUploading);
-    }
-  }
-
-  Future<void> _removePhoto(BuildContext context, ValueNotifier<bool> isUploading) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Remove Photo'),
-            content: const Text('Are you sure you want to remove this photo?'),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                child: const Text('Remove'),
-              ),
-            ],
-          ),
-    );
-
-    if (confirmed == true) {
-      try {
-        isUploading.value = true;
-        await _updateTaskPhoto(null);
-        onPhotoUpdated();
-
-        if (context.mounted) {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Photo removed'), backgroundColor: Colors.orange));
-        }
-      } catch (e) {
-        debugPrint('Error removing photo: $e');
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Error removing photo. Please try again.'), backgroundColor: Colors.red),
-          );
-        }
-      } finally {
-        isUploading.value = false;
-      }
-    }
-  }
-
-  Future<void> _updateTaskPhoto(String? photoUrl) async {
-    final checklistRef = FirestoreEnforcer.instance
-        .collection('organizations')
-        .doc(checklist.organizationId)
-        .collection('locations')
-        .doc(checklist.locationId)
-        .collection('daily_checklists')
-        .doc(checklist.id);
-
-    final updatedTasks =
-        checklist.tasks.map((t) {
-          if (t.taskId == task.taskId) {
-            return t.copyWith(proofImageUrl: photoUrl);
-          }
-          return t;
-        }).toList();
-
-    await checklistRef.update({
-      'tasks': updatedTasks.map((t) => t.toMap()).toList(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-  }
-}
-
-class _NotesDialog extends HookWidget {
-  final DailyChecklistTask task;
-  final DailyChecklist checklist;
-  final VoidCallback onNotesUpdated;
-
-  const _NotesDialog({required this.task, required this.checklist, required this.onNotesUpdated});
-
-  @override
-  Widget build(BuildContext context) {
-    final notesController = useTextEditingController(text: task.notes ?? '');
-    final isSaving = useState(false);
-
-    return AlertDialog(
-      title: const Text('Task Notes'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: notesController,
-              maxLines: 4,
-              decoration: const InputDecoration(hintText: 'Add notes about this task...', border: OutlineInputBorder()),
-            ),
-            if (isSaving.value) ...[const SizedBox(height: 16), const LinearProgressIndicator()],
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(onPressed: isSaving.value ? null : () => Navigator.pop(context), child: const Text('Cancel')),
-        ElevatedButton(
-          onPressed: isSaving.value ? null : () => _saveNotes(context, notesController.text, isSaving),
-          child: const Text('Save'),
-        ),
-        if (task.notes != null && task.notes!.isNotEmpty)
-          TextButton(
-            onPressed: isSaving.value ? null : () => _deleteNotes(context, isSaving),
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
-          ),
-      ],
-    );
-  }
-
-  Future<void> _saveNotes(BuildContext context, String notes, ValueNotifier<bool> isSaving) async {
-    try {
-      isSaving.value = true;
-      await _updateTaskNotes(notes.trim().isEmpty ? null : notes.trim());
-      onNotesUpdated();
-
-      if (context.mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Notes saved successfully!'), backgroundColor: Colors.green));
-      }
-    } catch (e) {
-      debugPrint('Error saving notes: $e');
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error saving notes. Please try again.'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      isSaving.value = false;
-    }
-  }
-
-  Future<void> _deleteNotes(BuildContext context, ValueNotifier<bool> isSaving) async {
-    try {
-      isSaving.value = true;
-      await _updateTaskNotes(null);
-      onNotesUpdated();
-
-      if (context.mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Notes deleted'), backgroundColor: Colors.orange));
-      }
-    } catch (e) {
-      debugPrint('Error deleting notes: $e');
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error deleting notes. Please try again.'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      isSaving.value = false;
-    }
-  }
-
-  Future<void> _updateTaskNotes(String? notes) async {
-    final checklistRef = FirestoreEnforcer.instance
-        .collection('organizations')
-        .doc(checklist.organizationId)
-        .collection('locations')
-        .doc(checklist.locationId)
-        .collection('daily_checklists')
-        .doc(checklist.id);
-
-    final updatedTasks =
-        checklist.tasks.map((t) {
-          if (t.taskId == task.taskId) {
-            return t.copyWith(notes: notes);
-          }
-          return t;
-        }).toList();
-
-    await checklistRef.update({
-      'tasks': updatedTasks.map((t) => t.toMap()).toList(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-  }
-}
-
-class _NotCompletedReasonDialog extends HookWidget {
-  final DailyChecklistTask task;
-  final DailyChecklist checklist;
-  final VoidCallback onReasonUpdated;
-
-  const _NotCompletedReasonDialog({required this.task, required this.checklist, required this.onReasonUpdated});
-
-  @override
-  Widget build(BuildContext context) {
-    final reasonController = useTextEditingController(text: task.notCompletedReason ?? '');
-    final isSaving = useState(false);
-
-    return AlertDialog(
-      title: const Text('Cannot Complete Task'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Please explain why this task cannot be completed:', style: TextStyle(fontSize: 14)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: reasonController,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                hintText: 'e.g., Equipment broken, supplies missing, etc.',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            if (isSaving.value) ...[const SizedBox(height: 16), const LinearProgressIndicator()],
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(onPressed: isSaving.value ? null : () => Navigator.pop(context), child: const Text('Cancel')),
-        ElevatedButton(
-          onPressed: isSaving.value ? null : () => _saveReason(context, reasonController.text, isSaving),
-          child: const Text('Save'),
-        ),
-        if (task.notCompletedReason != null && task.notCompletedReason!.isNotEmpty)
-          TextButton(
-            onPressed: isSaving.value ? null : () => _deleteReason(context, isSaving),
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
-          ),
-      ],
-    );
-  }
-
-  Future<void> _saveReason(BuildContext context, String reason, ValueNotifier<bool> isSaving) async {
-    if (reason.trim().isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Please provide a reason'), backgroundColor: Colors.orange));
-      return;
-    }
-
-    try {
-      isSaving.value = true;
-      await _updateTaskReason(reason.trim());
-      onReasonUpdated();
-
-      if (context.mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Reason saved successfully!'), backgroundColor: Colors.green));
-      }
-    } catch (e) {
-      debugPrint('Error saving reason: $e');
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error saving reason. Please try again.'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      isSaving.value = false;
-    }
-  }
-
-  Future<void> _deleteReason(BuildContext context, ValueNotifier<bool> isSaving) async {
-    try {
-      isSaving.value = true;
-      await _updateTaskReason(null);
-      onReasonUpdated();
-
-      if (context.mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Reason deleted'), backgroundColor: Colors.orange));
-      }
-    } catch (e) {
-      debugPrint('Error deleting reason: $e');
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error deleting reason. Please try again.'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      isSaving.value = false;
-    }
-  }
-
-  Future<void> _updateTaskReason(String? reason) async {
-    final checklistRef = FirestoreEnforcer.instance
-        .collection('organizations')
-        .doc(checklist.organizationId)
-        .collection('locations')
-        .doc(checklist.locationId)
-        .collection('daily_checklists')
-        .doc(checklist.id);
-
-    final updatedTasks =
-        checklist.tasks.map((t) {
-          if (t.taskId == task.taskId) {
-            return t.copyWith(notCompletedReason: reason);
-          }
-          return t;
-        }).toList();
-
-    await checklistRef.update({
-      'tasks': updatedTasks.map((t) => t.toMap()).toList(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-  }
-}
-
-// --- HELP OUT BOTTOM SHEET ---
-
-class _HelpOutSheet extends HookWidget {
-  final String organizationId;
-  final String todayDayName;
-  final String? selectedLocationId;
-  final String selectedLocationName;
-
-  const _HelpOutSheet({
-    required this.organizationId,
-    required this.todayDayName,
-    this.selectedLocationId,
-    required this.selectedLocationName,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    debugPrint("[Dashboard] _HelpOutSheet build method called");
-
-    // If no location is selected, show a message
-    if (selectedLocationId == null || selectedLocationId!.isEmpty) {
-      return DraggableScrollableSheet(
-        initialChildSize: 0.5,
-        minChildSize: 0.3,
-        maxChildSize: 0.7,
-        expand: false,
-        builder: (context, scrollController) {
-          return Container(
-            decoration: BoxDecoration(
-              color: Theme.of(context).scaffoldBackgroundColor,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-            ),
-            child: Column(
-              children: [
-                // Handle bar
-                Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.symmetric(vertical: 8),
-                  decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(2)),
-                ),
-                // Header
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          "Select a Location First",
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1),
-                // Content
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.location_off, size: 64, color: Colors.grey[400]),
-                          const SizedBox(height: 16),
-                          Text(
-                            "Please select a location from the dropdown at the top of the page first.",
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.bodyLarge,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      );
-    }
-
-    return DraggableScrollableSheet(
-      initialChildSize: 0.75,
-      minChildSize: 0.5,
-      maxChildSize: 0.9,
-      expand: false,
-      builder: (context, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-          ),
-          child: Column(
-            children: [
-              // Handle bar
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.symmetric(vertical: 8),
-                decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(2)),
-              ),
-              // Header
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            "Select a Shift",
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-                          ),
-                          Text(
-                            "Location: $selectedLocationName",
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              // Content - Show shifts directly for the selected location
-              Expanded(
-                child: _ShiftPicker(
-                  organizationId: organizationId,
-                  location: {'id': selectedLocationId!, 'name': selectedLocationName},
-                  todayDayName: todayDayName,
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _LocationPicker extends StatelessWidget {
-  final String organizationId;
-  final ValueChanged<Map<String, dynamic>> onLocationSelected;
-
-  const _LocationPicker({required this.organizationId, required this.onLocationSelected});
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<QuerySnapshot>(
-      future: FirestoreEnforcer.instance.collection('organizations').doc(organizationId).collection('locations').get(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError || !snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return const Center(child: Text("No locations found."));
-        }
-
-        return ListView(
-          children:
-              snapshot.data!.docs.map((doc) {
-                final locationData = doc.data() as Map<String, dynamic>;
-                return ListTile(
-                  title: Text(locationData['locationName'] ?? 'Unnamed Location'),
-                  onTap: () => onLocationSelected({'id': doc.id, ...locationData}),
-                );
-              }).toList(),
-        );
-      },
-    );
-  }
-}
-
-// --- VALID _ShiftPicker IMPLEMENTATION FOR HELP OUT SHEET ---
-class _ShiftPicker extends StatelessWidget {
-  final String organizationId;
-  final Map<String, dynamic> location;
-  final String todayDayName;
-
-  const _ShiftPicker({required this.organizationId, required this.location, required this.todayDayName});
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<QuerySnapshot>(
-      future:
-          FirestoreEnforcer.instance
-              .collection('organizations')
-              .doc(organizationId)
-              .collection('shifts')
-              .where('locationIds', arrayContains: location['id'])
-              .get(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError || !snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return const Center(child: Text("No shifts found for this location."));
-        }
-
-        debugPrint(
-          "[Dashboard] _ShiftPicker: Found ${snapshot.data!.docs.length} shifts for location ${location['id']}",
-        );
-
-        // Filter shifts for today
-        final validShifts =
-            snapshot.data!.docs
-                .map((doc) {
-                  try {
-                    final docData = doc.data() as Map<String, dynamic>;
-                    debugPrint("[Dashboard] _ShiftPicker: Raw data for ${doc.id}: $docData");
-                    final shift = ShiftData.fromJson(docData).copyWith(shiftId: doc.id);
-                    debugPrint(
-                      "[Dashboard] _ShiftPicker: Checking shift ${shift.shiftName}, repeatsDaily: ${shift.repeatsDaily}, days: ${shift.days}, todayDayName: $todayDayName",
-                    );
-                    // Check if shift is active today
-                    if (shift.repeatsDaily || shift.days.contains(todayDayName)) {
-                      debugPrint("[Dashboard] _ShiftPicker: Shift ${shift.shiftName} is valid for today");
-                      return shift;
-                    } else {
-                      debugPrint("[Dashboard] _ShiftPicker: Shift ${shift.shiftName} is not valid for today");
-                    }
-                  } catch (e, stack) {
-                    debugPrint("[Dashboard] _ShiftPicker: Failed to parse shift doc ${doc.id}: $e\n$stack");
-                  }
-                  return null;
-                })
-                .whereType<ShiftData>()
-                .toList();
-
-        debugPrint("[Dashboard] _ShiftPicker: After filtering, found ${validShifts.length} valid shifts for today");
-        for (int i = 0; i < validShifts.length; i++) {
-          final shift = validShifts[i];
-          debugPrint(
-            "[Dashboard] _ShiftPicker: Valid shift $i: ${shift.shiftName} (${shift.startTime} - ${shift.endTime})",
-          );
-        }
-
-        if (validShifts.isEmpty) {
-          return const Center(child: Text("No shifts running today at this location."));
-        }
-
-        return ListView(
-          children:
-              validShifts.map((shift) {
-                return ListTile(
-                  title: Text(shift.shiftName),
-                  subtitle: Text("${shift.startTime} - ${shift.endTime}"),
-                  onTap: () => Navigator.pop(context, {'shift': shift, 'locationId': location['id']}),
-                );
-              }).toList(),
-        );
-      },
-    );
   }
 }
 

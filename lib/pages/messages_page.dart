@@ -5,6 +5,7 @@ import 'package:hands_app/pages/admin/send_notification_sheet.dart';
 import 'package:hands_app/pages/admin/create_group_sheet.dart';
 import 'package:hands_app/state/user_state.dart';
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
+import 'package:hands_app/widgets/professional_message_dialog.dart';
 
 class MessagesPage extends ConsumerWidget {
   const MessagesPage({super.key});
@@ -35,37 +36,11 @@ class MessagesPage extends ConsumerWidget {
                     builder:
                         (_) => NotificationListSheet(
                           onMessageTap: (title, details) {
-                            showDialog(
+                            ProfessionalMessageDialog.show(
                               context: context,
-                              builder:
-                                  (context) => AlertDialog(
-                                    title: Row(
-                                      children: [
-                                        const Icon(Icons.message, size: 28),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            title,
-                                            style: const TextStyle(
-                                              fontSize: 20,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    content: Text(
-                                      details,
-                                      style: const TextStyle(fontSize: 16),
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed:
-                                            () => Navigator.of(context).pop(),
-                                        child: const Text('Close'),
-                                      ),
-                                    ],
-                                  ),
+                              title: title,
+                              content: details,
+                              headerIcon: Icons.mail_outline,
                             );
                           },
                         ),
@@ -121,18 +96,9 @@ class MessagesPage extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Message Center',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      const Text('Message Center', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 16),
-                      const Text(
-                        'Quick actions available based on your role:',
-                        style: TextStyle(fontSize: 14),
-                      ),
+                      const Text('Quick actions available based on your role:', style: TextStyle(fontSize: 14)),
                       const SizedBox(height: 8),
                       if (userRole == 0) ...[
                         const Text('• View messages and notifications'),
@@ -153,10 +119,7 @@ class MessagesPage extends ConsumerWidget {
           ],
         ),
       ),
-      bottomNavigationBar: BottomNavBar(
-        currentIndex: -1,
-        userRole: userRole,
-      ), // No specific index for messages page
+      bottomNavigationBar: BottomNavBar(currentIndex: -1, userRole: userRole), // No specific index for messages page
     );
   }
 }

@@ -1,7 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hands_app/services/daily_checklist_service.dart';
 import 'package:hands_app/data/models/missed_tasks_section.dart';
-import 'package:hands_app/models/daily_checklist.dart';
 
 final dailyChecklistServiceProvider = Provider<DailyChecklistService>((ref) {
   return DailyChecklistService();
@@ -38,7 +38,7 @@ final missedTasksProvider =
         );
       } catch (e) {
         // Log but don't fail if carry-forward fails
-        print('Error during carry-forward: $e');
+        debugPrint('Error during carry-forward: $e');
       }
       
       return service.loadMissedTasksForToday(
@@ -58,7 +58,7 @@ final frequentlyMissedTasksProvider =
       return service.getFrequentlyMissedTasks(
         organizationId: params.organizationId,
         locationId: params.locationId,
-        rollingDays: params.rollingDays,
+        days: params.rollingDays,
       );
     });
 

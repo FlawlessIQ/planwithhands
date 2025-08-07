@@ -44,10 +44,7 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
     try {
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser != null) {
-        final currentUserDoc = await FirestoreEnforcer.instance
-            .collection('users')
-            .doc(currentUser.uid)
-            .get();
+        final currentUserDoc = await FirestoreEnforcer.instance.collection('users').doc(currentUser.uid).get();
         _organizationId = currentUserDoc.data()?['organizationId'];
       }
 
@@ -56,22 +53,24 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
         return;
       }
 
-      final jobTypesSnapshot = await FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(_organizationId!)
-          .collection('jobTypes')
-          .orderBy('name')
-          .get();
+      final jobTypesSnapshot =
+          await FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(_organizationId!)
+              .collection('jobTypes')
+              .orderBy('name')
+              .get();
 
-      final jobTypes = jobTypesSnapshot.docs.map((doc) {
-        final data = doc.data();
-        return {
-          'id': doc.id,
-          'name': data['name'] as String,
-          'createdAt': data['createdAt'],
-          'organizationId': data['organizationId'],
-        };
-      }).toList();
+      final jobTypes =
+          jobTypesSnapshot.docs.map((doc) {
+            final data = doc.data();
+            return {
+              'id': doc.id,
+              'name': data['name'] as String,
+              'createdAt': data['createdAt'],
+              'organizationId': data['organizationId'],
+            };
+          }).toList();
 
       setState(() {
         _jobTypes = jobTypes;
@@ -97,11 +96,7 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
     }
 
     try {
-      await FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(_organizationId!)
-          .collection('jobTypes')
-          .add({
+      await FirestoreEnforcer.instance.collection('organizations').doc(_organizationId!).collection('jobTypes').add({
         'name': name,
         'createdAt': FieldValue.serverTimestamp(),
         'organizationId': _organizationId!,
@@ -118,35 +113,30 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
 
   Future<void> _editJobType(String jobTypeId, String currentName) async {
     _editJobTypeController.text = currentName;
-    
+
     final result = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Edit Job Type'),
-        content: TextFormField(
-          controller: _editJobTypeController,
-          decoration: const InputDecoration(
-            labelText: 'Job Type Name',
-            border: OutlineInputBorder(),
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Edit Job Type'),
+            content: TextFormField(
+              controller: _editJobTypeController,
+              decoration: const InputDecoration(labelText: 'Job Type Name', border: OutlineInputBorder()),
+              autofocus: true,
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+              ElevatedButton(
+                onPressed: () {
+                  final newName = _editJobTypeController.text.trim();
+                  if (newName.isNotEmpty) {
+                    Navigator.pop(context, newName);
+                  }
+                },
+                child: const Text('Save'),
+              ),
+            ],
           ),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final newName = _editJobTypeController.text.trim();
-              if (newName.isNotEmpty) {
-                Navigator.pop(context, newName);
-              }
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
     );
 
     if (result != null && result != currentName) {
@@ -162,10 +152,7 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
             .doc(_organizationId!)
             .collection('jobTypes')
             .doc(jobTypeId)
-            .update({
-          'name': result,
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
+            .update({'name': result, 'updatedAt': FieldValue.serverTimestamp()});
 
         _showSnackBar('Job type updated successfully');
         await _loadJobTypes();
@@ -179,24 +166,21 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
   Future<void> _deleteJobType(String jobTypeId, String jobTypeName) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Job Type'),
-        content: Text('Are you sure you want to delete "$jobTypeName"?\n\nThis action cannot be undone and may affect existing users assigned to this role.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Delete Job Type'),
+            content: Text(
+              'Are you sure you want to delete "$jobTypeName"?\n\nThis action cannot be undone and may affect existing users assigned to this role.',
             ),
-            child: const Text('Delete'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                child: const Text('Delete'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
 
     if (confirmed == true) {
@@ -218,12 +202,9 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
   }
 
   void _showSnackBar(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? Colors.red : Colors.green,
-      ),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message), backgroundColor: isError ? Colors.red : Colors.green));
   }
 
   @override
@@ -240,10 +221,7 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Manage Job Types',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
+                const Text('Manage Job Types', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                 IconButton(
                   icon: const Icon(Icons.close),
                   onPressed: () {
@@ -262,10 +240,7 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Add New Job Type',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                    ),
+                    const Text('Add New Job Type', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 12),
                     Row(
                       children: [
@@ -295,61 +270,50 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
             const SizedBox(height: 20),
 
             // Existing job types list
-            const Text(
-              'Existing Job Types',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
+            const Text('Existing Job Types', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
 
             // Job types list
             Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _jobTypes.isEmpty
+              child:
+                  _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _jobTypes.isEmpty
                       ? const Center(
-                          child: Text(
-                            'No job types found.\nAdd your first job type above.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.grey),
-                          ),
-                        )
-                      : ListView.builder(
-                          itemCount: _jobTypes.length,
-                          itemBuilder: (context, index) {
-                            final jobType = _jobTypes[index];
-                            return Card(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              child: ListTile(
-                                leading: const Icon(Icons.work_outline),
-                                title: Text(
-                                  jobType['name'],
-                                  style: const TextStyle(fontWeight: FontWeight.w500),
-                                ),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(Icons.edit, color: Colors.blue),
-                                      tooltip: 'Edit',
-                                      onPressed: () => _editJobType(
-                                        jobType['id'],
-                                        jobType['name'],
-                                      ),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.delete, color: Colors.red),
-                                      tooltip: 'Delete',
-                                      onPressed: () => _deleteJobType(
-                                        jobType['id'],
-                                        jobType['name'],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
+                        child: Text(
+                          'No job types found.\nAdd your first job type above.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey),
                         ),
+                      )
+                      : ListView.builder(
+                        itemCount: _jobTypes.length,
+                        itemBuilder: (context, index) {
+                          final jobType = _jobTypes[index];
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: ListTile(
+                              leading: const Icon(Icons.work_outline),
+                              title: Text(jobType['name'], style: const TextStyle(fontWeight: FontWeight.w500)),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.edit, color: Colors.blue),
+                                    tooltip: 'Edit',
+                                    onPressed: () => _editJobType(jobType['id'], jobType['name']),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete, color: Colors.red),
+                                    tooltip: 'Delete',
+                                    onPressed: () => _deleteJobType(jobType['id'], jobType['name']),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
             ),
 
             // Footer buttons
@@ -377,21 +341,13 @@ class UserManagementBottomSheet extends HookConsumerWidget {
   final Map<String, dynamic>? userData;
   final String? userId;
 
-  const UserManagementBottomSheet({
-    super.key,
-    this.userData,
-    this.userId,
-  });
+  const UserManagementBottomSheet({super.key, this.userData, this.userId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final formKey = useMemoized(() => GlobalKey<FormState>());
-    final firstNameController = useTextEditingController(
-      text: userData?['firstName'] ?? '',
-    );
-    final lastNameController = useTextEditingController(
-      text: userData?['lastName'] ?? '',
-    );
+    final firstNameController = useTextEditingController(text: userData?['firstName'] ?? '');
+    final lastNameController = useTextEditingController(text: userData?['lastName'] ?? '');
     final emailController = useTextEditingController(
       text: userData?['emailAddress'] ?? userData?['userEmail'] ?? userData?['email'] ?? '',
     );
@@ -401,7 +357,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
 
     // Available roles
     final availableRoles = useState<List<String>>([]);
-    
+
     // Extract job types safely
     Set<String> extractJobTypes(dynamic jobTypeData) {
       if (jobTypeData == null) return <String>{};
@@ -410,12 +366,12 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       }
       return <String>{};
     }
-    
+
     final selectedRoles = useState<Set<String>>(extractJobTypes(userData?['jobType']));
 
     // Available locations
     final availableLocations = useState<List<Map<String, dynamic>>>([]);
-    
+
     // Extract location data safely
     String? extractLocationId(dynamic locationData) {
       if (locationData == null) return null;
@@ -427,16 +383,16 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       debugPrint('Warning: Unexpected location data type: ${locationData.runtimeType}, value: $locationData');
       return null;
     }
-    
+
     // For managers (role 1), allow multiple locations
     Set<String> extractLocationIds(dynamic locationIdsData, dynamic fallbackLocationId) {
       Set<String> result = <String>{};
-      
+
       // Try to extract from locationIds array first
       if (locationIdsData is List) {
         result.addAll(locationIdsData.whereType<String>());
       }
-      
+
       // If no locationIds but we have a single locationId, use that
       if (result.isEmpty) {
         final singleLocationId = extractLocationId(fallbackLocationId);
@@ -444,16 +400,16 @@ class UserManagementBottomSheet extends HookConsumerWidget {
           result.add(singleLocationId);
         }
       }
-      
+
       return result;
     }
-    
+
     final selectedLocationIds = useState<Set<String>>(
-      extractLocationIds(userData?['locationIds'], userData?['locationId'])
+      extractLocationIds(userData?['locationIds'], userData?['locationId']),
     );
     // For general users (role 0), single location
     final selectedLocationId = useState<String?>(
-      extractLocationId(userData?['locationId']) ?? extractLocationId(userData?['primaryLocationId'])
+      extractLocationId(userData?['locationId']) ?? extractLocationId(userData?['primaryLocationId']),
     );
 
     final isLoading = useState(false);
@@ -464,7 +420,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       _loadRolesAndLocations(availableRoles, availableLocations);
       return null;
     }, []);
-    
+
     // Auto-assign single location when only one exists
     // Auto-assign single location when only one exists; re-run when locations or role change
     useEffect(() {
@@ -485,9 +441,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     final theme = Theme.of(context);
 
     return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
@@ -507,14 +461,9 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                   children: [
                     Text(
                       isEditMode ? 'Edit User' : 'Add New User',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
+                      style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w600),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(context),
-                    ),
+                    IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
                   ],
                 ),
                 const SizedBox(height: 24),
@@ -577,7 +526,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                 ),
                 const SizedBox(height: 20),
 
-                // User Role Dropdown (0=General,1=Manager,2=Admin)
+                // User Role Dropdown (0=Employee,1=Manager,2=Admin)
                 DropdownButtonFormField<int>(
                   value: selectedAccessLevel.value,
                   decoration: const InputDecoration(
@@ -585,26 +534,27 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.security),
                   ),
-                  items: List.generate(3, (i) => i).map((level) {
-                    final labels = ['General User','Manager','Admin'];
-                    return DropdownMenuItem<int>(
-                      value: level,
-                      child: Text(labels[level]),
-                    );
-                  }).toList(),
+                  items:
+                      List.generate(3, (i) => i).map((level) {
+                        final labels = ['Employee', 'Manager', 'Admin'];
+                        return DropdownMenuItem<int>(value: level, child: Text(labels[level]));
+                      }).toList(),
                   onChanged: (value) => selectedAccessLevel.value = value ?? 0,
                   onSaved: (value) {},
                 ),
                 const SizedBox(height: 20),
 
                 // Job Type and Location selection
-                // Job Type multi-select (show for General Users only)
+                // Job Type multi-select (show for Employees only)
                 if (selectedAccessLevel.value == 0) ...[
                   const SizedBox(height: 16),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Job Types (Managers/Admins can work shifts)', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                      Text(
+                        'Job Types (Managers/Admins can work shifts)',
+                        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                      ),
                       TextButton.icon(
                         onPressed: () => _showJobTypeManagement(context, availableRoles),
                         icon: const Icon(Icons.settings, size: 16),
@@ -626,19 +576,20 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                     child: Wrap(
                       spacing: 8,
                       runSpacing: 8,
-                      children: availableRoles.value.map((type) {
-                        final isSelected = selectedRoles.value.contains(type);
-                        return FilterChip(
-                          label: Text(type),
-                          selected: isSelected,
-                          onSelected: (sel) {
-                            final set = Set<String>.from(selectedRoles.value);
-                            sel ? set.add(type) : set.remove(type);
-                            selectedRoles.value = set;
-                          },
-                          selectedColor: theme.primaryColor.withAlpha(50),
-                        );
-                      }).toList(),
+                      children:
+                          availableRoles.value.map((type) {
+                            final isSelected = selectedRoles.value.contains(type);
+                            return FilterChip(
+                              label: Text(type),
+                              selected: isSelected,
+                              onSelected: (sel) {
+                                final set = Set<String>.from(selectedRoles.value);
+                                sel ? set.add(type) : set.remove(type);
+                                selectedRoles.value = set;
+                              },
+                              selectedColor: theme.primaryColor.withAlpha(50),
+                            );
+                          }).toList(),
                     ),
                   ),
                 ],
@@ -649,7 +600,10 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                   // For managers (role 1), allow multiple locations
                   if (selectedAccessLevel.value == 1) ...[
                     const SizedBox(height: 16),
-                    Text('Locations (Select one or more)', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                    Text(
+                      'Locations (Select one or more)',
+                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                    ),
                     const SizedBox(height: 8),
                     Container(
                       decoration: BoxDecoration(
@@ -658,28 +612,32 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                       ),
                       padding: const EdgeInsets.all(12),
                       child: Column(
-                        children: availableLocations.value.map((loc) {
-                          final isSelected = selectedLocationIds.value.contains(loc['id']);
-                          return CheckboxListTile(
-                            value: isSelected,
-                            title: Text(loc['name'] ?? 'Unnamed Location'),
-                            onChanged: (checked) {
-                              final set = Set<String>.from(selectedLocationIds.value);
-                              if (checked == true) {
-                                set.add(loc['id']);
-                              } else {
-                                set.remove(loc['id']);
-                              }
-                              selectedLocationIds.value = set;
-                            },
-                          );
-                        }).toList(),
+                        children:
+                            availableLocations.value.map((loc) {
+                              final isSelected = selectedLocationIds.value.contains(loc['id']);
+                              return CheckboxListTile(
+                                value: isSelected,
+                                title: Text(loc['name'] ?? 'Unnamed Location'),
+                                onChanged: (checked) {
+                                  final set = Set<String>.from(selectedLocationIds.value);
+                                  if (checked == true) {
+                                    set.add(loc['id']);
+                                  } else {
+                                    set.remove(loc['id']);
+                                  }
+                                  selectedLocationIds.value = set;
+                                },
+                              );
+                            }).toList(),
                       ),
                     ),
                     if (selectedLocationIds.value.isEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 8.0),
-                        child: Text('Please select at least one location', style: TextStyle(color: theme.colorScheme.error)),
+                        child: Text(
+                          'Please select at least one location',
+                          style: TextStyle(color: theme.colorScheme.error),
+                        ),
                       ),
                   ] else if (selectedAccessLevel.value == 0) ...[
                     const SizedBox(height: 16),
@@ -690,12 +648,13 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.location_on_outlined),
                       ),
-                      items: availableLocations.value.map((loc) {
-                        return DropdownMenuItem(
-                          value: loc['id'] as String,
-                          child: Text(loc['name'] ?? 'Unnamed Location'),
-                        );
-                      }).toList(),
+                      items:
+                          availableLocations.value.map((loc) {
+                            return DropdownMenuItem(
+                              value: loc['id'] as String,
+                              child: Text(loc['name'] ?? 'Unnamed Location'),
+                            );
+                          }).toList(),
                       onChanged: (val) {
                         selectedLocationId.value = val;
                       },
@@ -722,104 +681,105 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                       const SizedBox(width: 12),
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: isLoading.value 
-                            ? null 
-                            : () => _resetPassword(context, emailController.text, isLoading),
+                          onPressed:
+                              isLoading.value ? null : () => _resetPassword(context, emailController.text, isLoading),
                           icon: const Icon(Icons.lock_reset),
                           label: const Text('Reset Password'),
                         ),
                       ),
                     ],
                   ),
-                  
+
                   // Debug test email option
                   if (kDebugMode) ...[
                     const SizedBox(height: 8),
                     OutlinedButton.icon(
-                      onPressed: isLoading.value
-                        ? null
-                        : () => _testEmailDelivery(context, emailController.text),
+                      onPressed: isLoading.value ? null : () => _testEmailDelivery(context, emailController.text),
                       icon: const Icon(Icons.bug_report),
                       label: const Text('Test Email Delivery'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.deepPurple,
-                      ),
+                      style: OutlinedButton.styleFrom(foregroundColor: Colors.deepPurple),
                     ),
                   ],
                 ],
 
                 const SizedBox(height: 24),
 
-
-               // Action Buttons
-               Row(
-                 children: [
-                   Expanded(
-                     child: OutlinedButton(
-                       onPressed: isLoading.value ? null : () => Navigator.pop(context),
-                       child: const Text('Cancel'),
-                     ),
-                   ),
-                   const SizedBox(width: 16),
-                   Expanded(
-                     flex: 2,
-                     child: ElevatedButton(
-                        onPressed: isLoading.value
-                          ? null
-                          : () async {
-                              try {
-                                // Determine final locations, auto-assign if single option
-                                String? locId = selectedLocationId.value;
-                                Set<String>? locIds = selectedLocationIds.value;
-                                if (selectedAccessLevel.value == 0 && (locId == null || locId.isEmpty) && availableLocations.value.length == 1) {
-                                  locId = availableLocations.value.first['id'] as String;
-                                }
-                                if (selectedAccessLevel.value == 1 && (locIds.isEmpty) && availableLocations.value.length == 1) {
-                                  locIds = {availableLocations.value.first['id'] as String};
-                                }
-                                await _saveUser(
-                                  context,
-                                  formKey,
-                                  firstNameController,
-                                  lastNameController,
-                                  emailController,
-                                  selectedAccessLevel.value,
-                                  selectedRoles.value,
-                                  isEditMode,
-                                  userId,
-                                  isLoading,
-                                  locId,
-                                  locIds,
-                                  ref,
-                                );
-                              } on FirebaseFunctionsException catch (e) {
-                                debugPrint('createUser failed [${e.code}]: ${e.message}');
-                                _showSnackBar(context, 'Cloud Function Error [${e.code}]: ${e.message}', isError: true);
-                              } catch (e, st) {
-                                debugPrint('Unexpected error: $e\n$st');
-                                _showSnackBar(context, 'Unexpected error: ${e.toString()}', isError: true);
-                              }
-                            },
-                         style: ElevatedButton.styleFrom(
-                           backgroundColor: theme.primaryColor,
-                           padding: const EdgeInsets.symmetric(vertical: 16),
-                         ),
-                         child: isLoading.value
-                           ? const SizedBox(
-                               height: 20,
-                               width: 20,
-                               child: CircularProgressIndicator(
-                                 strokeWidth: 2,
-                                 valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                               ),
-                            )
-                           : Text(
-                              isEditMode ? 'Update User' : 'Create User & Send Invite',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
+                // Action Buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: isLoading.value ? null : () => Navigator.pop(context),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton(
+                        onPressed:
+                            isLoading.value
+                                ? null
+                                : () async {
+                                  try {
+                                    // Determine final locations, auto-assign if single option
+                                    String? locId = selectedLocationId.value;
+                                    Set<String>? locIds = selectedLocationIds.value;
+                                    if (selectedAccessLevel.value == 0 &&
+                                        (locId == null || locId.isEmpty) &&
+                                        availableLocations.value.length == 1) {
+                                      locId = availableLocations.value.first['id'] as String;
+                                    }
+                                    if (selectedAccessLevel.value == 1 &&
+                                        (locIds.isEmpty) &&
+                                        availableLocations.value.length == 1) {
+                                      locIds = {availableLocations.value.first['id'] as String};
+                                    }
+                                    await _saveUser(
+                                      context,
+                                      formKey,
+                                      firstNameController,
+                                      lastNameController,
+                                      emailController,
+                                      selectedAccessLevel.value,
+                                      selectedRoles.value,
+                                      isEditMode,
+                                      userId,
+                                      isLoading,
+                                      locId,
+                                      locIds,
+                                      ref,
+                                    );
+                                  } on FirebaseFunctionsException catch (e) {
+                                    debugPrint('createUser failed [${e.code}]: ${e.message}');
+                                    _showSnackBar(
+                                      context,
+                                      'Cloud Function Error [${e.code}]: ${e.message}',
+                                      isError: true,
+                                    );
+                                  } catch (e, st) {
+                                    debugPrint('Unexpected error: $e\n$st');
+                                    _showSnackBar(context, 'Unexpected error: ${e.toString()}', isError: true);
+                                  }
+                                },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: theme.primaryColor,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                        ),
+                        child:
+                            isLoading.value
+                                ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                )
+                                : Text(
+                                  isEditMode ? 'Update User' : 'Create User & Send Invite',
+                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                                ),
                       ),
                     ),
                   ],
@@ -834,7 +794,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
 
   Future<void> _loadRolesAndLocations(
     ValueNotifier<List<String>> availableRoles,
-    ValueNotifier<List<Map<String, dynamic>>> availableLocations
+    ValueNotifier<List<Map<String, dynamic>>> availableLocations,
   ) async {
     await _loadAvailableRoles(availableRoles);
     await _loadAvailableLocations(availableLocations);
@@ -845,12 +805,9 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       // Get current user's organization ID
       final currentUser = FirebaseAuth.instance.currentUser;
       String? organizationId;
-      
+
       if (currentUser != null) {
-        final currentUserDoc = await FirestoreEnforcer.instance
-            .collection('users')
-            .doc(currentUser.uid)
-            .get();
+        final currentUserDoc = await FirestoreEnforcer.instance.collection('users').doc(currentUser.uid).get();
         organizationId = currentUserDoc.data()?['organizationId'];
       }
 
@@ -861,19 +818,21 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       }
 
       // Load job types from the organization's jobTypes subcollection
-      final jobTypesSnapshot = await FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(organizationId)
-          .collection('jobTypes')
-          .orderBy('name')
-          .get();
-      
-      final jobTypes = jobTypesSnapshot.docs
-          .map((doc) => doc.data()['name'] as String?)
-          .where((name) => name != null && name.isNotEmpty)
-          .cast<String>()
-          .toList();
-      
+      final jobTypesSnapshot =
+          await FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(organizationId)
+              .collection('jobTypes')
+              .orderBy('name')
+              .get();
+
+      final jobTypes =
+          jobTypesSnapshot.docs
+              .map((doc) => doc.data()['name'] as String?)
+              .where((name) => name != null && name.isNotEmpty)
+              .cast<String>()
+              .toList();
+
       // If no custom job types exist, create default ones
       if (jobTypes.isEmpty) {
         await _createDefaultJobTypes(organizationId);
@@ -893,21 +852,14 @@ class UserManagementBottomSheet extends HookConsumerWidget {
   Future<void> _createDefaultJobTypes(String organizationId) async {
     final defaultJobTypes = ['Bartender', 'Server', 'Kitchen Staff', 'Dishwasher', 'Host/Hostess', 'Manager'];
     final batch = FirestoreEnforcer.instance.batch();
-    
+
     for (final jobType in defaultJobTypes) {
-      final docRef = FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(organizationId)
-          .collection('jobTypes')
-          .doc();
-      
-      batch.set(docRef, {
-        'name': jobType,
-        'createdAt': FieldValue.serverTimestamp(),
-        'organizationId': organizationId,
-      });
+      final docRef =
+          FirestoreEnforcer.instance.collection('organizations').doc(organizationId).collection('jobTypes').doc();
+
+      batch.set(docRef, {'name': jobType, 'createdAt': FieldValue.serverTimestamp(), 'organizationId': organizationId});
     }
-    
+
     await batch.commit();
   }
 
@@ -916,12 +868,9 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       // Get current user's organization ID
       final currentUser = FirebaseAuth.instance.currentUser;
       String? organizationId;
-      
+
       if (currentUser != null) {
-        final currentUserDoc = await FirestoreEnforcer.instance
-            .collection('users')
-            .doc(currentUser.uid)
-            .get();
+        final currentUserDoc = await FirestoreEnforcer.instance.collection('users').doc(currentUser.uid).get();
         organizationId = currentUserDoc.data()?['organizationId'];
       }
 
@@ -931,19 +880,18 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       }
 
       // Load locations from the organization's locations subcollection
-      final locationsSnapshot = await FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(organizationId)
-          .collection('locations')
-          .get();
-          
-      final locations = locationsSnapshot.docs.map((doc) {
-        final data = doc.data();
-        return {
-          'id': doc.id,
-          'name': data['locationName'] ?? 'Unnamed Location',
-        };
-      }).toList();
+      final locationsSnapshot =
+          await FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(organizationId)
+              .collection('locations')
+              .get();
+
+      final locations =
+          locationsSnapshot.docs.map((doc) {
+            final data = doc.data();
+            return {'id': doc.id, 'name': data['locationName'] ?? 'Unnamed Location'};
+          }).toList();
       availableLocations.value = locations;
     } catch (e) {
       // print('Error loading locations: $e');
@@ -968,7 +916,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
   ) async {
     if (!formKey.currentState!.validate()) {
       return;
-  }
+    }
     // Additional validation for location
     if (accessLevel == 1 && (locationIds == null || locationIds.isEmpty)) {
       _showSnackBar(context, 'A manager must be assigned to at least one location.', isError: true);
@@ -1028,25 +976,22 @@ class UserManagementBottomSheet extends HookConsumerWidget {
         debugPrint('Crashlytics is not enabled, printing error to console: $e');
         debugPrint(s.toString());
       }
-      String errorMsg = e is FirebaseFunctionsException && e.code == 'already-exists'
-        ? 'A user with this email already exists.'
-        : 'An error occurred: ${e.toString()}';
+      String errorMsg =
+          e is FirebaseFunctionsException && e.code == 'already-exists'
+              ? 'A user with this email already exists.'
+              : 'An error occurred: ${e.toString()}';
       _showSnackBar(context, errorMsg, isError: true);
 
       // Show error in a dialog for easier debugging
       if (context.mounted) {
         showDialog(
           context: context,
-          builder: (ctx) => AlertDialog(
-            title: Text(isEditMode ? 'Error Updating User' : 'Error Creating User'),
-            content: Text(errorMsg),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('OK'),
+          builder:
+              (ctx) => AlertDialog(
+                title: Text(isEditMode ? 'Error Updating User' : 'Error Creating User'),
+                content: Text(errorMsg),
+                actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('OK'))],
               ),
-            ],
-          ),
         );
       }
     } finally {
@@ -1093,10 +1038,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     }
 
     // Update user document in Firestore
-    await FirestoreEnforcer.instance
-        .collection('users')
-        .doc(userId)
-        .update(updateData);
+    await FirestoreEnforcer.instance.collection('users').doc(userId).update(updateData);
 
     if (context.mounted) {
       _showSnackBar(context, 'User updated successfully');
@@ -1123,7 +1065,10 @@ class UserManagementBottomSheet extends HookConsumerWidget {
 
     // Generate secure onboarding token
     final inviteToken = const Uuid().v4();
-    final inviteUrl = 'https://plan-with-hands.web.app/welcome?email=$userEmail&organizationId=$organizationId&inviteId=$inviteToken';
+    final inviteUrl =
+        'https://plan-with-hands.web.app/welcome?email=$userEmail&orgId=$organizationId&inviteId=$inviteToken';
+
+    print('[USER_MANAGEMENT] Generated invite URL: $inviteUrl');
 
     // Store invite in Firestore
     await FirestoreEnforcer.instance.collection('invites').doc(inviteToken).set({
@@ -1144,22 +1089,11 @@ class UserManagementBottomSheet extends HookConsumerWidget {
 
     final functions = FirebaseFunctions.instanceFor(region: 'us-central1');
     final createUser = functions.httpsCallable('createUser');
-    
-    debugPrint('Calling createUser with payload: ${{
-      'email': userEmail,
-      'firstName': firstName,
-      'lastName': lastName,
-      'userRole': accessLevel,
-      'jobType': roles.toList(),
-      'organizationId': organizationId,
-      'locationId': locationId,
-      'locationIds': locationIds?.toList(),
-      'orgName': orgName,
-      'adminEmail': adminEmail,
-      'inviteUrl': inviteUrl,
-      'templateId': templateId,
-    }}');
-    
+
+    debugPrint(
+      'Calling createUser with payload: ${{'email': userEmail, 'firstName': firstName, 'lastName': lastName, 'userRole': accessLevel, 'jobType': roles.toList(), 'organizationId': organizationId, 'locationId': locationId, 'locationIds': locationIds?.toList(), 'orgName': orgName, 'adminEmail': adminEmail, 'inviteUrl': inviteUrl, 'templateId': templateId}}',
+    );
+
     final result = await createUser.call({
       'email': userEmail,
       'password': tempPw,
@@ -1189,190 +1123,178 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       }
     }
   }
+}
+
+// Resend invite is no longer needed in the new flow. You may remove this button from the UI.
+
+Future<void> _resetPassword(BuildContext context, String email, ValueNotifier<bool> isLoading) async {
+  if (email.isEmpty) {
+    _showSnackBar(context, 'Email address is missing.', isError: true);
+    return;
   }
+  isLoading.value = true;
+  try {
+    await _sendPasswordResetEmail(context, email);
+    _showSnackBar(context, 'Password reset link sent to email.');
+  } catch (e) {
+    _showSnackBar(context, 'Failed to send password reset email: ${e.toString()}', isError: true);
+  } finally {
+    isLoading.value = false;
+  }
+}
 
-  // Resend invite is no longer needed in the new flow. You may remove this button from the UI.
+Future<String?> _getOrganizationId() async {
+  final currentUser = FirebaseAuth.instance.currentUser;
+  if (currentUser != null) {
+    final currentUserDoc = await FirestoreEnforcer.instance.collection('users').doc(currentUser.uid).get();
+    return currentUserDoc.data()?['organizationId'];
+  }
+  return null;
+}
 
-  Future<void> _resetPassword(BuildContext context, String email, ValueNotifier<bool> isLoading) async {
-    if (email.isEmpty) {
-      _showSnackBar(context, 'Email address is missing.', isError: true);
+Future<String> _getOrganizationName() async {
+  final organizationId = await _getOrganizationId();
+  if (organizationId != null) {
+    final orgDoc = await FirestoreEnforcer.instance.collection('organizations').doc(organizationId).get();
+    return orgDoc.data()?['name'] ?? 'Your Organization';
+  }
+  return 'Your Organization';
+}
+
+// All invitation/magic-link/cloud function code removed for the new flow.
+Future<void> _sendPasswordResetEmail(BuildContext context, String email) async {
+  try {
+    // Try to send with a continue URL for better UX
+    try {
+      final actionCodeSettings = ActionCodeSettings(
+        url: 'https://plan-with-hands.web.app/reset-password',
+        handleCodeInApp: true,
+        androidPackageName: 'com.handsapp.hospitality',
+        androidInstallApp: true,
+        androidMinimumVersion: '12',
+      );
+
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email, actionCodeSettings: actionCodeSettings);
+    } catch (settingsError) {
+      debugPrint('Failed to send with action code settings: $settingsError');
+      // Fallback to simpler reset email
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+    }
+
+    debugPrint('Successfully sent password reset email to $email');
+  } catch (e, s) {
+    debugPrint('Error sending password reset: $e');
+    // Defensively check if Crashlytics is enabled before recording.
+    try {
+      if (FirebaseCrashlytics.instance.isCrashlyticsCollectionEnabled) {
+        FirebaseCrashlytics.instance.recordError(e, s);
+      }
+    } catch (crashlyticsError) {
+      debugPrint('Crashlytics error: $crashlyticsError');
+    }
+    rethrow;
+  }
+}
+
+void _showSnackBar(BuildContext context, String message, {bool isError = false}) {
+  final snackBar = SnackBar(
+    content: Text(message),
+    backgroundColor: isError ? Theme.of(context).colorScheme.error : Colors.green,
+  );
+  ScaffoldMessenger.of(context).showSnackBar(snackBar);
+}
+
+void _showJobTypeManagement(BuildContext context, ValueNotifier<List<String>> availableRoles) {
+  showDialog(
+    context: context,
+    builder:
+        (context) => JobTypeManagementDialog(
+          // Pass a callback that will reload roles
+          onJobTypesUpdated: () {
+            // Using a local function to reload roles that doesn't rely on class methods
+            _reloadRoles(availableRoles);
+          },
+        ),
+  );
+}
+
+void _reloadRoles(ValueNotifier<List<String>> availableRoles) async {
+  try {
+    // Get current user's organization ID
+    final currentUser = FirebaseAuth.instance.currentUser;
+    String? organizationId;
+
+    if (currentUser != null) {
+      final currentUserDoc = await FirestoreEnforcer.instance.collection('users').doc(currentUser.uid).get();
+      organizationId = currentUserDoc.data()?['organizationId'];
+    }
+
+    if (organizationId == null || organizationId.isEmpty) {
+      // Fallback to default job types if no organization
+      availableRoles.value = ['Bartender', 'Server', 'Kitchen Staff', 'Dishwasher', 'Host/Hostess', 'Manager'];
       return;
     }
-    isLoading.value = true;
-    try {
-      await _sendPasswordResetEmail(context, email);
-      _showSnackBar(context, 'Password reset link sent to email.');
-    } catch (e) {
-      _showSnackBar(context, 'Failed to send password reset email: ${e.toString()}', isError: true);
-    } finally {
-      isLoading.value = false;
-    }
-  }
 
-  Future<String?> _getOrganizationId() async {
-    final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser != null) {
-      final currentUserDoc = await FirestoreEnforcer.instance
-          .collection('users')
-          .doc(currentUser.uid)
-          .get();
-      return currentUserDoc.data()?['organizationId'];
-    }
-    return null;
-  }
-
-  Future<String> _getOrganizationName() async {
-    final organizationId = await _getOrganizationId();
-    if (organizationId != null) {
-      final orgDoc = await FirestoreEnforcer.instance.collection('organizations').doc(organizationId).get();
-      return orgDoc.data()?['name'] ?? 'Your Organization';
-    }
-    return 'Your Organization';
-  }
-
-  // All invitation/magic-link/cloud function code removed for the new flow.
-  Future<void> _sendPasswordResetEmail(BuildContext context, String email) async {
-    try {
-      // Try to send with a continue URL for better UX
-      try {
-        final actionCodeSettings = ActionCodeSettings(
-          url: 'https://plan-with-hands.web.app/reset-password',
-          handleCodeInApp: true,
-          androidPackageName: 'com.handsapp.hospitality',
-          androidInstallApp: true,
-          androidMinimumVersion: '12',
-        );
-        
-        await FirebaseAuth.instance.sendPasswordResetEmail(
-          email: email,
-          actionCodeSettings: actionCodeSettings
-        );
-      } catch (settingsError) {
-        debugPrint('Failed to send with action code settings: $settingsError');
-        // Fallback to simpler reset email
-        await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-      }
-      
-      debugPrint('Successfully sent password reset email to $email');
-    } catch (e, s) {
-      debugPrint('Error sending password reset: $e');
-      // Defensively check if Crashlytics is enabled before recording.
-      try {
-        if (FirebaseCrashlytics.instance.isCrashlyticsCollectionEnabled) {
-          FirebaseCrashlytics.instance.recordError(e, s);
-        } 
-      } catch (crashlyticsError) {
-        debugPrint('Crashlytics error: $crashlyticsError');
-      }
-      rethrow;
-    }
-  }
-
-  void _showSnackBar(BuildContext context, String message, {bool isError = false}) {
-    final snackBar = SnackBar(
-      content: Text(message),
-      backgroundColor: isError ? Theme.of(context).colorScheme.error : Colors.green,
-    );
-    ScaffoldMessenger.of(context).showSnackBar(snackBar);
-  }
-
-  void _showJobTypeManagement(BuildContext context, ValueNotifier<List<String>> availableRoles) {
-    showDialog(
-      context: context,
-      builder: (context) => JobTypeManagementDialog(
-        // Pass a callback that will reload roles
-        onJobTypesUpdated: () {
-          // Using a local function to reload roles that doesn't rely on class methods
-          _reloadRoles(availableRoles);
-        },
-      ),
-    );
-  }
-
-  void _reloadRoles(ValueNotifier<List<String>> availableRoles) async {
-    try {
-      // Get current user's organization ID
-      final currentUser = FirebaseAuth.instance.currentUser;
-      String? organizationId;
-      
-      if (currentUser != null) {
-        final currentUserDoc = await FirestoreEnforcer.instance
-            .collection('users')
-            .doc(currentUser.uid)
+    // Load job types from the organization's jobTypes subcollection
+    final jobTypesSnapshot =
+        await FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(organizationId)
+            .collection('jobTypes')
+            .orderBy('name')
             .get();
-        organizationId = currentUserDoc.data()?['organizationId'];
-      }
 
-      if (organizationId == null || organizationId.isEmpty) {
-        // Fallback to default job types if no organization
-        availableRoles.value = ['Bartender', 'Server', 'Kitchen Staff', 'Dishwasher', 'Host/Hostess', 'Manager'];
-        return;
-      }
+    final jobTypes =
+        jobTypesSnapshot.docs
+            .map((doc) => doc.data()['name'] as String?)
+            .where((name) => name != null && name.isNotEmpty)
+            .cast<String>()
+            .toList();
 
-      // Load job types from the organization's jobTypes subcollection
-      final jobTypesSnapshot = await FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(organizationId)
-          .collection('jobTypes')
-          .orderBy('name')
-          .get();
-      
-      final jobTypes = jobTypesSnapshot.docs
-          .map((doc) => doc.data()['name'] as String?)
-          .where((name) => name != null && name.isNotEmpty)
-          .cast<String>()
-          .toList();
-      
-      availableRoles.value = jobTypes.isEmpty ? 
-          ['Bartender', 'Server', 'Kitchen Staff', 'Dishwasher', 'Host/Hostess', 'Manager'] : 
-          jobTypes;
-    } catch (e) {
-      print('Error reloading job types: $e');
-      // Fallback to default job types
-      availableRoles.value = ['Bartender', 'Server', 'Kitchen Staff', 'Dishwasher', 'Host/Hostess', 'Manager'];
-    }
+    availableRoles.value =
+        jobTypes.isEmpty ? ['Bartender', 'Server', 'Kitchen Staff', 'Dishwasher', 'Host/Hostess', 'Manager'] : jobTypes;
+  } catch (e) {
+    print('Error reloading job types: $e');
+    // Fallback to default job types
+    availableRoles.value = ['Bartender', 'Server', 'Kitchen Staff', 'Dishwasher', 'Host/Hostess', 'Manager'];
   }
+}
 
-  // All cloud function HTTP helpers removed for the new flow.
+// All cloud function HTTP helpers removed for the new flow.
 
-  Future<void> _testEmailDelivery(BuildContext context, String email) async {
+Future<void> _testEmailDelivery(BuildContext context, String email) async {
+  try {
+    // Show testing dialog
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Testing email delivery...')));
+    }
+
+    // Try Firebase Auth default method
     try {
-      // Show testing dialog
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Testing email delivery...'))
+          const SnackBar(
+            content: Text('Test email sent via Firebase Auth. Check your inbox and spam folder.'),
+            duration: Duration(seconds: 8),
+          ),
         );
       }
 
-      // Try Firebase Auth default method
-      try {
-        await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-        
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Test email sent via Firebase Auth. Check your inbox and spam folder.'),
-              duration: Duration(seconds: 8),
-            )
-          );
-        }
-        
-        debugPrint('Test email sent via Firebase Auth to: $email');
-        return;
-      } catch (authError) {
-        debugPrint('Firebase Auth test email failed: $authError');
-        
+      debugPrint('Test email sent via Firebase Auth to: $email');
+      return;
+    } catch (authError) {
+      debugPrint('Firebase Auth test email failed: $authError');
+
       // Cloud function test email removed in new flow. Only Firebase Auth test email is supported.
-      }
-    } catch (e) {
-      debugPrint('Test email error: $e');
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Email test failed: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          )
-        );
-      }
+    }
+  } catch (e) {
+    debugPrint('Test email error: $e');
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Email test failed: ${e.toString()}'), backgroundColor: Colors.red));
     }
   }
+}

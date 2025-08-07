@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hands_app/data/models/task_data.dart';
 
 class DailyChecklistTask {
   final String taskId;
@@ -87,25 +88,53 @@ class DailyChecklistTask {
     // Standardize: read isCompleted from either field
     final completed = map['isCompleted'] ?? map['completed'] ?? false;
     return DailyChecklistTask(
-      taskId: map['taskId'] ?? '',
-      description: map['description'] ?? map['title'] ?? map['name'] ?? '',
-      isCompleted: completed,
-      completedBy: map['completedBy'],
+      taskId: map['taskId']?.toString() ?? '',
+      description: map['description']?.toString() ?? map['title']?.toString() ?? map['name']?.toString() ?? '',
+      isCompleted: completed is bool ? completed : false,
+      completedBy: map['completedBy']?.toString(),
       completedAt: parseTimestampField(map['completedAt']),
-      proofImageUrl: map['proofImageUrl'],
-      notes: map['notes'],
-      photoRequired: map['photoRequired'] ?? false,
-      notCompletedReason: map['notCompletedReason'],
+      proofImageUrl: map['proofImageUrl']?.toString(),
+      notes: map['notes']?.toString(),
+      photoRequired: map['photoRequired'] is bool ? map['photoRequired'] : false,
+      notCompletedReason: map['notCompletedReason']?.toString(),
       // Carry-forward fields
-      isCarryForward: map['isCarryForward'] ?? false,
+      isCarryForward: map['isCarryForward'] is bool ? map['isCarryForward'] : false,
       originalDate: parseTimestampField(map['originalDate']),
-      originalChecklistId: map['originalChecklistId'],
-      originalTaskId: map['originalTaskId'],
+      originalChecklistId: map['originalChecklistId']?.toString(),
+      originalTaskId: map['originalTaskId']?.toString(),
       carriedIntoDate: parseTimestampField(map['carriedIntoDate']),
-      carryForwardAttempted: map['carryForwardAttempted'] ?? false,
-      excludedFromMetrics: map['excludedFromMetrics'] ?? false,
-      resolvedLate: map['resolvedLate'] ?? false,
+      carryForwardAttempted: map['carryForwardAttempted'] is bool ? map['carryForwardAttempted'] : false,
+      excludedFromMetrics: map['excludedFromMetrics'] is bool ? map['excludedFromMetrics'] : false,
+      resolvedLate: map['resolvedLate'] is bool ? map['resolvedLate'] : false,
       resolvedAt: parseTimestampField(map['resolvedAt']),
+    );
+  }
+
+  factory DailyChecklistTask.fromTaskData(
+    TaskData taskData,
+    String checklistId,
+    String organizationId,
+    String locationId,
+  ) {
+    return DailyChecklistTask(
+      taskId: taskData.taskId,
+      description: taskData.taskName,
+      isCompleted: taskData.completed,
+      completedBy: taskData.completedBy,
+      completedAt: taskData.resolvedAt,
+      proofImageUrl: taskData.photoUrl,
+      notes: taskData.notes,
+      photoRequired: taskData.photoRequired,
+      notCompletedReason: taskData.notCompletedReason,
+      isCarryForward: taskData.isCarryForward,
+      originalDate: taskData.originalDate,
+      originalChecklistId: taskData.originalChecklistId,
+      originalTaskId: taskData.originalTaskId,
+      carriedIntoDate: taskData.carriedIntoDate,
+      carryForwardAttempted: taskData.carryForwardAttempted,
+      excludedFromMetrics: taskData.excludedFromMetrics,
+      resolvedLate: taskData.resolvedLate,
+      resolvedAt: taskData.resolvedAt,
     );
   }
 
@@ -201,8 +230,7 @@ class DailyChecklist {
       'startedByUserId': startedByUserId,
       'startedAt': startedAt != null ? Timestamp.fromDate(startedAt!) : null,
       'completedByUserId': completedByUserId,
-      'completedAt':
-          completedAt != null ? Timestamp.fromDate(completedAt!) : null,
+      'completedAt': completedAt != null ? Timestamp.fromDate(completedAt!) : null,
       'tasks': tasks.map((task) => task.toMap()).toList(),
       'isCompleted': isCompleted,
       'createdAt': Timestamp.fromDate(createdAt),
@@ -246,28 +274,27 @@ class DailyChecklist {
 
     return DailyChecklist(
       id: documentId,
-      checklistTemplateId: map['checklistTemplateId'] ?? '',
-      shiftId: map['shiftId'] ?? '',
-      locationId: map['locationId'] ?? '',
-      organizationId: map['organizationId'] ?? '',
+      checklistTemplateId: map['checklistTemplateId']?.toString() ?? '',
+      shiftId: map['shiftId']?.toString() ?? '',
+      locationId: map['locationId']?.toString() ?? '',
+      organizationId: map['organizationId']?.toString() ?? '',
       date: date,
-      assignedUserId: map['assignedUserId'],
-      startedByUserId: map['startedByUserId'],
+      assignedUserId: map['assignedUserId']?.toString(),
+      startedByUserId: map['startedByUserId']?.toString(),
       startedAt: parseDateField(map['startedAt']),
-      completedByUserId: map['completedByUserId'],
+      completedByUserId: map['completedByUserId']?.toString(),
       completedAt: parseDateField(map['completedAt']),
       tasks:
-          (map['tasks'] as List<dynamic>?)
-              ?.map(
-                (task) =>
-                    DailyChecklistTask.fromMap(task as Map<String, dynamic>),
-              )
-              .toList() ??
-          [],
-      isCompleted: map['isCompleted'] ?? false,
+          (map['tasks'] is List)
+              ? (map['tasks'] as List)
+                  .whereType<Map<String, dynamic>>()
+                  .map((task) => DailyChecklistTask.fromMap(task))
+                  .toList()
+              : [],
+      isCompleted: map['isCompleted'] is bool ? map['isCompleted'] : false,
       createdAt: createdAt,
       updatedAt: updatedAt,
-      templateName: map['templateName'],
+      templateName: map['templateName']?.toString(),
     );
   }
 

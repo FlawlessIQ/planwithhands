@@ -7,11 +7,7 @@ import 'package:hands_app/routing/routes.dart';
 class BottomNavBar extends ConsumerWidget {
   final int currentIndex;
   final int? userRole;
-  const BottomNavBar({
-    super.key,
-    required this.currentIndex,
-    this.userRole,
-  });
+  const BottomNavBar({super.key, required this.currentIndex, this.userRole});
 
   void _onItemTapped(BuildContext context, int index) {
     switch (index) {
@@ -23,9 +19,6 @@ class BottomNavBar extends ConsumerWidget {
         break;
       case 2:
         context.go(AppRoutes.adminDashboardPage.path);
-        break;
-      case 3:
-        context.go(AppRoutes.schedulePage.path);
         break;
       case 4:
         context.go(
@@ -45,40 +38,23 @@ class BottomNavBar extends ConsumerWidget {
     final List<int> tabMap = [];
 
     // Always add User tab
-    items.add(
-      const BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Tasks'),
-    );
+    items.add(const BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Tasks'));
     tabMap.add(0);
 
     // Add Manager tab for role 1 and 2
     if (role >= 1) {
-      items.add(
-        const BottomNavigationBarItem(
-          icon: Icon(Icons.dashboard_customize),
-          label: 'Manager',
-        ),
-      );
+      items.add(const BottomNavigationBarItem(icon: Icon(Icons.dashboard_customize), label: 'Manager'));
       tabMap.add(1);
     }
 
     // Add Admin tab for role 2 only
     if (role >= 2) {
-      items.add(
-        const BottomNavigationBarItem(
-          icon: Icon(Icons.admin_panel_settings),
-          label: 'Admin',
-        ),
-      );
+      items.add(const BottomNavigationBarItem(icon: Icon(Icons.admin_panel_settings), label: 'Admin'));
       tabMap.add(2);
     }
 
     // Always add Documents tab
-    items.add(
-      const BottomNavigationBarItem(
-        icon: Icon(Icons.description),
-        label: 'Documents',
-      ),
-    );
+    items.add(const BottomNavigationBarItem(icon: Icon(Icons.description), label: 'Documents'));
     tabMap.add(4);
 
     // Map currentIndex to filtered tab index

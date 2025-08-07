@@ -6,7 +6,7 @@ part 'shift_data.g.dart';
 
 @freezed
 class ShiftData with _$ShiftData {
-  /// Main ShiftData constructor. activeDays is always required and must be a List of int (`List<int>`).
+  /// Main ShiftData constructor. activeDays defaults to empty list if not provided for backward compatibility.
   factory ShiftData({
     @Default('') String shiftId,
     @Default('Unnamed Shift') String shiftName,
@@ -20,7 +20,7 @@ class ShiftData with _$ShiftData {
     @Default({}) Map<String, int> staffingLevels,
     @Default([]) List<String> days,
     @Default(false) bool repeatsDaily,
-    required List<int> activeDays,
+    @Default([]) List<int> activeDays,
     @Default([]) List<String> assignedUserIds,
     @Default([]) List<String> volunteers,
     @Default(false) bool published,

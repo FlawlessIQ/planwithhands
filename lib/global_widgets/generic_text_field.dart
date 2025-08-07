@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class GenericTextField extends StatefulWidget {
   final String hintText;
@@ -53,30 +54,17 @@ class _GenericTextFieldState extends State<GenericTextField> {
       autofocus: widget.isAutofocused,
       focusNode: _focusNode,
       decoration: InputDecoration(
-        fillColor:
-            widget.isShaded
-                ? Theme.of(context).colorScheme.secondary
-                : Theme.of(context).colorScheme.surface,
+        fillColor: widget.isShaded ? Theme.of(context).colorScheme.secondary : Theme.of(context).colorScheme.surface,
         filled: true,
         contentPadding: EdgeInsets.symmetric(vertical: 20, horizontal: 16),
         hintText: widget.hintText,
-        hintStyle: TextStyle(
-          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .50),
-        ),
+        hintStyle: GoogleFonts.inter(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .50)),
         enabledBorder: OutlineInputBorder(
-          borderSide: BorderSide(
-            color: Theme.of(
-              context,
-            ).colorScheme.onSurface.withValues(alpha: .25),
-            width: 1,
-          ),
+          borderSide: BorderSide(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .25), width: 1),
           borderRadius: BorderRadius.circular(8),
         ),
         focusedBorder: OutlineInputBorder(
-          borderSide: BorderSide(
-            color: Theme.of(context).colorScheme.primary,
-            width: 1,
-          ),
+          borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 1),
           borderRadius: BorderRadius.circular(8),
         ),
         suffixIcon: widget.suffixIcon,

@@ -32,6 +32,9 @@ mixin _$TaskData {
   String? get completedBy => throw _privateConstructorUsedError;
   String? get photoUrl => throw _privateConstructorUsedError;
   String get description =>
+      throw _privateConstructorUsedError; // New fields for missed task management
+  String? get notes => throw _privateConstructorUsedError;
+  String? get notCompletedReason =>
       throw _privateConstructorUsedError; // Carry-forward fields
   bool get isCarryForward => throw _privateConstructorUsedError;
   @TimestampConverter()
@@ -71,6 +74,8 @@ abstract class $TaskDataCopyWith<$Res> {
     String? completedBy,
     String? photoUrl,
     String description,
+    String? notes,
+    String? notCompletedReason,
     bool isCarryForward,
     @TimestampConverter() DateTime? originalDate,
     String? originalChecklistId,
@@ -107,6 +112,8 @@ class _$TaskDataCopyWithImpl<$Res, $Val extends TaskData>
     Object? completedBy = freezed,
     Object? photoUrl = freezed,
     Object? description = null,
+    Object? notes = freezed,
+    Object? notCompletedReason = freezed,
     Object? isCarryForward = null,
     Object? originalDate = freezed,
     Object? originalChecklistId = freezed,
@@ -164,6 +171,16 @@ class _$TaskDataCopyWithImpl<$Res, $Val extends TaskData>
                     ? _value.description
                     : description // ignore: cast_nullable_to_non_nullable
                         as String,
+            notes:
+                freezed == notes
+                    ? _value.notes
+                    : notes // ignore: cast_nullable_to_non_nullable
+                        as String?,
+            notCompletedReason:
+                freezed == notCompletedReason
+                    ? _value.notCompletedReason
+                    : notCompletedReason // ignore: cast_nullable_to_non_nullable
+                        as String?,
             isCarryForward:
                 null == isCarryForward
                     ? _value.isCarryForward
@@ -234,6 +251,8 @@ abstract class _$$TaskDataImplCopyWith<$Res>
     String? completedBy,
     String? photoUrl,
     String description,
+    String? notes,
+    String? notCompletedReason,
     bool isCarryForward,
     @TimestampConverter() DateTime? originalDate,
     String? originalChecklistId,
@@ -269,6 +288,8 @@ class __$$TaskDataImplCopyWithImpl<$Res>
     Object? completedBy = freezed,
     Object? photoUrl = freezed,
     Object? description = null,
+    Object? notes = freezed,
+    Object? notCompletedReason = freezed,
     Object? isCarryForward = null,
     Object? originalDate = freezed,
     Object? originalChecklistId = freezed,
@@ -326,6 +347,16 @@ class __$$TaskDataImplCopyWithImpl<$Res>
                 ? _value.description
                 : description // ignore: cast_nullable_to_non_nullable
                     as String,
+        notes:
+            freezed == notes
+                ? _value.notes
+                : notes // ignore: cast_nullable_to_non_nullable
+                    as String?,
+        notCompletedReason:
+            freezed == notCompletedReason
+                ? _value.notCompletedReason
+                : notCompletedReason // ignore: cast_nullable_to_non_nullable
+                    as String?,
         isCarryForward:
             null == isCarryForward
                 ? _value.isCarryForward
@@ -389,6 +420,8 @@ class _$TaskDataImpl implements _TaskData {
     this.completedBy,
     this.photoUrl,
     this.description = '',
+    this.notes,
+    this.notCompletedReason,
     this.isCarryForward = false,
     @TimestampConverter() this.originalDate,
     this.originalChecklistId,
@@ -426,6 +459,11 @@ class _$TaskDataImpl implements _TaskData {
   @override
   @JsonKey()
   final String description;
+  // New fields for missed task management
+  @override
+  final String? notes;
+  @override
+  final String? notCompletedReason;
   // Carry-forward fields
   @override
   @JsonKey()
@@ -455,7 +493,7 @@ class _$TaskDataImpl implements _TaskData {
 
   @override
   String toString() {
-    return 'TaskData(taskId: $taskId, taskName: $taskName, createdAt: $createdAt, dueDate: $dueDate, completed: $completed, photoRequired: $photoRequired, completedBy: $completedBy, photoUrl: $photoUrl, description: $description, isCarryForward: $isCarryForward, originalDate: $originalDate, originalChecklistId: $originalChecklistId, originalTaskId: $originalTaskId, carriedIntoDate: $carriedIntoDate, carryForwardAttempted: $carryForwardAttempted, excludedFromMetrics: $excludedFromMetrics, resolvedLate: $resolvedLate, resolvedAt: $resolvedAt)';
+    return 'TaskData(taskId: $taskId, taskName: $taskName, createdAt: $createdAt, dueDate: $dueDate, completed: $completed, photoRequired: $photoRequired, completedBy: $completedBy, photoUrl: $photoUrl, description: $description, notes: $notes, notCompletedReason: $notCompletedReason, isCarryForward: $isCarryForward, originalDate: $originalDate, originalChecklistId: $originalChecklistId, originalTaskId: $originalTaskId, carriedIntoDate: $carriedIntoDate, carryForwardAttempted: $carryForwardAttempted, excludedFromMetrics: $excludedFromMetrics, resolvedLate: $resolvedLate, resolvedAt: $resolvedAt)';
   }
 
   @override
@@ -479,6 +517,9 @@ class _$TaskDataImpl implements _TaskData {
                 other.photoUrl == photoUrl) &&
             (identical(other.description, description) ||
                 other.description == description) &&
+            (identical(other.notes, notes) || other.notes == notes) &&
+            (identical(other.notCompletedReason, notCompletedReason) ||
+                other.notCompletedReason == notCompletedReason) &&
             (identical(other.isCarryForward, isCarryForward) ||
                 other.isCarryForward == isCarryForward) &&
             (identical(other.originalDate, originalDate) ||
@@ -501,7 +542,7 @@ class _$TaskDataImpl implements _TaskData {
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     runtimeType,
     taskId,
     taskName,
@@ -512,6 +553,8 @@ class _$TaskDataImpl implements _TaskData {
     completedBy,
     photoUrl,
     description,
+    notes,
+    notCompletedReason,
     isCarryForward,
     originalDate,
     originalChecklistId,
@@ -521,7 +564,7 @@ class _$TaskDataImpl implements _TaskData {
     excludedFromMetrics,
     resolvedLate,
     resolvedAt,
-  );
+  ]);
 
   /// Create a copy of TaskData
   /// with the given fields replaced by the non-null parameter values.
@@ -548,6 +591,8 @@ abstract class _TaskData implements TaskData {
     final String? completedBy,
     final String? photoUrl,
     final String description,
+    final String? notes,
+    final String? notCompletedReason,
     final bool isCarryForward,
     @TimestampConverter() final DateTime? originalDate,
     final String? originalChecklistId,
@@ -581,7 +626,11 @@ abstract class _TaskData implements TaskData {
   @override
   String? get photoUrl;
   @override
-  String get description; // Carry-forward fields
+  String get description; // New fields for missed task management
+  @override
+  String? get notes;
+  @override
+  String? get notCompletedReason; // Carry-forward fields
   @override
   bool get isCarryForward;
   @override

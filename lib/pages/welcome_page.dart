@@ -12,13 +12,7 @@ class WelcomePage extends ConsumerStatefulWidget {
   final String? inviteId;
   final String? mode;
 
-  const WelcomePage({
-    super.key,
-    this.email,
-    this.organizationId,
-    this.inviteId,
-    this.mode,
-  });
+  const WelcomePage({super.key, this.email, this.organizationId, this.inviteId, this.mode});
 
   @override
   ConsumerState<WelcomePage> createState() => _WelcomePageState();
@@ -39,7 +33,16 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
   @override
   void initState() {
     super.initState();
-    _loadPendingUser();
+    print('[WELCOME] WelcomePage initState called');
+    print('[WELCOME] Email: ${widget.email}');
+    print('[WELCOME] OrganizationId: ${widget.organizationId}');
+    print('[WELCOME] InviteId: ${widget.inviteId}');
+    print('[WELCOME] Mode: ${widget.mode}');
+
+    // Use post-frame callback to avoid showing dialogs during build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadPendingUser();
+    });
   }
 
   @override
@@ -51,7 +54,12 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
   }
 
   Future<void> _loadPendingUser() async {
+    print('[WELCOME] _loadPendingUser called');
+    print('[WELCOME] widget.email: ${widget.email}');
+    print('[WELCOME] widget.organizationId: ${widget.organizationId}');
+
     if (widget.email == null || widget.organizationId == null) {
+      print('[WELCOME] ERROR: Email or organizationId is null');
       _showErrorDialog('Invalid invite link');
       return;
     }
@@ -61,63 +69,127 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
     });
 
     try {
-      // First try to load from pendingUsers collection (new flow)
-      final pendingUserQuery =
+      print('[WELCOME] Searching invites collection...');
+      // Look in the invites collection where the pending users are actually stored
+      final inviteQuery =
           await FirestoreEnforcer.instance
-              .collection('pendingUsers')
-              .where('emailAddress', isEqualTo: widget.email)
+              .collection('invites')
+              .where('email', isEqualTo: widget.email)
               .where('organizationId', isEqualTo: widget.organizationId)
               .limit(1)
               .get();
 
-      if (pendingUserQuery.docs.isNotEmpty) {
-        _pendingUser = pendingUserQuery.docs.first.data();
+      print('[WELCOME] invites query result: ${inviteQuery.docs.length} docs');
+
+      if (inviteQuery.docs.isNotEmpty) {
+        final inviteData = inviteQuery.docs.first.data();
+        print('[WELCOME] Found invite: $inviteData');
+
+        // Convert invite data to pendingUser format for compatibility
+        _pendingUser = {
+          'firstName': inviteData['firstName'] ?? '',
+          'lastName': inviteData['lastName'] ?? '',
+          'userRole': inviteData['userRole'] ?? 0,
+          'jobType': inviteData['jobType'] ?? [],
+          'locationId': inviteData['locationId'],
+          'locationIds': inviteData['locationIds'],
+          'emailAddress': inviteData['email'],
+          'organizationId': inviteData['organizationId'],
+          'orgName': inviteData['orgName'],
+          'adminEmail': inviteData['adminEmail'],
+          'used': inviteData['used'] ?? false,
+        };
       } else {
+        print('[WELCOME] No invite found, checking users collection...');
         // Fallback: try to load from users collection (existing flow)
-        final userQuery =
+        // Try both field names for compatibility
+        final userQuery1 =
             await FirestoreEnforcer.instance
                 .collection('users')
                 .where('email', isEqualTo: widget.email)
-                .where('orgId', isEqualTo: widget.organizationId)
+                .where('organizationId', isEqualTo: widget.organizationId)
                 .limit(1)
                 .get();
 
-        if (userQuery.docs.isNotEmpty) {
-          final userData = userQuery.docs.first.data();
+        print('[WELCOME] users query (organizationId) result: ${userQuery1.docs.length} docs');
+
+        if (userQuery1.docs.isNotEmpty) {
+          final userData = userQuery1.docs.first.data();
+          print('[WELCOME] Found user with organizationId: $userData');
           // Convert user data to pendingUser format
           final displayName = userData['displayName'] ?? '';
           final nameParts = displayName.split(' ');
           _pendingUser = {
             'firstName': nameParts.isNotEmpty ? nameParts[0] : '',
-            'lastName':
-                nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '',
+            'lastName': nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '',
             'userRole': userData['userRole'] ?? 0,
             'jobType': userData['jobType'] ?? [],
             'locationId': userData['locationId'],
             'locationIds': userData['locationIds'],
             'emailAddress': userData['email'],
-            'organizationId': userData['orgId'],
+            'organizationId': userData['organizationId'], // Use correct field name
           };
+        } else {
+          // Try legacy field name
+          final userQuery2 =
+              await FirestoreEnforcer.instance
+                  .collection('users')
+                  .where('email', isEqualTo: widget.email)
+                  .where('orgId', isEqualTo: widget.organizationId)
+                  .limit(1)
+                  .get();
+
+          print('[WELCOME] users query (orgId) result: ${userQuery2.docs.length} docs');
+
+          if (userQuery2.docs.isNotEmpty) {
+            final userData = userQuery2.docs.first.data();
+            print('[WELCOME] Found user with orgId: $userData');
+            // Convert user data to pendingUser format
+            final displayName = userData['displayName'] ?? '';
+            final nameParts = displayName.split(' ');
+            _pendingUser = {
+              'firstName': nameParts.isNotEmpty ? nameParts[0] : '',
+              'lastName': nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '',
+              'userRole': userData['userRole'] ?? 0,
+              'jobType': userData['jobType'] ?? [],
+              'locationId': userData['locationId'],
+              'locationIds': userData['locationIds'],
+              'emailAddress': userData['email'],
+              'organizationId': userData['orgId'], // Map legacy field name
+            };
+          }
         }
       }
 
       if (_pendingUser == null) {
+        print('[WELCOME] ERROR: No pending user found');
         _showErrorDialog('Invite not found or has expired');
         return;
       }
 
-      // Load organization name
-      final orgDoc =
-          await FirestoreEnforcer.instance
-              .collection('organizations')
-              .doc(widget.organizationId)
-              .get();
+      // Use organization name from invite data if available, otherwise load from organizations collection
+      if (_pendingUser!['orgName'] != null) {
+        _organizationName = _pendingUser!['orgName'];
+        print('[WELCOME] Using organization name from invite: $_organizationName');
+      } else {
+        print('[WELCOME] Loading organization name from organizations collection...');
+        // Load organization name from organizations collection
+        final orgDoc = await FirestoreEnforcer.instance.collection('organizations').doc(widget.organizationId).get();
 
-      if (orgDoc.exists) {
-        _organizationName =
-            orgDoc.data()?['organizationName'] ?? 'Unknown Organization';
+        if (orgDoc.exists) {
+          final orgData = orgDoc.data();
+          // Try different possible field names for organization name
+          _organizationName =
+              orgData?['organizationName'] ?? orgData?['orgName'] ?? orgData?['name'] ?? 'Unknown Organization';
+          print('[WELCOME] Organization name from DB: $_organizationName');
+          print('[WELCOME] Available org fields: ${orgData?.keys.toList()}');
+        } else {
+          print('[WELCOME] Organization document not found');
+          _organizationName = 'Unknown Organization';
+        }
       }
     } catch (e) {
+      print('[WELCOME] ERROR in _loadPendingUser: $e');
       _showErrorDialog('Failed to load invite details: ${e.toString()}');
     } finally {
       setState(() {
@@ -154,6 +226,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
       // Update user document in Firestore to mark setup as completed
       await FirestoreEnforcer.instance.collection('users').doc(user!.uid).update({
         'setupCompleted': true,
+        'onboardingComplete': true, // Add this flag for consistency with admin dashboard
         'isActive': true,
         'updatedAt': FieldValue.serverTimestamp(),
         // Add default availability and notification settings if they don't exist
@@ -161,11 +234,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
         'earliestStart': _pendingUser?['earliestStart'] ?? <String, String>{},
         'notificationSettings':
             _pendingUser?['notificationSettings'] ??
-            {
-              'pushNotificationsEnabled': true,
-              'emailNotificationsEnabled': false,
-              'reminderHoursBefore': 1,
-            },
+            {'pushNotificationsEnabled': true, 'emailNotificationsEnabled': false, 'reminderHoursBefore': 1},
       });
 
       // Clean up pending user data if it exists
@@ -184,10 +253,8 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
       _showSuccessDialog();
     } catch (e) {
       String errorMessage = 'Failed to set up account: ${e.toString()}';
-      if (e.toString().contains('wrong-password') ||
-          e.toString().contains('user-not-found')) {
-        errorMessage =
-            'Invalid temporary password. Please check the email sent to you or contact your administrator.';
+      if (e.toString().contains('wrong-password') || e.toString().contains('user-not-found')) {
+        errorMessage = 'Invalid temporary password. Please check the email sent to you or contact your administrator.';
       }
       _showErrorDialog(errorMessage);
     } finally {
@@ -198,6 +265,8 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
   }
 
   void _showErrorDialog(String message) {
+    if (!mounted) return;
+
     showDialog(
       context: context,
       builder:
@@ -223,17 +292,63 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
       barrierDismissible: false,
       builder:
           (context) => AlertDialog(
-            title: const Text('Welcome to Hands!'),
-            content: const Text(
-              'Your account has been created successfully. You can now sign in with your credentials.',
+            title: const Text('Account Setup Complete! 🎉'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Your account has been created successfully!',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 16),
+                const Text('Download the Hands app to get started:', style: TextStyle(fontSize: 16)),
+                const SizedBox(height: 20),
+
+                // App Store buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          // TODO: Replace with actual App Store URL
+                          print('Opening App Store...');
+                          // launch('https://apps.apple.com/app/hands-app');
+                        },
+                        icon: const Icon(Icons.phone_iphone),
+                        label: const Text('App Store'),
+                        style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          // TODO: Replace with actual Google Play URL
+                          print('Opening Google Play...');
+                          // launch('https://play.google.com/store/apps/details?id=com.hands.app');
+                        },
+                        icon: const Icon(Icons.android),
+                        label: const Text('Google Play'),
+                        style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Use the same email and password you just created to sign in to the mobile app.',
+                  style: TextStyle(color: Colors.grey, fontSize: 14),
+                ),
+              ],
             ),
             actions: [
               TextButton(
                 onPressed: () {
                   Navigator.of(context).pop();
-                  context.go('/login');
+                  // Stay on the current page instead of navigating away
                 },
-                child: const Text('Sign In'),
+                child: const Text('Done'),
               ),
             ],
           ),
@@ -254,17 +369,11 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
             children: [
               const Icon(Icons.error_outline, size: 64, color: Colors.red),
               const SizedBox(height: 16),
-              const Text(
-                'Invalid or expired invite',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
+              const Text('Invalid or expired invite', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               const Text('This invite link is not valid or has expired.'),
               const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: () => context.go('/login'),
-                child: const Text('Go to Sign In'),
-              ),
+              ElevatedButton(onPressed: () => context.go('/login'), child: const Text('Go to Sign In')),
             ],
           ),
         ),
@@ -314,8 +423,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                         children: [
                           Text(
                             'Account Details',
-                            style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.bold),
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(height: 12),
                           _buildInfoRow('Email', widget.email ?? ''),
@@ -323,16 +431,9 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                             'Name',
                             '${_pendingUser?['firstName'] ?? ''} ${_pendingUser?['lastName'] ?? ''}',
                           ),
-                          _buildInfoRow(
-                            'Role',
-                            _getRoleDisplayName(_pendingUser?['userRole']),
-                          ),
-                          if (_pendingUser?['jobType'] != null &&
-                              (_pendingUser!['jobType'] as List).isNotEmpty)
-                            _buildInfoRow(
-                              'Job Types',
-                              (_pendingUser!['jobType'] as List).join(', '),
-                            ),
+                          _buildInfoRow('Role', _getRoleDisplayName(_pendingUser?['userRole'])),
+                          if (_pendingUser?['jobType'] != null && (_pendingUser!['jobType'] as List).isNotEmpty)
+                            _buildInfoRow('Job Types', (_pendingUser!['jobType'] as List).join(', ')),
                         ],
                       ),
                     ),
@@ -347,14 +448,12 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                       children: [
                         Text(
                           'Complete Your Account Setup',
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.bold),
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           'Enter the temporary password from your email, then set a new password.',
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: Colors.grey[600]),
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
                         ),
                         const SizedBox(height: 16),
 
@@ -367,11 +466,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                             hintText: 'Enter the password from your email',
                             border: const OutlineInputBorder(),
                             suffixIcon: IconButton(
-                              icon: Icon(
-                                _obscureTempPassword
-                                    ? Icons.visibility
-                                    : Icons.visibility_off,
-                              ),
+                              icon: Icon(_obscureTempPassword ? Icons.visibility : Icons.visibility_off),
                               onPressed: () {
                                 setState(() {
                                   _obscureTempPassword = !_obscureTempPassword;
@@ -397,11 +492,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                             hintText: 'Create a new password',
                             border: const OutlineInputBorder(),
                             suffixIcon: IconButton(
-                              icon: Icon(
-                                _obscurePassword
-                                    ? Icons.visibility
-                                    : Icons.visibility_off,
-                              ),
+                              icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off),
                               onPressed: () {
                                 setState(() {
                                   _obscurePassword = !_obscurePassword;
@@ -430,15 +521,10 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                             hintText: 'Confirm your new password',
                             border: const OutlineInputBorder(),
                             suffixIcon: IconButton(
-                              icon: Icon(
-                                _obscureConfirmPassword
-                                    ? Icons.visibility
-                                    : Icons.visibility_off,
-                              ),
+                              icon: Icon(_obscureConfirmPassword ? Icons.visibility : Icons.visibility_off),
                               onPressed: () {
                                 setState(() {
-                                  _obscureConfirmPassword =
-                                      !_obscureConfirmPassword;
+                                  _obscureConfirmPassword = !_obscureConfirmPassword;
                                 });
                               },
                             ),
@@ -460,30 +546,19 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                           onPressed: _isLoading ? null : _createAccount,
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           ),
                           child:
                               _isLoading
                                   ? const SizedBox(
                                     height: 20,
                                     width: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
+                                    child: CircularProgressIndicator(strokeWidth: 2),
                                   )
                                   : const Text('Complete Setup'),
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Sign in link
-                  TextButton(
-                    onPressed: () => context.go('/login'),
-                    child: const Text('Already have an account? Sign In'),
                   ),
                 ],
               ),
@@ -500,13 +575,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 60,
-            child: Text(
-              '$label:',
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            ),
-          ),
+          SizedBox(width: 60, child: Text('$label:', style: const TextStyle(fontWeight: FontWeight.w500))),
           Expanded(child: Text(value.isNotEmpty ? value : 'Not specified')),
         ],
       ),

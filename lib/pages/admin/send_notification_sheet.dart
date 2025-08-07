@@ -8,12 +8,10 @@ class SendNotificationSheet extends ConsumerStatefulWidget {
   const SendNotificationSheet({super.key});
 
   @override
-  ConsumerState<SendNotificationSheet> createState() =>
-      _SendNotificationSheetState();
+  ConsumerState<SendNotificationSheet> createState() => _SendNotificationSheetState();
 }
 
-class _SendNotificationSheetState
-    extends ConsumerState<SendNotificationSheet> {
+class _SendNotificationSheetState extends ConsumerState<SendNotificationSheet> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _messageController = TextEditingController();
@@ -24,7 +22,7 @@ class _SendNotificationSheetState
   // bool _pushOnLogin = false; // Removed the state variable
 
   List<Map<String, String>> _groups = [];
-  List<String> _locations = [];
+  List<Map<String, String>> _locations = []; // Changed to store both ID and name
 
   bool _loading = true;
   bool _sending = false;
@@ -41,32 +39,34 @@ class _SendNotificationSheetState
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('User not signed in');
-      final userDoc = await FirestoreEnforcer.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
+      final userDoc = await FirestoreEnforcer.instance.collection('users').doc(user.uid).get();
       final orgId = userDoc.data()?['organizationId'] as String?;
       if (orgId == null) throw Exception('Organization not found');
 
-      final groupsSnap = await FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(orgId)
-          .collection('groups')
-          .get();
-      final locSnap = await FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(orgId)
-          .collection('locations')
-          .get();
+      final groupsSnap =
+          await FirestoreEnforcer.instance.collection('organizations').doc(orgId).collection('groups').get();
+      final locSnap =
+          await FirestoreEnforcer.instance.collection('organizations').doc(orgId).collection('locations').get();
 
-      final groups = groupsSnap.docs.map((d) => {
-        'id': d.id,
-        'name': (d.data()['name'] as String?) ?? 'Unnamed Group'
-      }).toList();
-      final locations = locSnap.docs
-          .map((d) => (d.data()['name'] as String?) ?? '')
-          .where((l) => l.isNotEmpty)
-          .toList();
+      final groups =
+          groupsSnap.docs.map((d) => {'id': d.id, 'name': (d.data()['name'] as String?) ?? 'Unnamed Group'}).toList();
+      final locations =
+          locSnap.docs
+              .map((d) => {
+                'id': d.id, 
+                'name': (d.data()['locationName'] as String?) ?? 
+                        (d.data()['name'] as String?) ?? 
+                        'Unnamed Location'
+              })
+              .where((l) => l['name']! != 'Unnamed Location' && l['name']!.isNotEmpty)
+              .toList();
+
+      debugPrint('SendNotificationSheet: Raw location docs:');
+      for (final doc in locSnap.docs) {
+        debugPrint('  ${doc.id}: ${doc.data()}');
+      }
+      debugPrint('SendNotificationSheet: Loaded ${groups.length} groups: $groups');
+      debugPrint('SendNotificationSheet: Loaded ${locations.length} locations: $locations');
 
       setState(() {
         _groups = groups;
@@ -84,24 +84,28 @@ class _SendNotificationSheetState
     switch (_recipientType) {
       case 'Group':
         if (_selectedGroup != null) {
-          final groupName = _groups
-              .firstWhere((g) => g['id'] == _selectedGroup,
-                  orElse: () => {'name': _selectedGroup!})
-              ['name'];
+          final groupName =
+              _groups.firstWhere((g) => g['id'] == _selectedGroup, orElse: () => {'name': _selectedGroup!})['name'];
           t = "Message for '$groupName'";
         } else {
           t = 'Group Message';
         }
         break;
       case 'Location':
-        t = _selectedLocation != null
-            ? "Message for '$_selectedLocation'"
-            : 'Location Message';
+        t =
+            _selectedLocation != null
+                ? "Message for '${_getLocationNameById(_selectedLocation!)}'"
+                : 'Location Message';
         break;
       default:
         t = 'General Announcement';
     }
     _titleController.text = t;
+  }
+
+  String _getLocationNameById(String locationId) {
+    final location = _locations.firstWhere((l) => l['id'] == locationId, orElse: () => {'name': 'Unknown Location'});
+    return location['name']!;
   }
 
   Future<void> _send() async {
@@ -120,7 +124,7 @@ class _SendNotificationSheetState
           recipientId = 'all';
           break;
         case 'Location':
-          recipientId = _selectedLocation;
+          recipientId = _selectedLocation; // This is now the location ID
           break;
         default:
           recipientId = null;
@@ -161,15 +165,8 @@ class _SendNotificationSheetState
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'Send Notification',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
+                    const Text('Send Notification', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.of(context).pop()),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -182,8 +179,7 @@ class _SendNotificationSheetState
                     DropdownMenuItem(value: 'Group', child: Text('Send to Group')),
                     DropdownMenuItem(value: 'Location', child: Text('Send to Location')),
                   ],
-                  decoration:
-                      const InputDecoration(labelText: 'Recipient Type'),
+                  decoration: const InputDecoration(labelText: 'Recipient Type'),
                   onChanged: (v) {
                     setState(() {
                       _recipientType = v!;
@@ -203,39 +199,31 @@ class _SendNotificationSheetState
                       value: _selectedGroup,
                       decoration: const InputDecoration(labelText: 'Select Group'),
                       hint: const Text('Choose a group'),
-                      items: _groups.map((g) => DropdownMenuItem(
-                            value: g['id'],
-                            child: Text(g['name']!),
-                          )).toList(),
+                      items: _groups.map((g) => DropdownMenuItem(value: g['id'], child: Text(g['name']!))).toList(),
                       onChanged: (v) {
                         setState(() {
                           _selectedGroup = v;
                           _updateTitle();
                         });
                       },
-                      validator: (v) => _recipientType == 'Group' && (v == null)
-                          ? 'Please select a group'
-                          : null,
+                      validator: (v) => _recipientType == 'Group' && (v == null) ? 'Please select a group' : null,
                     ),
                   if (_recipientType == 'Location')
                     DropdownButtonFormField<String>(
                       value: _selectedLocation,
-                      items: _locations
-                          .map((l) =>
-                              DropdownMenuItem(value: l, child: Text(l)))
-                          .toList(),
-                      decoration:
-                          const InputDecoration(labelText: 'Select Location'),
+                      items: _locations.map((l) => DropdownMenuItem(value: l['id'], child: Text(l['name']!))).toList(),
+                      decoration: const InputDecoration(labelText: 'Select Location'),
                       onChanged: (v) {
                         setState(() {
                           _selectedLocation = v;
                           _updateTitle();
                         });
                       },
-                      validator: (v) => _recipientType == 'Location' &&
-                              (v == null || v.isEmpty)
-                          ? 'Please select a location'
-                          : null,
+                      validator:
+                          (v) =>
+                              _recipientType == 'Location' && (v == null || v.isEmpty)
+                                  ? 'Please select a location'
+                                  : null,
                     ),
                 ],
 
@@ -243,21 +231,19 @@ class _SendNotificationSheetState
                 TextFormField(
                   controller: _titleController,
                   decoration: const InputDecoration(labelText: 'Title'),
-                  validator: (v) =>
-                      v == null || v.isEmpty ? 'Enter a title' : null,
+                  validator: (v) => v == null || v.isEmpty ? 'Enter a title' : null,
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _messageController,
                   decoration: const InputDecoration(labelText: 'Message'),
                   maxLines: 3,
-                  validator: (v) =>
-                      v == null || v.isEmpty ? 'Enter a message' : null,
+                  validator: (v) => v == null || v.isEmpty ? 'Enter a message' : null,
                 ),
 
                 const SizedBox(height: 12),
-                // Removed the Push on Login UI component
 
+                // Removed the Push on Login UI component
                 if (_error != null) ...[
                   Text(_error!, style: const TextStyle(color: Colors.red)),
                   const SizedBox(height: 8),
@@ -267,12 +253,9 @@ class _SendNotificationSheetState
                 _sending
                     ? const Center(child: CircularProgressIndicator())
                     : SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: _send,
-                          child: const Text('Send Notification'),
-                        ),
-                      ),
+                      width: double.infinity,
+                      child: ElevatedButton(onPressed: _send, child: const Text('Send Notification')),
+                    ),
               ],
             ),
           ),

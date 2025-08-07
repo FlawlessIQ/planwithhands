@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/services/app_permission_service.dart';
+import 'package:hands_app/widgets/permission_handler.dart';
 
 class AvailabilityBottomSheet extends StatefulWidget {
   const AvailabilityBottomSheet({super.key});
 
   @override
-  State<AvailabilityBottomSheet> createState() =>
-      _AvailabilityBottomSheetState();
+  State<AvailabilityBottomSheet> createState() => _AvailabilityBottomSheetState();
 }
 
 class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
@@ -24,15 +25,7 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
   bool isLoading = true;
   bool isSaving = false;
 
-  final List<String> weekdays = [
-    'Monday',
-    'Tuesday',
-    'Wednesday',
-    'Thursday',
-    'Friday',
-    'Saturday',
-    'Sunday',
-  ];
+  final List<String> weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
   final List<String> shifts = ['Morning', 'Afternoon', 'Evening', 'Night'];
 
@@ -47,33 +40,24 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
     if (user == null) return;
 
     try {
-      final userDoc =
-          await FirestoreEnforcer.instance
-              .collection('users')
-              .doc(user.uid)
-              .get();
+      final userDoc = await FirestoreEnforcer.instance.collection('users').doc(user.uid).get();
 
       if (userDoc.exists) {
         final userData = userDoc.data()!;
 
         // Initialize availability for all day-shift combinations
-        final userAvailability = Map<String, bool>.from(
-          userData['availability'] ?? {},
-        );
+        final userAvailability = Map<String, bool>.from(userData['availability'] ?? {});
         final newAvailability = <String, bool>{};
 
         for (final day in weekdays) {
           for (final shift in shifts) {
             final key = '${day}_$shift';
-            newAvailability[key] =
-                userAvailability[key] ?? true; // Default to available
+            newAvailability[key] = userAvailability[key] ?? true; // Default to available
           }
         }
 
         // Initialize earliest start times
-        final userEarliestStart = Map<String, dynamic>.from(
-          userData['earliestStart'] ?? {},
-        );
+        final userEarliestStart = Map<String, dynamic>.from(userData['earliestStart'] ?? {});
         final newEarliestStart = <String, TimeOfDay>{};
 
         for (final day in weekdays) {
@@ -88,17 +72,12 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
         }
 
         // Load notification settings
-        final userNotificationSettings = Map<String, dynamic>.from(
-          userData['notificationSettings'] ?? {},
-        );
+        final userNotificationSettings = Map<String, dynamic>.from(userData['notificationSettings'] ?? {});
         notificationSettings = {
-          'scheduleUpdates':
-              userNotificationSettings['scheduleUpdates'] ?? true,
+          'scheduleUpdates': userNotificationSettings['scheduleUpdates'] ?? true,
           'shiftReminders': userNotificationSettings['shiftReminders'] ?? true,
-          'emailNotifications':
-              userNotificationSettings['emailNotifications'] ?? true,
-          'pushNotifications':
-              userNotificationSettings['pushNotifications'] ?? true,
+          'emailNotifications': userNotificationSettings['emailNotifications'] ?? true,
+          'pushNotifications': userNotificationSettings['pushNotifications'] ?? true,
         };
 
         if (mounted) {
@@ -127,35 +106,25 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
       // Convert TimeOfDay to serializable format
       final serializedEarliestStart = <String, dynamic>{};
       earliestStart.forEach((day, time) {
-        serializedEarliestStart[day] = {
-          'hour': time.hour,
-          'minute': time.minute,
-        };
+        serializedEarliestStart[day] = {'hour': time.hour, 'minute': time.minute};
       });
 
-      await FirestoreEnforcer.instance
-          .collection('users')
-          .doc(user.uid)
-          .update({
-            'availability': availability,
-            'earliestStart': serializedEarliestStart,
-            'notificationSettings': notificationSettings,
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
+      await FirestoreEnforcer.instance.collection('users').doc(user.uid).update({
+        'availability': availability,
+        'earliestStart': serializedEarliestStart,
+        'notificationSettings': notificationSettings,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
 
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Availability and preferences updated successfully'),
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Availability and preferences updated successfully')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error updating preferences: $e')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error updating preferences: $e')));
       }
     } finally {
       if (mounted) {
@@ -197,14 +166,9 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
               children: [
                 Text(
                   'Availability & Preferences',
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w600),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(context),
-                ),
+                IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
               ],
             ),
           ),
@@ -222,9 +186,7 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
                           // Availability section
                           Text(
                             'Shift Availability',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
+                            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
                           ),
                           const SizedBox(height: 8),
                           Text(
@@ -246,24 +208,17 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
                                   padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
                                     color: Colors.grey.shade100,
-                                    borderRadius: const BorderRadius.vertical(
-                                      top: Radius.circular(8),
-                                    ),
+                                    borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
                                   ),
                                   child: Row(
                                     children: [
-                                      const SizedBox(
-                                        width: 80,
-                                      ), // Space for day labels
+                                      const SizedBox(width: 80), // Space for day labels
                                       ...shifts.map(
                                         (shift) => Expanded(
                                           child: Text(
                                             shift,
                                             textAlign: TextAlign.center,
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w600,
-                                              fontSize: 12,
-                                            ),
+                                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
                                           ),
                                         ),
                                       ),
@@ -275,11 +230,7 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
                                   (day) => Container(
                                     padding: const EdgeInsets.all(8),
                                     decoration: BoxDecoration(
-                                      border: Border(
-                                        top: BorderSide(
-                                          color: Colors.grey.shade300,
-                                        ),
-                                      ),
+                                      border: Border(top: BorderSide(color: Colors.grey.shade300)),
                                     ),
                                     child: Row(
                                       children: [
@@ -287,10 +238,7 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
                                           width: 80,
                                           child: Text(
                                             day,
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w500,
-                                              fontSize: 12,
-                                            ),
+                                            style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12),
                                           ),
                                         ),
                                         ...shifts.map((shift) {
@@ -298,12 +246,10 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
                                           return Expanded(
                                             child: Center(
                                               child: Checkbox(
-                                                value:
-                                                    availability[key] ?? false,
+                                                value: availability[key] ?? false,
                                                 onChanged: (value) {
                                                   setState(() {
-                                                    availability[key] =
-                                                        value ?? false;
+                                                    availability[key] = value ?? false;
                                                   });
                                                 },
                                               ),
@@ -323,9 +269,7 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
                           // Earliest start times
                           Text(
                             'Earliest Start Times',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
+                            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
                           ),
                           const SizedBox(height: 8),
                           Text(
@@ -342,8 +286,7 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
                                 trailing: TextButton(
                                   onPressed: () => _selectTime(day),
                                   child: Text(
-                                    earliestStart[day]?.format(context) ??
-                                        '9:00 AM',
+                                    earliestStart[day]?.format(context) ?? '9:00 AM',
                                     style: TextStyle(color: theme.primaryColor),
                                   ),
                                 ),
@@ -357,7 +300,85 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
 
                           const SizedBox(height: 24),
 
-                          // ...existing code...
+                          // Notification Settings
+                          Text(
+                            'Notification Preferences',
+                            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 8),
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                children: [
+                                  SwitchListTile(
+                                    title: const Text('Schedule Updates'),
+                                    subtitle: const Text('Get notified when schedules are published'),
+                                    value: notificationSettings['scheduleUpdates'] ?? true,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        notificationSettings['scheduleUpdates'] = value;
+                                      });
+                                    },
+                                  ),
+                                  SwitchListTile(
+                                    title: const Text('Shift Reminders'),
+                                    subtitle: const Text('Get reminded about upcoming shifts'),
+                                    value: notificationSettings['shiftReminders'] ?? true,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        notificationSettings['shiftReminders'] = value;
+                                      });
+                                    },
+                                  ),
+                                  SwitchListTile(
+                                    title: const Text('Email Notifications'),
+                                    subtitle: const Text('Receive notifications via email'),
+                                    value: notificationSettings['emailNotifications'] ?? true,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        notificationSettings['emailNotifications'] = value;
+                                      });
+                                    },
+                                  ),
+                                  SwitchListTile(
+                                    title: const Text('Push Notifications'),
+                                    subtitle: const Text('Receive push notifications on this device'),
+                                    value: notificationSettings['pushNotifications'] ?? true,
+                                    onChanged: (value) async {
+                                      if (value) {
+                                        // Request permission when enabling push notifications
+                                        final hasPermission = await AppPermissionUtils.requestPermissionOnAction(
+                                          context,
+                                          AppPermission.notifications,
+                                          onGranted: () {
+                                            setState(() {
+                                              notificationSettings['pushNotifications'] = true;
+                                            });
+                                          },
+                                          onDenied: () {
+                                            // Keep the toggle off if permission denied
+                                            setState(() {
+                                              notificationSettings['pushNotifications'] = false;
+                                            });
+                                          },
+                                        );
+
+                                        if (!hasPermission) {
+                                          return; // Exit early if permission not granted
+                                        }
+                                      } else {
+                                        // Allow disabling without permission check
+                                        setState(() {
+                                          notificationSettings['pushNotifications'] = false;
+                                        });
+                                      }
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -381,17 +402,12 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
                           width: 20,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.white,
-                            ),
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
                         )
                         : const Text(
                           'Save Preferences',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                         ),
               ),
             ),

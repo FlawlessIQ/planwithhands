@@ -16,6 +16,9 @@ class TaskData with _$TaskData {
     String? completedBy,
     String? photoUrl,
     @Default('') String description,
+    // New fields for missed task management
+    String? notes,
+    String? notCompletedReason,
     // Carry-forward fields
     @Default(false) bool isCarryForward,
     @TimestampConverter() DateTime? originalDate,
@@ -28,6 +31,5 @@ class TaskData with _$TaskData {
     @TimestampConverter() DateTime? resolvedAt,
   }) = _TaskData;
 
-  factory TaskData.fromJson(Map<String, dynamic> json) =>
-      _$TaskDataFromJson(json);
+  factory TaskData.fromJson(Map<String, dynamic> json) => _$TaskDataFromJson(json);
 }

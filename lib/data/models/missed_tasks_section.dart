@@ -1,22 +1,82 @@
 import 'package:flutter/material.dart';
-import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:hands_app/models/daily_checklist.dart';
-
-part 'missed_tasks_section.freezed.dart';
+import 'package:hands_app/data/models/task_data.dart';
+import 'package:json_annotation/json_annotation.dart';
 
 /// Model for organizing missed tasks by their original shift context
-@freezed
-class MissedTasksSection with _$MissedTasksSection {
-  factory MissedTasksSection({
-    required String shiftId,
-    required String shiftName,
-    @TimeOfDayConverter() TimeOfDay? startTime,
-    @TimeOfDayConverter() TimeOfDay? endTime,
-    required List<DailyChecklistTask> tasks,
-    @Default(false) bool isExpanded,
+class MissedTasksSection {
+  final String shiftId;
+  final String shiftName;
+  final TimeOfDay? startTime;
+  final TimeOfDay? endTime;
+  final List<TaskData> tasks;
+  final bool isExpanded;
+  final String? locationId;
+  final String? checklistId;
+  final String organizationId;
+
+  const MissedTasksSection({
+    required this.shiftId,
+    required this.shiftName,
+    required this.organizationId,
+    this.startTime,
+    this.endTime,
+    required this.tasks,
+    this.isExpanded = false,
+    this.locationId,
+    this.checklistId,
+  });
+
+  MissedTasksSection copyWith({
+    String? shiftId,
+    String? shiftName,
+    String? organizationId,
+    TimeOfDay? startTime,
+    TimeOfDay? endTime,
+    List<TaskData>? tasks,
+    bool? isExpanded,
     String? locationId,
     String? checklistId,
-  }) = _MissedTasksSection;
+  }) {
+    return MissedTasksSection(
+      shiftId: shiftId ?? this.shiftId,
+      shiftName: shiftName ?? this.shiftName,
+      organizationId: organizationId ?? this.organizationId,
+      startTime: startTime ?? this.startTime,
+      endTime: endTime ?? this.endTime,
+      tasks: tasks ?? this.tasks,
+      isExpanded: isExpanded ?? this.isExpanded,
+      locationId: locationId ?? this.locationId,
+      checklistId: checklistId ?? this.checklistId,
+    );
+  }
+
+  factory MissedTasksSection.fromJson(Map<String, dynamic> json) {
+    return MissedTasksSection(
+      shiftId: json['shiftId'] as String,
+      shiftName: json['shiftName'] as String,
+      organizationId: json['organizationId'] as String,
+      startTime: const TimeOfDayConverter().fromJson(json['startTime'] as Map<String, dynamic>?),
+      endTime: const TimeOfDayConverter().fromJson(json['endTime'] as Map<String, dynamic>?),
+      tasks: (json['tasks'] as List<dynamic>).map((e) => TaskData.fromJson(e as Map<String, dynamic>)).toList(),
+      isExpanded: json['isExpanded'] as bool? ?? false,
+      locationId: json['locationId'] as String?,
+      checklistId: json['checklistId'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'shiftId': shiftId,
+      'shiftName': shiftName,
+      'organizationId': organizationId,
+      'startTime': const TimeOfDayConverter().toJson(startTime),
+      'endTime': const TimeOfDayConverter().toJson(endTime),
+      'tasks': tasks.map((e) => e.toJson()).toList(),
+      'isExpanded': isExpanded,
+      'locationId': locationId,
+      'checklistId': checklistId,
+    };
+  }
 }
 
 /// Custom JSON converter for TimeOfDay since it's not directly serializable
@@ -26,18 +86,14 @@ class TimeOfDayConverter implements JsonConverter<TimeOfDay?, Map<String, dynami
   @override
   TimeOfDay? fromJson(Map<String, dynamic>? json) {
     if (json == null) return null;
-    return TimeOfDay(
-      hour: json['hour'] as int,
-      minute: json['minute'] as int,
-    );
+    return TimeOfDay(hour: json['hour'] as int, minute: json['minute'] as int);
   }
 
   @override
   Map<String, dynamic>? toJson(TimeOfDay? object) {
     if (object == null) return null;
-    return {
-      'hour': object.hour,
-      'minute': object.minute,
-    };
+    return {'hour': object.hour, 'minute': object.minute};
   }
 }
+
+// bump version to force Freezed rebuild

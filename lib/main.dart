@@ -2,6 +2,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hands_app/firebase_options.dart';
@@ -9,6 +10,7 @@ import 'package:hands_app/routing/routes.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/services/web_asset_service.dart';
 import 'package:hands_app/services/stripe_service.dart';
+import 'package:hands_app/services/daily_background_service.dart';
 
 // Global provider for Crashlytics availability
 final crashlyticsEnabledProvider = StateProvider<bool>((ref) => false);
@@ -16,13 +18,17 @@ final crashlyticsEnabledProvider = StateProvider<bool>((ref) => false);
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Set URL strategy for web to use path-based URLs
+  if (kIsWeb) {
+    usePathUrlStrategy();
+    print('[MAIN] Setting path URL strategy for web');
+  }
+
   // Initialize Firebase
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   // Initialize Stripe only on supported platforms (iOS/Android)
-  if (!kIsWeb &&
-      (defaultTargetPlatform == TargetPlatform.iOS ||
-          defaultTargetPlatform == TargetPlatform.android)) {
+  if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.android)) {
     StripeService.initStripe();
   }
 
@@ -34,9 +40,7 @@ void main() async {
     if (!kDebugMode) {
       if (!kIsWeb) {
         // On mobile platforms, this should work reliably
-        await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(
-          true,
-        );
+        await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
         crashlyticsEnabled = true;
       } else {
         // On web, we need to be more careful as the plugin might not be fully initialized
@@ -95,6 +99,9 @@ void main() async {
     debugPrint('Running on web - applying performance optimizations');
   }
 
+  // Initialize background services
+  _initializeBackgroundServices();
+
   runApp(
     ProviderScope(
       overrides: [
@@ -104,6 +111,20 @@ void main() async {
       child: const MyApp(),
     ),
   );
+}
+
+/// Initialize background services
+void _initializeBackgroundServices() {
+  try {
+    debugPrint('[MAIN] Initializing background services');
+
+    // Initialize daily summary monitoring
+    DailyBackgroundService.initialize();
+
+    debugPrint('[MAIN] Background services initialized successfully');
+  } catch (e) {
+    debugPrint('[MAIN] Error initializing background services: $e');
+  }
 }
 
 class MyApp extends StatelessWidget {

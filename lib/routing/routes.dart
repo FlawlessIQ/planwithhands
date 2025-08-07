@@ -4,8 +4,7 @@ import 'package:hands_app/features/dashboard/pages/user_dashboard_page.dart';
 import 'package:hands_app/features/dashboard/pages/admin_dashboard_page.dart';
 import 'package:hands_app/features/dashboard/pages/manager_dashboard_page.dart';
 import 'package:hands_app/features/auth/pages/login_page.dart';
-import 'package:hands_app/features/auth/pages/account_creation_page_simple_branded.dart'
-    as branded;
+import 'package:hands_app/features/auth/pages/account_creation_page_simple_branded.dart' as branded;
 // import 'package:hands_app/features/auth/pages/invitation_page.dart';
 import 'package:hands_app/features/settings/pages/settings_page.dart';
 import 'package:hands_app/features/training/pages/training_materials_page.dart';
@@ -73,9 +72,7 @@ class AuthGateWithOrg extends ConsumerWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, authSnap) {
         if (authSnap.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
         final user = authSnap.data;
         if (user == null) {
@@ -83,16 +80,10 @@ class AuthGateWithOrg extends ConsumerWidget {
         }
         // now fetch org ID
         return FutureBuilder<DocumentSnapshot>(
-          future:
-              FirestoreEnforcer.instance
-                  .collection(FirestoreCollectionNames.users)
-                  .doc(user.uid)
-                  .get(),
+          future: FirestoreEnforcer.instance.collection(FirestoreCollectionNames.users).doc(user.uid).get(),
           builder: (context, snap) {
             if (snap.connectionState != ConnectionState.done) {
-              return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
-              );
+              return const Scaffold(body: Center(child: CircularProgressIndicator()));
             }
             if (!snap.hasData || !snap.data!.exists) {
               return const LoginPage();
@@ -111,17 +102,13 @@ class AuthGateWithOrg extends ConsumerWidget {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 context.go(AppRoutes.adminDashboardPage.path);
               });
-              return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
-              );
+              return const Scaffold(body: Center(child: CircularProgressIndicator()));
             } else if (userRole >= 1) {
               // Manager - redirect to manager dashboard
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 context.go(AppRoutes.managerDashboardPage.path);
               });
-              return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
-              );
+              return const Scaffold(body: Center(child: CircularProgressIndicator()));
             }
 
             // Regular user - show user dashboard
@@ -143,9 +130,7 @@ class AuthGateWithOrgForManager extends ConsumerWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, authSnap) {
         if (authSnap.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
         final user = authSnap.data;
         if (user == null) {
@@ -153,16 +138,10 @@ class AuthGateWithOrgForManager extends ConsumerWidget {
         }
         // now fetch org ID
         return FutureBuilder<DocumentSnapshot>(
-          future:
-              FirestoreEnforcer.instance
-                  .collection(FirestoreCollectionNames.users)
-                  .doc(user.uid)
-                  .get(),
+          future: FirestoreEnforcer.instance.collection(FirestoreCollectionNames.users).doc(user.uid).get(),
           builder: (context, snap) {
             if (snap.connectionState != ConnectionState.done) {
-              return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
-              );
+              return const Scaffold(body: Center(child: CircularProgressIndicator()));
             }
             if (!snap.hasData || !snap.data!.exists) {
               return const LoginPage();
@@ -180,9 +159,7 @@ class AuthGateWithOrgForManager extends ConsumerWidget {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 context.go(AppRoutes.userDashboardPage.path);
               });
-              return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
-              );
+              return const Scaffold(body: Center(child: CircularProgressIndicator()));
             }
             // Allow both managers and admins to view this page
             return ManagerDashboardPage(organizationId: orgId);
@@ -203,9 +180,7 @@ class AuthGateWithOrgForAdmin extends ConsumerWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, authSnap) {
         if (authSnap.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
         final user = authSnap.data;
         if (user == null) {
@@ -213,16 +188,10 @@ class AuthGateWithOrgForAdmin extends ConsumerWidget {
         }
         // now fetch org ID and check admin access
         return FutureBuilder<DocumentSnapshot>(
-          future:
-              FirestoreEnforcer.instance
-                  .collection(FirestoreCollectionNames.users)
-                  .doc(user.uid)
-                  .get(),
+          future: FirestoreEnforcer.instance.collection(FirestoreCollectionNames.users).doc(user.uid).get(),
           builder: (context, snap) {
             if (snap.connectionState != ConnectionState.done) {
-              return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
-              );
+              return const Scaffold(body: Center(child: CircularProgressIndicator()));
             }
             if (!snap.hasData || !snap.data!.exists) {
               return const LoginPage();
@@ -248,9 +217,7 @@ class AuthGateWithOrgForAdmin extends ConsumerWidget {
                   context.go(AppRoutes.userDashboardPage.path);
                 });
               }
-              return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
-              );
+              return const Scaffold(body: Center(child: CircularProgressIndicator()));
             }
 
             return const AdminDashboardPage();
@@ -262,13 +229,45 @@ class AuthGateWithOrgForAdmin extends ConsumerWidget {
 }
 
 final router = GoRouter(
+  redirect: (context, state) {
+    // Debug logging for ALL routing
+    print('[ROUTER] ===============================');
+    print('[ROUTER] TESTING - Current path: ${state.matchedLocation}');
+    print('[ROUTER] TESTING - URI path: ${state.uri.path}');
+    print('[ROUTER] TESTING - Full path: ${state.fullPath}');
+    print('[ROUTER] TESTING - Query params: ${state.uri.queryParameters}');
+    print('[ROUTER] TESTING - Raw URI: ${state.uri.toString()}');
+    print('[ROUTER] TESTING - Browser URL: ${Uri.base.toString()}');
+    print('[ROUTER] ===============================');
+
+    // AGGRESSIVE BROWSER URL PARSING
+    final browserUri = Uri.base;
+    final routerPath = state.uri.path;
+
+    print('[ROUTER] Browser path: ${browserUri.path}');
+    print('[ROUTER] Router path: $routerPath');
+
+    // If browser shows welcome but router doesn't, force welcome navigation
+    if (browserUri.path == '/welcome' && routerPath != '/welcome') {
+      print('[ROUTER] *** FORCING WELCOME NAVIGATION ***');
+      final email = browserUri.queryParameters['email'];
+      final orgId = browserUri.queryParameters['orgId'];
+      final inviteId = browserUri.queryParameters['inviteId'];
+
+      if (email != null && orgId != null) {
+        final welcomeUrl = '/welcome?email=$email&orgId=$orgId&inviteId=${inviteId ?? ''}';
+        print('[ROUTER] Redirecting to: $welcomeUrl');
+        return welcomeUrl;
+      }
+    }
+
+    // TEMPORARILY DISABLE ALL OTHER REDIRECTS FOR TESTING
+    return null;
+  },
   // Default to home, which will redirect to the appropriate dashboard
   initialLocation: AppRoutes.homePage.path,
   routes: [
-    GoRoute(
-      path: AppRoutes.homePage.path,
-      builder: (context, state) => const AuthGateWithOrg(),
-    ),
+    GoRoute(path: AppRoutes.homePage.path, builder: (context, state) => const AuthGateWithOrg()),
     // Invite route removed
     GoRoute(
       path: AppRoutes.accountCreationPage.path,
@@ -276,14 +275,8 @@ final router = GoRouter(
         return const branded.SimpleSignUpPage();
       },
     ),
-    GoRoute(
-      path: AppRoutes.loginPage.path,
-      builder: (context, state) => const LoginPage(),
-    ),
-    GoRoute(
-      path: AppRoutes.signInPage.path,
-      builder: (context, state) => const SignInPage(),
-    ),
+    GoRoute(path: AppRoutes.loginPage.path, builder: (context, state) => const LoginPage()),
+    GoRoute(path: AppRoutes.signInPage.path, builder: (context, state) => const SignInPage()),
     GoRoute(
       path: AppRoutes.welcomePage.path,
       builder:
@@ -294,31 +287,16 @@ final router = GoRouter(
             mode: state.uri.queryParameters['mode'],
           ),
     ),
-    GoRoute(
-      path: AppRoutes.settingsPage.path,
-      builder: (context, state) => const AuthGate(child: HandsSettingsPage()),
-    ),
+    GoRoute(path: AppRoutes.settingsPage.path, builder: (context, state) => const AuthGate(child: HandsSettingsPage())),
     GoRoute(
       path: AppRoutes.userDashboardPage.path,
       // Simple auth gate so admins and managers can navigate here directly
       builder: (context, state) => const AuthGate(child: UserDashboardPage()),
     ),
-    GoRoute(
-      path: AppRoutes.adminDashboardPage.path,
-      builder: (context, state) => const AuthGateWithOrgForAdmin(),
-    ),
-    GoRoute(
-      path: AppRoutes.managerDashboardPage.path,
-      builder: (context, state) => const AuthGateWithOrgForManager(),
-    ),
-    GoRoute(
-      path: AppRoutes.schedulePage.path,
-      builder: (context, state) => const AuthGate(child: SchedulePage()),
-    ),
-    GoRoute(
-      path: AppRoutes.messagesPage.path,
-      builder: (context, state) => const AuthGate(child: MessagesPage()),
-    ),
+    GoRoute(path: AppRoutes.adminDashboardPage.path, builder: (context, state) => const AuthGateWithOrgForAdmin()),
+    GoRoute(path: AppRoutes.managerDashboardPage.path, builder: (context, state) => const AuthGateWithOrgForManager()),
+    GoRoute(path: AppRoutes.schedulePage.path, builder: (context, state) => const AuthGate(child: SchedulePage())),
+    GoRoute(path: AppRoutes.messagesPage.path, builder: (context, state) => const AuthGate(child: MessagesPage())),
     GoRoute(
       path: AppRoutes.notificationsPage.path,
       builder: (context, state) => const AuthGate(child: NotificationsPage()),
@@ -330,13 +308,7 @@ final router = GoRouter(
         return const AuthGate(child: ViewDocumentsPage());
       },
     ),
-    GoRoute(
-      path: AppRoutes.paymentSuccessPage.path,
-      builder: (context, state) => const PaymentSuccessPage(),
-    ),
-    GoRoute(
-      path: AppRoutes.paymentCancelledPage.path,
-      builder: (context, state) => const PaymentCancelledPage(),
-    ),
+    GoRoute(path: AppRoutes.paymentSuccessPage.path, builder: (context, state) => const PaymentSuccessPage()),
+    GoRoute(path: AppRoutes.paymentCancelledPage.path, builder: (context, state) => const PaymentCancelledPage()),
   ],
 );

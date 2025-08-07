@@ -1,0 +1,51 @@
+{
+  "folders": [
+    {
+      "path": ".",
+      "name": "Hands App"
+    }
+  ],
+  "settings": {
+    "search.followSymlinks": false,
+    "search.useIgnoreFiles": true,
+    "search.useGlobalIgnoreFiles": true,
+    "files.watcherExclude": {
+      "**/.dart_tool/**": true,
+      "**/build/**": true,
+      "**/ios/**": true,
+      "**/android/**": true,
+      "**/functions/node_modules/**": true,
+      "**/node_modules/**": true,
+      "**/coverage/**": true,
+      "**/ios/Pods/**": true,
+      "**/android/.gradle/**": true,
+      "**/pubspec.lock": true,
+      "**/.packages": true,
+      "**/ios/Flutter/ephemeral/**": true,
+      "**/macos/Flutter/ephemeral/**": true,
+      "**/linux/flutter/ephemeral/**": true,
+      "**/windows/flutter/ephemeral/**": true,
+      "**/web/packages/**": true
+    },
+    "search.exclude": {
+      "**/.dart_tool/**": true,
+      "**/build/**": true,
+      "**/ios/**": true,
+      "**/android/**": true,
+      "**/functions/node_modules/**": true,
+      "**/node_modules/**": true,
+      "**/coverage/**": true,
+      "**/ios/Pods/**": true,
+      "**/android/.gradle/**": true,
+      "**/pubspec.lock": true,
+      "**/.packages": true,
+      "**/ios/Flutter/ephemeral/**": true,
+      "**/macos/Flutter/ephemeral/**": true,
+      "**/linux/flutter/ephemeral/**": true,
+      "**/windows/flutter/ephemeral/**": true,
+      "**/web/packages/**": true,
+      "**/*.freezed.dart": true,
+      "**/*.g.dart": true
+    }
+  }
+}

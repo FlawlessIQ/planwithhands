@@ -83,6 +83,7 @@ exports.createUser = functions.https.onCall(async (data, context) => {
       userId: userRecord.uid,
       phoneNumber: null,
       isActive: true,
+      onboardingComplete: false, // New users must complete onboarding
     };
 
     logger.info("Creating user document in Firestore...");

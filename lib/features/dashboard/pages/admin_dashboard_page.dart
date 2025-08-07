@@ -10,7 +10,7 @@ import 'package:hands_app/ui/checklist_bottom_sheet.dart';
 import 'package:hands_app/features/shifts/shift_template_bottom_sheet.dart';
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
-import 'package:hands_app/global_widgets/location_selector.dart';
+import 'package:hands_app/global_widgets/unified_menu_button.dart';
 import 'package:hands_app/data/models/shift_data.dart';
 import 'package:hands_app/debug/scheduling_test_data_seeder.dart';
 import 'package:hands_app/debug/role_diagnostic.dart';
@@ -45,15 +45,11 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
   Future<void> _loadLocations() async {
     if (organizationId == null) {
-      debugPrint(
-        '[AdminDashboard] Cannot load locations - organizationId is null',
-      );
+      debugPrint('[AdminDashboard] Cannot load locations - organizationId is null');
       return;
     }
 
-    debugPrint(
-      '[AdminDashboard] Loading locations for organization: $organizationId',
-    );
+    debugPrint('[AdminDashboard] Loading locations for organization: $organizationId');
 
     try {
       final locationsSnap =
@@ -63,16 +59,12 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
               .collection('locations')
               .get();
 
-      debugPrint(
-        '[AdminDashboard] Found ${locationsSnap.docs.length} locations',
-      );
+      debugPrint('[AdminDashboard] Found ${locationsSnap.docs.length} locations');
 
       final locations =
           locationsSnap.docs.map((doc) {
             final data = doc.data();
-            debugPrint(
-              '[AdminDashboard] Location ${doc.id}: ${data['locationName'] ?? 'Unnamed'}',
-            );
+            debugPrint('[AdminDashboard] Location ${doc.id}: ${data['locationName'] ?? 'Unnamed'}');
             return {
               'id': doc.id,
               'name': data['locationName'] ?? 'Unnamed Location',
@@ -99,15 +91,11 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             );
             _selectedLocationId = primaryLocation['id'] as String?;
             _selectedLocationName = primaryLocation['name'] as String?;
-            debugPrint(
-              '[AdminDashboard] Selected location: ${primaryLocation['name']} (${primaryLocation['id']})',
-            );
+            debugPrint('[AdminDashboard] Selected location: ${primaryLocation['name']} (${primaryLocation['id']})');
           } else {
             _selectedLocationId = null;
             _selectedLocationName = null;
-            debugPrint(
-              '[AdminDashboard] No locations found - will create default location',
-            );
+            debugPrint('[AdminDashboard] No locations found - will create default location');
             // Create a default location for the organization
             _createDefaultLocation();
           }
@@ -116,9 +104,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     } catch (e) {
       debugPrint('[AdminDashboard] Error loading locations: $e');
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to load locations: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load locations: $e')));
       }
     }
   }
@@ -127,9 +113,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     if (organizationId == null) return;
 
     try {
-      debugPrint(
-        '[AdminDashboard] Creating default location for organization: $organizationId',
-      );
+      debugPrint('[AdminDashboard] Creating default location for organization: $organizationId');
 
       // Create a default location
       final defaultLocationData = {
@@ -150,9 +134,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           .collection('locations')
           .add(defaultLocationData);
 
-      debugPrint(
-        '[AdminDashboard] Default location created with ID: ${newLocationRef.id}',
-      );
+      debugPrint('[AdminDashboard] Default location created with ID: ${newLocationRef.id}');
 
       // Reload locations after creating the default one
       await _loadLocations();
@@ -160,9 +142,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
-              'Created default location. You can edit it in the Locations section.',
-            ),
+            content: Text('Created default location. You can edit it in the Locations section.'),
             backgroundColor: Colors.green,
           ),
         );
@@ -170,12 +150,9 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     } catch (e) {
       debugPrint('[AdminDashboard] Error creating default location: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to create default location: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to create default location: $e'), backgroundColor: Colors.red));
       }
     }
   }
@@ -196,11 +173,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     }
 
     try {
-      final userDoc =
-          await FirestoreEnforcer.instance
-              .collection('users')
-              .doc(user.uid)
-              .get();
+      final userDoc = await FirestoreEnforcer.instance.collection('users').doc(user.uid).get();
 
       if (userDoc.exists) {
         final userData = userDoc.data();
@@ -209,9 +182,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text(
-                  'User data is corrupted. Please contact support.',
-                ),
+                content: Text('User data is corrupted. Please contact support.'),
                 backgroundColor: Colors.red,
               ),
             );
@@ -219,6 +190,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           }
           return;
         }
+        // Allow all authenticated users - removed onboarding check for existing users
         final role = userData['userRole'] as int? ?? 0;
         final orgId = userData['organizationId'] as String?;
 
@@ -226,9 +198,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
         // Only allow admin access (userRole = 2) and require organizationId
         if (role != 2 || orgId == null) {
-          debugPrint(
-            '[AdminDashboard] Access denied - role: $role, orgId: $orgId',
-          );
+          debugPrint('[AdminDashboard] Access denied - role: $role, orgId: $orgId');
           if (mounted) {
             context.go(AppRoutes.userDashboardPage.path);
           }
@@ -236,24 +206,16 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         }
 
         // Check organization subscription status
-        final orgDoc =
-            await FirestoreEnforcer.instance
-                .collection('organizations')
-                .doc(orgId)
-                .get();
+        final orgDoc = await FirestoreEnforcer.instance.collection('organizations').doc(orgId).get();
 
         if (orgDoc.exists) {
           final orgData = orgDoc.data();
           if (orgData == null) {
-            debugPrint(
-              '[AdminDashboard] Organization document exists but data is null: $orgId',
-            );
+            debugPrint('[AdminDashboard] Organization document exists but data is null: $orgId');
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text(
-                    'Organization data is corrupted. Please contact support.',
-                  ),
+                  content: Text('Organization data is corrupted. Please contact support.'),
                   backgroundColor: Colors.red,
                 ),
               );
@@ -262,20 +224,13 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             return;
           }
 
-          final subscriptionStatus =
-              orgData['subscriptionStatus'] as String? ?? 'pending';
+          final subscriptionStatus = orgData['subscriptionStatus'] as String? ?? 'pending';
 
-          debugPrint(
-            '[AdminDashboard] Organization data keys: ${orgData.keys.toList()}',
-          );
-          debugPrint(
-            '[AdminDashboard] Subscription status: $subscriptionStatus',
-          );
+          debugPrint('[AdminDashboard] Organization data keys: ${orgData.keys.toList()}');
+          debugPrint('[AdminDashboard] Subscription status: $subscriptionStatus');
 
           // Allow active, trialing, or trial subscriptions
-          if (!(subscriptionStatus == 'active' ||
-              subscriptionStatus == 'trialing' ||
-              subscriptionStatus == 'trial')) {
+          if (!(subscriptionStatus == 'active' || subscriptionStatus == 'trialing' || subscriptionStatus == 'trial')) {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -290,15 +245,11 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             return;
           }
         } else {
-          debugPrint(
-            '[AdminDashboard] Organization document not found: $orgId',
-          );
+          debugPrint('[AdminDashboard] Organization document not found: $orgId');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text(
-                  'Organization not found. Please contact support.',
-                ),
+                content: Text('Organization not found. Please contact support.'),
                 backgroundColor: Colors.red,
               ),
             );
@@ -320,10 +271,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         debugPrint('[AdminDashboard] User document not found');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('User not found. Please contact support.'),
-              backgroundColor: Colors.red,
-            ),
+            const SnackBar(content: Text('User not found. Please contact support.'), backgroundColor: Colors.red),
           );
           context.go(AppRoutes.loginPage.path);
         }
@@ -332,12 +280,9 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     } catch (e) {
       debugPrint('[AdminDashboard] Error checking user access: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading dashboard: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error loading dashboard: $e'), backgroundColor: Colors.red));
         context.go(AppRoutes.loginPage.path);
       }
     }
@@ -346,18 +291,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   // Helper method to trigger refresh
   void _triggerRefresh() {
     _refreshTrigger.value++;
-  }
-
-  void _onLocationSelected(String locationId) {
-    setState(() {
-      _selectedLocationId = locationId;
-      _selectedLocationName =
-          _availableLocations.firstWhere(
-            (loc) => loc['id'] == locationId,
-            orElse: () => {'name': 'Unknown'},
-          )['name'];
-    });
-    _triggerRefresh();
   }
 
   @override
@@ -369,23 +302,107 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).primaryColor,
-        title: GenericAppBarContent(
-          appBarTitle: 'Admin Dashboard',
-          userRole: userRole,
-        ),
+        title: GenericAppBarContent(appBarTitle: 'Admin Dashboard', userRole: userRole),
         automaticallyImplyLeading: false,
+        actions: [
+          // Compact location selector for mobile
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: PopupMenuButton<String>(
+              enabled: _availableLocations.isNotEmpty,
+              onSelected: (value) async {
+                setState(() {
+                  _selectedLocationId = value;
+                  _selectedLocationName =
+                      _availableLocations.firstWhere(
+                        (loc) => loc['id'] == value,
+                        orElse: () => {'name': 'Unknown Location'},
+                      )['name'];
+                });
+                _triggerRefresh();
+              },
+              itemBuilder:
+                  (context) =>
+                      _availableLocations.map((location) {
+                        return PopupMenuItem<String>(
+                          value: location['id'],
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.location_on,
+                                color:
+                                    location['id'] == _selectedLocationId
+                                        ? Theme.of(context).primaryColor
+                                        : Colors.grey[600],
+                                size: 16,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  location['name'],
+                                  style: TextStyle(
+                                    fontWeight:
+                                        location['id'] == _selectedLocationId ? FontWeight.bold : FontWeight.normal,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (location['id'] == _selectedLocationId)
+                                const Padding(padding: EdgeInsets.only(left: 8), child: Icon(Icons.check, size: 16)),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+              child: Builder(
+                builder: (context) {
+                  final screenWidth = MediaQuery.of(context).size.width;
+                  final isNarrowScreen = screenWidth < 400;
+
+                  if (isNarrowScreen) {
+                    // Compact mobile version - just location icon
+                    return Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Icon(Icons.location_on, color: Colors.white, size: 20),
+                    );
+                  } else {
+                    // Full desktop version
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.location_on, color: Colors.white, size: 18),
+                          const SizedBox(width: 6),
+                          Text(
+                            _selectedLocationName?.isNotEmpty == true ? _selectedLocationName! : 'Select Location',
+                            style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.arrow_drop_down, color: Colors.white, size: 16),
+                        ],
+                      ),
+                    );
+                  }
+                },
+              ),
+            ),
+          ),
+          // Menu button
+          UnifiedMenuButton(userRole: userRole),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Location selector (only show if multiple locations)
-            LocationSelector(
-              selectedLocationId: _selectedLocationId,
-              availableLocations: _availableLocations,
-              onLocationChanged: _onLocationSelected,
-              isLoading: false,
-            ),
             _buildUsersSection(),
             const SizedBox(height: 16),
             _buildShiftsSection(),
@@ -396,10 +413,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             const SizedBox(height: 16),
             _buildDocumentsSection(),
             // Debug section - only show in debug mode
-            if (kDebugMode) ...[
-              const SizedBox(height: 16),
-              _buildDebugSection(),
-            ],
+            if (kDebugMode) ...[const SizedBox(height: 16), _buildDebugSection()],
           ],
         ),
       ),
@@ -412,32 +426,17 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       child: Column(
         children: [
           ListTile(
-            title: Text(
-              'Users',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-            ),
+            title: Text('Users', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
             trailing: ElevatedButton.icon(
               onPressed: () => _showUserBottomSheet(),
-              icon: const Icon(
-                Icons.add_circle_outline,
-                size: 18,
-                color: Colors.white,
-              ),
-              label: const Text(
-                'Add New',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-              ),
+              icon: const Icon(Icons.add_circle_outline, size: 18, color: Colors.white),
+              label: const Text('Add New', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 minimumSize: const Size(0, 36),
-                shape: const RoundedRectangleBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(8)),
-                ),
+                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
                 elevation: 0,
               ),
             ),
@@ -449,11 +448,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   }
 
   Widget _buildShiftsSection() {
-    return _buildSection(
-      'Shifts',
-      () => _showShiftBottomSheet(),
-      _buildShiftsList(),
-    );
+    return _buildSection('Shifts', () => _showShiftBottomSheet(), _buildShiftsList());
   }
 
   Widget _buildChecklistsSection() {
@@ -463,9 +458,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           ListTile(
             title: Text(
               'Checklists',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
@@ -483,26 +476,14 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                 const SizedBox(width: 8),
                 ElevatedButton.icon(
                   onPressed: () => _showChecklistBottomSheet(),
-                  icon: const Icon(
-                    Icons.add_circle_outline,
-                    size: 18,
-                    color: Colors.white,
-                  ),
-                  label: const Text(
-                    'Add New',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                  ),
+                  icon: const Icon(Icons.add_circle_outline, size: 18, color: Colors.white),
+                  label: const Text('Add New', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     minimumSize: const Size(0, 36),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(8)),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
                     elevation: 0,
                   ),
                 ),
@@ -526,13 +507,9 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'This will copy any organization-level checklists to all locations.',
-                ),
+                Text('This will copy any organization-level checklists to all locations.'),
                 SizedBox(height: 8),
-                Text(
-                  'Each location will get its own copy that can be customized independently.',
-                ),
+                Text('Each location will get its own copy that can be customized independently.'),
                 SizedBox(height: 16),
                 Text(
                   'This is useful when upgrading from the old checklist system.',
@@ -541,10 +518,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
               ],
             ),
             actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
-              ),
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
               ElevatedButton(
                 onPressed: () {
                   Navigator.pop(context);
@@ -559,19 +533,11 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   }
 
   Widget _buildLocationsSection() {
-    return _buildSection(
-      'Locations',
-      () => _showLocationBottomSheet(),
-      _buildLocationsList(),
-    );
+    return _buildSection('Locations', () => _showLocationBottomSheet(), _buildLocationsList());
   }
 
   Widget _buildDocumentsSection() {
-    return _buildSection(
-      'Training Documents',
-      () => _showUploadDocumentBottomSheet(),
-      _buildDocumentsList(),
-    );
+    return _buildSection('Training Documents', () => _showUploadDocumentBottomSheet(), _buildDocumentsList());
   }
 
   Widget _buildSection(String title, VoidCallback onAdd, Widget content) {
@@ -579,34 +545,17 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       child: Column(
         children: [
           ListTile(
-            title: Text(
-              title,
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-            ),
+            title: Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
             trailing: ElevatedButton.icon(
               onPressed: onAdd,
-              icon: const Icon(
-                Icons.add_circle_outline,
-                size: 18,
-                color: Colors.white,
-              ),
-              label: const Text(
-                'Add New',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-              ),
+              icon: const Icon(Icons.add_circle_outline, size: 18, color: Colors.white),
+              label: const Text('Add New', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 minimumSize: const Size(0, 36),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(8)),
-                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
                 elevation: 0,
               ),
             ),
@@ -620,10 +569,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
   Widget _buildUsersList() {
     if (organizationId == null) {
-      return const Padding(
-        padding: EdgeInsets.all(16.0),
-        child: Text('No organization data available'),
-      );
+      return const Padding(padding: EdgeInsets.all(16.0), child: Text('No organization data available'));
     }
 
     return ValueListenableBuilder<int>(
@@ -631,10 +577,11 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       builder: (context, value, child) {
         return StreamBuilder<QuerySnapshot>(
           // Query root users collection by organizationId
-          stream: FirestoreEnforcer.instance
-              .collection('users')
-              .where('organizationId', isEqualTo: organizationId)
-              .snapshots(),
+          stream:
+              FirestoreEnforcer.instance
+                  .collection('users')
+                  .where('organizationId', isEqualTo: organizationId)
+                  .snapshots(),
           builder: (context, snapshot) {
             // Debug logging
             debugPrint('[AdminDashboard] Organization ID: $organizationId');
@@ -643,10 +590,12 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
               debugPrint('[AdminDashboard] Number of users found: ${snapshot.data!.docs.length}');
               for (final doc in snapshot.data!.docs) {
                 final userData = doc.data() as Map<String, dynamic>;
-                debugPrint('[AdminDashboard] User ${doc.id}: ${userData['email']} - orgId: ${userData['organizationId']}');
+                debugPrint(
+                  '[AdminDashboard] User ${doc.id}: ${userData['email']} - orgId: ${userData['organizationId']}',
+                );
               }
             }
-            
+
             if (snapshot.hasError) {
               return Padding(
                 padding: const EdgeInsets.all(16.0),
@@ -655,10 +604,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             }
 
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Center(child: CircularProgressIndicator()),
-              );
+              return const Padding(padding: EdgeInsets.all(16.0), child: Center(child: CircularProgressIndicator()));
             }
 
             final users = snapshot.data?.docs ?? [];
@@ -670,14 +616,8 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                   children: [
                     Icon(Icons.people_outline, size: 48, color: Colors.grey),
                     SizedBox(height: 8),
-                    Text(
-                      'No users found',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                    Text(
-                      'Add users to get started',
-                      style: TextStyle(color: Colors.grey, fontSize: 12),
-                    ),
+                    Text('No users found', style: TextStyle(color: Colors.grey)),
+                    Text('Add users to get started', style: TextStyle(color: Colors.grey, fontSize: 12)),
                   ],
                 ),
               );
@@ -697,36 +637,31 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                         final userLocationId = userData['locationId'] as String?;
                         if (userLocationId == null) return true; // No location data
                         if (userLocationId == _selectedLocationId) return true; // Matches selected
-                        
+
                         // Check if user's locationId exists in current available locations
                         final locationExists = _availableLocations.any((loc) => loc['id'] == userLocationId);
                         if (!locationExists) {
-                          debugPrint('[AdminDashboard] User ${doc.id} has orphaned locationId: $userLocationId - including anyway');
+                          debugPrint(
+                            '[AdminDashboard] User ${doc.id} has orphaned locationId: $userLocationId - including anyway',
+                          );
                           return true; // Include orphaned users
                         }
-                        
+
                         return false; // User belongs to a different existing location
                       }
                       if (role == 1) {
                         // Manager: only show if locationIds contains selected location
                         final locIds =
-                            userData['locationIds'] is List
-                                ? List<String>.from(userData['locationIds'])
-                                : [];
+                            userData['locationIds'] is List ? List<String>.from(userData['locationIds']) : [];
                         return locIds.contains(_selectedLocationId);
                       }
                       return false;
                     })
                     .map((doc) {
                       final userData = doc.data() as Map<String, dynamic>;
-                      final name =
-                          '${userData['firstName'] ?? ''} ${userData['lastName'] ?? ''}'
-                              .trim();
+                      final name = '${userData['firstName'] ?? ''} ${userData['lastName'] ?? ''}'.trim();
                       final email =
-                          userData['emailAddress'] ??
-                          userData['userEmail'] ??
-                          userData['email'] ??
-                          'No email';
+                          userData['emailAddress'] ?? userData['userEmail'] ?? userData['email'] ?? 'No email';
                       final role = userData['userRole'] ?? 0;
                       final roleText =
                           role == 2
@@ -744,11 +679,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                           children: [
                             IconButton(
                               icon: const Icon(Icons.edit),
-                              onPressed:
-                                  () => _showUserBottomSheet(
-                                    doc.id,
-                                    doc.data() as Map<String, dynamic>,
-                                  ),
+                              onPressed: () => _showUserBottomSheet(doc.id, doc.data() as Map<String, dynamic>),
                             ),
                             IconButton(
                               icon: const Icon(Icons.delete, color: Colors.red),
@@ -756,8 +687,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                                   () => _showDeleteConfirmation(
                                     context: context,
                                     title: 'Delete User',
-                                    content:
-                                        'Are you sure you want to delete this user? This action cannot be undone.',
+                                    content: 'Are you sure you want to delete this user? This action cannot be undone.',
                                     onConfirm: () => _deleteUser(doc.id),
                                   ),
                             ),
@@ -784,10 +714,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
   Widget _buildLocationsList() {
     if (organizationId == null) {
-      return const Padding(
-        padding: EdgeInsets.all(16.0),
-        child: Text('No organization data available'),
-      );
+      return const Padding(padding: EdgeInsets.all(16.0), child: Text('No organization data available'));
     }
 
     return ValueListenableBuilder<int>(
@@ -809,10 +736,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             }
 
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Center(child: CircularProgressIndicator()),
-              );
+              return const Padding(padding: EdgeInsets.all(16.0), child: Center(child: CircularProgressIndicator()));
             }
 
             final locations = snapshot.data?.docs ?? [];
@@ -822,20 +746,10 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                 padding: EdgeInsets.all(16.0),
                 child: Column(
                   children: [
-                    Icon(
-                      Icons.location_city_outlined,
-                      size: 48,
-                      color: Colors.grey,
-                    ),
+                    Icon(Icons.location_city_outlined, size: 48, color: Colors.grey),
                     SizedBox(height: 8),
-                    Text(
-                      'No locations found',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                    Text(
-                      'Add a location to get started',
-                      style: TextStyle(color: Colors.grey, fontSize: 12),
-                    ),
+                    Text('No locations found', style: TextStyle(color: Colors.grey)),
+                    Text('Add a location to get started', style: TextStyle(color: Colors.grey, fontSize: 12)),
                   ],
                 ),
               );
@@ -845,10 +759,10 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             final locationsToShow =
                 locations.map((doc) {
                   final locationData = doc.data() as Map<String, dynamic>;
-                  
+
                   // Debug logging
                   debugPrint('[AdminDashboard] Processing location ${doc.id}: $locationData');
-                  
+
                   // Safe string extraction function
                   String safeGetString(dynamic value) {
                     if (value == null) return '';
@@ -860,15 +774,16 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                     }
                     return value.toString();
                   }
-                  
+
                   final name = safeGetString(locationData['locationName']);
                   final displayName = name.isNotEmpty ? name : 'Unnamed Location';
                   // Handle both old and new field names with safe extraction
-                  final address = safeGetString(locationData['street']).isNotEmpty 
-                                 ? safeGetString(locationData['street'])
-                                 : safeGetString(locationData['address']);
+                  final address =
+                      safeGetString(locationData['street']).isNotEmpty
+                          ? safeGetString(locationData['street'])
+                          : safeGetString(locationData['address']);
                   final city = safeGetString(locationData['city']);
-                  
+
                   // Create clean address display without curly braces
                   String addressDisplay = '';
                   if (address.isNotEmpty && city.isNotEmpty) {
@@ -888,11 +803,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       children: [
                         IconButton(
                           icon: const Icon(Icons.edit),
-                          onPressed:
-                              () => _showLocationBottomSheet(
-                                doc.id,
-                                locationData,
-                              ),
+                          onPressed: () => _showLocationBottomSheet(doc.id, locationData),
                         ),
                         IconButton(
                           icon: const Icon(Icons.delete, color: Colors.red),
@@ -900,8 +811,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                               () => _showDeleteConfirmation(
                                 context: context,
                                 title: 'Delete Location',
-                                content:
-                                    'Are you sure you want to delete this location? This action cannot be undone.',
+                                content: 'Are you sure you want to delete this location? This action cannot be undone.',
                                 onConfirm: () => _deleteLocation(doc.id),
                               ),
                         ),
@@ -927,10 +837,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
   Widget _buildShiftsList() {
     if (organizationId == null) {
-      return const Padding(
-        padding: EdgeInsets.all(16.0),
-        child: Text('No organization data available'),
-      );
+      return const Padding(padding: EdgeInsets.all(16.0), child: Text('No organization data available'));
     }
 
     return ValueListenableBuilder<int>(
@@ -952,22 +859,12 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             }
 
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Center(child: CircularProgressIndicator()),
-              );
+              return const Padding(padding: EdgeInsets.all(16.0), child: Center(child: CircularProgressIndicator()));
             }
 
             final snapshotDocs = snapshot.data?.docs ?? [];
             final allShifts =
-                snapshotDocs
-                    .map(
-                      (doc) => {
-                        'id': doc.id,
-                        'data': doc.data() as Map<String, dynamic>,
-                      },
-                    )
-                    .toList();
+                snapshotDocs.map((doc) => {'id': doc.id, 'data': doc.data() as Map<String, dynamic>}).toList();
 
             // Filter shifts by selected location if a location is selected
             List<Map<String, dynamic>> filteredShifts = allShifts;
@@ -975,9 +872,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
               filteredShifts =
                   allShifts.where((shift) {
                     final shiftData = shift['data'] as Map<String, dynamic>;
-                    final locationIds = List<String>.from(
-                      shiftData['locationIds'] ?? [],
-                    );
+                    final locationIds = List<String>.from(shiftData['locationIds'] ?? []);
                     return locationIds.contains(_selectedLocationId);
                   }).toList();
             }
@@ -990,9 +885,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                     Icon(Icons.schedule_outlined, size: 48, color: Colors.grey),
                     const SizedBox(height: 8),
                     Text(
-                      _selectedLocationId != null
-                          ? 'No shifts found for selected location'
-                          : 'No shifts found',
+                      _selectedLocationId != null ? 'No shifts found for selected location' : 'No shifts found',
                       style: const TextStyle(color: Colors.grey),
                     ),
                     Text(
@@ -1010,14 +903,11 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                   final shiftData = shift['data'] as Map<String, dynamic>;
                   final shiftId = shift['id'] as String;
 
-                  final name =
-                      shiftData['shiftName'] as String? ?? 'Unnamed Shift';
+                  final name = shiftData['shiftName'] as String? ?? 'Unnamed Shift';
                   final startTime = shiftData['startTime'] ?? '';
                   final endTime = shiftData['endTime'] ?? '';
                   final roles = List<String>.from(shiftData['jobType'] ?? []);
-                  final locationIds = List<String>.from(
-                    shiftData['locationIds'] ?? [],
-                  );
+                  final locationIds = List<String>.from(shiftData['locationIds'] ?? []);
 
                   // Get location names for this shift
                   final locationNames =
@@ -1039,10 +929,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                         if (locationNames.isNotEmpty)
                           Text(
                             'Locations: ${locationNames.join(', ')}',
-                            style: TextStyle(
-                              color: Theme.of(context).primaryColor,
-                              fontSize: 12,
-                            ),
+                            style: TextStyle(color: Theme.of(context).primaryColor, fontSize: 12),
                           ),
                       ],
                     ),
@@ -1051,11 +938,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       children: [
                         IconButton(
                           icon: const Icon(Icons.edit),
-                          onPressed:
-                              () => _showShiftBottomSheet(
-                                shiftId,
-                                ShiftData.fromJson(shiftData),
-                              ),
+                          onPressed: () => _showShiftBottomSheet(shiftId, ShiftData.fromJson(shiftData)),
                         ),
                         IconButton(
                           icon: const Icon(Icons.delete, color: Colors.red),
@@ -1063,8 +946,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                               () => _showDeleteConfirmation(
                                 context: context,
                                 title: 'Delete Shift',
-                                content:
-                                    'Are you sure you want to delete $name? This action cannot be undone.',
+                                content: 'Are you sure you want to delete $name? This action cannot be undone.',
                                 onConfirm: () => _deleteShift(shiftId),
                               ),
                         ),
@@ -1090,10 +972,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
   Widget _buildChecklistsList() {
     if (organizationId == null) {
-      return const Padding(
-        padding: EdgeInsets.all(16.0),
-        child: Text('No organization data available'),
-      );
+      return const Padding(padding: EdgeInsets.all(16.0), child: Text('No organization data available'));
     }
 
     // Show organization-level checklist templates (not location-specific)
@@ -1116,10 +995,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             }
 
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Center(child: CircularProgressIndicator()),
-              );
+              return const Padding(padding: EdgeInsets.all(16.0), child: Center(child: CircularProgressIndicator()));
             }
 
             final checklists = snapshot.data?.docs ?? [];
@@ -1129,11 +1005,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   children: [
-                    Icon(
-                      Icons.checklist_outlined,
-                      size: 48,
-                      color: Colors.grey,
-                    ),
+                    Icon(Icons.checklist_outlined, size: 48, color: Colors.grey),
                     SizedBox(height: 8),
                     Text(
                       _selectedLocationName != null
@@ -1141,10 +1013,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                           : 'No checklists found',
                       style: TextStyle(color: Colors.grey),
                     ),
-                    Text(
-                      'Create checklists to track tasks',
-                      style: TextStyle(color: Colors.grey, fontSize: 12),
-                    ),
+                    Text('Create checklists to track tasks', style: TextStyle(color: Colors.grey, fontSize: 12)),
                   ],
                 ),
               );
@@ -1155,10 +1024,8 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                 checklists.map((doc) {
                   final checklistData = doc.data() as Map<String, dynamic>;
                   final name = checklistData['name'] ?? 'Unnamed Checklist';
-                  final description =
-                      checklistData['description'] ?? 'No description';
-                  final tasksList =
-                      checklistData['tasks'] as List<dynamic>? ?? [];
+                  final description = checklistData['description'] ?? 'No description';
+                  final tasksList = checklistData['tasks'] as List<dynamic>? ?? [];
                   final taskCount = tasksList.length;
 
                   return ListTile(
@@ -1170,11 +1037,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       children: [
                         IconButton(
                           icon: const Icon(Icons.edit),
-                          onPressed:
-                              () => _showChecklistBottomSheet(
-                                doc.id,
-                                checklistData,
-                              ),
+                          onPressed: () => _showChecklistBottomSheet(doc.id, checklistData),
                         ),
                         IconButton(
                           icon: const Icon(Icons.delete, color: Colors.red),
@@ -1182,8 +1045,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                               () => _showDeleteConfirmation(
                                 context: context,
                                 title: 'Delete Checklist',
-                                content:
-                                    'Are you sure you want to delete $name? This action cannot be undone.',
+                                content: 'Are you sure you want to delete $name? This action cannot be undone.',
                                 onConfirm: () => _deleteChecklist(doc.id),
                               ),
                         ),
@@ -1198,8 +1060,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       height: 300, // Fixed height for scrollable area
                       child: ListView.builder(
                         itemCount: checklistsToShow.length,
-                        itemBuilder:
-                            (context, index) => checklistsToShow[index],
+                        itemBuilder: (context, index) => checklistsToShow[index],
                       ),
                     )
                     : Column(children: checklistsToShow);
@@ -1213,10 +1074,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
   Widget _buildDocumentsList() {
     if (organizationId == null) {
-      return const Padding(
-        padding: EdgeInsets.all(16.0),
-        child: Text('No organization data available'),
-      );
+      return const Padding(padding: EdgeInsets.all(16.0), child: Text('No organization data available'));
     }
 
     return ValueListenableBuilder<int>(
@@ -1238,10 +1096,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             }
 
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Center(child: CircularProgressIndicator()),
-              );
+              return const Padding(padding: EdgeInsets.all(16.0), child: Center(child: CircularProgressIndicator()));
             }
 
             final documents = snapshot.data?.docs ?? [];
@@ -1251,16 +1106,9 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                 padding: EdgeInsets.all(16.0),
                 child: Column(
                   children: [
-                    Icon(
-                      Icons.description_outlined,
-                      size: 48,
-                      color: Colors.grey,
-                    ),
+                    Icon(Icons.description_outlined, size: 48, color: Colors.grey),
                     SizedBox(height: 8),
-                    Text(
-                      'No documents found',
-                      style: TextStyle(color: Colors.grey),
-                    ),
+                    Text('No documents found', style: TextStyle(color: Colors.grey)),
                     Text(
                       'Upload training materials to get started',
                       style: TextStyle(color: Colors.grey, fontSize: 12),
@@ -1287,11 +1135,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                         children: [
                           IconButton(
                             icon: const Icon(Icons.edit),
-                            onPressed:
-                                () => _showUploadDocumentBottomSheet(
-                                  doc.id,
-                                  docData,
-                                ),
+                            onPressed: () => _showUploadDocumentBottomSheet(doc.id, docData),
                           ),
                           IconButton(
                             icon: const Icon(Icons.delete, color: Colors.red),
@@ -1299,8 +1143,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                                 () => _showDeleteConfirmation(
                                   context: context,
                                   title: 'Delete Document',
-                                  content:
-                                      'Are you sure you want to delete $title? This action cannot be undone.',
+                                  content: 'Are you sure you want to delete $title? This action cannot be undone.',
                                   onConfirm: () => _deleteDocument(doc.id),
                                 ),
                           ),
@@ -1339,9 +1182,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder:
-          (context) =>
-              UserManagementBottomSheet(userId: userId, userData: userData),
+      builder: (context) => UserManagementBottomSheet(userId: userId, userData: userData),
     );
   }
 
@@ -1363,15 +1204,12 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     );
   }
 
-  void _showLocationBottomSheet([
-    String? locationId,
-    Map<String, dynamic>? locationData,
-  ]) {
+  void _showLocationBottomSheet([String? locationId, Map<String, dynamic>? locationData]) {
     debugPrint('[AdminDashboard] Showing location bottom sheet');
     debugPrint('[AdminDashboard] Location ID: $locationId');
     debugPrint('[AdminDashboard] Location data: $locationData');
     debugPrint('[AdminDashboard] Location data type: ${locationData.runtimeType}');
-    
+
     // Helper function to safely extract string values
     String? safeGetString(dynamic value) {
       if (value == null) return null;
@@ -1385,7 +1223,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     final safeCity = safeGetString(locationData?['city']);
     final safeState = safeGetString(locationData?['state']);
     final safeZip = safeGetString(locationData?['zipCode']) ?? safeGetString(locationData?['zip']);
-    
+
     debugPrint('[AdminDashboard] Processed values:');
     debugPrint('[AdminDashboard] - Name: $safeName');
     debugPrint('[AdminDashboard] - Street: $safeStreet');
@@ -1407,11 +1245,11 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
               // Handle save logic here
               try {
                 debugPrint('[AdminDashboard] Saving location data: $updatedData');
-                
+
                 if (organizationId == null) {
                   throw Exception('Organization ID not available');
                 }
-                
+
                 if (locationId != null) {
                   // Update existing location
                   await FirestoreEnforcer.instance
@@ -1420,21 +1258,18 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       .collection('locations')
                       .doc(locationId)
                       .update({
-                    'locationName': updatedData['name'],
-                    'street': updatedData['street'],
-                    'city': updatedData['city'], 
-                    'state': updatedData['state'],
-                    'zipCode': updatedData['zip'],
-                    'updatedAt': FieldValue.serverTimestamp(),
-                  });
-                  
+                        'locationName': updatedData['name'],
+                        'street': updatedData['street'],
+                        'city': updatedData['city'],
+                        'state': updatedData['state'],
+                        'zipCode': updatedData['zip'],
+                        'updatedAt': FieldValue.serverTimestamp(),
+                      });
+
                   debugPrint('[AdminDashboard] Location updated successfully');
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Location updated successfully'),
-                        backgroundColor: Colors.green,
-                      ),
+                      const SnackBar(content: Text('Location updated successfully'), backgroundColor: Colors.green),
                     );
                   }
                 } else {
@@ -1444,41 +1279,34 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       .doc(organizationId)
                       .collection('locations')
                       .add({
-                    'locationName': updatedData['name'],
-                    'street': updatedData['street'],
-                    'city': updatedData['city'],
-                    'state': updatedData['state'],
-                    'zipCode': updatedData['zip'],
-                    'isPrimary': false, // New locations are not primary by default
-                    'isActive': true,
-                    'organizationId': organizationId,
-                    'createdAt': FieldValue.serverTimestamp(),
-                    'createdBy': FirebaseAuth.instance.currentUser?.uid,
-                  });
-                  
+                        'locationName': updatedData['name'],
+                        'street': updatedData['street'],
+                        'city': updatedData['city'],
+                        'state': updatedData['state'],
+                        'zipCode': updatedData['zip'],
+                        'isPrimary': false, // New locations are not primary by default
+                        'isActive': true,
+                        'organizationId': organizationId,
+                        'createdAt': FieldValue.serverTimestamp(),
+                        'createdBy': FirebaseAuth.instance.currentUser?.uid,
+                      });
+
                   debugPrint('[AdminDashboard] Location created successfully');
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Location created successfully'),
-                        backgroundColor: Colors.green,
-                      ),
+                      const SnackBar(content: Text('Location created successfully'), backgroundColor: Colors.green),
                     );
                   }
                 }
-                
+
                 // Reload locations to reflect changes
                 await _loadLocations();
-                
               } catch (e) {
                 debugPrint('[AdminDashboard] Error saving location: $e');
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Error saving location: $e'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('Error saving location: $e'), backgroundColor: Colors.red));
                 }
               }
             },
@@ -1486,19 +1314,12 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     );
   }
 
-  void _showChecklistBottomSheet([
-    String? checklistId,
-    Map<String, dynamic>? checklistData,
-  ]) {
+  void _showChecklistBottomSheet([String? checklistId, Map<String, dynamic>? checklistData]) {
     // For organization-level checklists, we don't need a specific location
     if (organizationId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Organization ID not available. Please try refreshing the page.',
-          ),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Organization ID not available. Please try refreshing the page.')));
       return;
     }
 
@@ -1508,18 +1329,14 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       builder:
           (context) => ChecklistBottomSheet(
             organizationId: organizationId!,
-            locationId:
-                _selectedLocationId ??
-                'no-location', // Use placeholder if no location
+            locationId: _selectedLocationId ?? 'no-location', // Use placeholder if no location
             checklistId: checklistId,
             initialData: checklistData,
             availableLocations: _availableLocations,
             onSave: (result) {
               _saveChecklist(
                 checklistData: result['checklistData'],
-                selectedShiftIds: List<String>.from(
-                  result['selectedShiftIds'] ?? [],
-                ),
+                selectedShiftIds: List<String>.from(result['selectedShiftIds'] ?? []),
                 duplicateToAll: result['duplicateToAll'] ?? false,
                 existingChecklistId: checklistId,
               );
@@ -1535,9 +1352,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     String? existingChecklistId,
   }) async {
     if (organizationId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error: Missing organization ID.')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error: Missing organization ID.')));
       return;
     }
 
@@ -1567,17 +1382,13 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     if (existingChecklistId != null) {
       // Find all shifts currently containing the checklist
       final shiftsWithChecklistSnapshot =
-          await shiftsCollection
-              .where('checklistTemplateIds', arrayContains: existingChecklistId)
-              .get();
+          await shiftsCollection.where('checklistTemplateIds', arrayContains: existingChecklistId).get();
 
       for (final shiftDoc in shiftsWithChecklistSnapshot.docs) {
         // If a shift that had the checklist is not in the new selection, remove it
         if (!selectedShiftIds.contains(shiftDoc.id)) {
           batch.update(shiftDoc.reference, {
-            'checklistTemplateIds': FieldValue.arrayRemove([
-              existingChecklistId,
-            ]),
+            'checklistTemplateIds': FieldValue.arrayRemove([existingChecklistId]),
           });
         }
       }
@@ -1592,30 +1403,21 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     try {
       await batch.commit();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Checklist saved successfully!'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Checklist saved successfully!'), backgroundColor: Colors.green));
       }
       _triggerRefresh();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to save checklist: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to save checklist: $e'), backgroundColor: Colors.red));
       }
     }
   }
 
-  void _showUploadDocumentBottomSheet([
-    String? docId,
-    Map<String, dynamic>? docData,
-  ]) {
+  void _showUploadDocumentBottomSheet([String? docId, Map<String, dynamic>? docData]) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1632,23 +1434,15 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
   Future<void> _deleteUser(String userId) async {
     try {
-      await FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(organizationId)
-          .collection('users')
-          .doc(userId)
-          .delete();
+      // Delete from root 'users' collection (not under organization)
+      await FirestoreEnforcer.instance.collection('users').doc(userId).delete();
       _triggerRefresh();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('User deleted successfully')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('User deleted successfully')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error deleting user: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting user: $e')));
       }
     }
   }
@@ -1665,15 +1459,11 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           .delete();
       _triggerRefresh();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Location deleted successfully')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location deleted successfully')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error deleting location: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting location: $e')));
       }
     }
   }
@@ -1688,15 +1478,11 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           .delete();
       _triggerRefresh();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Shift deleted successfully')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Shift deleted successfully')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error deleting shift: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting shift: $e')));
       }
     }
   }
@@ -1711,15 +1497,11 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           .delete();
       _triggerRefresh();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Document deleted successfully')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Document deleted successfully')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error deleting document: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting document: $e')));
       }
     }
   }
@@ -1735,15 +1517,11 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           .delete();
       _triggerRefresh();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Checklist deleted successfully')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Checklist deleted successfully')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error deleting checklist: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting checklist: $e')));
       }
     }
   }
@@ -1761,10 +1539,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             title: Text(title),
             content: Text(content),
             actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
-              ),
+              TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
               TextButton(
                 onPressed: () {
                   Navigator.of(context).pop();
@@ -1793,35 +1568,20 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
       if (orgChecklistsSnapshot.docs.isEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'No organization-level checklists found to migrate',
-              ),
-            ),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('No organization-level checklists found to migrate')));
         }
         return;
       }
 
-      // Get all locations
+      // Get all locations for the organization
       final locationsSnapshot =
           await FirestoreEnforcer.instance
               .collection('organizations')
               .doc(organizationId)
               .collection('locations')
               .get();
-
-      if (locationsSnapshot.docs.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No locations found to migrate checklists to'),
-            ),
-          );
-        }
-        return;
-      }
 
       int migratedCount = 0;
 
@@ -1831,8 +1591,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
         for (final locationDoc in locationsSnapshot.docs) {
           final locationData = locationDoc.data();
-          final locationName =
-              locationData['locationName'] ?? 'Unknown Location';
+          final locationName = locationData['locationName'] ?? 'Unknown Location';
 
           // Create location-specific checklist
           final locationChecklistData = {
@@ -1857,19 +1616,13 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Migrated $migratedCount location-specific checklists successfully',
-            ),
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Migrated $migratedCount location-specific checklists successfully')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error migrating checklists: $e')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error migrating checklists: $e')));
       }
     }
   }
@@ -1887,18 +1640,14 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                 const SizedBox(width: 8),
                 Text(
                   'Debug Tools',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.orange,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.orange),
                 ),
               ],
             ),
             const SizedBox(height: 16),
-            Text(
-              'Development and testing utilities (Debug mode only)',
-              style: TextStyle(color: Colors.grey[600]),
-            ),
+            Text('Development and testing utilities (Debug mode only)', style: TextStyle(color: Colors.grey[600])),
             const SizedBox(height: 16),
             // Role Diagnostic Widget
             const RoleDiagnostic(),
@@ -1906,39 +1655,27 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             ElevatedButton.icon(
               onPressed: () async {
                 if (organizationId == null || _selectedLocationId == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Please select an organization and location first',
-                      ),
-                    ),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('Please select an organization and location first')));
                   return;
                 }
                 try {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Seeding test data...')),
-                  );
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Seeding test data...')));
                   await SchedulingTestDataSeeder.seedTestData(
                     organizationId: organizationId!,
                     locationId: _selectedLocationId!,
                   );
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('✅ Test data seeded successfully!'),
-                        backgroundColor: Colors.green,
-                      ),
+                      const SnackBar(content: Text('✅ Test data seeded successfully!'), backgroundColor: Colors.green),
                     );
                   }
                 } catch (e) {
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Error seeding data: $e'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text('Error seeding data: $e'), backgroundColor: Colors.red));
                   }
                 }
               },
