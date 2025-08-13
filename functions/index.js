@@ -2,6 +2,7 @@
 module.exports = {
   ...require("./stripe_functions"),
   ...require("./user_functions"),
+  ...require("./places_functions"),
 };
 
 // Create and deploy your first functions

@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
@@ -11,12 +12,17 @@ import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/services/web_asset_service.dart';
 import 'package:hands_app/services/stripe_service.dart';
 import 'package:hands_app/services/daily_background_service.dart';
+import 'package:hands_app/services/push_notification_service.dart';
+import 'package:hands_app/debug/functions_connection_debug.dart';
+import 'package:timezone/data/latest.dart' as tz;
 
 // Global provider for Crashlytics availability
 final crashlyticsEnabledProvider = StateProvider<bool>((ref) => false);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Initialize time zone database once at startup
+  tz.initializeTimeZones();
 
   // Set URL strategy for web to use path-based URLs
   if (kIsWeb) {
@@ -26,6 +32,18 @@ void main() async {
 
   // Initialize Firebase
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Initialize push notifications on mobile platforms
+  if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.android)) {
+    // Set up background message handler
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
+    // Initialize push notification service
+    await PushNotificationService().initialize();
+  }
+
+  // In debug, connect Functions to local emulator so Places proxy works on web locally
+  await connectFunctionsEmulatorIfNeeded();
 
   // Initialize Stripe only on supported platforms (iOS/Android)
   if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.android)) {
@@ -132,7 +150,7 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
+  return MaterialApp.router(
       title: 'Hands App',
       theme: handsTheme,
       routerConfig: router,

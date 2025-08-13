@@ -2,49 +2,142 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow users to read their own document.
-    // Allow users to create their own document upon sign-up.
-    // Allow users to update their own document if they are logged in.
-    match /users/{userId} {
-      allow read, update, delete: if request.auth != null && request.auth.uid == userId;
-      allow create: if request.auth != null;
-    }
-    
-    // Allow authenticated users to read/write organization data if they belong to it
-    // Also allow unauthenticated read access for invite onboarding
-    match /organizations/{orgId} {
-      allow read: if request.auth != null && 
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId == orgId;
-      allow read: if request.auth == null; // <-- TEMP: allow unauthenticated read for invites
-      allow write: if request.auth != null && 
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId == orgId;
-    }
-    
-    // Allow authenticated users to read/write locations for their organization
-    match /locations/{locationId} {
-      allow read, write: if request.auth != null && 
-        exists(/databases/$(database)/documents/users/$(request.auth.uid));
-    }
-    
-    // Allow authenticated users to manage their own shifts and checklists
-    match /shifts/{shiftId} {
-      allow read, write: if request.auth != null;
-    }
-    
-    match /checklists/{checklistId} {
-      allow read, write: if request.auth != null;
-    }
-    
-    // Allow access to invites for account creation
-    match /invites/{inviteId} {
-      allow read, write: if true; // Invites need to be accessible before authentication
+    // -------------------------------------------------------------------
+    // Helper functions (scoped to entire database)
+    // -------------------------------------------------------------------
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
-    // Default deny for other documents
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+    function hasUserDoc() {
+      return request.auth != null && exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
+
+    // orgMemberships: array of orgIds (fallback to legacy organizationId field)
+    function orgMemberships() {
+      return hasUserDoc() && userDoc().data.orgMemberships != null
+        ? userDoc().data.orgMemberships
+        : (hasUserDoc() && userDoc().data.organizationId != null
+            ? [ userDoc().data.organizationId ]
+            : []);
+    }
+
+    function isOrgMember(orgId) {
+      return request.auth != null && orgMemberships().hasAny([orgId]);
+    }
+
+    // roles: map { orgId: 'admin' | 'manager' | 'member' }
+    function roleInOrg(orgId) {
+      return hasUserDoc() && userDoc().data.roles != null && userDoc().data.roles[orgId] != null
+        ? userDoc().data.roles[orgId]
+        : (hasUserDoc() && userDoc().data.organizationId == orgId && userDoc().data.userRole != null
+            ? (userDoc().data.userRole == 2 ? 'admin' : (userDoc().data.userRole == 1 ? 'manager' : 'member'))
+            : null);
+    }
+
+    function isOrgManagerOrAdmin(orgId) {
+      return ['admin','manager'].hasAny([ roleInOrg(orgId) ]);
+    }
+
+    // Utility: ensure request contains only allowed fields when updating specific docs
+    function keysExactly(allowed) {
+      return request.resource.data.keys().hasOnly(allowed) && request.resource.data.keys().hasAll(allowed);
+    }
+
+    // -------------------------------------------------------------------
+    // Users (retain existing self-access pattern)
+    // -------------------------------------------------------------------
+    match /users/{userId} {
+      allow read, update, delete: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null; // signup flow
+    }
+
+    // -------------------------------------------------------------------
+    // Organizations (legacy behavior retained; tighten later as needed)
+    // -------------------------------------------------------------------
+    match /organizations/{orgId} {
+      allow read: if request.auth == null; // TEMP for invites
+      allow read: if isOrgMember(orgId);
+      allow write: if isOrgMember(orgId) && isOrgManagerOrAdmin(orgId);
+    }
+
+    // Locations, shifts, checklists (retain broad authenticated access - adjust if needed)
+    match /locations/{locationId} { allow read, write: if request.auth != null; }
+    match /shifts/{shiftId}     { allow read, write: if request.auth != null; }
+    match /checklists/{cid}     { allow read, write: if request.auth != null; }
+
+    // Invites (public for onboarding)
+    match /invites/{inviteId} { allow read, write: if true; }
+
+    // -------------------------------------------------------------------
+    // Messaging: messageThreads, messages subcollection, notifications, deviceTokens
+    // -------------------------------------------------------------------
+
+    // Threads
+    match /messageThreads/{threadId} {
+      allow get, list: if request.auth != null &&
+        isOrgMember(resource.data.orgId) &&
+        resource.data.recipientUserIds != null && resource.data.recipientUserIds.hasAny([request.auth.uid]);
+
+      // Create thread
+      allow create: if request.auth != null &&
+        isOrgMember(request.resource.data.orgId) &&
+        request.resource.data.createdBy == request.auth.uid &&
+        (
+          // Target-based types require manager/admin
+          (request.resource.data.targetType in ['all_users','shift','role','location','group'] && isOrgManagerOrAdmin(request.resource.data.orgId)) ||
+          // Custom: creator must be org member. (Full recipient membership validation must be enforced server-side.)
+          (request.resource.data.targetType == 'custom' && request.resource.data.recipientUserIds.hasAny([request.auth.uid]))
+        );
+
+      // Disallow client updates & deletes (server functions use Admin SDK bypassing rules)
+      allow update, delete: if false;
+
+      // Messages subcollection
+      match /messages/{messageId} {
+        allow get, list: if request.auth != null &&
+          isOrgMember(resource.data.orgId) &&
+          exists(/databases/$(database)/documents/messageThreads/$(threadId)) &&
+          get(/databases/$(database)/documents/messageThreads/$(threadId)).data.recipientUserIds.hasAny([request.auth.uid]);
+
+        allow create: if request.auth != null &&
+          request.resource.data.senderId == request.auth.uid &&
+          isOrgMember(request.resource.data.orgId) &&
+          request.resource.data.orgId == get(/databases/$(database)/documents/messageThreads/$(threadId)).data.orgId &&
+          get(/databases/$(database)/documents/messageThreads/$(threadId)).data.recipientUserIds.hasAny([request.auth.uid]);
+
+        allow update, delete: if false;
+      }
+    }
+
+    // Notifications
+    match /notifications/{notifId} {
+      allow get, list: if request.auth != null &&
+        isOrgMember(resource.data.orgId) && resource.data.userId == request.auth.uid;
+
+      // Only allow marking read -> true (no other field modifications)
+      allow update: if request.auth != null &&
+        resource.data.userId == request.auth.uid &&
+        isOrgMember(resource.data.orgId) &&
+        request.resource.data.read == true &&
+        resource.data.read == false &&
+        keysExactly(['read']);
+
+      // Creation handled by backend (deny from clients)
+      allow create, delete: if false;
+    }
+
+    // Device tokens (per-user ownership)
+    match /deviceTokens/{tokenId} {
+      allow get, list: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update: if request.auth != null && resource.data.userId == request.auth.uid && request.resource.data.userId == resource.data.userId;
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // -------------------------------------------------------------------
+    // Catch-all: deny (explicit collections above manage access)
+    // -------------------------------------------------------------------
+    match /{document=**} { allow read, write: if false; }
   }
 }

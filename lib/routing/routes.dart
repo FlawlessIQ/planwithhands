@@ -10,6 +10,7 @@ import 'package:hands_app/features/settings/pages/settings_page.dart';
 import 'package:hands_app/features/training/pages/training_materials_page.dart';
 import 'package:hands_app/pages/notifications_page.dart';
 import 'package:hands_app/pages/messages_page.dart';
+import 'package:hands_app/features/messaging/pages/message_thread_page.dart';
 import 'package:hands_app/pages/sign_in_page.dart';
 import 'package:hands_app/pages/welcome_page.dart';
 import 'package:hands_app/pages/payment_success_page.dart';
@@ -22,6 +23,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/constants/firestore_names.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/services/push_notification_service.dart';
 
 enum AppRoutes {
   homePage('/'),
@@ -37,6 +39,7 @@ enum AppRoutes {
   managerDashboardPage('/manager_dashboard'),
   schedulePage('/schedule'),
   messagesPage('/messages'),
+  threadPage('/threads/:threadId'),
   notificationsPage('/notifications'),
   paymentSuccessPage('/payment-success'),
   paymentCancelledPage('/payment-cancelled');
@@ -228,7 +231,32 @@ class AuthGateWithOrgForAdmin extends ConsumerWidget {
   }
 }
 
+class _ThreadRouteGate extends ConsumerWidget {
+  final String threadId;
+  const _ThreadRouteGate({required this.threadId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const LoginPage();
+    return FutureBuilder<DocumentSnapshot>(
+      future: FirestoreEnforcer.instance.collection(FirestoreCollectionNames.users).doc(user.uid).get(),
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        if (!snap.hasData || !snap.data!.exists) return const LoginPage();
+        final data = snap.data!.data() as Map<String, dynamic>?;
+        final orgId = data?['organizationId'] as String?;
+        if (orgId == null) return const LoginPage();
+        return MessageThreadPage(orgId: orgId, threadId: threadId);
+      },
+    );
+  }
+}
+
 final router = GoRouter(
+  navigatorKey: PushNotificationService.navigatorKey,
   redirect: (context, state) {
     // Debug logging for ALL routing
     print('[ROUTER] ===============================');
@@ -261,7 +289,16 @@ final router = GoRouter(
       }
     }
 
-    // TEMPORARILY DISABLE ALL OTHER REDIRECTS FOR TESTING
+    // Stripe return/cancel legacy links: /dashboard?payment=success or /dashboard?payment=cancel
+    if (routerPath == '/dashboard') {
+      final paymentParam = state.uri.queryParameters['payment'];
+      if (paymentParam == 'success') {
+        return AppRoutes.paymentSuccessPage.path;
+      } else if (paymentParam == 'cancel') {
+        return AppRoutes.paymentCancelledPage.path;
+      }
+    }
+
     return null;
   },
   // Default to home, which will redirect to the appropriate dashboard
@@ -297,6 +334,13 @@ final router = GoRouter(
     GoRoute(path: AppRoutes.managerDashboardPage.path, builder: (context, state) => const AuthGateWithOrgForManager()),
     GoRoute(path: AppRoutes.schedulePage.path, builder: (context, state) => const AuthGate(child: SchedulePage())),
     GoRoute(path: AppRoutes.messagesPage.path, builder: (context, state) => const AuthGate(child: MessagesPage())),
+    GoRoute(
+      path: AppRoutes.threadPage.path,
+      builder: (context, state) {
+        final threadId = state.pathParameters['threadId']!;
+        return _ThreadRouteGate(threadId: threadId);
+      },
+    ),
     GoRoute(
       path: AppRoutes.notificationsPage.path,
       builder: (context, state) => const AuthGate(child: NotificationsPage()),
