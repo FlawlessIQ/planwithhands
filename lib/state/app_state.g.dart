@@ -54,7 +54,7 @@ Json? _$JsonConverterToJson<Json, Value>(
 // RiverpodGenerator
 // **************************************************************************
 
-String _$appStateHash() => r'5794f407dc120f4339dcb09ebe808bacfba631cb';
+String _$appStateHash() => r'bf85edf1b2665e437470533c452a077de3c11bfe';
 
 /// See also [AppState].
 @ProviderFor(AppState)

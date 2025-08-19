@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:developer';
+import 'package:flutter/foundation.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -12,6 +13,9 @@ import 'package:hands_app/state/user_state.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:hands_app/services/daily_checklist_service.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/features/messaging/services/token_registration_service.dart';
+import 'package:hands_app/utils/location_helper.dart';
+import 'package:hands_app/utils/jobtype_helper.dart';
 
 part 'auth_controller.g.dart';
 
@@ -35,41 +39,41 @@ class AuthController extends _$AuthController {
   }
 
   Future<UserData?> signIn(String email, String password) async {
-    print('[AUTH_CONTROLLER] Attempting sign in for email: $email');
+    debugPrint('[AUTH_CONTROLLER] Attempting sign in for email: $email');
     try {
       // Sign in with email and password
       final userCredential = await _auth.signInWithEmailAndPassword(email: email, password: password);
       final user = userCredential.user;
-      print('[AUTH_CONTROLLER] Firebase Auth sign-in successful. UID: ${user?.uid}');
+      debugPrint('[AUTH_CONTROLLER] Firebase Auth sign-in successful. UID: ${user?.uid}');
 
       if (user == null) {
-        print('[AUTH_CONTROLLER] Error: User is null after sign-in.');
+        debugPrint('[AUTH_CONTROLLER] Error: User is null after sign-in.');
         return null;
       }
 
       // First, fetch user data from Firestore
       final FirebaseFirestore firestore = FirestoreEnforcer.instance;
       final userId = user.uid;
-      print('[AUTH_CONTROLLER] Looking up Firestore user with UID: $userId');
+      debugPrint('[AUTH_CONTROLLER] Looking up Firestore user with UID: $userId');
 
       DocumentSnapshot snapshot = await firestore.collection(FirestoreCollectionNames.users).doc(userId).get();
 
-      print('[AUTH_CONTROLLER] Firestore user document exists: ${snapshot.exists}');
+      debugPrint('[AUTH_CONTROLLER] Firestore user document exists: ${snapshot.exists}');
 
       if (snapshot.exists) {
         // If the document exists, update lastLogin
         try {
           await firestore.collection('users').doc(userId).update({'lastLogin': FieldValue.serverTimestamp()});
-          print('[AUTH_CONTROLLER] lastLogin timestamp updated successfully.');
+          debugPrint('[AUTH_CONTROLLER] lastLogin timestamp updated successfully.');
         } catch (e) {
-          print(
+          debugPrint(
             '[AUTH_CONTROLLER] Warning: failed to update lastLogin, but proceeding since user data exists. Error: $e',
           );
         }
 
         // Convert Firestore data into UserData object
         var data = snapshot.data() as Map<String, dynamic>;
-        print('[AUTH_CONTROLLER] Firestore user data: $data');
+        debugPrint('[AUTH_CONTROLLER] Firestore user data: $data');
 
         DateTime createdAt = (data[UserFieldNames.createdAt] as Timestamp).toDate();
 
@@ -86,25 +90,13 @@ class AuthController extends _$AuthController {
         String phoneNumber = data[UserFieldNames.phoneNumber] ?? '';
         String organizationId = data[UserFieldNames.organizationId] ?? '';
 
-        // Handle locationIds - might be stored as primaryLocationId or locationIds
-        List<String> locationIds = [];
-        if (data[UserFieldNames.locationIds] != null) {
-          locationIds = List<String>.from(data[UserFieldNames.locationIds]);
-        } else if (data['primaryLocationId'] != null) {
-          locationIds = [data['primaryLocationId'] as String];
-        }
+        // Handle locationIds - canonicalize into a List<String>
+        final locationIds = coerceToLocationIds(
+          data[UserFieldNames.locationIds] ?? data['primaryLocationId'] ?? data['locationId'],
+        );
 
         // Handle jobTypes - might be stored as jobType (single) or jobTypes (array)
-        List<String> jobTypes = [];
-        if (data[UserFieldNames.jobTypes] != null) {
-          jobTypes = List<String>.from(data[UserFieldNames.jobTypes]);
-        } else if (data['jobType'] != null) {
-          if (data['jobType'] is List) {
-            jobTypes = List<String>.from(data['jobType']);
-          } else {
-            jobTypes = [data['jobType'] as String];
-          }
-        }
+        final jobTypes = coerceToJobTypes(data[UserFieldNames.jobTypes] ?? data['jobType']);
 
         // Construct the UserData object
         var userData = UserData(
@@ -120,7 +112,7 @@ class AuthController extends _$AuthController {
           jobTypes: jobTypes,
         );
 
-        print('[AUTH_CONTROLLER] UserData object created: $userData');
+        debugPrint('[AUTH_CONTROLLER] UserData object created: $userData');
 
         // Ensure daily checklists are created if they don't exist
         if (userData.organizationId.isNotEmpty) {
@@ -129,7 +121,14 @@ class AuthController extends _$AuthController {
 
         // Set the user data in the UserState provider
         ref.read(userStateProvider.notifier).setUserData(userData);
-        print('[AUTH_CONTROLLER] UserData set in UserState provider');
+        debugPrint('[AUTH_CONTROLLER] UserData set in UserState provider');
+
+        // Register FCM device token (best-effort, non-blocking)
+        try {
+          await TokenRegistrationService.registerCurrentDevice(userId);
+        } catch (e) {
+          debugPrint('[AUTH_CONTROLLER] Token registration failed: $e');
+        }
 
         log('starting data fetch timer');
         _dataFetchTimer = Timer.periodic(Duration(seconds: _fetchInterval), (Timer timer) async {
@@ -144,10 +143,10 @@ class AuthController extends _$AuthController {
 
         return userData;
       } else {
-        print(
+        debugPrint(
           '[AUTH_CONTROLLER] CRITICAL: User exists in Auth, but no document found in Firestore for UID: $userId. The user profile may not have been created correctly.',
         );
-        print('[AUTH_CONTROLLER] Attempting to create a fallback user document.');
+        debugPrint('[AUTH_CONTROLLER] Attempting to create a fallback user document.');
 
         try {
           // Create a basic user document to allow login using current timestamp
@@ -168,7 +167,7 @@ class AuthController extends _$AuthController {
           };
 
           await firestore.collection('users').doc(userId).set(newUser);
-          print('[AUTH_CONTROLLER] Fallback user document created for UID: $userId');
+          debugPrint('[AUTH_CONTROLLER] Fallback user document created for UID: $userId');
 
           // Create UserData object directly from the data we just saved
           var userData = UserData(
@@ -185,18 +184,18 @@ class AuthController extends _$AuthController {
           );
 
           ref.read(userStateProvider.notifier).setUserData(userData);
-          print('[AUTH_CONTROLLER] Fallback UserData created and set in state');
+          debugPrint('[AUTH_CONTROLLER] Fallback UserData created and set in state');
           return userData;
         } catch (fallbackError) {
-          print('[AUTH_CONTROLLER] FATAL: Error creating fallback user document: $fallbackError');
+          debugPrint('[AUTH_CONTROLLER] FATAL: Error creating fallback user document: $fallbackError');
           return null;
         }
       }
     } on FirebaseAuthException catch (e) {
-      print('[AUTH_CONTROLLER] FirebaseAuthException signing in: $e');
+      debugPrint('[AUTH_CONTROLLER] FirebaseAuthException signing in: $e');
       rethrow;
     } catch (e) {
-      print('[AUTH_CONTROLLER] Error signing in: $e');
+      debugPrint('[AUTH_CONTROLLER] Error signing in: $e');
       return null;
     }
   }

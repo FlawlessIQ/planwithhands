@@ -12,13 +12,14 @@ class TokenRegistrationService {
       await FirebaseFirestore.instance.collection('deviceTokens').doc(docId).set({
         'userId': userId,
         'fcmToken': token,
-        'platform': kIsWeb
-            ? 'web'
-            : Platform.isIOS
+        'platform':
+            kIsWeb
+                ? 'web'
+                : Platform.isIOS
                 ? 'ios'
                 : Platform.isAndroid
-                    ? 'android'
-                    : 'other',
+                ? 'android'
+                : 'other',
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     } catch (e) {

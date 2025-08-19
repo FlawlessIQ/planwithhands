@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/ui/bottom_sheet_styles.dart';
 
 class ChecklistBottomSheet extends StatefulWidget {
   final String organizationId;
@@ -48,12 +49,8 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
   @override
   void initState() {
     super.initState();
-    _titleController = TextEditingController(
-      text: widget.initialData?['name'] ?? '',
-    );
-    _descriptionController = TextEditingController(
-      text: widget.initialData?['description'] ?? '',
-    );
+    _titleController = TextEditingController(text: widget.initialData?['name'] ?? '');
+    _descriptionController = TextEditingController(text: widget.initialData?['description'] ?? '');
     if (widget.initialData?['tasks'] != null) {
       _tasks = List<Map<String, dynamic>>.from(widget.initialData!['tasks']);
     } else {
@@ -103,9 +100,8 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
       if (widget.checklistId != null) {
         for (final shiftDoc in shiftsSnapshot.docs) {
           final shiftData = shiftDoc.data();
-          final checklistIds = List<String>.from(
-            shiftData['checklistTemplateIds'] ?? [],
-          );
+          final checklistIdsRaw = shiftData['checklistTemplateIds'] ?? shiftData['checklistId'];
+          final checklistIds = checklistIdsRaw is Iterable ? List<String>.from(checklistIdsRaw) : <String>[];
           if (checklistIds.contains(widget.checklistId)) {
             preSelectedIds.add(shiftDoc.id);
           }
@@ -120,19 +116,14 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _loadingShifts = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error loading shifts: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error loading shifts: $e')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
-    final textScaler = mediaQuery.textScaler.clamp(
-      minScaleFactor: 1.0,
-      maxScaleFactor: 1.2,
-    );
+    final textScaler = mediaQuery.textScaler.clamp(minScaleFactor: 1.0, maxScaleFactor: 1.2);
 
     return DraggableScrollableSheet(
       expand: false,
@@ -144,6 +135,7 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
           child: Material(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
             elevation: 8,
+            color: BottomSheetStyles.panel,
             child: Column(
               children: [
                 // Handle bar
@@ -151,27 +143,21 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
                   width: 40,
                   height: 4,
                   margin: const EdgeInsets.symmetric(vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[400],
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+                  decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(2)),
                 ),
                 // App bar
                 Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(color: Colors.grey[300]!),
-                    ),
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding, vertical: 16),
+                  decoration: BoxDecoration(border: Border(bottom: BorderSide(color: BottomSheetStyles.divider))),
                   child: Row(
                     children: [
-                      Text(
-                        'Create Checklist',
-                        style: Theme.of(context).textTheme.titleLarge,
-                        textScaler: textScaler,
+                      Expanded(
+                        child: Text(
+                          widget.checklistId == null ? 'Create checklist' : 'Edit checklist',
+                          style: Theme.of(context).textTheme.titleLarge,
+                          textScaler: textScaler,
+                        ),
                       ),
-                      const Spacer(),
                       IconButton(
                         onPressed: () => Navigator.of(context).pop(),
                         icon: const Icon(Icons.close),
@@ -184,86 +170,91 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
                 Expanded(
                   child: Stepper(
                     currentStep: _currentStep,
+                    onStepTapped: (index) {
+                      // Allow jumping to any step when editing (checklistId != null),
+                      // but only allow backward/previous steps when creating.
+                      if (widget.checklistId != null) {
+                        setState(() => _currentStep = index);
+                      } else if (index <= _currentStep) {
+                        setState(() => _currentStep = index);
+                      }
+                    },
                     onStepContinue: _nextStep,
                     onStepCancel: _prevStep,
                     controlsBuilder: (context, details) {
-                      return Row(
-                        children: [
-                          if (details.stepIndex < 3)
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: BottomSheetStyles.horizontalPadding,
+                          vertical: 12,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            if (details.stepIndex > 0)
+                              TextButton(
+                                onPressed: details.onStepCancel,
+                                style: BottomSheetStyles.secondaryTextButtonStyle(context),
+                                child: const Text('Back'),
+                              ),
+                            const SizedBox(width: 12),
                             ElevatedButton(
-                              onPressed: details.onStepContinue,
-                              child: const Text('Continue'),
-                            )
-                          else
-                            ElevatedButton(
-                              onPressed:
-                                  _loading ? null : details.onStepContinue,
+                              onPressed: _loading ? null : details.onStepContinue,
+                              style: BottomSheetStyles.primaryButtonStyle(),
                               child:
                                   _loading
                                       ? const SizedBox(
                                         height: 16,
                                         width: 16,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
+                                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                                       )
-                                      : const Text('Save Checklist'),
+                                      : Text(details.stepIndex < 3 ? 'Continue' : 'Save checklist'),
                             ),
-                          const SizedBox(width: 8),
-                          if (details.stepIndex > 0)
-                            TextButton(
-                              onPressed: details.onStepCancel,
-                              child: const Text('Back'),
-                            ),
-                        ],
+                          ],
+                        ),
                       );
                     },
                     steps: [
                       Step(
-                        title: Text(
-                          '1. Name & Description',
-                          textScaler: textScaler,
+                        title: BottomSheetStyles.stepTitle('Name & description'),
+                        content: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
+                          child: _buildInfoStep(),
                         ),
-                        content: _buildInfoStep(),
                         isActive: _currentStep >= 0,
-                        state:
-                            _currentStep > 0
-                                ? StepState.complete
-                                : StepState.indexed,
+                        state: _currentStep > 0 ? StepState.complete : StepState.indexed,
                       ),
                       Step(
-                        title: Text(
-                          '2. Assign to Shift(s)',
-                          textScaler: textScaler,
+                        title: BottomSheetStyles.stepTitle('Assign to shifts'),
+                        content: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
+                          child: _buildShiftAssignmentStep(),
                         ),
-                        content: _buildShiftAssignmentStep(),
                         isActive: _currentStep >= 1,
                         state:
                             _currentStep > 1
                                 ? StepState.complete
-                                : _currentStep == 1
-                                ? StepState.indexed
-                                : StepState.disabled,
+                                : (_currentStep == 1 ? StepState.indexed : StepState.disabled),
                       ),
                       Step(
-                        title: Text('3. Locations', textScaler: textScaler),
-                        content: _buildLocationStep(),
+                        title: BottomSheetStyles.stepTitle('Locations'),
+                        content: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
+                          child: _buildLocationStep(),
+                        ),
                         isActive: _currentStep >= 2,
                         state:
                             _currentStep > 2
                                 ? StepState.complete
-                                : _currentStep == 2
-                                ? StepState.indexed
-                                : StepState.disabled,
+                                : (_currentStep == 2 ? StepState.indexed : StepState.disabled),
                       ),
                       Step(
-                        title: Text('4. Add Tasks', textScaler: textScaler),
-                        content: _buildTasksStep(),
+                        title: BottomSheetStyles.stepTitle('Tasks'),
+                        content: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
+                          child: _buildTasksStep(),
+                        ),
                         isActive: _currentStep >= 3,
-                        state:
-                            _currentStep == 3
-                                ? StepState.indexed
-                                : StepState.disabled,
+                        state: _currentStep == 3 ? StepState.indexed : StepState.disabled,
                       ),
                     ],
                   ),
@@ -308,9 +299,7 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
     switch (_currentStep) {
       case 0: // Name & Description
         if (_titleController.text.trim().isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Checklist name is required.')),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Checklist name is required.')));
           return false;
         }
         return true;
@@ -321,17 +310,11 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
         return true;
       case 3: // Tasks
         if (_tasks.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Please add at least one task.')),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please add at least one task.')));
           return false;
         }
-        if (_tasks.any(
-          (task) => task['name']?.toString().trim().isEmpty ?? true,
-        )) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('All tasks must have names.')),
-          );
+        if (_tasks.any((task) => task['name']?.toString().trim().isEmpty ?? true)) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('All tasks must have names.')));
           return false;
         }
         return true;
@@ -345,23 +328,21 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text('Enter basic information for your checklist:'),
-        const SizedBox(height: 16),
+        const SizedBox(height: BottomSheetStyles.verticalSectionSpacing),
         TextFormField(
           controller: _titleController,
-          decoration: const InputDecoration(
-            labelText: 'Checklist Name *',
-            border: OutlineInputBorder(),
-            hintText: 'e.g., Opening Tasks, Closing Checklist',
+          decoration: BottomSheetStyles.inputDecoration(
+            label: 'Checklist name *',
+            hint: 'e.g., Opening Tasks, Closing Checklist',
           ),
           textInputAction: TextInputAction.next,
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: BottomSheetStyles.verticalSectionSpacing),
         TextFormField(
           controller: _descriptionController,
-          decoration: const InputDecoration(
-            labelText: 'Description (Optional)',
-            border: OutlineInputBorder(),
-            hintText: 'Brief description of this checklist',
+          decoration: BottomSheetStyles.inputDecoration(
+            label: 'Description (optional)',
+            hint: 'Brief description of this checklist',
           ),
           maxLines: 3,
           textInputAction: TextInputAction.done,
@@ -376,20 +357,14 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
     }
 
     if (_availableShifts.isEmpty) {
-      return const Center(
-        child: Text(
-          'No shifts found for this location. Please create shifts first.',
-        ),
-      );
+      return const Center(child: Text('No shifts found for this location. Please create shifts first.'));
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Select which shifts at this location this checklist applies to:',
-        ),
-        const SizedBox(height: 16),
+        const Text('Select which shifts at this location this checklist applies to:'),
+        const SizedBox(height: BottomSheetStyles.verticalSectionSpacing),
         ...(_availableShifts.map((shift) {
           final shiftId = shift['id'] as String;
           final shiftName = shift['name'] as String? ?? 'Unnamed Shift';
@@ -397,7 +372,7 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
           final endTime = shift['endTime'] as String? ?? '';
           return CheckboxListTile(
             title: Text(shiftName),
-            subtitle: Text('$startTime - $endTime'),
+            subtitle: Text(_range12h(startTime, endTime)),
             value: _selectedShiftIds.contains(shiftId),
             onChanged: (bool? value) {
               setState(() {
@@ -418,15 +393,11 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'This checklist will be saved for the currently selected location.',
-        ),
-        const SizedBox(height: 24),
+        const Text('This checklist will be saved for the currently selected location.'),
+        const SizedBox(height: BottomSheetStyles.verticalSectionSpacing),
         if (widget.availableLocations.length > 1)
           CheckboxListTile(
-            title: const Text(
-              'Duplicate this checklist to all other locations',
-            ),
+            title: const Text('Duplicate this checklist to all other locations'),
             subtitle: const Text(
               'A copy will be created for each other location. This is useful for company-wide checklists.',
             ),
@@ -440,9 +411,7 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
         else
           const Padding(
             padding: EdgeInsets.all(8.0),
-            child: Text(
-              'There are no other locations in this organization to duplicate to.',
-            ),
+            child: Text('There are no other locations in this organization to duplicate to.'),
           ),
       ],
     );
@@ -453,19 +422,34 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text('Add tasks to your checklist. Drag to reorder:'),
-        const SizedBox(height: 16),
+        const SizedBox(height: BottomSheetStyles.verticalSectionSpacing),
         if (_tasks.isEmpty)
-          const Center(
-            child: Text('No tasks added yet. Tap "Add Task" to get started.'),
+          Column(
+            children: [
+              const Center(child: Text('No tasks added yet. Tap "Add Task" to get started.')),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _addTask,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add Task'),
+                ),
+              ),
+            ],
           )
         else
           SizedBox(
             height: 300, // Fixed height for scrollable area
             child: ReorderableListView.builder(
               buildDefaultDragHandles: false,
-              itemCount: _tasks.length,
+              itemCount: _tasks.length + 1, // +1 for the trailing Add Task row
               onReorder: (oldIndex, newIndex) {
                 setState(() {
+                  // Prevent reordering into the trailing add button slot beyond the end
+                  final maxIndex = _tasks.length;
+                  if (oldIndex >= maxIndex) return; // ignore dragging the add row (no handle anyway)
+                  if (newIndex > maxIndex) newIndex = maxIndex; // clamp to end
                   if (newIndex > oldIndex) newIndex--;
                   final item = _tasks.removeAt(oldIndex);
                   _tasks.insert(newIndex, item);
@@ -473,26 +457,37 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
                 });
               },
               itemBuilder: (context, index) {
+                // Trailing Add Task row
+                if (index == _tasks.length) {
+                  return Padding(
+                    key: const ValueKey('add-task-row'),
+                    padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 4.0),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _addTask,
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add Task'),
+                      ),
+                    ),
+                  );
+                }
+
                 final task = _tasks[index];
                 return Card(
                   key: ValueKey(task),
-                  margin: const EdgeInsets.symmetric(vertical: 4),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
+                  margin: const EdgeInsets.symmetric(vertical: 6),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(BottomSheetStyles.controlRadius)),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        // Drag handle (left, not overlapping)
+                        // Drag handle (left)
                         ReorderableDragStartListener(
                           index: index,
                           child: const Padding(
-                            padding: EdgeInsets.only(right: 8),
+                            padding: EdgeInsets.only(right: 12),
                             child: Icon(Icons.drag_handle, color: Colors.grey),
                           ),
                         ),
@@ -500,45 +495,43 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
                         Expanded(
                           child: TextFormField(
                             controller: _taskControllers[index],
-                            decoration: const InputDecoration(
-                              labelText: 'Task Name',
-                              border: InputBorder.none,
-                              isDense: true,
-                            ),
+                            decoration: BottomSheetStyles.inputDecoration(label: 'Task name', dense: true),
                             onChanged: (value) => task['name'] = value,
+                            style: const TextStyle(fontSize: 14),
                           ),
                         ),
-                        // Photo required checkbox with improved label
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Checkbox(
-                                value: task['photoRequired'] == true,
-                                onChanged: (value) {
-                                  setState(() {
-                                    task['photoRequired'] = value ?? false;
-                                  });
-                                },
+                        const SizedBox(width: 12),
+                        // Photo required checkbox with improved label (icon + small text)
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: Icon(
+                                task['photoRequired'] == true ? Icons.camera_alt : Icons.camera_alt_outlined,
+                                color: task['photoRequired'] == true ? BottomSheetStyles.accentTeal : Colors.grey,
                               ),
-                              LayoutBuilder(
-                                builder: (context, constraints) {
-                                  // Use shorter label if not enough space
-                                  final label = constraints.maxWidth < 60 ? 'Photo Req' : 'Photo Required';
-                                  return Text(
-                                    label,
-                                    style: const TextStyle(fontSize: 10),
-                                    overflow: TextOverflow.ellipsis,
-                                  );
-                                },
+                              tooltip: 'Photo required',
+                              onPressed: () {
+                                setState(() {
+                                  task['photoRequired'] = !(task['photoRequired'] == true);
+                                });
+                              },
+                            ),
+                            const SizedBox(height: 2),
+                            SizedBox(
+                              width: 64,
+                              child: Text(
+                                'Photo',
+                                style: const TextStyle(fontSize: 10),
+                                textAlign: TextAlign.center,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                        // Delete button (right, not overlapping)
+                        // Delete button (right)
                         IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red),
+                          icon: const Icon(Icons.delete_outline, color: Colors.red),
                           tooltip: 'Delete task',
                           onPressed: () {
                             setState(() {
@@ -547,7 +540,6 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
                             });
                           },
                         ),
-                        // (Removed drag handle/double line button from right side)
                       ],
                     ),
                   ),
@@ -555,27 +547,13 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
               },
             ),
           ),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: _addTask,
-            icon: const Icon(Icons.add),
-            label: const Text('Add Task'),
-          ),
-        ),
       ],
     );
   }
 
   void _addTask() {
     setState(() {
-      _tasks.add({
-        'name': '',
-        'photoRequired': false,
-        'time': null,
-        'order': _tasks.length,
-      });
+      _tasks.add({'name': '', 'photoRequired': false, 'time': null, 'order': _tasks.length});
       _syncTaskControllersWithTasks();
     });
   }
@@ -592,11 +570,7 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
           _tasks.asMap().entries.map((entry) {
             int idx = entry.key;
             Map<String, dynamic> task = entry.value;
-            return {
-              'name': task['name'] ?? '',
-              'photoRequired': task['photoRequired'] ?? false,
-              'order': idx,
-            };
+            return {'name': task['name'] ?? '', 'photoRequired': task['photoRequired'] ?? false, 'order': idx};
           }).toList(),
       'updatedAt': FieldValue.serverTimestamp(),
     };
@@ -627,9 +601,7 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
     // Add missing controllers
     while (_taskControllers.length < _tasks.length) {
       final idx = _taskControllers.length;
-      _taskControllers.add(
-        TextEditingController(text: _tasks[idx]['name'] as String? ?? ''),
-      );
+      _taskControllers.add(TextEditingController(text: _tasks[idx]['name'] as String? ?? ''));
     }
     // Update controller text if out of sync
     for (int i = 0; i < _tasks.length; i++) {
@@ -640,3 +612,17 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
     }
   }
 }
+
+String _to12h(String hhmm) {
+  final parts = hhmm.split(':');
+  if (parts.length != 2) return hhmm;
+  final h24 = int.tryParse(parts[0]) ?? 0;
+  final m = int.tryParse(parts[1]) ?? 0;
+  var h12 = h24 % 12;
+  if (h12 == 0) h12 = 12;
+  final mm = m.toString().padLeft(2, '0');
+  final suffix = h24 >= 12 ? 'pm' : 'am';
+  return '$h12.$mm$suffix';
+}
+
+String _range12h(String startHhmm, String endHhmm) => '${_to12h(startHhmm)} – ${_to12h(endHhmm)}';

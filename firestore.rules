@@ -59,6 +59,29 @@ service cloud.firestore {
       allow read: if request.auth == null; // TEMP for invites
       allow read: if isOrgMember(orgId);
       allow write: if isOrgMember(orgId) && isOrgManagerOrAdmin(orgId);
+
+      // Locations within organizations
+      match /locations/{locId} {
+        // Parent daily_checklists
+        match /daily_checklists/{checklistId} {
+          allow get, list: if request.auth != null && isOrgMember(orgId);
+          // Creation of today's checklist is allowed to members; restrict updates to managers if you prefer
+          allow create: if request.auth != null && isOrgMember(orgId);
+          allow update: if request.auth != null && isOrgMember(orgId);
+          allow delete: if request.auth != null && isOrgManagerOrAdmin(orgId);
+
+          // Per-task subcollection
+          match /tasks/{taskId} {
+            allow get, list: if request.auth != null && isOrgMember(orgId);
+
+            // Users can update their shift tasks (notes/photo/completed)
+            allow create, update: if request.auth != null && isOrgMember(orgId);
+            // (Optionally) restrict create to service only if you tag with createdBy/service UID.
+
+            allow delete: if request.auth != null && isOrgManagerOrAdmin(orgId);
+          }
+        }
+      }
     }
 
     // Locations, shifts, checklists (retain broad authenticated access - adjust if needed)

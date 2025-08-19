@@ -18,41 +18,41 @@ _$ShiftDataImpl _$$ShiftDataImplFromJson(Map<String, dynamic> json) =>
           (json['locationIds'] as List<dynamic>?)
               ?.map((e) => e as String)
               .toList() ??
-          const [],
+          const <String>[],
       checklistTemplateIds:
           (json['checklistTemplateIds'] as List<dynamic>?)
               ?.map((e) => e as String)
               .toList() ??
-          const [],
+          const <String>[],
       jobType:
           (json['jobType'] as List<dynamic>?)
               ?.map((e) => e as String)
               .toList() ??
-          const [],
+          const <String>[],
       staffingLevels:
           (json['staffingLevels'] as Map<String, dynamic>?)?.map(
             (k, e) => MapEntry(k, (e as num).toInt()),
           ) ??
-          const {},
+          const <String, int>{},
       days:
           (json['days'] as List<dynamic>?)?.map((e) => e as String).toList() ??
-          const [],
+          const <String>[],
       repeatsDaily: json['repeatsDaily'] as bool? ?? false,
       activeDays:
           (json['activeDays'] as List<dynamic>?)
               ?.map((e) => (e as num).toInt())
               .toList() ??
-          const [],
+          const <int>[],
       assignedUserIds:
           (json['assignedUserIds'] as List<dynamic>?)
               ?.map((e) => e as String)
               .toList() ??
-          const [],
+          const <String>[],
       volunteers:
           (json['volunteers'] as List<dynamic>?)
               ?.map((e) => e as String)
               .toList() ??
-          const [],
+          const <String>[],
       published: json['published'] as bool? ?? false,
       shiftDate: const NullableTimestampConverter().fromJson(json['shiftDate']),
       updatedAt: const NullableTimestampConverter().fromJson(json['updatedAt']),

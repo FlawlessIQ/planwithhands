@@ -1,28 +1,32 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hands_app/state/user_state.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/utils/location_helper.dart';
 
 /// Provides the count of unread (and unarchived) notifications for the current user
 final unreadNotificationsCountProvider = StreamProvider<int>((ref) {
   final userState = ref.watch(userStateProvider);
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) {
-    print('[unreadNotificationsCountProvider] No user logged in.');
+    debugPrint('[unreadNotificationsCountProvider] No user logged in.');
     return Stream.value(0);
   }
   // Defensive: Wait for userData to be loaded
   if (userState.userData == null) {
-    print('[unreadNotificationsCountProvider] userData not loaded yet for user ${user.uid}. Returning loading stream.');
+    debugPrint(
+      '[unreadNotificationsCountProvider] userData not loaded yet for user ${user.uid}. Returning loading stream.',
+    );
     // Return a stream that never emits, so the UI stays loading
     return const Stream<int>.empty();
   }
   final orgId = userState.userData!.organizationId;
   if (orgId.isEmpty) {
-    print('[unreadNotificationsCountProvider] No organizationId for user ${user.uid}.');
+    debugPrint('[unreadNotificationsCountProvider] No organizationId for user ${user.uid}.');
     return Stream.value(0);
   }
-  print('[unreadNotificationsCountProvider] Subscribing for orgId: $orgId, userId: ${user.uid}');
+  debugPrint('[unreadNotificationsCountProvider] Subscribing for orgId: $orgId, userId: ${user.uid}');
 
   // Get user data for filtering
   final userData = {'userRole': userState.userData!.userRole, 'locationIds': userState.userData!.locationIds};
@@ -30,7 +34,7 @@ final unreadNotificationsCountProvider = StreamProvider<int>((ref) {
   return FirestoreEnforcer.instance.collection('organizations').doc(orgId).collection('notifications').snapshots().map((
     snap,
   ) {
-    print('[unreadNotificationsCountProvider] Snapshot received with ${snap.docs.length} docs.');
+    debugPrint('[unreadNotificationsCountProvider] Snapshot received with ${snap.docs.length} docs.');
     final count =
         snap.docs.where((doc) {
           final data = doc.data();
@@ -43,10 +47,10 @@ final unreadNotificationsCountProvider = StreamProvider<int>((ref) {
           final readBy = List<String>.from(data['readBy'] ?? []);
           final archivedBy = List<String>.from(data['archivedBy'] ?? []);
           final isUnread = !readBy.contains(user.uid) && !archivedBy.contains(user.uid);
-          print('[unreadNotificationsCountProvider] Doc ${doc.id}: isUnread = $isUnread');
+          debugPrint('[unreadNotificationsCountProvider] Doc ${doc.id}: isUnread = $isUnread');
           return isUnread;
         }).length;
-    print('[unreadNotificationsCountProvider] Final unread count: $count');
+    debugPrint('[unreadNotificationsCountProvider] Final unread count: $count');
     return count;
   });
 });
@@ -95,13 +99,9 @@ bool _userHasLocationAccess(Map<String, dynamic> userData, String? locationId) {
   // Admins see all notifications
   if (userRole == 2) return true;
 
-  // For managers and general users: check locationIds array
-  final locationIds = userData['locationIds'];
-  if (locationIds is List) {
-    return locationIds.contains(locationId);
-  }
-
-  return false;
+  // For managers and general users: canonicalize and check locationIds
+  final locIds = coerceToLocationIds(userData['locationIds'] ?? userData['locationId']);
+  return locIds.contains(locationId);
 }
 
 // Simple sealed class for NotificationState (no freezed)

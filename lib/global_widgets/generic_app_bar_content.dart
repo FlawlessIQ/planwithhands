@@ -56,6 +56,8 @@ class GenericAppBarContent extends StatelessWidget {
     switch (originalTitle.toLowerCase()) {
       case 'task workflow':
         return 'Tasks';
+      case 'plan with hands':
+        return 'Hands';
       case 'manager dashboard':
         return 'Manager';
       case 'admin dashboard':
@@ -69,7 +71,7 @@ class GenericAppBarContent extends StatelessWidget {
           if (words.length > 1) {
             return words.first; // Return first word
           }
-          return originalTitle.substring(0, 10) + '...';
+          return '${originalTitle.substring(0, 10)}...';
         }
         return originalTitle;
     }

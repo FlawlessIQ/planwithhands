@@ -140,7 +140,7 @@ class _AppPermissionWidgetState extends State<AppPermissionWidget> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            color: Colors.orange.withOpacity(0.1),
+            color: Colors.orange.withValues(alpha: 0.1),
             child: Row(
               children: [
                 Icon(Icons.warning_amber, color: Colors.orange, size: 16),

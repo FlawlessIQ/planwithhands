@@ -29,7 +29,7 @@ class _AccessibilityDemoPageState extends State<AccessibilityDemoPage> with Acce
       appBar: buildAccessibleAppBar(title: 'Accessibility Demo', semanticLabel: 'Accessibility Demo Page'),
       body: AccessibilityHelper.responsiveLayout(
         context: context,
-        builder: (context, constraints, textScaleFactor) {
+        builder: (context, constraints, textScaleRatio) {
           return SingleChildScrollView(
             padding: context.getResponsivePadding(const EdgeInsets.all(16)),
             child: Column(
@@ -199,7 +199,7 @@ class _AccessibilityDemoPageState extends State<AccessibilityDemoPage> with Acce
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Current text scale: ${context.textScaleFactor.toStringAsFixed(1)}x',
+                        'Current text scale: ${context.textScaleRatio.toStringAsFixed(1)}x',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
                       ),
                       buildResponsiveSpacing(8),

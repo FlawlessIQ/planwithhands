@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hands_app/data/models/schedule_entry_data.dart';
 import 'package:hands_app/data/models/extended_user_data.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/utils/location_helper.dart';
+// jobtype_helper import removed — not used in this file
 
 class ShiftBottomSheet extends StatefulWidget {
   final String scheduleId;
@@ -44,12 +46,8 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
   @override
   void initState() {
     super.initState();
-    requiredRoles = Map<String, int>.from(
-      widget.existingEntry?.requiredRoles ?? widget.defaultParLevels,
-    );
-    assignedUserIds = Set<String>.from(
-      widget.existingEntry?.assignedUserIds ?? [],
-    );
+    requiredRoles = Map<String, int>.from(widget.existingEntry?.requiredRoles ?? widget.defaultParLevels);
+    assignedUserIds = Set<String>.from(widget.existingEntry?.assignedUserIds ?? []);
     _loadData();
   }
 
@@ -60,9 +58,7 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
       await Future.wait([_loadRoleNames(), _loadAvailableUsers()]);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error loading data: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error loading data: $e')));
       }
     } finally {
       if (mounted) {
@@ -135,16 +131,10 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
       if (currentUser != null) {
         debugPrint('Current user UID: ${currentUser.uid}');
         try {
-          final currentUserDoc =
-              await FirestoreEnforcer.instance
-                  .collection('users')
-                  .doc(currentUser.uid)
-                  .get();
+          final currentUserDoc = await FirestoreEnforcer.instance.collection('users').doc(currentUser.uid).get();
           if (currentUserDoc.exists) {
             final userData = currentUserDoc.data()!;
-            debugPrint(
-              'Current user role: ${userData['userRole']}, org: ${userData['organizationId']}',
-            );
+            debugPrint('Current user role: ${userData['userRole']}, org: ${userData['organizationId']}');
           }
         } catch (e) {
           debugPrint('Error getting current user data: $e');
@@ -170,27 +160,26 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
         // Filter users by availability if provided
         final userRoles = Set<String>.from(userData.jobTypes);
         final shiftRoles = Set<String>.from(requiredRoles.keys);
-        final hasRelevantRole =
-            shiftRoles.isEmpty || userRoles.intersection(shiftRoles).isNotEmpty;
+        final hasRelevantRole = shiftRoles.isEmpty || userRoles.intersection(shiftRoles).isNotEmpty;
         bool isAvailable = false;
         if (widget.availability != null) {
           isAvailable = widget.availability![widget.dayShiftKey] ?? false;
         } else {
           isAvailable = userData.availability[widget.dayShiftKey] ?? false;
         }
-        // ...existing code for location access...
+
         bool hasLocationAccess = false;
         if (userData.userRole == 2) {
           hasLocationAccess = true;
-        } else if (userData.userRole == 1 && userData.locationIds != null) {
-          hasLocationAccess = userData.locationIds!.contains(widget.locationId);
-        } else if (userData.userRole == 0 && userData.locationId != null) {
-          hasLocationAccess = userData.locationId == widget.locationId;
+        } else if (userData.userRole == 1) {
+          final locIds = coerceToLocationIds(userData.locationIds ?? userData.locationId);
+          hasLocationAccess = locIds.contains(widget.locationId);
+        } else if (userData.userRole == 0) {
+          final locIds = coerceToLocationIds(userData.locationIds ?? userData.locationId);
+          hasLocationAccess = locIds.contains(widget.locationId);
         }
         // Include users who: have relevant role OR are already assigned, AND have location access, AND (are available OR already assigned)
-        if (hasRelevantRole &&
-            hasLocationAccess &&
-            (isAvailable || assignedUserIds.contains(userData.userId))) {
+        if (hasRelevantRole && hasLocationAccess && (isAvailable || assignedUserIds.contains(userData.userId))) {
           users.add(userData);
           debugPrint('\u2713 Added user: ${userData.fullName}');
         } else {
@@ -227,17 +216,10 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
 
       // Get user data for all assigned user IDs
       for (final userId in assignedUserIds) {
-        final userDoc =
-            await FirestoreEnforcer.instance
-                .collection('users')
-                .doc(userId)
-                .get();
+        final userDoc = await FirestoreEnforcer.instance.collection('users').doc(userId).get();
 
         if (userDoc.exists) {
-          final userData = ExtendedUserData.fromMap(
-            userDoc.data()!,
-            userDoc.id,
-          );
+          final userData = ExtendedUserData.fromMap(userDoc.data()!, userDoc.id);
           assignedUsers.add(userData);
         }
       }
@@ -276,9 +258,7 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
     setState(() => isSaving = true);
 
     try {
-      final entryId =
-          widget.existingEntry?.id ??
-          FirestoreEnforcer.instance.collection('temp').doc().id;
+      final entryId = widget.existingEntry?.id ?? FirestoreEnforcer.instance.collection('temp').doc().id;
 
       final entryData = ScheduleEntryData(
         id: entryId,
@@ -319,19 +299,8 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
 
       batch.set(scheduleRef, {
         'id': widget.scheduleId,
-        'startDate': Timestamp.fromDate(
-          DateTime(scheduleDate.year, scheduleDate.month, scheduleDate.day),
-        ),
-        'endDate': Timestamp.fromDate(
-          DateTime(
-            scheduleDate.year,
-            scheduleDate.month,
-            scheduleDate.day,
-            23,
-            59,
-            59,
-          ),
-        ),
+        'startDate': Timestamp.fromDate(DateTime(scheduleDate.year, scheduleDate.month, scheduleDate.day)),
+        'endDate': Timestamp.fromDate(DateTime(scheduleDate.year, scheduleDate.month, scheduleDate.day, 23, 59, 59)),
         'published': false, // Default to draft mode
         'organizationId': widget.organizationId,
         'locationId': widget.locationId,
@@ -342,15 +311,13 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
 
       if (mounted) {
         Navigator.pop(context, true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Shift schedule updated successfully')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Shift schedule updated successfully')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error saving schedule: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving schedule: $e')));
       }
     } finally {
       if (mounted) {
@@ -377,20 +344,15 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
 
                   return ListTile(
                     title: Text(roleName),
-                    subtitle:
-                        isAlreadyAdded ? const Text('Already added') : null,
-                    trailing:
-                        isAlreadyAdded
-                            ? const Icon(Icons.check, color: Colors.green)
-                            : null,
+                    subtitle: isAlreadyAdded ? const Text('Already added') : null,
+                    trailing: isAlreadyAdded ? const Icon(Icons.check, color: Colors.green) : null,
                     onTap:
                         isAlreadyAdded
                             ? null
                             : () {
                               Navigator.pop(context);
                               setState(() {
-                                requiredRoles[roleId] =
-                                    1; // Default to 1 person needed
+                                requiredRoles[roleId] = 1; // Default to 1 person needed
                               });
                               // Reload users to reflect new role requirements
                               _loadAvailableUsers();
@@ -400,18 +362,12 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
                 },
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
-              ),
-            ],
+            actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel'))],
           ),
     );
   }
 
-  int get totalRequired =>
-      requiredRoles.values.fold(0, (total, roleCount) => total + roleCount);
+  int get totalRequired => requiredRoles.values.fold(0, (total, roleCount) => total + roleCount);
   int get totalAssigned => assignedUserIds.length;
 
   @override
@@ -441,23 +397,16 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
                         children: [
                           Text(
                             widget.shiftName,
-                            style: theme.textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
+                            style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w600),
                           ),
                           Text(
                             widget.dayShiftKey.replaceAll('_', ' '),
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: Colors.grey[600],
-                            ),
+                            style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
                           ),
                         ],
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(context),
-                    ),
+                    IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -466,36 +415,28 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
                   decoration: BoxDecoration(
                     color:
                         totalAssigned >= totalRequired
-                            ? Colors.green.withOpacity(0.1)
-                            : Colors.orange.withOpacity(0.1),
+                            ? Colors.green.withValues(alpha: 0.1)
+                            : Colors.orange.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
                       color:
                           totalAssigned >= totalRequired
-                              ? Colors.green.withOpacity(0.3)
-                              : Colors.orange.withOpacity(0.3),
+                              ? Colors.green.withValues(alpha: 0.3)
+                              : Colors.orange.withValues(alpha: 0.3),
                     ),
                   ),
                   child: Row(
                     children: [
                       Icon(
-                        totalAssigned >= totalRequired
-                            ? Icons.check_circle
-                            : Icons.schedule,
-                        color:
-                            totalAssigned >= totalRequired
-                                ? Colors.green
-                                : Colors.orange,
+                        totalAssigned >= totalRequired ? Icons.check_circle : Icons.schedule,
+                        color: totalAssigned >= totalRequired ? Colors.green : Colors.orange,
                       ),
                       const SizedBox(width: 8),
                       Text(
                         '$totalAssigned of $totalRequired assigned',
                         style: TextStyle(
                           fontWeight: FontWeight.w600,
-                          color:
-                              totalAssigned >= totalRequired
-                                  ? Colors.green[700]
-                                  : Colors.orange[700],
+                          color: totalAssigned >= totalRequired ? Colors.green[700] : Colors.orange[700],
                         ),
                       ),
                     ],
@@ -521,17 +462,13 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
                             children: [
                               Text(
                                 'Required Roles',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                ),
+                                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
                               ),
                               TextButton.icon(
                                 onPressed: _showAddRoleDialog,
                                 icon: const Icon(Icons.add, size: 16),
                                 label: const Text('Add Role'),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: theme.primaryColor,
-                                ),
+                                style: TextButton.styleFrom(foregroundColor: theme.primaryColor),
                               ),
                             ],
                           ),
@@ -546,10 +483,7 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
                               ),
                               child: Row(
                                 children: [
-                                  Icon(
-                                    Icons.info_outline,
-                                    color: Colors.grey[600],
-                                  ),
+                                  Icon(Icons.info_outline, color: Colors.grey[600]),
                                   const SizedBox(width: 8),
                                   const Expanded(
                                     child: Text(
@@ -561,10 +495,7 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
                               ),
                             )
                           else
-                            ...requiredRoles.entries.map(
-                              (entry) =>
-                                  _buildRoleRequirement(entry.key, entry.value),
-                            ),
+                            ...requiredRoles.entries.map((entry) => _buildRoleRequirement(entry.key, entry.value)),
 
                           const SizedBox(height: 24),
 
@@ -580,36 +511,21 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
                           if (assignedUserIds.isEmpty)
                             Container(
                               padding: const EdgeInsets.all(16),
-                              child: const Text(
-                                'No users assigned yet.',
-                                style: TextStyle(color: Colors.grey),
-                              ),
+                              child: const Text('No users assigned yet.', style: TextStyle(color: Colors.grey)),
                             )
                           else
                             Builder(
                               builder: (context) {
                                 // Get assigned users - first try from availableUsers, then fetch from Firestore if needed
                                 final assignedUsersFromAvailable =
-                                    availableUsers
-                                        .where(
-                                          (user) => assignedUserIds.contains(
-                                            user.userId,
-                                          ),
-                                        )
-                                        .toList();
+                                    availableUsers.where((user) => assignedUserIds.contains(user.userId)).toList();
 
                                 // If we have all assigned users in availableUsers, show them
-                                if (assignedUsersFromAvailable.length ==
-                                    assignedUserIds.length) {
+                                if (assignedUsersFromAvailable.length == assignedUserIds.length) {
                                   return Column(
                                     children:
                                         assignedUsersFromAvailable
-                                            .map(
-                                              (user) =>
-                                                  _buildUserTileWithConflict(
-                                                    user,
-                                                  ),
-                                            )
+                                            .map((user) => _buildUserTileWithConflict(user))
                                             .toList(),
                                   );
                                 }
@@ -618,24 +534,13 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
                                 return FutureBuilder<List<ExtendedUserData>>(
                                   future: _getAssignedUsers(),
                                   builder: (context, snapshot) {
-                                    if (snapshot.connectionState ==
-                                        ConnectionState.waiting) {
-                                      return const Center(
-                                        child: CircularProgressIndicator(),
-                                      );
+                                    if (snapshot.connectionState == ConnectionState.waiting) {
+                                      return const Center(child: CircularProgressIndicator());
                                     }
 
                                     final assignedUsers = snapshot.data ?? [];
                                     return Column(
-                                      children:
-                                          assignedUsers
-                                              .map(
-                                                (user) =>
-                                                    _buildUserTileWithConflict(
-                                                      user,
-                                                    ),
-                                              )
-                                              .toList(),
+                                      children: assignedUsers.map((user) => _buildUserTileWithConflict(user)).toList(),
                                     );
                                   },
                                 );
@@ -648,16 +553,11 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
                           // Available users section
                           Text(
                             'Available Users (Matching Roles)',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
+                            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
                           ),
                           const SizedBox(height: 12),
                           ...availableUsers
-                              .where(
-                                (user) =>
-                                    !assignedUserIds.contains(user.userId),
-                              )
+                              .where((user) => !assignedUserIds.contains(user.userId))
                               .map((user) => _buildUserTileWithConflict(user)),
 
                           // Divider and secondary section for non-matching users
@@ -678,58 +578,37 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
                                 future:
                                     FirestoreEnforcer.instance
                                         .collection('users')
-                                        .where(
-                                          'organizationId',
-                                          isEqualTo: widget.organizationId,
-                                        )
+                                        .where('organizationId', isEqualTo: widget.organizationId)
                                         .get(),
                                 builder: (context, snapshot) {
                                   if (!snapshot.hasData) {
-                                    return const Center(
-                                      child: CircularProgressIndicator(),
-                                    );
+                                    return const Center(child: CircularProgressIndicator());
                                   }
                                   final allUsers =
                                       snapshot.data!.docs
                                           .map(
-                                            (doc) => ExtendedUserData.fromMap(
-                                              doc.data()
-                                                  as Map<String, dynamic>,
-                                              doc.id,
-                                            ),
+                                            (doc) =>
+                                                ExtendedUserData.fromMap(doc.data() as Map<String, dynamic>, doc.id),
                                           )
                                           .toList();
-                                  final matchingUserIds =
-                                      availableUsers
-                                          .map((u) => u.userId)
-                                          .toSet();
+                                  final matchingUserIds = availableUsers.map((u) => u.userId).toSet();
                                   final alreadyAssigned = assignedUserIds;
                                   final nonMatchingUsers =
                                       allUsers.where((user) {
                                         // Exclude users already shown or already assigned
-                                        if (matchingUserIds.contains(
-                                          user.userId,
-                                        )) {
+                                        if (matchingUserIds.contains(user.userId)) {
                                           return false;
                                         }
-                                        if (alreadyAssigned.contains(
-                                          user.userId,
-                                        )) {
+                                        if (alreadyAssigned.contains(user.userId)) {
                                           return false;
                                         }
-                                        // Location access check
+                                        // Location access check (support multi-location fields)
                                         bool hasLocationAccess = false;
                                         if (user.userRole == 2) {
                                           hasLocationAccess = true;
-                                        } else if (user.userRole == 1 &&
-                                            user.locationIds != null) {
-                                          hasLocationAccess = user.locationIds!
-                                              .contains(widget.locationId);
-                                        } else if (user.userRole == 0 &&
-                                            user.locationId != null) {
-                                          hasLocationAccess =
-                                              user.locationId ==
-                                              widget.locationId;
+                                        } else {
+                                          final locIds = coerceToLocationIds(user.locationIds ?? user.locationId);
+                                          hasLocationAccess = locIds.contains(widget.locationId);
                                         }
                                         return hasLocationAccess;
                                       }).toList();
@@ -743,15 +622,7 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
                                     );
                                   }
                                   return Column(
-                                    children:
-                                        nonMatchingUsers
-                                            .map(
-                                              (user) =>
-                                                  _buildUserTileWithConflict(
-                                                    user,
-                                                  ),
-                                            )
-                                            .toList(),
+                                    children: nonMatchingUsers.map((user) => _buildUserTileWithConflict(user)).toList(),
                                   );
                                 },
                               );
@@ -781,17 +652,12 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
                           width: 20,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.white,
-                            ),
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
                         )
                         : const Text(
                           'Save Schedule',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                         ),
               ),
             ),
@@ -817,24 +683,15 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  roleName,
-                  style: const TextStyle(fontWeight: FontWeight.w500),
-                ),
-                Text(
-                  'Required: $count',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                ),
+                Text(roleName, style: const TextStyle(fontWeight: FontWeight.w500)),
+                Text('Required: $count', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
               ],
             ),
           ),
           Row(
             children: [
               IconButton(
-                onPressed:
-                    count > 1
-                        ? () => _updateRequiredCount(roleId, count - 1)
-                        : null,
+                onPressed: count > 1 ? () => _updateRequiredCount(roleId, count - 1) : null,
                 icon: const Icon(Icons.remove_circle_outline),
                 iconSize: 20,
                 tooltip: 'Decrease count',
@@ -876,19 +733,12 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
       return Container(
         margin: const EdgeInsets.only(bottom: 8),
         child: ListTile(
-          leading: CircleAvatar(
-            child: Text(
-              user.firstName.isNotEmpty ? user.firstName[0].toUpperCase() : 'U',
-            ),
-          ),
+          leading: CircleAvatar(child: Text(user.firstName.isNotEmpty ? user.firstName[0].toUpperCase() : 'U')),
           title: Text(user.fullName),
           subtitle: Text(userRolesText),
-          trailing: Checkbox(
-            value: isAssigned,
-            onChanged: (_) => _toggleUserAssignment(user.userId),
-          ),
+          trailing: Checkbox(value: isAssigned, onChanged: (_) => _toggleUserAssignment(user.userId)),
           onTap: () => _toggleUserAssignment(user.userId),
-          tileColor: isAssigned ? Colors.blue.withOpacity(0.1) : null,
+          tileColor: isAssigned ? Colors.blue.withValues(alpha: 0.1) : null,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       );
@@ -912,10 +762,7 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
         if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
           // If the user is assigned to any other entry for this schedule (day)
           for (final doc in snapshot.data!.docs) {
-            final entry = ScheduleEntryData.fromMap(
-              doc.data() as Map<String, dynamic>,
-              doc.id,
-            );
+            final entry = ScheduleEntryData.fromMap(doc.data() as Map<String, dynamic>, doc.id);
             // Exclude current shift
             if (entry.shiftId != widget.shiftId) {
               isDoubleBooked = true;
@@ -926,13 +773,7 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
         return Container(
           margin: const EdgeInsets.only(bottom: 8),
           child: ListTile(
-            leading: CircleAvatar(
-              child: Text(
-                user.firstName.isNotEmpty
-                    ? user.firstName[0].toUpperCase()
-                    : 'U',
-              ),
-            ),
+            leading: CircleAvatar(child: Text(user.firstName.isNotEmpty ? user.firstName[0].toUpperCase() : 'U')),
             title: Row(
               children: [
                 Text(user.fullName),
@@ -941,25 +782,16 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
                     padding: const EdgeInsets.only(left: 8.0),
                     child: Tooltip(
                       message: 'Already assigned to another shift this day',
-                      child: Icon(
-                        Icons.warning_amber_rounded,
-                        color: Colors.orange,
-                        size: 18,
-                      ),
+                      child: Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
                     ),
                   ),
               ],
             ),
             subtitle: Text(userRolesText),
-            trailing: Checkbox(
-              value: isAssigned,
-              onChanged: (_) => _toggleUserAssignment(user.userId),
-            ),
+            trailing: Checkbox(value: isAssigned, onChanged: (_) => _toggleUserAssignment(user.userId)),
             onTap: () => _toggleUserAssignment(user.userId),
-            tileColor: isAssigned ? Colors.blue.withOpacity(0.1) : null,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
+            tileColor: isAssigned ? Colors.blue.withValues(alpha: 0.1) : null,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           ),
         );
       },

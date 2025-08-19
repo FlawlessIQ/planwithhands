@@ -123,7 +123,7 @@ class DailyBackgroundService {
       final hour = now.hour;
       if (hour < 20) {
         // Before 8 PM
-        debugPrint('[DailyBackgroundService] Too early for daily summary (${hour}:${now.minute})');
+        debugPrint('[DailyBackgroundService] Too early for daily summary ($hour:${now.minute})');
         return false;
       }
 
@@ -153,7 +153,7 @@ class DailyBackgroundService {
       }
 
       debugPrint(
-        '[DailyBackgroundService] Not ready to send daily summary for organization $organizationId (shifts still active, time: ${hour}:${now.minute})',
+        '[DailyBackgroundService] Not ready to send daily summary for organization $organizationId (shifts still active, time: $hour:${now.minute})',
       );
       return false;
     } catch (e) {

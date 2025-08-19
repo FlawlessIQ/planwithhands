@@ -123,7 +123,7 @@ class PushNotificationService {
       debugPrint('[FCM] Foreground message received: ${message.messageId}');
       debugPrint('[FCM] Message data: ${message.data}');
 
-  _onForegroundMessage(message);
+      _onForegroundMessage(message);
 
       // Emit to stream for app-level handling
       _messageStreamController.add(message);
@@ -144,7 +144,7 @@ class PushNotificationService {
     final initialMessage = await _firebaseMessaging.getInitialMessage();
     if (initialMessage != null) {
       debugPrint('[FCM] App launched from notification: ${initialMessage.messageId}');
-  _onOpenedMessage(initialMessage);
+      _onOpenedMessage(initialMessage);
     }
   }
 
@@ -299,9 +299,8 @@ class PushNotificationService {
       final androidDetails = AndroidNotificationDetails(
         isMessage ? 'messages' : 'high_importance_channel',
         isMessage ? 'Messages' : 'High Importance Notifications',
-        channelDescription: isMessage
-            ? 'Message notifications'
-            : 'This channel is used for important notifications from Hands app.',
+        channelDescription:
+            isMessage ? 'Message notifications' : 'This channel is used for important notifications from Hands app.',
         importance: Importance.high,
         priority: Priority.high,
         icon: '@mipmap/ic_launcher',
@@ -312,7 +311,8 @@ class PushNotificationService {
         notification.title,
         notification.body,
         NotificationDetails(android: androidDetails),
-        payload: isMessage && message.data['threadId'] != null ? 'thread:${message.data['threadId']}' : message.messageId,
+        payload:
+            isMessage && message.data['threadId'] != null ? 'thread:${message.data['threadId']}' : message.messageId,
       );
     } catch (e) {
       debugPrint('[PushNotificationService] Error showing local notification: $e');

@@ -99,6 +99,38 @@
       ]
     },
     {
+      "collectionGroup": "daily_checklists",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "templateId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "daily_checklists",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "orgId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "templateId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "pendingUsers",
       "queryScope": "COLLECTION",
       "fields": [
@@ -242,6 +274,64 @@
           "fieldPath": "createdAt",
           "order": "DESCENDING"
         }
+      ]
+    }
+    ,
+    {
+      "collectionGroup": "tasks",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "organizationId", "order": "ASCENDING" },
+  { "fieldPath": "locationId", "order": "ASCENDING" },
+        { "fieldPath": "dateString", "order": "ASCENDING" },
+        { "fieldPath": "completed", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "tasks",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "organizationId", "order": "ASCENDING" },
+        { "fieldPath": "isCarryForward", "order": "ASCENDING" },
+        { "fieldPath": "dateString", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "tasks",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "organizationId", "order": "ASCENDING" },
+        { "fieldPath": "locationId", "order": "ASCENDING" },
+        { "fieldPath": "dateString", "order": "ASCENDING" },
+        { "fieldPath": "isCarryForward", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "tasks",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "organizationId", "order": "ASCENDING" },
+        { "fieldPath": "locationId", "order": "ASCENDING" },
+        { "fieldPath": "dateString", "order": "ASCENDING" },
+        { "fieldPath": "shiftId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "tasks",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "organizationId", "order": "ASCENDING" },
+        { "fieldPath": "locationId", "order": "ASCENDING" },
+        { "fieldPath": "dateString", "order": "ASCENDING" },
+        { "fieldPath": "completed", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "tasks",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "dateString", "order": "ASCENDING" },
+        { "fieldPath": "completed", "order": "ASCENDING" }
       ]
     }
   ],

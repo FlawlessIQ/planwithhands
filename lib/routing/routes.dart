@@ -259,32 +259,32 @@ final router = GoRouter(
   navigatorKey: PushNotificationService.navigatorKey,
   redirect: (context, state) {
     // Debug logging for ALL routing
-    print('[ROUTER] ===============================');
-    print('[ROUTER] TESTING - Current path: ${state.matchedLocation}');
-    print('[ROUTER] TESTING - URI path: ${state.uri.path}');
-    print('[ROUTER] TESTING - Full path: ${state.fullPath}');
-    print('[ROUTER] TESTING - Query params: ${state.uri.queryParameters}');
-    print('[ROUTER] TESTING - Raw URI: ${state.uri.toString()}');
-    print('[ROUTER] TESTING - Browser URL: ${Uri.base.toString()}');
-    print('[ROUTER] ===============================');
+    debugPrint('[ROUTER] ===============================');
+    debugPrint('[ROUTER] TESTING - Current path: ${state.matchedLocation}');
+    debugPrint('[ROUTER] TESTING - URI path: ${state.uri.path}');
+    debugPrint('[ROUTER] TESTING - Full path: ${state.fullPath}');
+    debugPrint('[ROUTER] TESTING - Query params: ${state.uri.queryParameters}');
+    debugPrint('[ROUTER] TESTING - Raw URI: ${state.uri.toString()}');
+    debugPrint('[ROUTER] TESTING - Browser URL: ${Uri.base.toString()}');
+    debugPrint('[ROUTER] ===============================');
 
     // AGGRESSIVE BROWSER URL PARSING
     final browserUri = Uri.base;
     final routerPath = state.uri.path;
 
-    print('[ROUTER] Browser path: ${browserUri.path}');
-    print('[ROUTER] Router path: $routerPath');
+    debugPrint('[ROUTER] Browser path: ${browserUri.path}');
+    debugPrint('[ROUTER] Router path: $routerPath');
 
     // If browser shows welcome but router doesn't, force welcome navigation
     if (browserUri.path == '/welcome' && routerPath != '/welcome') {
-      print('[ROUTER] *** FORCING WELCOME NAVIGATION ***');
+      debugPrint('[ROUTER] *** FORCING WELCOME NAVIGATION ***');
       final email = browserUri.queryParameters['email'];
       final orgId = browserUri.queryParameters['orgId'];
       final inviteId = browserUri.queryParameters['inviteId'];
 
       if (email != null && orgId != null) {
         final welcomeUrl = '/welcome?email=$email&orgId=$orgId&inviteId=${inviteId ?? ''}';
-        print('[ROUTER] Redirecting to: $welcomeUrl');
+        debugPrint('[ROUTER] Redirecting to: $welcomeUrl');
         return welcomeUrl;
       }
     }

@@ -53,12 +53,16 @@ class _ThreadComposerState extends State<ThreadComposer> {
               onPressed: () async {
                 if (!_formKey.currentState!.validate()) return;
                 final svc = MessagingService();
-                final threadId = await svc.createThread(orgId: widget.orgId, targetType: _targetType, pushOnLogin: _pushOnLogin);
+                final threadId = await svc.createThread(
+                  orgId: widget.orgId,
+                  targetType: _targetType,
+                  pushOnLogin: _pushOnLogin,
+                );
                 await svc.sendMessage(threadId, _messageCtrl.text.trim());
                 if (mounted) Navigator.pop(context, threadId);
               },
               child: const Text('Send'),
-            )
+            ),
           ],
         ),
       ),

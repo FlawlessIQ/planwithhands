@@ -1,16 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:math';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:flutter/foundation.dart';
 
 class SchedulingTestDataSeeder {
   static final _firestore = FirestoreEnforcer.instance;
   static final Random _random = Random();
 
   /// Seeds test data for scheduling feature
-  static Future<void> seedTestData({
-    required String organizationId,
-    required String locationId,
-  }) async {
+  static Future<void> seedTestData({required String organizationId, required String locationId}) async {
     try {
       // Create sample job types if they don't exist
       await _createJobTypes(organizationId);
@@ -18,47 +16,28 @@ class SchedulingTestDataSeeder {
       // Create sample shifts
       await _createSampleShifts(organizationId, locationId);
 
-      print('✅ Test data seeded successfully for scheduling feature');
+      debugPrint('✅ Test data seeded successfully for scheduling feature');
     } catch (e) {
-      print('❌ Error seeding test data: $e');
+      debugPrint('❌ Error seeding test data: $e');
       rethrow;
     }
   }
 
   static Future<void> _createJobTypes(String organizationId) async {
-    final jobTypes = [
-      'Server',
-      'Bartender',
-      'Kitchen Staff',
-      'Host/Hostess',
-      'Manager',
-      'Dishwasher',
-    ];
+    final jobTypes = ['Server', 'Bartender', 'Kitchen Staff', 'Host/Hostess', 'Manager', 'Dishwasher'];
 
     final batch = _firestore.batch();
 
     for (final jobType in jobTypes) {
-      final docRef =
-          _firestore
-              .collection('organizations')
-              .doc(organizationId)
-              .collection('jobTypes')
-              .doc();
+      final docRef = _firestore.collection('organizations').doc(organizationId).collection('jobTypes').doc();
 
-      batch.set(docRef, {
-        'name': jobType,
-        'createdAt': FieldValue.serverTimestamp(),
-        'organizationId': organizationId,
-      });
+      batch.set(docRef, {'name': jobType, 'createdAt': FieldValue.serverTimestamp(), 'organizationId': organizationId});
     }
 
     await batch.commit();
   }
 
-  static Future<void> _createSampleShifts(
-    String organizationId,
-    String locationId,
-  ) async {
+  static Future<void> _createSampleShifts(String organizationId, String locationId) async {
     final shifts = [
       {
         'shiftName': 'Morning Shift',
@@ -74,21 +53,8 @@ class SchedulingTestDataSeeder {
         'startTime': '16:00',
         'endTime': '00:00',
         'jobType': ['Server', 'Bartender', 'Kitchen Staff', 'Manager'],
-        'staffingLevels': {
-          'Server': 4,
-          'Bartender': 2,
-          'Kitchen Staff': 3,
-          'Manager': 1,
-        },
-        'days': [
-          'Monday',
-          'Tuesday',
-          'Wednesday',
-          'Thursday',
-          'Friday',
-          'Saturday',
-          'Sunday',
-        ],
+        'staffingLevels': {'Server': 4, 'Bartender': 2, 'Kitchen Staff': 3, 'Manager': 1},
+        'days': ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
         'repeatsDaily': false,
       },
       {
@@ -139,37 +105,19 @@ class SchedulingTestDataSeeder {
   }
 
   /// Update existing users with sample availability data
-  static Future<void> seedUserAvailability({
-    required String organizationId,
-  }) async {
+  static Future<void> seedUserAvailability({required String organizationId}) async {
     try {
       // Get all users in the organization
       final usersSnapshot =
-          await _firestore
-              .collection('users')
-              .where('organizationId', isEqualTo: organizationId)
-              .get();
+          await _firestore.collection('users').where('organizationId', isEqualTo: organizationId).get();
 
       final batch = _firestore.batch();
 
       for (final userDoc in usersSnapshot.docs) {
         // Create sample availability - most users available most times
         final availability = <String, bool>{};
-        final shifts = [
-          'Morning Shift',
-          'Evening Shift',
-          'Weekend Brunch',
-          'Late Night',
-        ];
-        final weekdays = [
-          'Monday',
-          'Tuesday',
-          'Wednesday',
-          'Thursday',
-          'Friday',
-          'Saturday',
-          'Sunday',
-        ];
+        final shifts = ['Morning Shift', 'Evening Shift', 'Weekend Brunch', 'Late Night'];
+        final weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
         for (final day in weekdays) {
           for (final shift in shifts) {
@@ -204,9 +152,9 @@ class SchedulingTestDataSeeder {
       }
 
       await batch.commit();
-      print('✅ User availability data seeded successfully');
+      debugPrint('✅ User availability data seeded successfully');
     } catch (e) {
-      print('❌ Error seeding user availability: $e');
+      debugPrint('❌ Error seeding user availability: $e');
       rethrow;
     }
   }

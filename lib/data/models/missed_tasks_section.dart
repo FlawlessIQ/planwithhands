@@ -12,6 +12,7 @@ class MissedTasksSection {
   final bool isExpanded;
   final String? locationId;
   final String? checklistId;
+  final String? checklistName;
   final String organizationId;
 
   const MissedTasksSection({
@@ -24,6 +25,7 @@ class MissedTasksSection {
     this.isExpanded = false,
     this.locationId,
     this.checklistId,
+    this.checklistName,
   });
 
   MissedTasksSection copyWith({
@@ -36,6 +38,7 @@ class MissedTasksSection {
     bool? isExpanded,
     String? locationId,
     String? checklistId,
+    String? checklistName,
   }) {
     return MissedTasksSection(
       shiftId: shiftId ?? this.shiftId,
@@ -47,6 +50,7 @@ class MissedTasksSection {
       isExpanded: isExpanded ?? this.isExpanded,
       locationId: locationId ?? this.locationId,
       checklistId: checklistId ?? this.checklistId,
+      checklistName: checklistName ?? this.checklistName,
     );
   }
 
@@ -61,6 +65,7 @@ class MissedTasksSection {
       isExpanded: json['isExpanded'] as bool? ?? false,
       locationId: json['locationId'] as String?,
       checklistId: json['checklistId'] as String?,
+      checklistName: json['checklistName'] as String?,
     );
   }
 
@@ -75,6 +80,7 @@ class MissedTasksSection {
       'isExpanded': isExpanded,
       'locationId': locationId,
       'checklistId': checklistId,
+      'checklistName': checklistName,
     };
   }
 }

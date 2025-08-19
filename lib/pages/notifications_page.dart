@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/widgets/professional_message_dialog.dart';
+import 'package:hands_app/utils/location_helper.dart';
 
 class NotificationListSheet extends ConsumerStatefulWidget {
   final void Function(String title, String details)? onMessageTap;
@@ -127,13 +128,9 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
     // Admins see all notifications
     if (userRole == 2) return true;
 
-    // For managers and general users: check locationIds array
-    final locationIds = userData['locationIds'];
-    if (locationIds is List) {
-      return locationIds.contains(locationId);
-    }
-
-    return false;
+    // For managers and general users: canonicalize and check locationIds
+    final locIds = coerceToLocationIds(userData['locationIds'] ?? userData['locationId']);
+    return locIds.contains(locationId);
   }
 
   Future<void> _archiveNotification(String id) async {

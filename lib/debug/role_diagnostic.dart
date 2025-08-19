@@ -32,10 +32,7 @@ class _RoleDiagnosticState extends State<RoleDiagnostic> {
         return;
       }
 
-      final userDoc = await FirestoreEnforcer.instance
-          .collection(FirestoreCollectionNames.users)
-          .doc(user.uid)
-          .get();
+      final userDoc = await FirestoreEnforcer.instance.collection(FirestoreCollectionNames.users).doc(user.uid).get();
 
       if (!userDoc.exists) {
         setState(() {
@@ -50,21 +47,31 @@ class _RoleDiagnosticState extends State<RoleDiagnostic> {
         isLoading = false;
       });
 
-      // Also print to console for debugging
-      print('=== USER ROLE DIAGNOSTIC ===');
-      print('User ID: ${user.uid}');
-      print('User Email: ${user.email}');
-      print('User Data: $userData');
-      print('User Role: ${userData?['userRole']}');
-      print('Organization ID: ${userData?['organizationId']}');
-      print('Location ID: ${userData?['locationId']}');
-      print('===========================');
+      // Also log to console for debugging
+      debugPrint('=== USER ROLE DIAGNOSTIC ===');
+      debugPrint('User ID: ${user.uid}');
+      debugPrint('User Email: ${user.email}');
+      debugPrint('User Data: $userData');
+      debugPrint('User Role: ${userData?['userRole']}');
+      debugPrint('Organization ID: ${userData?['organizationId']}');
+      // Show both canonicalized locationIds and legacy locationId for diagnostics
+      try {
+        final locs =
+            (userData?['locationIds'] is Iterable)
+                ? List<String>.from(userData?['locationIds'] ?? [])
+                : (userData?['locationId'] != null ? [userData?['locationId'].toString()] : <String>[]);
+        debugPrint('Location IDs (canonical): $locs');
+      } catch (_) {
+        debugPrint('Location IDs (canonical): <error parsing>');
+      }
+      debugPrint('Location ID (legacy): ${userData?['locationId']}');
+      debugPrint('===========================');
     } catch (e) {
       setState(() {
         error = 'Error loading user data: $e';
         isLoading = false;
       });
-      print('Error in role diagnostic: $e');
+      debugPrint('Error in role diagnostic: $e');
     }
   }
 
@@ -77,10 +84,7 @@ class _RoleDiagnosticState extends State<RoleDiagnostic> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Role Diagnostic',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
+            const Text('Role Diagnostic', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
             if (isLoading)
               const CircularProgressIndicator()
@@ -106,16 +110,8 @@ class _RoleDiagnosticState extends State<RoleDiagnostic> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              '$label:',
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            ),
-          ),
-          Expanded(
-            child: Text(value),
-          ),
+          SizedBox(width: 120, child: Text('$label:', style: const TextStyle(fontWeight: FontWeight.w500))),
+          Expanded(child: Text(value)),
         ],
       ),
     );
@@ -140,20 +136,14 @@ class _RoleDiagnosticState extends State<RoleDiagnostic> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         border: Border.all(color: color),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            explanation,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-          ),
+          Text(explanation, style: TextStyle(fontWeight: FontWeight.bold, color: color)),
           const SizedBox(height: 8),
           const Text(
             'Role Hierarchy:\n• Role 0: User Dashboard\n• Role 1: Manager Dashboard\n• Role 2+: Admin Dashboard',

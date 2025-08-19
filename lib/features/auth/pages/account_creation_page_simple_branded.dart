@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hands_app/routing/routes.dart';
 import 'package:hands_app/services/stripe_service.dart';
+import 'package:hands_app/config/feature_flags.dart';
+import 'package:flutter/services.dart';
 import 'package:hands_app/global_widgets/hands_icon.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 
@@ -12,12 +14,7 @@ class SimpleSignUpPage extends StatefulWidget {
   final String? organizationId;
   final String? token;
 
-  const SimpleSignUpPage({
-    super.key,
-    this.email,
-    this.organizationId,
-    this.token,
-  });
+  const SimpleSignUpPage({super.key, this.email, this.organizationId, this.token});
 
   @override
   SimpleSignUpPageState createState() => SimpleSignUpPageState();
@@ -33,30 +30,24 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
 
   // Form controllers
   final TextEditingController businessNameController = TextEditingController();
-  final TextEditingController numberOfEmployeesController =
-      TextEditingController();
-  final TextEditingController primaryLocationNameController =
-      TextEditingController();
-  final TextEditingController primaryLocationAddressController =
-      TextEditingController();
-  final TextEditingController primaryLocationCityController =
-      TextEditingController();
-  final TextEditingController primaryLocationZipController =
-      TextEditingController();
+  final TextEditingController numberOfEmployeesController = TextEditingController();
+  // New: locations input controller
+  final TextEditingController _locCtrl = TextEditingController(text: '1');
   final TextEditingController firstNameController = TextEditingController();
   final TextEditingController lastNameController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
-  final TextEditingController confirmPasswordController =
-      TextEditingController();
+  final TextEditingController confirmPasswordController = TextEditingController();
 
   // Form state
   String? businessType;
-  String? primaryLocationState;
   String? userRole;
   bool agreeTerms = false;
   bool passwordVisible = false;
-  Map<String, String> _currentPricing = {};
+  // Pricing/state
+  int _locations = 1; // min 1
+  int? _approxEmployees; // optional
+  bool _isAnnual = false; // billing period
 
   // Convert string role to integer for storage
   int _getRoleAsInt() {
@@ -71,45 +62,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
     }
   }
 
-  // Pricing matrix data
-  static Map<String, String> _getPricingTierInfo(int employeeCount) {
-    if (employeeCount <= 5) {
-      return {
-        'tier': 'Starter',
-        'price': '\$29/month',
-        'range': 'Up to 5 employees',
-        'description': 'Perfect for small teams getting started',
-      };
-    } else if (employeeCount <= 20) {
-      return {
-        'tier': 'Growth',
-        'price': '\$79/month',
-        'range': '6-20 employees',
-        'description': 'Ideal for growing businesses',
-      };
-    } else if (employeeCount <= 50) {
-      return {
-        'tier': 'Professional',
-        'price': '\$149/month',
-        'range': '21-50 employees',
-        'description': 'Advanced features for established teams',
-      };
-    } else if (employeeCount <= 100) {
-      return {
-        'tier': 'Enterprise',
-        'price': '\$249/month',
-        'range': '51-100 employees',
-        'description': 'Full-featured solution for large organizations',
-      };
-    } else {
-      return {
-        'tier': 'Custom',
-        'price': 'Contact Us',
-        'range': '100+ employees',
-        'description': 'Tailored solutions for enterprise needs',
-      };
-    }
-  }
+  // Removed legacy tiered pricing mapping
 
   // US States list
   final List<String> usStates = [
@@ -172,14 +125,11 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
     if (widget.email != null) {
       emailController.text = widget.email!;
     }
-    // Initialize pricing with default
-    _currentPricing = _getPricingTierInfo(0);
-
-    // Listen to employee count changes to update pricing
-    numberOfEmployeesController.addListener(() {
-      final count = int.tryParse(numberOfEmployeesController.text) ?? 0;
+    // Listen to locations input changes
+    _locCtrl.addListener(() {
+      final v = int.tryParse(_locCtrl.text.trim());
       setState(() {
-        _currentPricing = _getPricingTierInfo(count);
+        _locations = (v == null || v <= 0) ? 1 : v;
       });
     });
   }
@@ -188,10 +138,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
   void dispose() {
     businessNameController.dispose();
     numberOfEmployeesController.dispose();
-    primaryLocationNameController.dispose();
-    primaryLocationAddressController.dispose();
-    primaryLocationCityController.dispose();
-    primaryLocationZipController.dispose();
+    _locCtrl.dispose();
     firstNameController.dispose();
     lastNameController.dispose();
     emailController.dispose();
@@ -200,100 +147,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
     super.dispose();
   }
 
-  void _showPricingMatrixDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Pricing Plans'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildPricingTier(
-                  'Starter',
-                  '\$29/month',
-                  'Up to 5 employees',
-                  'Perfect for small teams',
-                ),
-                _buildPricingTier(
-                  'Growth',
-                  '\$79/month',
-                  '6-20 employees',
-                  'Ideal for growing businesses',
-                ),
-                _buildPricingTier(
-                  'Professional',
-                  '\$149/month',
-                  '21-50 employees',
-                  'Advanced features',
-                ),
-                _buildPricingTier(
-                  'Enterprise',
-                  '\$249/month',
-                  '51-100 employees',
-                  'Full-featured solution',
-                ),
-                _buildPricingTier(
-                  'Custom',
-                  'Contact Us',
-                  '100+ employees',
-                  'Tailored solutions',
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Close'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildPricingTier(
-    String title,
-    String price,
-    String range,
-    String description,
-  ) {
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  price,
-                  style: const TextStyle(
-                    color: Colors.green,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            Text(
-              range,
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-            Text(description, style: const TextStyle(fontSize: 12)),
-          ],
-        ),
-      ),
-    );
-  }
+  // Removed legacy pricing UI helpers
 
   Future<void> _createAccount() async {
     if (!_formKey.currentState!.validate()) {
@@ -303,10 +157,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
     // If it's a new organization sign-up, check for terms agreement
     if (widget.organizationId == null && !agreeTerms) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('You must agree to the terms and conditions.'),
-          backgroundColor: Colors.red,
-        ),
+        const SnackBar(content: Text('You must agree to the terms and conditions.'), backgroundColor: Colors.red),
       );
       return;
     }
@@ -324,12 +175,9 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
     } catch (e) {
       print('Error creating account: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: ${e.toString()}'), backgroundColor: Colors.red));
       }
     } finally {
       if (mounted) {
@@ -340,26 +188,20 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
 
   Future<void> _joinExistingOrganization() async {
     // Create user with Firebase Auth
-    final credential = await FirebaseAuth.instance
-        .createUserWithEmailAndPassword(
-          email: emailController.text.trim(),
-          password: passwordController.text,
-        );
+    final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      email: emailController.text.trim(),
+      password: passwordController.text,
+    );
     final user = credential.user!;
 
     // Update user profile
-    await user.updateDisplayName(
-      '${firstNameController.text} ${lastNameController.text}',
-    );
+    await user.updateDisplayName('${firstNameController.text} ${lastNameController.text}');
 
     // Find the user document created by the admin
     final userQuery =
         await FirestoreEnforcer.instance
             .collection('users')
-            .where(
-              'email',
-              isEqualTo: emailController.text.trim().toLowerCase(),
-            )
+            .where('email', isEqualTo: emailController.text.trim().toLowerCase())
             .where('organizationId', isEqualTo: widget.organizationId)
             .limit(1)
             .get();
@@ -380,10 +222,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
     });
 
     // Invalidate the invitation token
-    await FirestoreEnforcer.instance
-        .collection('invites')
-        .doc(widget.token)
-        .delete();
+    await FirestoreEnforcer.instance.collection('invites').doc(widget.token).delete();
 
     // Navigate to user dashboard
     if (mounted) {
@@ -396,71 +235,34 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
       print('Starting new organization creation...');
 
       // Create user with Firebase Auth
-      final credential = await FirebaseAuth.instance
-          .createUserWithEmailAndPassword(
-            email: emailController.text.trim(),
-            password: passwordController.text,
-          );
+      final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: emailController.text.trim(),
+        password: passwordController.text,
+      );
 
       final user = credential.user!;
       print('Firebase Auth user created: ${user.uid}');
 
       // Update user profile
-      await user.updateDisplayName(
-        '${firstNameController.text} ${lastNameController.text}',
-      );
+      await user.updateDisplayName('${firstNameController.text} ${lastNameController.text}');
 
       // Generate organization ID
-      final orgId =
-          FirestoreEnforcer.instance.collection('organizations').doc().id;
+      final orgId = FirestoreEnforcer.instance.collection('organizations').doc().id;
       print('Generated organization ID: $orgId');
 
-      // Create primary location first to get the locationId
-      final locationRef =
-          FirestoreEnforcer.instance
-              .collection('organizations')
-              .doc(orgId)
-              .collection('locations')
-              .doc();
-
-      final locationId = locationRef.id;
-      print('Generated location ID: $locationId');
-
-      await locationRef.set({
-        'locationName': primaryLocationNameController.text.trim(),
-        'street': primaryLocationAddressController.text.trim(),
-        'city': primaryLocationCityController.text.trim(),
-        'state': primaryLocationState,
-        'zipCode': primaryLocationZipController.text.trim(),
-        'isPrimary': true,
-        'isActive': true,
+      // Create organization document
+      await FirestoreEnforcer.instance.collection('organizations').doc(orgId).set({
+        'name': businessNameController.text.trim(),
+        'businessType': businessType,
+        // Store approx employees if provided; default to 0
+        'numberOfEmployees': _approxEmployees ?? int.tryParse(numberOfEmployeesController.text) ?? 0,
         'createdAt': FieldValue.serverTimestamp(),
         'createdBy': user.uid,
-        'organizationId': orgId, // Add organizationId for easier querying
+        'isActive': true,
+        'subscriptionStatus': 'trial',
+        'trialEndsAt': DateTime.now().add(const Duration(days: 30)),
+        'settings': {'allowUserRegistration': true, 'requireLocationSelection': true, 'defaultShiftLength': 8},
       });
-      print('Location document created: $locationId');
-
-      // Create organization document with the primary locationId
-      await FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(orgId)
-          .set({
-            'name': businessNameController.text.trim(),
-            'businessType': businessType,
-            'numberOfEmployees':
-                int.tryParse(numberOfEmployeesController.text) ?? 0,
-            'primaryLocationId': locationId, // Add the primary location ID
-            'createdAt': FieldValue.serverTimestamp(),
-            'createdBy': user.uid,
-            'isActive': true,
-            'subscriptionStatus': 'trial',
-            'trialEndsAt': DateTime.now().add(const Duration(days: 30)),
-            'settings': {
-              'allowUserRegistration': true,
-              'requireLocationSelection': true,
-              'defaultShiftLength': 8,
-            },
-          });
       print('Organization document created');
 
       // Create user document
@@ -470,7 +272,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
         'email': emailController.text.trim(),
         'userRole': _getRoleAsInt(), // Use integer role instead of string
         'organizationId': orgId,
-        'locationId': locationId, // Add primary location ID for admin user
+        'locationIds': [], // Empty initially, will be populated when locations are added
         'isAdmin': _getRoleAsInt() == 2, // Set admin flag for role 2
         'isActive': true,
         'createdAt': FieldValue.serverTimestamp(),
@@ -488,25 +290,27 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
-              'Account created successfully! Redirecting to Stripe...',
-            ),
+            content: Text('Account created successfully! Redirecting to Stripe...'),
             backgroundColor: Colors.green,
           ),
         );
       }
 
-      // Determine subscription tier and proceed accordingly
-      final employeeCount = int.tryParse(numberOfEmployeesController.text) ?? 0;
-      print('Employee count: $employeeCount');
+      // Large-account rule: 5+ locations requires contacting sales
+      if (_locations >= 5) {
+        await showDialog(context: context, builder: (_) => const ContactSalesDialog());
+        // Block checkout
+        return;
+      }
 
-      // All plans are paid, redirect to Stripe
-      await StripeService.redirectToStripeCheckout(
-        email: emailController.text.trim(),
+      // Proceed to Stripe Checkout: per-location pricing and billing period
+      await StripeService.startCheckoutAndLaunch(
         orgId: orgId,
-        employeeCount: employeeCount,
+        email: emailController.text.trim(),
+        priceId: _isAnnual ? kStripePriceAnnual : kStripePriceMonthly,
+        quantity: _locations,
       );
-      print('Stripe checkout initiated');
+      debugPrint('Stripe checkout initiated (quantity: $_locations)');
     } catch (e) {
       print('Error in _createNewOrganization: $e');
       rethrow;
@@ -550,11 +354,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                         const SizedBox(width: 12),
                         const Text(
                           'Welcome to Hands',
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
+                          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
                         ),
                       ],
                     ),
@@ -585,17 +385,10 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                   children: [
                     Text(
                       '🎉 You\'re Invited!',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green,
-                      ),
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green),
                     ),
                     SizedBox(height: 8),
-                    Text(
-                      'Complete your account setup to join your team on Hands.',
-                      style: TextStyle(fontSize: 16),
-                    ),
+                    Text('Complete your account setup to join your team on Hands.', style: TextStyle(fontSize: 16)),
                   ],
                 ),
               ),
@@ -610,251 +403,122 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                   if (!isInvitedUser) ...[
                     TextFormField(
                       controller: businessNameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Business/LLC Name',
-                        border: OutlineInputBorder(),
-                      ),
+                      decoration: const InputDecoration(labelText: 'Business/LLC Name', border: OutlineInputBorder()),
                       textCapitalization: TextCapitalization.words,
-                      validator:
-                          (v) => v!.isEmpty ? 'Enter business name' : null,
+                      validator: (v) => v!.isEmpty ? 'Enter business name' : null,
                     ),
                     const SizedBox(height: 16),
 
+                    // Approx. Employees (optional)
                     TextFormField(
                       controller: numberOfEmployeesController,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Number of Employees',
-                        border: OutlineInputBorder(),
-                      ),
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      decoration: const InputDecoration(labelText: 'Approx. Employees', border: OutlineInputBorder()),
+                      onChanged: (v) {
+                        _approxEmployees = int.tryParse(v);
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Number of Locations (required, min 1)
+                    TextFormField(
+                      controller: _locCtrl,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      decoration: const InputDecoration(labelText: 'Locations', border: OutlineInputBorder()),
+                      onChanged: (value) {
+                        setState(() {
+                          _locations = int.tryParse(value) ?? 1;
+                          if (_locations <= 0) _locations = 1;
+                        });
+                      },
                       validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter the number of employees';
-                        }
-                        final n = int.tryParse(value);
-                        if (n == null || n < 0) {
-                          return 'Please enter a valid number';
+                        final n = int.tryParse(value ?? '');
+                        if (n == null || n <= 0) {
+                          return 'Enter a valid number of locations (> 0)';
                         }
                         return null;
                       },
                     ),
                     const SizedBox(height: 16),
 
-                    // Pricing display card with charcoal theme
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[50],
-                        border: Border.all(color: Colors.grey[300]!),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    // Billing Period selection
+                    DropdownButtonFormField<String>(
+                      value: _isAnnual ? 'Annual' : 'Monthly',
+                      decoration: const InputDecoration(labelText: 'Billing Period', border: OutlineInputBorder()),
+                      items: const [
+                        DropdownMenuItem(value: 'Monthly', child: Text('Monthly')),
+                        DropdownMenuItem(value: 'Annual', child: Text('Annual')),
+                      ],
+                      onChanged: (value) => setState(() => _isAnnual = value == 'Annual'),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Live pricing tile based on number of locations and billing period
+                    Builder(
+                      builder: (_) {
+                        final monthly = _locations * 49.99;
+                        return Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[50],
+                            border: Border.all(color: Colors.grey[300]!),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                'Your Plan:',
-                                style: TextStyle(fontWeight: FontWeight.bold),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('Estimated Charge', style: TextStyle(fontWeight: FontWeight.bold)),
+                                  Text(
+                                    '\$${monthly.toStringAsFixed(2)} / month',
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      color: Colors.green,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              TextButton(
-                                onPressed:
-                                    () => _showPricingMatrixDialog(context),
-                                child: Text(
-                                  'View All Plans',
-                                  style: TextStyle(color: primaryColor),
+                              if (_isAnnual) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Annual billing selected — billed annually at checkout',
+                                  style: TextStyle(fontSize: 12, color: Colors.grey[700]),
                                 ),
-                              ),
+                              ],
                             ],
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '${_currentPricing['tier'] ?? 'Starter'} Plan',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: primaryColor,
-                            ),
-                          ),
-                          Text(
-                            _currentPricing['price'] == 'Contact Us'
-                                ? 'Custom Pricing'
-                                : _currentPricing['price'] ?? '\$29/month',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              color: Colors.green,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          Text(
-                            _currentPricing['range'] ?? 'Up to 5 employees',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey,
-                            ),
-                          ),
-                          if ((_currentPricing['description'] ?? '').isNotEmpty)
-                            Text(
-                              _currentPricing['description']!,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
-                              ),
-                            ),
-                        ],
-                      ),
+                        );
+                      },
                     ),
                     const SizedBox(height: 16),
 
                     // Restaurant/Service industry focused business types
                     DropdownButtonFormField<String>(
                       value: businessType,
-                      decoration: const InputDecoration(
-                        labelText: 'Business Type',
-                        border: OutlineInputBorder(),
-                      ),
+                      decoration: const InputDecoration(labelText: 'Business Type', border: OutlineInputBorder()),
                       items: const [
-                        DropdownMenuItem(
-                          value: 'Restaurant',
-                          child: Text('Restaurant'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Fast Food',
-                          child: Text('Fast Food'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Cafe / Coffee Shop',
-                          child: Text('Cafe / Coffee Shop'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Bar / Brewery',
-                          child: Text('Bar / Brewery'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Catering',
-                          child: Text('Catering'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Food Truck',
-                          child: Text('Food Truck'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Hotel / Hospitality',
-                          child: Text('Hotel / Hospitality'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Retail / Store',
-                          child: Text('Retail / Store'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Salon / Spa',
-                          child: Text('Salon / Spa'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Fitness / Gym',
-                          child: Text('Fitness / Gym'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Healthcare',
-                          child: Text('Healthcare'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Cleaning Services',
-                          child: Text('Cleaning Services'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Event Services',
-                          child: Text('Event Services'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Other Service',
-                          child: Text('Other Service'),
-                        ),
+                        DropdownMenuItem(value: 'Restaurant', child: Text('Restaurant')),
+                        DropdownMenuItem(value: 'Fast Food', child: Text('Fast Food')),
+                        DropdownMenuItem(value: 'Cafe / Coffee Shop', child: Text('Cafe / Coffee Shop')),
+                        DropdownMenuItem(value: 'Bar / Brewery', child: Text('Bar / Brewery')),
+                        DropdownMenuItem(value: 'Catering', child: Text('Catering')),
+                        DropdownMenuItem(value: 'Food Truck', child: Text('Food Truck')),
+                        DropdownMenuItem(value: 'Hotel / Hospitality', child: Text('Hotel / Hospitality')),
+                        DropdownMenuItem(value: 'Retail / Store', child: Text('Retail / Store')),
+                        DropdownMenuItem(value: 'Salon / Spa', child: Text('Salon / Spa')),
+                        DropdownMenuItem(value: 'Fitness / Gym', child: Text('Fitness / Gym')),
+                        DropdownMenuItem(value: 'Healthcare', child: Text('Healthcare')),
+                        DropdownMenuItem(value: 'Cleaning Services', child: Text('Cleaning Services')),
+                        DropdownMenuItem(value: 'Event Services', child: Text('Event Services')),
+                        DropdownMenuItem(value: 'Other Service', child: Text('Other Service')),
                       ],
-                      onChanged:
-                          (value) => setState(() => businessType = value),
-                      validator:
-                          (v) => v == null ? 'Select business type' : null,
-                    ),
-                    const SizedBox(height: 16),
-
-                    TextFormField(
-                      controller: primaryLocationNameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Primary Location Name',
-                        border: OutlineInputBorder(),
-                      ),
-                      textCapitalization: TextCapitalization.words,
-                      validator:
-                          (v) => v!.isEmpty ? 'Enter location name' : null,
-                    ),
-                    const SizedBox(height: 16),
-
-                    TextFormField(
-                      controller: primaryLocationAddressController,
-                      decoration: const InputDecoration(
-                        labelText: 'Street Address',
-                        border: OutlineInputBorder(),
-                      ),
-                      textCapitalization: TextCapitalization.words,
-                      validator:
-                          (v) => v!.isEmpty ? 'Enter street address' : null,
-                    ),
-                    const SizedBox(height: 16),
-
-                    Row(
-                      children: [
-                        Expanded(
-                          flex: 2,
-                          child: TextFormField(
-                            controller: primaryLocationCityController,
-                            decoration: const InputDecoration(
-                              labelText: 'City',
-                              border: OutlineInputBorder(),
-                            ),
-                            textCapitalization: TextCapitalization.words,
-                            validator: (v) => v!.isEmpty ? 'Enter city' : null,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: primaryLocationState,
-                            decoration: const InputDecoration(
-                              labelText: 'State',
-                              border: OutlineInputBorder(),
-                            ),
-                            items:
-                                usStates
-                                    .map(
-                                      (state) => DropdownMenuItem(
-                                        value: state,
-                                        child: Text(state),
-                                      ),
-                                    )
-                                    .toList(),
-                            onChanged:
-                                (value) => setState(
-                                  () => primaryLocationState = value,
-                                ),
-                            validator: (v) => v == null ? 'Select state' : null,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: primaryLocationZipController,
-                            decoration: const InputDecoration(
-                              labelText: 'ZIP Code',
-                              border: OutlineInputBorder(),
-                            ),
-                            keyboardType: TextInputType.number,
-                            validator:
-                                (v) => v!.isEmpty ? 'Enter ZIP code' : null,
-                          ),
-                        ),
-                      ],
+                      onChanged: (value) => setState(() => businessType = value),
+                      validator: (v) => v == null ? 'Select business type' : null,
                     ),
                     const SizedBox(height: 16),
                   ],
@@ -865,26 +529,18 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                       Expanded(
                         child: TextFormField(
                           controller: firstNameController,
-                          decoration: const InputDecoration(
-                            labelText: 'First Name',
-                            border: OutlineInputBorder(),
-                          ),
+                          decoration: const InputDecoration(labelText: 'First Name', border: OutlineInputBorder()),
                           textCapitalization: TextCapitalization.words,
-                          validator:
-                              (v) => v!.isEmpty ? 'Enter first name' : null,
+                          validator: (v) => v!.isEmpty ? 'Enter first name' : null,
                         ),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
                         child: TextFormField(
                           controller: lastNameController,
-                          decoration: const InputDecoration(
-                            labelText: 'Last Name',
-                            border: OutlineInputBorder(),
-                          ),
+                          decoration: const InputDecoration(labelText: 'Last Name', border: OutlineInputBorder()),
                           textCapitalization: TextCapitalization.words,
-                          validator:
-                              (v) => v!.isEmpty ? 'Enter last name' : null,
+                          validator: (v) => v!.isEmpty ? 'Enter last name' : null,
                         ),
                       ),
                     ],
@@ -893,17 +549,12 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
 
                   TextFormField(
                     controller: emailController,
-                    decoration: const InputDecoration(
-                      labelText: 'Email Address',
-                      border: OutlineInputBorder(),
-                    ),
+                    decoration: const InputDecoration(labelText: 'Email Address', border: OutlineInputBorder()),
                     keyboardType: TextInputType.emailAddress,
                     enabled: !isInvitedUser,
                     validator: (v) {
                       if (v!.isEmpty) return 'Enter email address';
-                      if (!RegExp(
-                        r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
-                      ).hasMatch(v)) {
+                      if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(v)) {
                         return 'Enter valid email address';
                       }
                       return null;
@@ -914,20 +565,11 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                   if (!isInvitedUser) ...[
                     DropdownButtonFormField<String>(
                       value: userRole,
-                      decoration: const InputDecoration(
-                        labelText: 'Your Role',
-                        border: OutlineInputBorder(),
-                      ),
+                      decoration: const InputDecoration(labelText: 'Your Role', border: OutlineInputBorder()),
                       items: const [
                         DropdownMenuItem(value: 'Owner', child: Text('Owner')),
-                        DropdownMenuItem(
-                          value: 'Manager',
-                          child: Text('Manager'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Administrator',
-                          child: Text('Administrator'),
-                        ),
+                        DropdownMenuItem(value: 'Manager', child: Text('Manager')),
+                        DropdownMenuItem(value: 'Administrator', child: Text('Administrator')),
                         DropdownMenuItem(value: 'Other', child: Text('Other')),
                       ],
                       onChanged: (value) => setState(() => userRole = value),
@@ -942,15 +584,8 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                       labelText: 'Password',
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
-                        icon: Icon(
-                          passwordVisible
-                              ? Icons.visibility
-                              : Icons.visibility_off,
-                        ),
-                        onPressed:
-                            () => setState(
-                              () => passwordVisible = !passwordVisible,
-                            ),
+                        icon: Icon(passwordVisible ? Icons.visibility : Icons.visibility_off),
+                        onPressed: () => setState(() => passwordVisible = !passwordVisible),
                       ),
                     ),
                     obscureText: !passwordVisible,
@@ -966,10 +601,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
 
                   TextFormField(
                     controller: confirmPasswordController,
-                    decoration: const InputDecoration(
-                      labelText: 'Confirm Password',
-                      border: OutlineInputBorder(),
-                    ),
+                    decoration: const InputDecoration(labelText: 'Confirm Password', border: OutlineInputBorder()),
                     obscureText: true,
                     validator: (v) {
                       if (v != passwordController.text) {
@@ -983,16 +615,8 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                   if (!isInvitedUser)
                     Row(
                       children: [
-                        Checkbox(
-                          value: agreeTerms,
-                          onChanged:
-                              (value) => setState(() => agreeTerms = value!),
-                        ),
-                        const Expanded(
-                          child: Text(
-                            'I agree to the Terms of Service and Privacy Policy.',
-                          ),
-                        ),
+                        Checkbox(value: agreeTerms, onChanged: (value) => setState(() => agreeTerms = value!)),
+                        const Expanded(child: Text('I agree to the Terms of Service and Privacy Policy.')),
                       ],
                     ),
                   const SizedBox(height: 24),
@@ -1003,22 +627,12 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                       backgroundColor: primaryColor,
                       foregroundColor: Colors.white,
                       minimumSize: const Size(double.infinity, 50),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                     child:
                         _isLoading
-                            ? const CircularProgressIndicator(
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.white,
-                              ),
-                            )
-                            : Text(
-                              isInvitedUser
-                                  ? 'Complete Sign Up'
-                                  : 'Create Account',
-                            ),
+                            ? const CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Colors.white))
+                            : Text(isInvitedUser ? 'Complete Sign Up' : 'Create Account'),
                   ),
                   const SizedBox(height: 24),
                   Center(
@@ -1038,6 +652,22 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Simple Contact Sales dialog for large accounts (5+ locations)
+class ContactSalesDialog extends StatelessWidget {
+  const ContactSalesDialog({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Contact Sales'),
+      content: const Text(
+        'For organizations with 5 or more locations, please contact our sales team to set up a custom plan.',
+      ),
+      actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close'))],
     );
   }
 }

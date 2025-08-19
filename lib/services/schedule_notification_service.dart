@@ -1,4 +1,5 @@
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hands_app/data/models/extended_user_data.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 
@@ -17,14 +18,9 @@ class ScheduleNotificationService {
   }) async {
     try {
       // Get organization name
-      final orgDoc =
-          await _firestore
-              .collection('organizations')
-              .doc(organizationId)
-              .get();
+      final orgDoc = await _firestore.collection('organizations').doc(organizationId).get();
 
-      final organizationName =
-          orgDoc.data()?['organizationName'] ?? 'Your Organization';
+      final organizationName = orgDoc.data()?['organizationName'] ?? 'Your Organization';
 
       // Get location name
       final locationDoc =
@@ -35,14 +31,11 @@ class ScheduleNotificationService {
               .doc(locationId)
               .get();
 
-      final locationName =
-          locationDoc.data()?['locationName'] ?? 'Your Location';
+      final locationName = locationDoc.data()?['locationName'] ?? 'Your Location';
 
       // Get user data for all assigned users
       final userDocs = await Future.wait(
-        assignedUserIds.map(
-          (userId) => _firestore.collection('users').doc(userId).get(),
-        ),
+        assignedUserIds.map((userId) => _firestore.collection('users').doc(userId).get()),
       );
 
       final notifications = <Map<String, dynamic>>[];
@@ -53,12 +46,9 @@ class ScheduleNotificationService {
         final userData = ExtendedUserData.fromMap(userDoc.data()!, userDoc.id);
 
         // Check user's notification preferences
-        final wantsScheduleUpdates =
-            userData.notificationSettings['scheduleUpdates'] ?? true;
-        final wantsEmailNotifications =
-            userData.notificationSettings['emailNotifications'] ?? true;
-        final wantsPushNotifications =
-            userData.notificationSettings['pushNotifications'] ?? true;
+        final wantsScheduleUpdates = userData.notificationSettings['scheduleUpdates'] ?? true;
+        final wantsEmailNotifications = userData.notificationSettings['emailNotifications'] ?? true;
+        final wantsPushNotifications = userData.notificationSettings['pushNotifications'] ?? true;
 
         if (!wantsScheduleUpdates) continue;
 
@@ -93,7 +83,7 @@ class ScheduleNotificationService {
         });
       }
     } catch (e) {
-      print('Error sending schedule notifications: $e');
+      debugPrint('Error sending schedule notifications: $e');
       rethrow;
     }
   }
@@ -110,11 +100,7 @@ class ScheduleNotificationService {
   }) async {
     try {
       // Get organization and location names
-      final orgDoc =
-          await _firestore
-              .collection('organizations')
-              .doc(organizationId)
-              .get();
+      final orgDoc = await _firestore.collection('organizations').doc(organizationId).get();
 
       final locationDoc =
           await _firestore
@@ -124,16 +110,12 @@ class ScheduleNotificationService {
               .doc(locationId)
               .get();
 
-      final organizationName =
-          orgDoc.data()?['organizationName'] ?? 'Your Organization';
-      final locationName =
-          locationDoc.data()?['locationName'] ?? 'Your Location';
+      final organizationName = orgDoc.data()?['organizationName'] ?? 'Your Organization';
+      final locationName = locationDoc.data()?['locationName'] ?? 'Your Location';
 
       // Get user data for all assigned users
       final userDocs = await Future.wait(
-        assignedUserIds.map(
-          (userId) => _firestore.collection('users').doc(userId).get(),
-        ),
+        assignedUserIds.map((userId) => _firestore.collection('users').doc(userId).get()),
       );
 
       final reminders = <Map<String, dynamic>>[];
@@ -144,12 +126,9 @@ class ScheduleNotificationService {
         final userData = ExtendedUserData.fromMap(userDoc.data()!, userDoc.id);
 
         // Check user's notification preferences
-        final wantsShiftReminders =
-            userData.notificationSettings['shiftReminders'] ?? true;
-        final wantsEmailNotifications =
-            userData.notificationSettings['emailNotifications'] ?? true;
-        final wantsPushNotifications =
-            userData.notificationSettings['pushNotifications'] ?? true;
+        final wantsShiftReminders = userData.notificationSettings['shiftReminders'] ?? true;
+        final wantsEmailNotifications = userData.notificationSettings['emailNotifications'] ?? true;
+        final wantsPushNotifications = userData.notificationSettings['pushNotifications'] ?? true;
 
         if (!wantsShiftReminders) continue;
 
@@ -181,7 +160,7 @@ class ScheduleNotificationService {
         });
       }
     } catch (e) {
-      print('Error sending shift reminders: $e');
+      debugPrint('Error sending shift reminders: $e');
       rethrow;
     }
   }

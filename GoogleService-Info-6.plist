@@ -13,7 +13,7 @@
 	<key>PROJECT_ID</key>
 	<string>plan-with-hands</string>
 	<key>STORAGE_BUCKET</key>
-	<string>plan-with-hands.firebasestorage.app</string>
+	<string>plan-with-hands.appspot.com</string>
 	<key>IS_ADS_ENABLED</key>
 	<false></false>
 	<key>IS_ANALYTICS_ENABLED</key>

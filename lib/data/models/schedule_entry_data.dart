@@ -29,14 +29,8 @@ class ScheduleEntryData {
       assignedUserIds: List<String>.from(map['assignedUserIds'] ?? []),
       scheduleId: map['scheduleId'] ?? '',
       shiftId: map['shiftId'] ?? '',
-      createdAt:
-          map['createdAt'] != null
-              ? (map['createdAt'] as Timestamp).toDate()
-              : null,
-      updatedAt:
-          map['updatedAt'] != null
-              ? (map['updatedAt'] as Timestamp).toDate()
-              : null,
+      createdAt: map['createdAt'] != null ? (map['createdAt'] as Timestamp).toDate() : null,
+      updatedAt: map['updatedAt'] != null ? (map['updatedAt'] as Timestamp).toDate() : null,
     );
   }
 
@@ -47,10 +41,7 @@ class ScheduleEntryData {
       'assignedUserIds': assignedUserIds,
       'scheduleId': scheduleId,
       'shiftId': shiftId,
-      'createdAt':
-          createdAt != null
-              ? Timestamp.fromDate(createdAt!)
-              : FieldValue.serverTimestamp(),
+      'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     };
   }
@@ -69,8 +60,7 @@ class ScheduleEntryData {
       id: id ?? this.id,
       dayShiftKey: dayShiftKey ?? this.dayShiftKey,
       requiredRoles: requiredRoles ?? Map<String, int>.from(this.requiredRoles),
-      assignedUserIds:
-          assignedUserIds ?? List<String>.from(this.assignedUserIds),
+      assignedUserIds: assignedUserIds ?? List<String>.from(this.assignedUserIds),
       scheduleId: scheduleId ?? this.scheduleId,
       shiftId: shiftId ?? this.shiftId,
       createdAt: createdAt ?? this.createdAt,
@@ -81,8 +71,7 @@ class ScheduleEntryData {
   // Helper methods
   int get totalAssigned => assignedUserIds.length;
 
-  int get totalRequired =>
-      requiredRoles.values.fold(0, (sum, count) => sum + count);
+  int get totalRequired => requiredRoles.values.fold(0, (acc, val) => acc + val);
 
   bool get isFullyStaffed => totalAssigned >= totalRequired;
 
@@ -90,10 +79,7 @@ class ScheduleEntryData {
 
   int getRequiredCountForRole(String roleId) => requiredRoles[roleId] ?? 0;
 
-  int getAssignedCountForRole(
-    String roleId,
-    Map<String, List<String>> userRoleMap,
-  ) {
+  int getAssignedCountForRole(String roleId, Map<String, List<String>> userRoleMap) {
     return assignedUserIds.where((userId) {
       final userRoles = userRoleMap[userId] ?? [];
       return userRoles.contains(roleId);
@@ -118,9 +104,6 @@ class ScheduleEntryData {
 
   @override
   int get hashCode {
-    return id.hashCode ^
-        dayShiftKey.hashCode ^
-        scheduleId.hashCode ^
-        shiftId.hashCode;
+    return id.hashCode ^ dayShiftKey.hashCode ^ scheduleId.hashCode ^ shiftId.hashCode;
   }
 }

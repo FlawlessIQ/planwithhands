@@ -6,7 +6,6 @@ part 'shift_data.g.dart';
 
 @freezed
 class ShiftData with _$ShiftData {
-  /// Main ShiftData constructor. activeDays defaults to empty list if not provided for backward compatibility.
   factory ShiftData({
     @Default('') String shiftId,
     @Default('Unnamed Shift') String shiftName,
@@ -14,21 +13,23 @@ class ShiftData with _$ShiftData {
     @Default('N/A') String startTime,
     @Default('N/A') String endTime,
     @Default('') String organizationId,
-    @Default([]) List<String> locationIds,
-    @Default([]) List<String> checklistTemplateIds,
-    @Default([]) List<String> jobType,
-    @Default({}) Map<String, int> staffingLevels,
-    @Default([]) List<String> days,
+
+    // These four fields are present per your generated g.dart:
+    @Default(<String>[]) List<String> locationIds,
+    @Default(<String>[]) List<String> checklistTemplateIds,
+    @Default(<String>[]) List<String> jobType,
+    @Default(<String, int>{}) Map<String, int> staffingLevels,
+
+    @Default(<String>[]) List<String> days,
     @Default(false) bool repeatsDaily,
-    @Default([]) List<int> activeDays,
-    @Default([]) List<String> assignedUserIds,
-    @Default([]) List<String> volunteers,
+    @Default(<int>[]) List<int> activeDays,
+    @Default(<String>[]) List<String> assignedUserIds,
+    @Default(<String>[]) List<String> volunteers,
     @Default(false) bool published,
+
     @NullableTimestampConverter() DateTime? shiftDate,
     @NullableTimestampConverter() DateTime? updatedAt,
   }) = _ShiftData;
 
-  /// Custom fromJson to ensure activeDays is always a List of int (`List<int>`).
-  factory ShiftData.fromJson(Map<String, dynamic> json) =>
-      _$ShiftDataFromJson(json);
+  factory ShiftData.fromJson(Map<String, dynamic> json) => _$ShiftDataFromJson(json);
 }

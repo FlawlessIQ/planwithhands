@@ -33,13 +33,13 @@ class _MessageThreadPageState extends State<MessageThreadPage> {
       body: Column(
         children: [
           Expanded(
-                child: StreamBuilder<List<ThreadMessage>>(
-                  stream: _svc.watchMessages(widget.threadId),
+            child: StreamBuilder<List<ThreadMessage>>(
+              stream: _svc.watchMessages(widget.threadId),
               builder: (context, snap) {
                 if (snap.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                    final messages = snap.data ?? [];
+                final messages = snap.data ?? [];
                 if (messages.isEmpty) {
                   return const Center(child: Text('No messages yet'));
                 }
@@ -48,7 +48,7 @@ class _MessageThreadPageState extends State<MessageThreadPage> {
                   itemCount: messages.length,
                   itemBuilder: (context, i) {
                     final m = messages[i];
-                        final isMine = m.senderId == FirebaseAuth.instance.currentUser?.uid;
+                    final isMine = m.senderId == FirebaseAuth.instance.currentUser?.uid;
                     return Align(
                       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
                       child: Container(
@@ -61,13 +61,10 @@ class _MessageThreadPageState extends State<MessageThreadPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              m.text,
-                              style: TextStyle(color: isMine ? Colors.white : Colors.black87),
-                            ),
+                            Text(m.text, style: TextStyle(color: isMine ? Colors.white : Colors.black87)),
                             const SizedBox(height: 4),
-                                Text(
-                                  _formatTs(m.createdAt),
+                            Text(
+                              _formatTs(m.createdAt),
                               style: TextStyle(fontSize: 11, color: isMine ? Colors.white70 : Colors.black54),
                             ),
                           ],
@@ -102,10 +99,10 @@ class _MessageThreadPageState extends State<MessageThreadPage> {
                     await _svc.sendMessage(widget.threadId, text);
                     _msgCtrl.clear();
                   },
-                )
+                ),
               ],
             ),
-          )
+          ),
         ],
       ),
     );

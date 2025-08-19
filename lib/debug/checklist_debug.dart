@@ -5,45 +5,58 @@ import 'package:hands_app/utils/firestore_enforcer.dart';
 class ChecklistDebugHelper {
   static final FirebaseFirestore _firestore = FirestoreEnforcer.instance;
 
+  /// Helper function to safely convert task data from either List or Map format
+  static List<Map<String, dynamic>> _extractTasksList(Map<String, dynamic> data) {
+    final tasksData = data['tasks'];
+    if (tasksData == null) return [];
+
+    if (tasksData is List) {
+      // Handle List format
+      return List<Map<String, dynamic>>.from(tasksData);
+    } else if (tasksData is Map) {
+      // Handle Map format - convert map values to list
+      final Map<String, dynamic> tasksMap = Map<String, dynamic>.from(tasksData);
+      return tasksMap.values.whereType<Map<String, dynamic>>().cast<Map<String, dynamic>>().toList();
+    }
+
+    debugPrint('[ChecklistDebug] Unexpected tasks format: ${tasksData.runtimeType}');
+    return [];
+  }
+
   /// Debug function to investigate checklist templates and their tasks
   static Future<void> debugChecklistTemplates(String organizationId) async {
-    print('=== DEBUGGING CHECKLIST TEMPLATES ===');
+    debugPrint('=== DEBUGGING CHECKLIST TEMPLATES ===');
 
     try {
       final templatesSnapshot =
-          await _firestore
-              .collection('organizations')
-              .doc(organizationId)
-              .collection('checklist_templates')
-              .get();
+          await _firestore.collection('organizations').doc(organizationId).collection('checklist_templates').get();
 
-      print('Found ${templatesSnapshot.docs.length} checklist templates');
+      debugPrint('Found ${templatesSnapshot.docs.length} checklist templates');
 
       for (final doc in templatesSnapshot.docs) {
         final data = doc.data();
         final templateName = data['name'] ?? 'Unnamed Template';
-        final tasks = List<Map<String, dynamic>>.from(data['tasks'] ?? []);
+        final tasks = _extractTasksList(data);
 
-        print('\n--- Template: $templateName (ID: ${doc.id}) ---');
-        print('Description: ${data['description'] ?? 'No description'}');
-        print('Task count: ${tasks.length}');
-        print('Assigned shifts: ${data['assignedShiftIds'] ?? []}');
+        debugPrint('\n--- Template: $templateName (ID: ${doc.id}) ---');
+        debugPrint('Description: ${data['description'] ?? 'No description'}');
+        debugPrint('Task count: ${tasks.length}');
+        debugPrint('Assigned shifts: ${data['assignedShiftIds'] ?? []}');
 
         if (tasks.isEmpty) {
-          print('⚠️  WARNING: This template has NO TASKS!');
+          debugPrint('⚠️  WARNING: This template has NO TASKS!');
         } else {
-          print('Tasks:');
+          debugPrint('Tasks:');
           for (int i = 0; i < tasks.length; i++) {
             final task = tasks[i];
-            final title =
-                task['title'] ?? task['name'] ?? task['description'] ?? '';
+            final title = task['title'] ?? task['name'] ?? task['description'] ?? '';
             final description = task['description'] ?? '';
             final photoRequired = task['photoRequired'] ?? false;
 
             if (title.isEmpty) {
-              print('  ❌ Task ${i + 1}: EMPTY TITLE - ${task.toString()}');
+              debugPrint('  ❌ Task ${i + 1}: EMPTY TITLE - ${task.toString()}');
             } else {
-              print(
+              debugPrint(
                 '  ✅ Task ${i + 1}: "$title"${description.isNotEmpty ? ' - $description' : ''}${photoRequired ? ' [PHOTO REQUIRED]' : ''}',
               );
             }
@@ -51,27 +64,21 @@ class ChecklistDebugHelper {
         }
       }
 
-      print('\n=== DEBUGGING SHIFTS AND THEIR TEMPLATES ===');
+      debugPrint('\n=== DEBUGGING SHIFTS AND THEIR TEMPLATES ===');
 
       final shiftsSnapshot =
-          await _firestore
-              .collection('organizations')
-              .doc(organizationId)
-              .collection('shifts')
-              .get();
+          await _firestore.collection('organizations').doc(organizationId).collection('shifts').get();
 
       for (final shiftDoc in shiftsSnapshot.docs) {
         final shiftData = shiftDoc.data();
         final shiftName = shiftData['shiftName'] ?? 'Unnamed Shift';
-        final templateIds = List<String>.from(
-          shiftData['checklistTemplateIds'] ?? [],
-        );
+        final templateIds = List<String>.from(shiftData['checklistTemplateIds'] ?? []);
 
-        print('\n--- Shift: $shiftName ---');
-        print('Template IDs: $templateIds');
+        debugPrint('\n--- Shift: $shiftName ---');
+        debugPrint('Template IDs: $templateIds');
 
         if (templateIds.isEmpty) {
-          print('⚠️  WARNING: This shift has NO CHECKLIST TEMPLATES assigned!');
+          debugPrint('⚠️  WARNING: This shift has NO CHECKLIST TEMPLATES assigned!');
         } else {
           for (final templateId in templateIds) {
             final templateDoc = templatesSnapshot.docs.firstWhere(
@@ -82,46 +89,31 @@ class ChecklistDebugHelper {
             if (templateDoc.exists) {
               final templateData = templateDoc.data();
               final templateName = templateData['name'] ?? 'Unnamed Template';
-              final tasks = List<Map<String, dynamic>>.from(
-                templateData['tasks'] ?? [],
-              );
-              print('  - Template: $templateName (${tasks.length} tasks)');
+              final tasks = List<Map<String, dynamic>>.from(templateData['tasks'] ?? []);
+              debugPrint('  - Template: $templateName (${tasks.length} tasks)');
 
               if (tasks.isEmpty ||
-                  tasks.every(
-                    (task) =>
-                        (task['title'] ??
-                                task['name'] ??
-                                task['description'] ??
-                                '')
-                            .isEmpty,
-                  )) {
-                print(
-                  '    ❌ PROBLEM: This template has empty or missing task titles!',
-                );
+                  tasks.every((task) => (task['title'] ?? task['name'] ?? task['description'] ?? '').isEmpty)) {
+                debugPrint('    ❌ PROBLEM: This template has empty or missing task titles!');
               }
             } else {
-              print('  ❌ PROBLEM: Template $templateId not found!');
+              debugPrint('  ❌ PROBLEM: Template $templateId not found!');
             }
           }
         }
       }
     } catch (e) {
-      print('Error debugging templates: $e');
+      debugPrint('Error debugging templates: $e');
     }
   }
 
   /// Fix empty task titles in checklist templates
   static Future<void> fixEmptyTaskTitles(String organizationId) async {
-    print('\n=== FIXING EMPTY TASK TITLES ===');
+    debugPrint('\n=== FIXING EMPTY TASK TITLES ===');
 
     try {
       final templatesSnapshot =
-          await _firestore
-              .collection('organizations')
-              .doc(organizationId)
-              .collection('checklist_templates')
-              .get();
+          await _firestore.collection('organizations').doc(organizationId).collection('checklist_templates').get();
 
       int templatesFixed = 0;
       int tasksFixed = 0;
@@ -129,15 +121,14 @@ class ChecklistDebugHelper {
       for (final doc in templatesSnapshot.docs) {
         final data = doc.data();
         final templateName = data['name'] ?? 'Unnamed Template';
-        final tasks = List<Map<String, dynamic>>.from(data['tasks'] ?? []);
+        final tasks = _extractTasksList(data);
 
         bool templateNeedsUpdate = false;
         List<Map<String, dynamic>> updatedTasks = [];
 
         for (int i = 0; i < tasks.length; i++) {
           final task = Map<String, dynamic>.from(tasks[i]);
-          final currentTitle =
-              task['title'] ?? task['name'] ?? task['description'] ?? '';
+          final currentTitle = task['title'] ?? task['name'] ?? task['description'] ?? '';
 
           if (currentTitle.isEmpty) {
             // Generate a default task title
@@ -146,7 +137,7 @@ class ChecklistDebugHelper {
             task['photoRequired'] = task['photoRequired'] ?? false;
             templateNeedsUpdate = true;
             tasksFixed++;
-            print('Fixed empty task title in "$templateName": Task ${i + 1}');
+            debugPrint('Fixed empty task title in "$templateName": Task ${i + 1}');
           } else {
             // Ensure all required fields are present
             task['title'] = currentTitle;
@@ -160,36 +151,30 @@ class ChecklistDebugHelper {
         if (templateNeedsUpdate) {
           await doc.reference.update({'tasks': updatedTasks});
           templatesFixed++;
-          print('Updated template: $templateName');
+          debugPrint('Updated template: $templateName');
         }
       }
 
-      print('\n=== FIX SUMMARY ===');
-      print('Templates fixed: $templatesFixed');
-      print('Tasks fixed: $tasksFixed');
+      debugPrint('\n=== FIX SUMMARY ===');
+      debugPrint('Templates fixed: $templatesFixed');
+      debugPrint('Tasks fixed: $tasksFixed');
     } catch (e) {
-      print('Error fixing task titles: $e');
+      debugPrint('Error fixing task titles: $e');
     }
   }
 
   /// Create sample tasks for templates that have no tasks
-  static Future<void> addSampleTasksToEmptyTemplates(
-    String organizationId,
-  ) async {
-    print('\n=== ADDING SAMPLE TASKS TO EMPTY TEMPLATES ===');
+  static Future<void> addSampleTasksToEmptyTemplates(String organizationId) async {
+    debugPrint('\n=== ADDING SAMPLE TASKS TO EMPTY TEMPLATES ===');
 
     try {
       final templatesSnapshot =
-          await _firestore
-              .collection('organizations')
-              .doc(organizationId)
-              .collection('checklist_templates')
-              .get();
+          await _firestore.collection('organizations').doc(organizationId).collection('checklist_templates').get();
 
       for (final doc in templatesSnapshot.docs) {
         final data = doc.data();
         final templateName = data['name'] ?? 'Unnamed Template';
-        final tasks = List<Map<String, dynamic>>.from(data['tasks'] ?? []);
+        final tasks = _extractTasksList(data);
 
         if (tasks.isEmpty) {
           List<Map<String, dynamic>> sampleTasks = [];
@@ -198,8 +183,7 @@ class ChecklistDebugHelper {
             sampleTasks = [
               {
                 'title': 'Check equipment temperatures',
-                'description':
-                    'Verify all refrigeration units are at proper temperature',
+                'description': 'Verify all refrigeration units are at proper temperature',
                 'photoRequired': false,
               },
               {
@@ -209,13 +193,11 @@ class ChecklistDebugHelper {
               },
               {
                 'title': 'Stock ingredients',
-                'description':
-                    'Ensure all cooking ingredients are properly stocked',
+                'description': 'Ensure all cooking ingredients are properly stocked',
                 'photoRequired': false,
               },
             ];
-          } else if (templateName.toLowerCase().contains('closing') ||
-              templateName.toLowerCase().contains('bar')) {
+          } else if (templateName.toLowerCase().contains('closing') || templateName.toLowerCase().contains('bar')) {
             sampleTasks = [
               {
                 'title': 'Clean seats and tables',
@@ -227,11 +209,7 @@ class ChecklistDebugHelper {
                 'description': 'Place chairs on tables for floor cleaning',
                 'photoRequired': false,
               },
-              {
-                'title': 'Empty trash bins',
-                'description': 'Empty and replace all trash bags',
-                'photoRequired': false,
-              },
+              {'title': 'Empty trash bins', 'description': 'Empty and replace all trash bags', 'photoRequired': false},
             ];
           } else {
             // Generic tasks
@@ -255,11 +233,11 @@ class ChecklistDebugHelper {
           }
 
           await doc.reference.update({'tasks': sampleTasks});
-          print('Added ${sampleTasks.length} sample tasks to "$templateName"');
+          debugPrint('Added ${sampleTasks.length} sample tasks to "$templateName"');
         }
       }
     } catch (e) {
-      print('Error adding sample tasks: $e');
+      debugPrint('Error adding sample tasks: $e');
     }
   }
 }
@@ -279,23 +257,16 @@ class ChecklistDebugWidget extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'Debug and Fix Checklist Issues',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
+            const Text('Debug and Fix Checklist Issues', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 20),
 
             ElevatedButton(
               onPressed: () async {
-                await ChecklistDebugHelper.debugChecklistTemplates(
-                  organizationId,
-                );
+                await ChecklistDebugHelper.debugChecklistTemplates(organizationId);
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Debug info printed to console'),
-                    ),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('Debug info printed to console')));
                 }
               },
               child: const Text('Debug Checklist Templates'),
@@ -307,9 +278,7 @@ class ChecklistDebugWidget extends StatelessWidget {
               onPressed: () async {
                 await ChecklistDebugHelper.fixEmptyTaskTitles(organizationId);
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Fixed empty task titles')),
-                  );
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Fixed empty task titles')));
                 }
               },
               child: const Text('Fix Empty Task Titles'),
@@ -319,15 +288,11 @@ class ChecklistDebugWidget extends StatelessWidget {
 
             ElevatedButton(
               onPressed: () async {
-                await ChecklistDebugHelper.addSampleTasksToEmptyTemplates(
-                  organizationId,
-                );
+                await ChecklistDebugHelper.addSampleTasksToEmptyTemplates(organizationId);
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Added sample tasks to empty templates'),
-                    ),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('Added sample tasks to empty templates')));
                 }
               },
               child: const Text('Add Sample Tasks to Empty Templates'),
@@ -335,10 +300,7 @@ class ChecklistDebugWidget extends StatelessWidget {
 
             const SizedBox(height: 20),
 
-            const Text(
-              'Instructions:',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
+            const Text('Instructions:', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
 
             const Text(

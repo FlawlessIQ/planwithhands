@@ -9,18 +9,22 @@
       "dependencies": [
         "cloud_firestore",
         "cloud_functions",
+        "crypto",
         "cupertino_icons",
         "file_picker",
         "firebase_auth",
         "firebase_core",
         "firebase_crashlytics",
+        "firebase_messaging",
         "firebase_storage",
         "fl_chart",
         "flutter",
         "flutter_hooks",
+        "flutter_local_notifications",
         "flutter_pdfview",
         "flutter_riverpod",
         "flutter_stripe",
+        "flutter_web_plugins",
         "freezed_annotation",
         "go_router",
         "google_fonts",
@@ -39,6 +43,7 @@
         "riverpod_annotation",
         "shared_preferences",
         "table_calendar",
+        "timezone",
         "url_launcher",
         "uuid",
         "video_player"
@@ -194,6 +199,20 @@
         "test_api",
         "vector_math",
         "vm_service"
+      ]
+    },
+    {
+      "name": "crypto",
+      "version": "3.0.6",
+      "dependencies": [
+        "typed_data"
+      ]
+    },
+    {
+      "name": "timezone",
+      "version": "0.9.4",
+      "dependencies": [
+        "path"
       ]
     },
     {
@@ -445,6 +464,29 @@
       ]
     },
     {
+      "name": "flutter_local_notifications",
+      "version": "18.0.1",
+      "dependencies": [
+        "clock",
+        "flutter",
+        "flutter_local_notifications_linux",
+        "flutter_local_notifications_platform_interface",
+        "timezone"
+      ]
+    },
+    {
+      "name": "firebase_messaging",
+      "version": "15.2.10",
+      "dependencies": [
+        "firebase_core",
+        "firebase_core_platform_interface",
+        "firebase_messaging_platform_interface",
+        "firebase_messaging_web",
+        "flutter",
+        "meta"
+      ]
+    },
+    {
       "name": "firebase_auth",
       "version": "5.7.0",
       "dependencies": [
@@ -464,6 +506,18 @@
         "firebase_core_web",
         "flutter",
         "meta"
+      ]
+    },
+    {
+      "name": "flutter_web_plugins",
+      "version": "0.0.0",
+      "dependencies": [
+        "characters",
+        "collection",
+        "flutter",
+        "material_color_utilities",
+        "meta",
+        "vector_math"
       ]
     },
     {
@@ -829,13 +883,6 @@
       ]
     },
     {
-      "name": "crypto",
-      "version": "3.0.6",
-      "dependencies": [
-        "typed_data"
-      ]
-    },
-    {
       "name": "code_builder",
       "version": "4.10.1",
       "dependencies": [
@@ -1056,6 +1103,13 @@
       "version": "1.3.3",
       "dependencies": [
         "clock",
+        "collection"
+      ]
+    },
+    {
+      "name": "typed_data",
+      "version": "1.4.0",
+      "dependencies": [
         "collection"
       ]
     },
@@ -1502,18 +1556,6 @@
       ]
     },
     {
-      "name": "flutter_web_plugins",
-      "version": "0.0.0",
-      "dependencies": [
-        "characters",
-        "collection",
-        "flutter",
-        "material_color_utilities",
-        "meta",
-        "vector_math"
-      ]
-    },
-    {
       "name": "equatable",
       "version": "2.0.7",
       "dependencies": [
@@ -1586,6 +1628,51 @@
       "name": "sprintf",
       "version": "7.0.0",
       "dependencies": []
+    },
+    {
+      "name": "flutter_local_notifications_platform_interface",
+      "version": "8.0.0",
+      "dependencies": [
+        "flutter",
+        "plugin_platform_interface"
+      ]
+    },
+    {
+      "name": "flutter_local_notifications_linux",
+      "version": "5.0.0",
+      "dependencies": [
+        "dbus",
+        "ffi",
+        "flutter",
+        "flutter_local_notifications_platform_interface",
+        "path",
+        "xdg_directories"
+      ]
+    },
+    {
+      "name": "firebase_messaging_web",
+      "version": "3.10.10",
+      "dependencies": [
+        "_flutterfire_internals",
+        "firebase_core",
+        "firebase_core_web",
+        "firebase_messaging_platform_interface",
+        "flutter",
+        "flutter_web_plugins",
+        "meta",
+        "web"
+      ]
+    },
+    {
+      "name": "firebase_messaging_platform_interface",
+      "version": "4.6.10",
+      "dependencies": [
+        "_flutterfire_internals",
+        "firebase_core",
+        "flutter",
+        "meta",
+        "plugin_platform_interface"
+      ]
     },
     {
       "name": "firebase_auth_web",
@@ -1700,13 +1787,6 @@
       ]
     },
     {
-      "name": "typed_data",
-      "version": "1.4.0",
-      "dependencies": [
-        "collection"
-      ]
-    },
-    {
       "name": "custom_lint_core",
       "version": "0.7.5",
       "dependencies": [
@@ -1794,6 +1874,16 @@
       ]
     },
     {
+      "name": "dbus",
+      "version": "0.7.11",
+      "dependencies": [
+        "args",
+        "ffi",
+        "meta",
+        "xml"
+      ]
+    },
+    {
       "name": "custom_lint_visitor",
       "version": "1.0.0+7.7.0",
       "dependencies": [
@@ -1810,6 +1900,23 @@
         "path",
         "pub_semver",
         "yaml"
+      ]
+    },
+    {
+      "name": "xml",
+      "version": "6.5.0",
+      "dependencies": [
+        "collection",
+        "meta",
+        "petitparser"
+      ]
+    },
+    {
+      "name": "petitparser",
+      "version": "6.1.0",
+      "dependencies": [
+        "collection",
+        "meta"
       ]
     }
   ],

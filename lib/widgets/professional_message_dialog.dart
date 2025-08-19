@@ -43,7 +43,7 @@ class ProfessionalMessageDialog extends StatelessWidget {
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [effectiveHeaderColor, effectiveHeaderColor.withOpacity(0.8)],
+                  colors: [effectiveHeaderColor, effectiveHeaderColor.withValues(alpha: 0.8)],
                 ),
                 borderRadius: const BorderRadius.only(topLeft: Radius.circular(16), topRight: Radius.circular(16)),
               ),
@@ -52,7 +52,7 @@ class ProfessionalMessageDialog extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
+                      color: Colors.white.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(headerIcon, color: Colors.white, size: 24),
@@ -83,7 +83,7 @@ class ProfessionalMessageDialog extends StatelessWidget {
                     onPressed: onSecondaryPressed ?? () => Navigator.of(context).pop(),
                     icon: const Icon(Icons.close, color: Colors.white, size: 20),
                     style: IconButton.styleFrom(
-                      backgroundColor: Colors.white.withOpacity(0.2),
+                      backgroundColor: Colors.white.withValues(alpha: 0.2),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       padding: const EdgeInsets.all(8),
                     ),

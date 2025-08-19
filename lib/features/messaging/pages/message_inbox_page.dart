@@ -32,19 +32,18 @@ class MessageInboxPage extends StatelessWidget {
               return ListTile(
                 title: Text(t.lastMessagePreview ?? '(no message)'),
                 subtitle: Text(t.targetType),
-                trailing: t.unreadCount > 0
-                    ? CircleAvatar(
-                        radius: 12,
-                        backgroundColor: Colors.red,
-                        child: Text('${t.unreadCount}', style: const TextStyle(color: Colors.white, fontSize: 12)),
-                      )
-                    : null,
+                trailing:
+                    t.unreadCount > 0
+                        ? CircleAvatar(
+                          radius: 12,
+                          backgroundColor: Colors.red,
+                          child: Text('${t.unreadCount}', style: const TextStyle(color: Colors.white, fontSize: 12)),
+                        )
+                        : null,
                 onTap: () async {
                   await Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => MessageThreadPage(orgId: orgId, threadId: t.id),
-                    ),
+                    MaterialPageRoute(builder: (_) => MessageThreadPage(orgId: orgId, threadId: t.id)),
                   );
                 },
               );
@@ -62,9 +61,7 @@ class MessageInboxPage extends StatelessWidget {
           if (threadId != null && context.mounted) {
             await Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (_) => MessageThreadPage(orgId: orgId, threadId: threadId),
-              ),
+              MaterialPageRoute(builder: (_) => MessageThreadPage(orgId: orgId, threadId: threadId)),
             );
           }
         },

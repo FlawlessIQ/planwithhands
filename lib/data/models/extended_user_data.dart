@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hands_app/utils/jobtype_helper.dart';
 
 class ExtendedUserData {
   final String userId;
@@ -45,34 +46,15 @@ class ExtendedUserData {
       userRole: map['userRole'] ?? 0,
       organizationId: map['organizationId'] ?? '',
       locationId: map['locationId'],
-      locationIds:
-          map['locationIds'] != null
-              ? List<String>.from(map['locationIds'])
-              : null,
-      jobTypes:
-          map['jobTypes'] != null
-              ? List<String>.from(map['jobTypes'])
-              : (map['jobType'] != null
-                  ? List<String>.from(map['jobType'])
-                  : []),
-      createdAt:
-          map['createdAt'] != null
-              ? (map['createdAt'] as Timestamp).toDate()
-              : DateTime.now(),
-      updatedAt:
-          map['updatedAt'] != null
-              ? (map['updatedAt'] as Timestamp).toDate()
-              : null,
+      locationIds: map['locationIds'] != null ? List<String>.from(map['locationIds']) : null,
+      jobTypes: coerceToJobTypes(map['jobTypes'] ?? map['jobType']),
+      createdAt: map['createdAt'] != null ? (map['createdAt'] as Timestamp).toDate() : DateTime.now(),
+      updatedAt: map['updatedAt'] != null ? (map['updatedAt'] as Timestamp).toDate() : null,
       availability: Map<String, bool>.from(map['availability'] ?? {}),
       earliestStart: _parseEarliestStart(map['earliestStart'] ?? {}),
       notificationSettings: Map<String, dynamic>.from(
         map['notificationSettings'] ??
-            {
-              'scheduleUpdates': true,
-              'shiftReminders': true,
-              'emailNotifications': true,
-              'pushNotifications': true,
-            },
+            {'scheduleUpdates': true, 'shiftReminders': true, 'emailNotifications': true, 'pushNotifications': true},
       ),
     );
   }
@@ -84,6 +66,8 @@ class ExtendedUserData {
       'emailAddress': emailAddress,
       'userRole': userRole,
       'organizationId': organizationId,
+      // write canonical jobTypes and keep legacy jobType for compatibility
+      'jobTypes': jobTypes,
       'jobType': jobTypes,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': FieldValue.serverTimestamp(),
@@ -113,9 +97,7 @@ class ExtendedUserData {
     return result;
   }
 
-  static Map<String, dynamic> _serializeEarliestStart(
-    Map<String, TimeOfDay> map,
-  ) {
+  static Map<String, dynamic> _serializeEarliestStart(Map<String, TimeOfDay> map) {
     final result = <String, dynamic>{};
     map.forEach((key, timeOfDay) {
       result[key] = {'hour': timeOfDay.hour, 'minute': timeOfDay.minute};
@@ -170,8 +152,7 @@ class ExtendedUserData {
     }
   }
 
-  bool get isAvailableForShift =>
-      availability.values.any((available) => available);
+  bool get isAvailableForShift => availability.values.any((available) => available);
 
   @override
   String toString() {

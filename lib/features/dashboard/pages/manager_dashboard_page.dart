@@ -9,6 +9,7 @@ import 'package:hands_app/global_widgets/unified_menu_button.dart';
 import 'package:intl/intl.dart';
 import 'package:hands_app/services/daily_checklist_service.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/utils/location_helper.dart';
 
 class ManagerDashboardPage extends StatefulWidget {
   final String organizationId;
@@ -229,18 +230,19 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
     try {
       final service = DailyChecklistService();
-      final yesterday = DateTime.now().subtract(const Duration(days: 1));
-      // Ensure yesterday's checklists exist for accurate missed tasks calculation
+      final today = DateTime.now();
+      // Ensure TODAY's checklists exist so that carry-forward from yesterday -> today has run
       await service.generateAllDailyChecklistsForDate(
         organizationId: widget.organizationId,
-        date: _dateFormat.format(yesterday),
+        date: _dateFormat.format(today),
       );
-      _yesterdayMissed = await service.getMissedTasksForDate(
+      // Read "missed yesterday" from today's carry-forward tasks that originated yesterday
+      _yesterdayMissed = await service.getYesterdayMissedFromTodayCarryForward(
         organizationId: widget.organizationId,
-        date: yesterday,
+        today: today,
         locationId: _selectedLocationId,
       );
-      debugPrint('[ManagerDashboard] Loaded ${_yesterdayMissed.length} missed tasks from yesterday');
+      debugPrint('[ManagerDashboard] Loaded ${_yesterdayMissed.length} carry-forward groups from yesterday');
     } catch (e, st) {
       debugPrint('[ManagerDashboard] getMissedTasksForDate error: $e\n$st');
       _errorYesterday = e.toString();
@@ -296,15 +298,12 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
         debugPrint('[ManagerDashboard] Alternative query found ${alternativeQuery.docs.length} total shifts');
 
-        // Filter shifts that match the location
+        // Filter shifts that match the location (handle legacy single-id or list)
         shiftDocs =
             alternativeQuery.docs.where((doc) {
               final data = doc.data();
-              final locationIds = data['locationIds'] as List?;
-              final locationId = data['locationId'] as String?;
-
-              return (locationIds != null && locationIds.contains(_selectedLocationId)) ||
-                  (locationId != null && locationId == _selectedLocationId);
+              final docLocationIds = coerceToLocationIds(data['locationIds'] ?? data['locationId']);
+              return docLocationIds.contains(_selectedLocationId);
             }).toList();
 
         debugPrint('[ManagerDashboard] Filtered to ${shiftDocs.length} shifts for location $_selectedLocationId');
@@ -321,50 +320,57 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
         debugPrint('[ManagerDashboard] Processing shift: $shiftName (${shiftDoc.id}) - $startTime to $endTime');
 
-        // Get ALL today's checklists for this shift (don't limit to 1)
-        final checklistQuery =
-            await FirestoreEnforcer.instance
-                .collection('organizations')
-                .doc(widget.organizationId)
-                .collection('locations')
-                .doc(_selectedLocationId!)
-                .collection('daily_checklists')
-                .where('date', isEqualTo: todayStr)
-                .where('shiftId', isEqualTo: shiftDoc.id)
-                .get();
-
-        debugPrint(
-          '[ManagerDashboard] Found ${checklistQuery.docs.length} checklists for shift ${shiftDoc.id} on $todayStr',
-        );
-
+        // Query per-task documents for this shift/date/location (subcollection model)
         double completionPct = 0.0;
         int totalTasks = 0;
         int completedTasks = 0;
 
-        if (checklistQuery.docs.isNotEmpty) {
-          // Aggregate all tasks from all checklists for this shift
-          for (final checklistDoc in checklistQuery.docs) {
-            final checklistData = checklistDoc.data();
-            final tasks = List<Map<String, dynamic>>.from(checklistData['tasks'] ?? []);
-            totalTasks += tasks.length;
+        try {
+          final tasksQuery = FirestoreEnforcer.instance
+              .collectionGroup('tasks')
+              .where('organizationId', isEqualTo: widget.organizationId)
+              .where('locationId', isEqualTo: _selectedLocationId)
+              .where('dateString', isEqualTo: todayStr)
+              .where('shiftId', isEqualTo: shiftDoc.id)
+              .limit(2000);
 
-            completedTasks +=
-                tasks
-                    .where(
-                      (task) =>
-                          task['completed'] == true || task['isCompleted'] == true || task['status'] == 'completed',
-                    )
-                    .length;
+          final snap = await tasksQuery.get();
+          final taskDocs = snap.docs;
+          totalTasks = taskDocs.length;
+          for (final d in taskDocs) {
+            final data = d.data();
+            final completed = data['completed'] == true || data['isCompleted'] == true || data['status'] == 'completed';
+            if (completed) completedTasks += 1;
           }
-
-          if (totalTasks > 0) {
-            completionPct = completedTasks / totalTasks;
+          if (totalTasks == 0) {
+            // Fallback: compute from checklist embedded arrays
+            final checklistsSnap =
+                await FirestoreEnforcer.instance
+                    .collection('organizations')
+                    .doc(widget.organizationId)
+                    .collection('locations')
+                    .doc(_selectedLocationId!)
+                    .collection('daily_checklists')
+                    .where('date', isEqualTo: todayStr)
+                    .where('shiftId', isEqualTo: shiftDoc.id)
+                    .limit(50)
+                    .get();
+            for (final cl in checklistsSnap.docs) {
+              final data = cl.data();
+              final tasks = List<Map<String, dynamic>>.from(data['tasks'] ?? const []);
+              totalTasks += tasks.length;
+              for (final t in tasks) {
+                final completed = t['completed'] == true || t['isCompleted'] == true || t['status'] == 'completed';
+                if (completed) completedTasks += 1;
+              }
+            }
           }
+          if (totalTasks > 0) completionPct = completedTasks / totalTasks;
           debugPrint(
-            '[ManagerDashboard] Shift $shiftName: $completedTasks/$totalTasks tasks from ${checklistQuery.docs.length} checklists (${(completionPct * 100).round()}%)',
+            '[ManagerDashboard] Shift $shiftName: $completedTasks/$totalTasks tasks (${(completionPct * 100).round()}%)',
           );
-        } else {
-          debugPrint('[ManagerDashboard] No checklist found for shift $shiftName, showing 0/0 tasks');
+        } catch (e) {
+          debugPrint('[ManagerDashboard] Error computing task stats for shift ${shiftDoc.id}: $e');
         }
 
         // Calculate time status
@@ -1249,51 +1255,38 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
               stream:
                   _selectedLocationId != null
                       ? FirestoreEnforcer.instance
-                          .collection('organizations')
-                          .doc(widget.organizationId)
-                          .collection('locations')
-                          .doc(_selectedLocationId!)
-                          .collection('daily_checklists')
-                          .where('date', isEqualTo: _todayKey)
+                          .collectionGroup('tasks')
+                          .where('organizationId', isEqualTo: widget.organizationId)
+                          .where('locationId', isEqualTo: _selectedLocationId)
+                          .where('dateString', isEqualTo: _todayKey)
                           .where('shiftId', isEqualTo: shiftDoc.id)
                           .snapshots()
-                      : const Stream.empty(), // No location selected, no data
-              builder: (context, checklistSnapshot) {
-                if (!checklistSnapshot.hasData) {
-                  return const LinearProgressIndicator(value: 0);
-                }
+                      : const Stream.empty(),
+              builder: (context, tasksSnapshot) {
+                if (!tasksSnapshot.hasData) return const LinearProgressIndicator(value: 0);
 
-                final checklists = checklistSnapshot.data!.docs;
-                if (checklists.isEmpty) {
+                final taskDocs = tasksSnapshot.data!.docs;
+                if (taskDocs.isEmpty) {
                   return Column(
                     children: [
                       const LinearProgressIndicator(value: 0),
                       const SizedBox(height: 8),
                       Text(
-                        'No checklists for today - Staff need to select this shift',
+                        'No tasks for today - Staff need to select this shift',
                         style: TextStyle(color: Colors.grey[600], fontSize: 12),
                       ),
                     ],
                   );
                 }
 
-                int totalCompleted = 0;
-                int totalTasks = 0;
-
-                for (final doc in checklists) {
-                  final data = doc.data() as Map<String, dynamic>;
-
-                  // Use completedItems/totalItems if available, otherwise calculate from tasks
-                  if (data.containsKey('completedItems') && data.containsKey('totalItems')) {
-                    totalCompleted += (data['completedItems'] ?? 0) as int;
-                    totalTasks += (data['totalItems'] ?? 0) as int;
-                  } else {
-                    // Fallback: calculate from tasks array
-                    final tasks = List<Map<String, dynamic>>.from(data['tasks'] ?? []);
-                    totalTasks += tasks.length;
-                    totalCompleted += tasks.where((task) => task['completed'] == true).length;
-                  }
-                }
+                final totalTasks = taskDocs.length;
+                final totalCompleted =
+                    taskDocs.where((d) {
+                      final Map<String, dynamic>? data = d.data() as Map<String, dynamic>?;
+                      return (data?['completed'] == true) ||
+                          (data?['isCompleted'] == true) ||
+                          (data?['status'] == 'completed');
+                    }).length;
 
                 final progress = totalTasks > 0 ? totalCompleted / totalTasks : 0.0;
 
@@ -2112,8 +2105,29 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
   }
 
   Widget _buildAuditResults() {
+    // Prefer collectionGroup('tasks') when a location is selected to read per-task docs
+    final Stream<QuerySnapshot> primaryStream =
+        _selectedLocationId != null
+            ? FirestoreEnforcer.instance
+                .collectionGroup('tasks')
+                .where('organizationId', isEqualTo: widget.organizationId)
+                .where('locationId', isEqualTo: _selectedLocationId)
+                .where(
+                  'dateString',
+                  isGreaterThanOrEqualTo: DateFormat(
+                    'yyyy-MM-dd',
+                  ).format(_selectedDateRange?.start ?? DateTime.now().subtract(const Duration(days: 30))),
+                )
+                .where(
+                  'dateString',
+                  isLessThanOrEqualTo: DateFormat('yyyy-MM-dd').format(_selectedDateRange?.end ?? DateTime.now()),
+                )
+                .limit(1000)
+                .snapshots()
+            : _buildAuditQuery();
+
     return StreamBuilder<QuerySnapshot>(
-      stream: _buildAuditQuery(),
+      stream: primaryStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -2142,8 +2156,12 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                 );
               }
 
-              final checklists = fallbackSnapshot.data!.docs;
-              final filteredResults = _filterAuditResults(checklists);
+              final docs = fallbackSnapshot.data!.docs;
+              // If fallback is checklist docs, use existing filter; if task docs, map via new helper
+              final filteredResults =
+                  docs.isNotEmpty && ((docs.first.data() as Map<String, dynamic>?)?.containsKey('tasks') ?? false)
+                      ? _filterAuditResults(docs)
+                      : _filterAuditFromTaskDocs(docs);
 
               if (filteredResults.isEmpty) {
                 return Card(
@@ -2156,7 +2174,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                         const Text('No results found with current filters'),
                         const SizedBox(height: 4),
                         Text(
-                          'Found ${checklists.length} checklists but no matching tasks',
+                          'Found ${docs.length} checklists but no matching tasks',
                           style: TextStyle(color: Colors.grey[600], fontSize: 12),
                         ),
                         const SizedBox(height: 8),
@@ -2170,7 +2188,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
               return Column(
                 children: [
                   Text(
-                    'Found ${filteredResults.length} tasks from ${checklists.length} checklists',
+                    'Found ${filteredResults.length} tasks from ${docs.length} checklists',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
                   ),
                   const SizedBox(height: 12),
@@ -2200,7 +2218,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Showing ${_auditItemsToShow} of ${filteredResults.length} tasks',
+                      'Showing $_auditItemsToShow of ${filteredResults.length} tasks',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
                       textAlign: TextAlign.center,
                     ),
@@ -2215,10 +2233,13 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final checklists = snapshot.data!.docs;
-        debugPrint('Audit query returned ${checklists.length} checklists');
+        final docs = snapshot.data!.docs;
+        debugPrint('Audit query returned ${docs.length} documents');
 
-        final filteredResults = _filterAuditResults(checklists);
+        final filteredResults =
+            docs.isNotEmpty && ((docs.first.data() as Map<String, dynamic>?)?.containsKey('tasks') ?? false)
+                ? _filterAuditResults(docs)
+                : _filterAuditFromTaskDocs(docs);
 
         if (filteredResults.isEmpty) {
           return Card(
@@ -2231,7 +2252,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                   const Text('No results found with current filters'),
                   const SizedBox(height: 4),
                   Text(
-                    'Found ${checklists.length} checklists but no matching tasks',
+                    'Found ${docs.length} checklists but no matching tasks',
                     style: TextStyle(color: Colors.grey[600], fontSize: 12),
                   ),
                   const SizedBox(height: 8),
@@ -2245,7 +2266,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
         return Column(
           children: [
             Text(
-              'Found ${filteredResults.length} tasks from ${checklists.length} checklists',
+              'Found ${filteredResults.length} tasks from ${docs.length} checklists',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
             ),
             const SizedBox(height: 12),
@@ -2275,7 +2296,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Showing ${_auditItemsToShow} of ${filteredResults.length} tasks',
+                'Showing $_auditItemsToShow of ${filteredResults.length} tasks',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
                 textAlign: TextAlign.center,
               ),
@@ -2345,13 +2366,14 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
       final startedByUserId = data['startedByUserId'] ?? data['userId'] ?? '';
       final date = data['date'] ?? '';
       final shiftId = data['shiftId'] ?? '';
-      final locationId = data['locationId'] ?? '';
+      final docLocationIds = coerceToLocationIds(data['locationIds'] ?? data['locationId']);
+      final locationId = docLocationIds.isNotEmpty ? docLocationIds.first : '';
       final checklistTemplateId = data['checklistTemplateId'] ?? data['templateId'] ?? '';
 
       // Apply Firestore-level filters first (in memory)
 
       // Location filter
-      if (_selectedLocationId != null && locationId != _selectedLocationId) {
+      if (_selectedLocationId != null && !docLocationIds.contains(_selectedLocationId)) {
         continue;
       }
 
@@ -2510,6 +2532,108 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
     return allTasks;
   }
 
+  /// Convert task document snapshots (from collectionGroup('tasks')) into the
+  /// same display shape used by [_filterAuditResults]. This allows the audit
+  /// UI to consume either legacy checklist docs with embedded `tasks` arrays
+  /// or the new per-task subcollection documents.
+  List<Map<String, dynamic>> _filterAuditFromTaskDocs(List<QueryDocumentSnapshot> taskDocs) {
+    List<Map<String, dynamic>> results = [];
+
+    for (final d in taskDocs) {
+      final data = d.data() as Map<String, dynamic>?;
+      if (data == null) continue;
+
+      // Defensive defaults and mapping - task docs are denormalized but may
+      // contain slightly different field names depending on migration timing.
+      final taskName = data['taskName'] ?? data['title'] ?? data['description'] ?? data['name'] ?? 'Unnamed Task';
+      final checklistName = data['checklistName'] ?? data['templateName'] ?? data['checklistId'] ?? 'Unknown Checklist';
+      final completed = data['completed'] == true || data['isCompleted'] == true || data['status'] == 'completed';
+      final completedBy = data['completedBy'] ?? data['completedByUserName'] ?? data['completedByUserId'] ?? '';
+      final timestampRaw = data['completedAt'] ?? data['timestamp'] ?? data['createdAt'] ?? data['updatedAt'];
+
+      DateTime? timestamp;
+      if (timestampRaw != null) {
+        try {
+          if (timestampRaw is Timestamp) {
+            timestamp = timestampRaw.toDate();
+          } else if (timestampRaw is String) {
+            timestamp = DateTime.tryParse(timestampRaw);
+          } else if (timestampRaw is DateTime) {
+            timestamp = timestampRaw;
+          }
+        } catch (e) {
+          debugPrint('Error parsing task timestamp: $e');
+        }
+      }
+
+      final shiftId = data['shiftId'] ?? '';
+      final shiftName =
+          _shifts.firstWhere((s) => s['id'] == shiftId, orElse: () => {'name': 'Unknown Shift'})['name'] ??
+          'Unknown Shift';
+      final locationId = data['locationId'] ?? '';
+      final date = data['date'] ?? data['dateString'] ?? '';
+      final photoUrl = data['photoUrl'] ?? data['proofImageUrl'] ?? data['imageUrl'] ?? data['photo'];
+      final reason = data['reason'] ?? data['incompleteReason'] ?? '';
+
+      // Apply filters that the UI expects
+      if (_selectedLocationId != null && locationId != _selectedLocationId) continue;
+      if (_selectedShift != 'all' && shiftId != _selectedShift) continue;
+      if (_selectedChecklist != 'all' &&
+          (data['checklistTemplateId'] ?? data['checklistId'] ?? data['templateId'] ?? '') != _selectedChecklist) {
+        continue;
+      }
+
+      if (_selectedCompletion == 'completed' && !completed) continue;
+      if (_selectedCompletion == 'incomplete' && completed) continue;
+      if (_selectedCompletion == 'incomplete_with_reason' && (completed || reason.toString().trim().isEmpty)) continue;
+
+      if (_searchTerm.isNotEmpty) {
+        final searchMatch =
+            taskName.toLowerCase().contains(_searchTerm) ||
+            checklistName.toLowerCase().contains(_searchTerm) ||
+            completedBy.toLowerCase().contains(_searchTerm) ||
+            shiftName.toLowerCase().contains(_searchTerm);
+        if (!searchMatch) continue;
+      }
+
+      String displayUserName = (completedBy ?? '').toString();
+      if (displayUserName.isEmpty) {
+        displayUserName = data['startedByUserId'] != null ? 'User ${data['startedByUserId']}' : 'Unknown User';
+      }
+
+      results.add({
+        'taskName': taskName,
+        'checklistName': checklistName,
+        'userName': displayUserName,
+        'userId': completedBy ?? '',
+        'shiftName': shiftName,
+        'shiftId': shiftId,
+        'completed': completed,
+        'timestamp': timestamp,
+        'date': date,
+        'taskIndex': data['taskIndex'] ?? 0,
+        'checklistId': data['checklistId'] ?? data['dailyChecklistId'] ?? d.reference.parent.parent?.id ?? '',
+        'locationId': locationId,
+        'taskId': data['taskId'] ?? d.id,
+        'reason': reason,
+        'photoUrl': photoUrl,
+      });
+    }
+
+    // Sort newest first
+    results.sort((a, b) {
+      final aTime = a['timestamp'];
+      final bTime = b['timestamp'];
+      if (aTime == null && bTime == null) return 0;
+      if (aTime == null) return 1;
+      if (bTime == null) return -1;
+      if (aTime is DateTime && bTime is DateTime) return bTime.compareTo(aTime);
+      return 0;
+    });
+
+    return results;
+  }
+
   Widget _buildAuditResultItem(Map<String, dynamic> data) {
     final userName = data['userName'] ?? 'Unknown User';
     final taskName = data['taskName'] ?? 'Unnamed Task';
@@ -2637,6 +2761,17 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
   }
 
   // Add this new method to show photo in a dialog
+  String _fixStorageUrl(String url) {
+    // Some stored URLs may still reference firebasestorage.app which fails on web.
+    // Rewrite to the canonical appspot.com domain without changing the rest of the path.
+    try {
+      if (url.contains('firebasestorage.app')) {
+        return url.replaceFirst('firebasestorage.app', 'appspot.com');
+      }
+    } catch (_) {}
+    return url;
+  }
+
   void _showTaskPhotoDialog(String photoUrl, String taskName) {
     showDialog(
       context: context,
@@ -2701,7 +2836,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                           minScale: 0.5,
                           maxScale: 3.0,
                           child: Image.network(
-                            photoUrl,
+                            _fixStorageUrl(photoUrl),
                             fit: BoxFit.contain,
                             loadingBuilder: (context, child, loadingProgress) {
                               if (loadingProgress == null) return child;

@@ -1,4 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -27,11 +28,23 @@ void main() async {
   // Set URL strategy for web to use path-based URLs
   if (kIsWeb) {
     usePathUrlStrategy();
-    print('[MAIN] Setting path URL strategy for web');
+    debugPrint('[MAIN] Setting path URL strategy for web');
   }
 
   // Initialize Firebase
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Dev helper: when running the web app on localhost, point Storage to the local emulator
+  // This avoids CORS issues during development and lets you test uploads locally.
+  try {
+    if (kIsWeb && (Uri.base.host.contains('localhost') || Uri.base.host.contains('127.0.0.1'))) {
+      // Use explicit 127.0.0.1 so web SDK requests match the emulator binding
+      FirebaseStorage.instance.useStorageEmulator('127.0.0.1', 9199);
+      debugPrint('[MAIN] Using Firebase Storage emulator at 127.0.0.1:9199');
+    }
+  } catch (e) {
+    debugPrint('[MAIN] Failed to configure Storage emulator: $e');
+  }
 
   // Initialize push notifications on mobile platforms
   if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.android)) {
@@ -150,7 +163,7 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-  return MaterialApp.router(
+    return MaterialApp.router(
       title: 'Hands App',
       theme: handsTheme,
       routerConfig: router,

@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/data/models/task_data.dart';
 
@@ -71,6 +72,8 @@ class DailyChecklistTask {
   }
 
   factory DailyChecklistTask.fromMap(Map<String, dynamic> map) {
+    developer.log('[DailyChecklistTask] Creating task from map: $map');
+
     // Helper function to parse timestamps correctly
     DateTime? parseTimestampField(dynamic value) {
       if (value == null) return null;
@@ -87,9 +90,35 @@ class DailyChecklistTask {
 
     // Standardize: read isCompleted from either field
     final completed = map['isCompleted'] ?? map['completed'] ?? false;
+
+    // Extract description with better fallbacks
+    String description =
+        map['description']?.toString() ??
+        map['title']?.toString() ??
+        map['name']?.toString() ??
+        map['taskName']?.toString() ??
+        '';
+
+    // If description is still empty, provide a meaningful fallback
+    if (description.isEmpty) {
+      final taskId = map['taskId']?.toString() ?? '';
+      if (taskId.contains('-cf-')) {
+        // Prefer any explicit taskName before falling back to a generic label
+        final tn = map['taskName']?.toString();
+        description = (tn != null && tn.trim().isNotEmpty) ? tn : 'Carried forward task';
+      } else if (map['photoUrl'] != null || map['proofImageUrl'] != null) {
+        description = 'Photo task';
+      } else {
+        description = 'Task';
+      }
+      developer.log('[DailyChecklistTask] Used fallback description: $description');
+    }
+
+    developer.log('[DailyChecklistTask] Final task: taskId=${map['taskId']}, description=$description');
+
     return DailyChecklistTask(
       taskId: map['taskId']?.toString() ?? '',
-      description: map['description']?.toString() ?? map['title']?.toString() ?? map['name']?.toString() ?? '',
+      description: description,
       isCompleted: completed is bool ? completed : false,
       completedBy: map['completedBy']?.toString(),
       completedAt: parseTimestampField(map['completedAt']),
@@ -272,6 +301,53 @@ class DailyChecklist {
     final createdAt = parseDateField(map['createdAt']) ?? now;
     final updatedAt = parseDateField(map['updatedAt']) ?? now;
 
+    // Enhanced task loading to handle both List and Map formats
+    List<DailyChecklistTask> tasksList = [];
+    if (map['tasks'] is List) {
+      // Standard List format
+      tasksList =
+          (map['tasks'] as List)
+              .whereType<Map<String, dynamic>>()
+              .map((task) => DailyChecklistTask.fromMap(task))
+              .toList();
+    } else if (map['tasks'] is Map) {
+      // Map format where keys are task IDs and values are task data
+      final tasksMap = map['tasks'] as Map<String, dynamic>;
+      for (final entry in tasksMap.entries) {
+        try {
+          if (entry.value is Map<String, dynamic>) {
+            final taskData = Map<String, dynamic>.from(entry.value);
+            developer.log('[DailyChecklist] Loading task from Map format: $taskData');
+
+            // Ensure taskId is set
+            if (!taskData.containsKey('taskId') && !taskData.containsKey('id')) {
+              taskData['taskId'] = entry.key;
+            }
+
+            // If task description/title is missing, provide a default based on the task ID or context
+            if (!taskData.containsKey('description') &&
+                !taskData.containsKey('title') &&
+                !taskData.containsKey('name')) {
+              // Try to extract meaningful info from the task ID or provide a default
+              final taskId = entry.key;
+              developer.log('[DailyChecklist] Task missing description, taskId: $taskId');
+              if (taskId.contains('-cf-')) {
+                taskData['description'] = 'Carried forward task';
+              } else {
+                taskData['description'] = 'Task ${tasksList.length + 1}';
+              }
+              developer.log('[DailyChecklist] Set default description: ${taskData['description']}');
+            }
+
+            tasksList.add(DailyChecklistTask.fromMap(taskData));
+          }
+        } catch (e) {
+          // Skip malformed task data
+          continue;
+        }
+      }
+    }
+
     return DailyChecklist(
       id: documentId,
       checklistTemplateId: map['checklistTemplateId']?.toString() ?? '',
@@ -284,13 +360,7 @@ class DailyChecklist {
       startedAt: parseDateField(map['startedAt']),
       completedByUserId: map['completedByUserId']?.toString(),
       completedAt: parseDateField(map['completedAt']),
-      tasks:
-          (map['tasks'] is List)
-              ? (map['tasks'] as List)
-                  .whereType<Map<String, dynamic>>()
-                  .map((task) => DailyChecklistTask.fromMap(task))
-                  .toList()
-              : [],
+      tasks: tasksList,
       isCompleted: map['isCompleted'] is bool ? map['isCompleted'] : false,
       createdAt: createdAt,
       updatedAt: updatedAt,

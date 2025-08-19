@@ -22,6 +22,10 @@ class AppState extends _$AppState {
   void setIsSettingsOpen(bool isSettingsOpen) {
     state = state.copyWith(isSettingsOpen: isSettingsOpen);
   }
+
+  void setSelectedLocation(LocationData? location) {
+    state = state.copyWith(selectedLocation: location);
+  }
 }
 
 @freezed
@@ -34,6 +38,5 @@ class AppStateData with _$AppStateData {
     ChecklistData? selectedChecklist,
   }) = _AppStateData;
 
-  factory AppStateData.fromJson(Map<String, dynamic> json) =>
-      _$AppStateDataFromJson(json);
+  factory AppStateData.fromJson(Map<String, dynamic> json) => _$AppStateDataFromJson(json);
 }

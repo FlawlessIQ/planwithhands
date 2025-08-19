@@ -19,7 +19,7 @@ mixin AccessibilityMixin<T extends StatefulWidget> on State<T> {
       endDrawer: endDrawer,
       body: AccessibilityHelper.responsiveLayout(
         context: context,
-        builder: (context, constraints, textScaleFactor) {
+        builder: (context, constraints, textScaleRatio) {
           return AccessibilityHelper.createFocusTraversalGroup(child: body);
         },
       ),

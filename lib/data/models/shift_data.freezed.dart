@@ -27,7 +27,8 @@ mixin _$ShiftData {
   DateTime get createdAt => throw _privateConstructorUsedError;
   String get startTime => throw _privateConstructorUsedError;
   String get endTime => throw _privateConstructorUsedError;
-  String get organizationId => throw _privateConstructorUsedError;
+  String get organizationId =>
+      throw _privateConstructorUsedError; // These four fields are present per your generated g.dart:
   List<String> get locationIds => throw _privateConstructorUsedError;
   List<String> get checklistTemplateIds => throw _privateConstructorUsedError;
   List<String> get jobType => throw _privateConstructorUsedError;
@@ -383,15 +384,15 @@ class _$ShiftDataImpl implements _ShiftData {
     this.startTime = 'N/A',
     this.endTime = 'N/A',
     this.organizationId = '',
-    final List<String> locationIds = const [],
-    final List<String> checklistTemplateIds = const [],
-    final List<String> jobType = const [],
-    final Map<String, int> staffingLevels = const {},
-    final List<String> days = const [],
+    final List<String> locationIds = const <String>[],
+    final List<String> checklistTemplateIds = const <String>[],
+    final List<String> jobType = const <String>[],
+    final Map<String, int> staffingLevels = const <String, int>{},
+    final List<String> days = const <String>[],
     this.repeatsDaily = false,
-    final List<int> activeDays = const [],
-    final List<String> assignedUserIds = const [],
-    final List<String> volunteers = const [],
+    final List<int> activeDays = const <int>[],
+    final List<String> assignedUserIds = const <String>[],
+    final List<String> volunteers = const <String>[],
     this.published = false,
     @NullableTimestampConverter() this.shiftDate,
     @NullableTimestampConverter() this.updatedAt,
@@ -425,7 +426,9 @@ class _$ShiftDataImpl implements _ShiftData {
   @override
   @JsonKey()
   final String organizationId;
+  // These four fields are present per your generated g.dart:
   final List<String> _locationIds;
+  // These four fields are present per your generated g.dart:
   @override
   @JsonKey()
   List<String> get locationIds {
@@ -642,7 +645,7 @@ abstract class _ShiftData implements ShiftData {
   @override
   String get endTime;
   @override
-  String get organizationId;
+  String get organizationId; // These four fields are present per your generated g.dart:
   @override
   List<String> get locationIds;
   @override

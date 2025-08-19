@@ -3,16 +3,18 @@ import 'package:flutter/semantics.dart';
 
 /// Helper class for accessibility-related utilities and WCAG 2.1 AA compliance
 class AccessibilityHelper {
-  /// Gets responsive spacing based on text scale factor
+  /// Gets responsive spacing based on text scaling (nonlinear aware)
   static double getResponsiveSpacing(BuildContext context, double baseSpacing) {
-    final textScaleFactor = MediaQuery.textScaleFactorOf(context);
-    return baseSpacing * textScaleFactor.clamp(1.0, 1.5);
+    final scaler = MediaQuery.textScalerOf(context);
+    // Derive an approximate ratio from the scaler without using the deprecated textScaleFactor
+    final ratio = (scaler.scale(10.0) / 10.0).clamp(1.0, 1.5);
+    return baseSpacing * ratio;
   }
 
-  /// Gets responsive padding based on text scale factor
+  /// Gets responsive padding based on text scaling (nonlinear aware)
   static EdgeInsets getResponsivePadding(BuildContext context, EdgeInsets basePadding) {
-    final textScaleFactor = MediaQuery.textScaleFactorOf(context);
-    final multiplier = textScaleFactor.clamp(1.0, 1.5);
+    final scaler = MediaQuery.textScalerOf(context);
+    final multiplier = (scaler.scale(10.0) / 10.0).clamp(1.0, 1.5);
     return EdgeInsets.only(
       left: basePadding.left * multiplier,
       top: basePadding.top * multiplier,
@@ -21,10 +23,10 @@ class AccessibilityHelper {
     );
   }
 
-  /// Gets responsive constraints based on text scale factor
+  /// Gets responsive constraints based on text scaling (nonlinear aware)
   static BoxConstraints getResponsiveConstraints(BuildContext context, BoxConstraints baseConstraints) {
-    final textScaleFactor = MediaQuery.textScaleFactorOf(context);
-    final multiplier = textScaleFactor.clamp(1.0, 2.0);
+    final scaler = MediaQuery.textScalerOf(context);
+    final multiplier = (scaler.scale(10.0) / 10.0).clamp(1.0, 2.0);
     return BoxConstraints(
       minWidth: baseConstraints.minWidth,
       maxWidth: baseConstraints.maxWidth,
@@ -74,9 +76,10 @@ class AccessibilityHelper {
     return MediaQuery.of(context).highContrast;
   }
 
-  /// Gets text scale factor with proper bounds
+  /// Gets an approximate text scaling ratio with bounds (nonlinear aware), avoids deprecated textScaleFactor
   static double getBoundedTextScaleFactor(BuildContext context, {double max = 3.0}) {
-    return MediaQuery.textScaleFactorOf(context).clamp(1.0, max);
+    final scaler = MediaQuery.textScalerOf(context);
+    return (scaler.scale(10.0) / 10.0).clamp(1.0, max);
   }
 
   /// Creates responsive layout with LayoutBuilder wrapper
@@ -86,8 +89,9 @@ class AccessibilityHelper {
   }) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final textScaleFactor = MediaQuery.textScaleFactorOf(context);
-        return builder(context, constraints, textScaleFactor);
+        final scaler = MediaQuery.textScalerOf(context);
+        final ratio = scaler.scale(10.0) / 10.0;
+        return builder(context, constraints, ratio);
       },
     );
   }
@@ -117,10 +121,14 @@ class AccessibilityHelper {
 
 /// Extension methods for MediaQuery accessibility features
 extension MediaQueryAccessibility on BuildContext {
-  double get textScaleFactor => MediaQuery.textScaleFactorOf(this);
+  // Nonlinear-safe text scale ratio (not the deprecated MediaQuery.of(context).textScaleFactor)
+  double get textScaleRatio => MediaQuery.textScalerOf(this).scale(10.0) / 10.0;
+  // Back-compat alias used only within our code (not deprecated API)
+  @Deprecated('Use textScaleRatio instead')
+  double get textScaleFactor => textScaleRatio;
   bool get isHighContrast => MediaQuery.of(this).highContrast;
-  bool get isLargeText => textScaleFactor >= 1.3;
-  bool get isExtraLargeText => textScaleFactor >= 2.0;
+  bool get isLargeText => textScaleRatio >= 1.3;
+  bool get isExtraLargeText => textScaleRatio >= 2.0;
 
   /// Gets responsive spacing based on screen size and text scale
   double getResponsiveSpacing(double baseSpacing) => AccessibilityHelper.getResponsiveSpacing(this, baseSpacing);

@@ -53,7 +53,7 @@ exports.createCheckoutSession = functions
       const session = await stripe.checkout.sessions.create({
         customer: customerId,
         payment_method_types: ["card"],
-        line_items: [{price: finalPriceId, quantity: 1}],
+  line_items: [{price: finalPriceId, quantity: data.quantity || 1}],
         mode: "subscription",
         success_url: "https://plan-with-hands.web.app/dashboard?payment=success",
         cancel_url: "https://plan-with-hands.web.app/pricing?payment=cancelled",
@@ -75,14 +75,50 @@ exports.createBillingPortalSession = functions
       const {orgId} = data;
       const orgRef = db.collection("organizations").doc(orgId);
       const orgDoc = await orgRef.get();
-      if (!orgDoc.exists || !orgDoc.data().stripeCustomerId) {
-        throw new functions.https.HttpsError("not-found", "Stripe customer not found");
+
+      try {
+        // stripeCustomerId might be stored on the org doc or in nested stripe docs
+        let stripeCustomerId = orgDoc.exists ? orgDoc.data().stripeCustomerId : null;
+
+        if (!stripeCustomerId) {
+          // Try organizations/{orgId}/stripe/customer
+          const customerDoc = await orgRef.collection("stripe").doc("customer").get();
+          if (customerDoc.exists && customerDoc.data().stripeCustomerId) {
+            stripeCustomerId = customerDoc.data().stripeCustomerId;
+          }
+        }
+
+        if (!stripeCustomerId) {
+          // Try organizations/{orgId}/stripe/subscription
+          const subDoc = await orgRef.collection("stripe").doc("subscription").get();
+          if (subDoc.exists && subDoc.data().stripeCustomerId) {
+            stripeCustomerId = subDoc.data().stripeCustomerId;
+          }
+        }
+
+        if (!stripeCustomerId) {
+          // As a fallback, create a customer now so we can open the portal.
+          const orgName = orgDoc.exists && orgDoc.data().name ? orgDoc.data().name : `Org ${orgId}`;
+          const customer = await stripe.customers.create({
+            name: orgName,
+            metadata: {orgId},
+          });
+          stripeCustomerId = customer.id;
+          await orgRef.collection("stripe").doc("customer").set({
+            stripeCustomerId,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          }, {merge: true});
+        }
+
+        const portalSession = await stripe.billingPortal.sessions.create({
+          customer: stripeCustomerId,
+          return_url: "https://plan-with-hands.web.app/settings",
+        });
+        return {url: portalSession.url};
+      } catch (err) {
+        console.error("createBillingPortalSession error", err);
+        throw new functions.https.HttpsError("internal", err.message || "Failed to open billing portal");
       }
-      const portalSession = await stripe.billingPortal.sessions.create({
-        customer: orgDoc.data().stripeCustomerId,
-        return_url: "https://plan-with-hands.web.app/settings",
-      });
-      return {url: portalSession.url};
     });
 
 // Cancel Subscription Function
@@ -211,4 +247,32 @@ exports.stripeWebhook = functions
       }
 
       res.json({received: true});
+    });
+
+// Update subscription quantity (e.g., number of locations)
+exports.updateSubscription = functions
+    .region("us-central1")
+    .https.onCall(async (data, context) => {
+      const {orgId, subscriptionId, newQuantity} = data;
+      if (!orgId || !subscriptionId || !newQuantity || newQuantity <= 0) {
+        throw new functions.https.HttpsError("invalid-argument", "Missing or invalid parameters");
+      }
+      try {
+        const updated = await stripe.subscriptions.update(subscriptionId, {
+          items: [{id: (await stripe.subscriptions.retrieve(subscriptionId)).items.data[0].id, quantity: newQuantity}],
+        });
+        await db
+            .collection("organizations")
+            .doc(orgId)
+            .collection("stripe")
+            .doc("subscription")
+            .set({
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              quantity: newQuantity,
+              status: updated.status,
+            }, {merge: true});
+        return {success: true};
+      } catch (error) {
+        throw new functions.https.HttpsError("internal", `Failed to update subscription: ${error.message}`);
+      }
     });

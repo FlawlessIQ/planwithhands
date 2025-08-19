@@ -3,17 +3,15 @@ import 'package:flutter/cupertino.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/data/models/shift_data.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/ui/bottom_sheet_styles.dart';
+import 'package:hands_app/utils/location_helper.dart';
 
 /// Dialog for managing job types with full CRUD functionality.
 class ShiftJobTypeManagementDialog extends StatefulWidget {
   final String organizationId;
   final VoidCallback onJobTypesUpdated;
-  
-  const ShiftJobTypeManagementDialog({
-    super.key,
-    required this.organizationId,
-    required this.onJobTypesUpdated,
-  });
+
+  const ShiftJobTypeManagementDialog({super.key, required this.organizationId, required this.onJobTypesUpdated});
 
   @override
   State<ShiftJobTypeManagementDialog> createState() => _ShiftJobTypeManagementDialogState();
@@ -41,29 +39,31 @@ class _ShiftJobTypeManagementDialogState extends State<ShiftJobTypeManagementDia
   Future<void> _loadJobTypes() async {
     setState(() => _isLoading = true);
     try {
-      final jobTypesSnapshot = await FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(widget.organizationId)
-          .collection('jobTypes')
-          .orderBy('name')
-          .get();
+      final jobTypesSnapshot =
+          await FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(widget.organizationId)
+              .collection('jobTypes')
+              .orderBy('name')
+              .get();
 
-      final jobTypes = jobTypesSnapshot.docs.map((doc) {
-        final data = doc.data();
-        return {
-          'id': doc.id,
-          'name': data['name'] as String,
-          'createdAt': data['createdAt'],
-          'organizationId': data['organizationId'],
-        };
-      }).toList();
+      final jobTypes =
+          jobTypesSnapshot.docs.map((doc) {
+            final data = doc.data();
+            return {
+              'id': doc.id,
+              'name': data['name'] as String,
+              'createdAt': data['createdAt'],
+              'organizationId': data['organizationId'],
+            };
+          }).toList();
 
       setState(() {
         _jobTypes = jobTypes;
         _isLoading = false;
       });
     } catch (e) {
-      print('Error loading job types: $e');
+      debugPrint('Error loading job types: $e');
       setState(() => _isLoading = false);
     }
   }
@@ -86,52 +86,43 @@ class _ShiftJobTypeManagementDialogState extends State<ShiftJobTypeManagementDia
           .collection('organizations')
           .doc(widget.organizationId)
           .collection('jobTypes')
-          .add({
-        'name': name,
-        'createdAt': FieldValue.serverTimestamp(),
-        'organizationId': widget.organizationId,
-      });
+          .add({'name': name, 'createdAt': FieldValue.serverTimestamp(), 'organizationId': widget.organizationId});
 
       _newJobTypeController.clear();
       _showSnackBar('Job type added successfully');
       await _loadJobTypes();
     } catch (e) {
-      print('Error adding job type: $e');
+      debugPrint('Error adding job type: $e');
       _showSnackBar('Failed to add job type', isError: true);
     }
   }
 
   Future<void> _editJobType(String jobTypeId, String currentName) async {
     _editJobTypeController.text = currentName;
-    
+
     final result = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Edit Job Type'),
-        content: TextFormField(
-          controller: _editJobTypeController,
-          decoration: const InputDecoration(
-            labelText: 'Job Type Name',
-            border: OutlineInputBorder(),
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Edit Job Type'),
+            content: TextFormField(
+              controller: _editJobTypeController,
+              decoration: const InputDecoration(labelText: 'Job Type Name', border: OutlineInputBorder()),
+              autofocus: true,
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+              ElevatedButton(
+                onPressed: () {
+                  final newName = _editJobTypeController.text.trim();
+                  if (newName.isNotEmpty) {
+                    Navigator.pop(context, newName);
+                  }
+                },
+                child: const Text('Save'),
+              ),
+            ],
           ),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final newName = _editJobTypeController.text.trim();
-              if (newName.isNotEmpty) {
-                Navigator.pop(context, newName);
-              }
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
     );
 
     if (result != null && result != currentName) {
@@ -147,15 +138,12 @@ class _ShiftJobTypeManagementDialogState extends State<ShiftJobTypeManagementDia
             .doc(widget.organizationId)
             .collection('jobTypes')
             .doc(jobTypeId)
-            .update({
-          'name': result,
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
+            .update({'name': result, 'updatedAt': FieldValue.serverTimestamp()});
 
         _showSnackBar('Job type updated successfully');
         await _loadJobTypes();
       } catch (e) {
-        print('Error updating job type: $e');
+        debugPrint('Error updating job type: $e');
         _showSnackBar('Failed to update job type', isError: true);
       }
     }
@@ -164,24 +152,21 @@ class _ShiftJobTypeManagementDialogState extends State<ShiftJobTypeManagementDia
   Future<void> _deleteJobType(String jobTypeId, String jobTypeName) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Job Type'),
-        content: Text('Are you sure you want to delete "$jobTypeName"?\n\nThis action cannot be undone and may affect existing shifts assigned to this role.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Delete Job Type'),
+            content: Text(
+              'Are you sure you want to delete "$jobTypeName"?\n\nThis action cannot be undone and may affect existing shifts assigned to this role.',
             ),
-            child: const Text('Delete'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                child: const Text('Delete'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
 
     if (confirmed == true) {
@@ -196,19 +181,16 @@ class _ShiftJobTypeManagementDialogState extends State<ShiftJobTypeManagementDia
         _showSnackBar('Job type deleted successfully');
         await _loadJobTypes();
       } catch (e) {
-        print('Error deleting job type: $e');
+        debugPrint('Error deleting job type: $e');
         _showSnackBar('Failed to delete job type', isError: true);
       }
     }
   }
 
   void _showSnackBar(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? Colors.red : Colors.green,
-      ),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message), backgroundColor: isError ? Colors.red : Colors.green));
   }
 
   @override
@@ -225,10 +207,7 @@ class _ShiftJobTypeManagementDialogState extends State<ShiftJobTypeManagementDia
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Manage Job Types',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
+                const Text('Manage Job Types', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                 IconButton(
                   icon: const Icon(Icons.close),
                   onPressed: () {
@@ -247,10 +226,7 @@ class _ShiftJobTypeManagementDialogState extends State<ShiftJobTypeManagementDia
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Add New Job Type',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                    ),
+                    const Text('Add New Job Type', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 12),
                     Row(
                       children: [
@@ -280,61 +256,50 @@ class _ShiftJobTypeManagementDialogState extends State<ShiftJobTypeManagementDia
             const SizedBox(height: 20),
 
             // Existing job types list
-            const Text(
-              'Existing Job Types',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
+            const Text('Existing Job Types', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
 
             // Job types list
             Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _jobTypes.isEmpty
+              child:
+                  _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _jobTypes.isEmpty
                       ? const Center(
-                          child: Text(
-                            'No job types found.\nAdd your first job type above.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.grey),
-                          ),
-                        )
-                      : ListView.builder(
-                          itemCount: _jobTypes.length,
-                          itemBuilder: (context, index) {
-                            final jobType = _jobTypes[index];
-                            return Card(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              child: ListTile(
-                                leading: const Icon(Icons.work_outline),
-                                title: Text(
-                                  jobType['name'],
-                                  style: const TextStyle(fontWeight: FontWeight.w500),
-                                ),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(Icons.edit, color: Colors.blue),
-                                      tooltip: 'Edit',
-                                      onPressed: () => _editJobType(
-                                        jobType['id'],
-                                        jobType['name'],
-                                      ),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.delete, color: Colors.red),
-                                      tooltip: 'Delete',
-                                      onPressed: () => _deleteJobType(
-                                        jobType['id'],
-                                        jobType['name'],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
+                        child: Text(
+                          'No job types found.\nAdd your first job type above.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey),
                         ),
+                      )
+                      : ListView.builder(
+                        itemCount: _jobTypes.length,
+                        itemBuilder: (context, index) {
+                          final jobType = _jobTypes[index];
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: ListTile(
+                              leading: const Icon(Icons.work_outline),
+                              title: Text(jobType['name'], style: const TextStyle(fontWeight: FontWeight.w500)),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.edit, color: Colors.blue),
+                                    tooltip: 'Edit',
+                                    onPressed: () => _editJobType(jobType['id'], jobType['name']),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete, color: Colors.red),
+                                    tooltip: 'Delete',
+                                    onPressed: () => _deleteJobType(jobType['id'], jobType['name']),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
             ),
 
             // Footer buttons
@@ -375,8 +340,7 @@ class ShiftTemplateBottomSheet extends StatefulWidget {
   });
 
   @override
-  State<ShiftTemplateBottomSheet> createState() =>
-      _ShiftTemplateBottomSheetState();
+  State<ShiftTemplateBottomSheet> createState() => _ShiftTemplateBottomSheetState();
 }
 
 class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
@@ -391,15 +355,7 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
   final _endTimeController = TextEditingController();
   bool _repeatsDaily = false;
   final Set<String> _selectedDays = {};
-  final List<String> _weekDays = [
-    'Monday',
-    'Tuesday',
-    'Wednesday',
-    'Thursday',
-    'Friday',
-    'Saturday',
-    'Sunday',
-  ];
+  final List<String> _weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
   // Step 2: Locations
   List<String> selectedLocationIds = [];
@@ -408,8 +364,7 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
   List<String> selectedJobTypes = [];
   Map<String, int> staffingLevels = {};
   List<String> availableJobTypes = [];
-  final TextEditingController _customJobTypeController =
-      TextEditingController();
+  final TextEditingController _customJobTypeController = TextEditingController();
 
   // Step 4: Checklist Templates
   List<String> selectedChecklistTemplateIds = [];
@@ -436,11 +391,10 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
     _endTimeController.text = shift.endTime;
     _repeatsDaily = shift.repeatsDaily;
     _selectedDays.addAll(shift.days);
-    selectedLocationIds = List<String>.from(shift.locationIds);
+    selectedLocationIds = coerceToLocationIds(shift.locationIds);
+    // ShiftData.jobType is canonical List<String> on the model
     selectedJobTypes = List<String>.from(shift.jobType);
-    selectedChecklistTemplateIds = List<String>.from(
-      shift.checklistTemplateIds,
-    );
+    selectedChecklistTemplateIds = List<String>.from(shift.checklistTemplateIds);
     // Add custom types
     for (final jobType in selectedJobTypes) {
       if (!availableJobTypes.contains(jobType)) {
@@ -477,33 +431,36 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
 
   // Helper to pick time using CupertinoDatePicker
   Future<void> _pickTime(TextEditingController controller) async {
-    final initial = controller.text.isNotEmpty
-        ? TimeOfDay(
-            hour: int.parse(controller.text.split(':')[0]),
-            minute: int.parse(controller.text.split(':')[1]),
-          )
-        : TimeOfDay.now();
+    final initial =
+        controller.text.isNotEmpty
+            ? TimeOfDay(
+              hour: int.parse(controller.text.split(':')[0]),
+              minute: int.parse(controller.text.split(':')[1]),
+            )
+            : TimeOfDay.now();
     await showCupertinoModalPopup(
       context: context,
-      builder: (_) => Container(
-        height: 250,
-        color: Colors.white,
-        child: CupertinoDatePicker(
-          mode: CupertinoDatePickerMode.time,
-          initialDateTime: DateTime(
-            DateTime.now().year,
-            DateTime.now().month,
-            DateTime.now().day,
-            initial.hour,
-            initial.minute,
+      builder:
+          (_) => Container(
+            height: 250,
+            color: Colors.white,
+            child: CupertinoDatePicker(
+              mode: CupertinoDatePickerMode.time,
+              initialDateTime: DateTime(
+                DateTime.now().year,
+                DateTime.now().month,
+                DateTime.now().day,
+                initial.hour,
+                initial.minute,
+              ),
+              onDateTimeChanged: (dt) {
+                final formatted =
+                    '${dt.hour.toString().padLeft(2, '0')}:'
+                    '${dt.minute.toString().padLeft(2, '0')}';
+                setState(() => controller.text = formatted);
+              },
+            ),
           ),
-          onDateTimeChanged: (dt) {
-            final formatted = '${dt.hour.toString().padLeft(2,'0')}:'
-                '${dt.minute.toString().padLeft(2,'0')}';
-            setState(() => controller.text = formatted);
-          },
-        ),
-      ),
     );
   }
 
@@ -512,30 +469,26 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
       case 1:
         // Allow skip when single location
         if (widget.availableLocations.length > 1 && selectedLocationIds.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Please select at least one location'),
-            ),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Please select at least one location')));
           return false;
         }
         return true;
       case 0:
         if (!_formKey.currentState!.validate()) return false;
         if (!_repeatsDaily && _selectedDays.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Please select days or choose Repeats Daily'),
-            ),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Please select days or choose Repeats Daily')));
           return false;
         }
         return true;
       case 2:
         if (selectedJobTypes.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Please add at least one job type')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Please select at least one job type for this shift.')));
           return false;
         }
         return true;
@@ -557,10 +510,10 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
       'locationIds':
           selectedLocationIds.isNotEmpty
               ? selectedLocationIds
-              : widget.availableLocations
-                  .map((l) => l['id'] as String)
-                  .toList(),
-      'jobType': selectedJobTypes,
+              : widget.availableLocations.map((l) => l['id'] as String).toList(),
+      // write canonical jobTypes array and keep legacy jobType for backward compatibility
+      'jobTypes': selectedJobTypes,
+      'jobType': (selectedJobTypes.isNotEmpty ? selectedJobTypes.first : null),
       'checklistTemplateIds': selectedChecklistTemplateIds,
       'updatedAt': FieldValue.serverTimestamp(),
     };
@@ -581,12 +534,9 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error saving shift: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error saving shift: $e'), backgroundColor: Colors.red));
       }
     } finally {
       if (mounted) setState(() => isLoading = false);
@@ -596,24 +546,37 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
   Future<void> _loadAvailableJobTypes() async {
     try {
       // Load job types from the organization's jobTypes subcollection
-      final jobTypesSnapshot = await FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(widget.organizationId)
-          .collection('jobTypes')
-          .orderBy('name')
-          .get();
-      
-      final jobTypes = jobTypesSnapshot.docs
-          .map((doc) => doc.data()['name'] as String?)
-          .where((name) => name != null && name.isNotEmpty)
-          .cast<String>()
-          .toList();
-      
+      final jobTypesSnapshot =
+          await FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(widget.organizationId)
+              .collection('jobTypes')
+              .orderBy('name')
+              .get();
+
+      final jobTypes =
+          jobTypesSnapshot.docs
+              .map((doc) => doc.data()['name'] as String?)
+              .where((name) => name != null && name.isNotEmpty)
+              .cast<String>()
+              .toList();
+
       // If no custom job types exist, create default ones
       if (jobTypes.isEmpty) {
         await _createDefaultJobTypes();
         // Reload after creating defaults
-        final defaultJobTypes = ['Manager', 'Server', 'Cook', 'Bartender', 'Host/Hostess', 'Dishwasher', 'Food Runner', 'Busser', 'Cashier', 'Cleaner'];
+        final defaultJobTypes = [
+          'Manager',
+          'Server',
+          'Cook',
+          'Bartender',
+          'Host/Hostess',
+          'Dishwasher',
+          'Food Runner',
+          'Busser',
+          'Cashier',
+          'Cleaner',
+        ];
         setState(() {
           availableJobTypes = defaultJobTypes;
         });
@@ -623,32 +586,55 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
         });
       }
     } catch (e) {
-      print('Error loading job types: $e');
+      debugPrint('Error loading job types: $e');
       // Fallback to default job types
       setState(() {
-        availableJobTypes = ['Manager', 'Server', 'Cook', 'Bartender', 'Host/Hostess', 'Dishwasher', 'Food Runner', 'Busser', 'Cashier', 'Cleaner'];
+        availableJobTypes = [
+          'Manager',
+          'Server',
+          'Cook',
+          'Bartender',
+          'Host/Hostess',
+          'Dishwasher',
+          'Food Runner',
+          'Busser',
+          'Cashier',
+          'Cleaner',
+        ];
       });
     }
   }
 
   Future<void> _createDefaultJobTypes() async {
-    final defaultJobTypes = ['Manager', 'Server', 'Cook', 'Bartender', 'Host/Hostess', 'Dishwasher', 'Food Runner', 'Busser', 'Cashier', 'Cleaner'];
+    final defaultJobTypes = [
+      'Manager',
+      'Server',
+      'Cook',
+      'Bartender',
+      'Host/Hostess',
+      'Dishwasher',
+      'Food Runner',
+      'Busser',
+      'Cashier',
+      'Cleaner',
+    ];
     final batch = FirestoreEnforcer.instance.batch();
-    
+
     for (final jobType in defaultJobTypes) {
-      final docRef = FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(widget.organizationId)
-          .collection('jobTypes')
-          .doc();
-      
+      final docRef =
+          FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(widget.organizationId)
+              .collection('jobTypes')
+              .doc();
+
       batch.set(docRef, {
         'name': jobType,
         'createdAt': FieldValue.serverTimestamp(),
         'organizationId': widget.organizationId,
       });
     }
-    
+
     await batch.commit();
   }
 
@@ -663,38 +649,49 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  isEditing ? 'Edit Shift Template' : 'Create Shift Template',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
+                Expanded(
+                  child: Text(
+                    isEditing ? 'Edit shift template' : 'Create shift template',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
+                IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.of(context).pop()),
               ],
             ),
             const Divider(),
-            if (isLoading) LinearProgressIndicator(),
+            if (isLoading) const LinearProgressIndicator(),
             Expanded(
               child: Stepper(
                 currentStep: _currentStep,
+                onStepTapped: (index) {
+                  // Allow navigating to any step when editing an existing shift; otherwise only go backwards
+                  if (isEditing) {
+                    setState(() => _currentStep = index);
+                  } else if (index <= _currentStep) {
+                    setState(() => _currentStep = index);
+                  }
+                },
                 onStepContinue: _nextStep,
                 onStepCancel: _prevStep,
                 controlsBuilder: (context, details) {
                   return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16.0),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 12.0,
+                      horizontal: BottomSheetStyles.horizontalPadding,
+                    ),
                     child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        ElevatedButton(
-                          onPressed: details.onStepContinue,
-                          child: Text(_currentStep < 3 ? 'Next' : 'Save'),
-                        ),
-                        const SizedBox(width: 16),
                         TextButton(
                           onPressed: details.onStepCancel,
+                          style: BottomSheetStyles.secondaryTextButtonStyle(context),
                           child: const Text('Back'),
+                        ),
+                        const SizedBox(width: 12),
+                        ElevatedButton(
+                          onPressed: details.onStepContinue,
+                          style: BottomSheetStyles.primaryButtonStyle(),
+                          child: Text(_currentStep < 3 ? 'Next' : 'Save'),
                         ),
                       ],
                     ),
@@ -702,24 +699,36 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
                 },
                 steps: [
                   Step(
-                    title: const Text('Info'),
+                    title: BottomSheetStyles.stepTitle('Info'),
                     isActive: _currentStep >= 0,
-                    content: Form(key: _formKey, child: _buildInfoStep()),
+                    content: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
+                      child: Form(key: _formKey, child: _buildInfoStep()),
+                    ),
                   ),
                   Step(
-                    title: const Text('Locations'),
+                    title: BottomSheetStyles.stepTitle('Locations'),
                     isActive: _currentStep >= 1,
-                    content: _buildLocationStep(),
+                    content: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
+                      child: _buildLocationStep(),
+                    ),
                   ),
                   Step(
-                    title: const Text('Roles'),
+                    title: BottomSheetStyles.stepTitle('Roles'),
                     isActive: _currentStep >= 2,
-                    content: _buildRolesAndStaffingStep(),
+                    content: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
+                      child: _buildRolesAndStaffingStep(),
+                    ),
                   ),
                   Step(
-                    title: const Text('Checklists'),
+                    title: BottomSheetStyles.stepTitle('Checklists'),
                     isActive: _currentStep >= 3,
-                    content: _buildChecklistStep(),
+                    content: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
+                      child: _buildChecklistStep(),
+                    ),
                   ),
                 ],
               ),
@@ -736,44 +745,36 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
       children: [
         TextFormField(
           controller: _shiftNameController,
-          decoration: const InputDecoration(labelText: 'Shift Name *'),
-          validator:
-              (v) =>
-                  v != null && v.trim().isNotEmpty ? null : 'Enter shift name',
+          decoration: BottomSheetStyles.inputDecoration(label: 'Shift name *'),
+          validator: (v) => v != null && v.trim().isNotEmpty ? null : 'Enter shift name',
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: BottomSheetStyles.verticalSectionSpacing),
         Row(
           children: [
             Expanded(
               child: TextFormField(
                 controller: _startTimeController,
-                decoration: const InputDecoration(labelText: 'Start Time *'),
+                decoration: BottomSheetStyles.inputDecoration(label: 'Start time *'),
                 readOnly: true,
                 onTap: () => _pickTime(_startTimeController),
-                validator: (v) =>
-                    v != null && v.trim().isNotEmpty
-                        ? null
-                        : 'Enter start time',
+                validator: (v) => v != null && v.trim().isNotEmpty ? null : 'Enter start time',
               ),
             ),
             const SizedBox(width: 16),
             Expanded(
               child: TextFormField(
                 controller: _endTimeController,
-                decoration: const InputDecoration(labelText: 'End Time *'),
+                decoration: BottomSheetStyles.inputDecoration(label: 'End time *'),
                 readOnly: true,
                 onTap: () => _pickTime(_endTimeController),
-                validator: (v) =>
-                    v != null && v.trim().isNotEmpty
-                        ? null
-                        : 'Enter end time',
+                validator: (v) => v != null && v.trim().isNotEmpty ? null : 'Enter end time',
               ),
             ),
           ],
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: BottomSheetStyles.verticalSectionSpacing),
         CheckboxListTile(
-          title: const Text('Repeats Daily'),
+          title: const Text('Repeats daily'),
           value: _repeatsDaily,
           onChanged: (v) {
             setState(() {
@@ -788,19 +789,19 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
           children:
               _weekDays
                   .map(
-                    (d) => FilterChip(
+                    (d) => ChoiceChip(
                       label: Text(d),
                       selected: _selectedDays.contains(d),
+                      selectedColor: BottomSheetStyles.accentTeal.withOpacity(0.12),
+                      backgroundColor: Colors.grey.shade100,
+                      labelStyle: TextStyle(
+                        color: _selectedDays.contains(d) ? BottomSheetStyles.accentTeal : BottomSheetStyles.mutedText,
+                      ),
                       onSelected:
                           _repeatsDaily
                               ? null
                               : (s) {
-                                setState(
-                                  () =>
-                                      s
-                                          ? _selectedDays.add(d)
-                                          : _selectedDays.remove(d),
-                                );
+                                setState(() => s ? _selectedDays.add(d) : _selectedDays.remove(d));
                               },
                     ),
                   )
@@ -817,23 +818,27 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: widget.availableLocations.map((loc) =>
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8.0),
-          child: CheckboxListTile(
-            title: Text(loc['name'] as String),
-            value: selectedLocationIds.contains(loc['id']),
-            onChanged: (v) {
-              setState(() {
-                if (v!) {
-                  selectedLocationIds.add(loc['id']);
-                } else {
-                  selectedLocationIds.remove(loc['id']);
-                }
-              });
-            },
-          ),
-        )).toList(),
+      children:
+          widget.availableLocations
+              .map(
+                (loc) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8.0),
+                  child: CheckboxListTile(
+                    title: Text(loc['name'] as String),
+                    value: selectedLocationIds.contains(loc['id']),
+                    onChanged: (v) {
+                      setState(() {
+                        if (v!) {
+                          selectedLocationIds.add(loc['id']);
+                        } else {
+                          selectedLocationIds.remove(loc['id']);
+                        }
+                      });
+                    },
+                  ),
+                ),
+              )
+              .toList(),
     );
   }
 
@@ -845,10 +850,7 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Job Types & Staffing',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
+              Text('Job Types & Staffing', style: Theme.of(context).textTheme.titleMedium),
               TextButton.icon(
                 onPressed: () => _showJobTypeManagement(),
                 icon: const Icon(Icons.settings, size: 16),
@@ -861,63 +863,61 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
             ],
           ),
           const SizedBox(height: 8),
-          
+
           // Selected job types
           if (selectedJobTypes.isNotEmpty) ...[
-            Text(
-              'Selected Roles:',
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
+            Text('Selected Roles:', style: Theme.of(context).textTheme.titleSmall),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8.0,
               runSpacing: 4.0,
-              children: selectedJobTypes.map((jt) {
-                return Chip(
-                  label: Text(jt),
-                  deleteIcon: const Icon(Icons.close, size: 18),
-                  onDeleted: () {
-                    setState(() {
-                      selectedJobTypes.remove(jt);
-                      staffingLevels.remove(jt);
-                    });
-                  },
-                );
-              }).toList(),
+              children:
+                  selectedJobTypes.map((jt) {
+                    return Chip(
+                      label: Text(jt),
+                      deleteIcon: const Icon(Icons.close, size: 18),
+                      onDeleted: () {
+                        setState(() {
+                          selectedJobTypes.remove(jt);
+                          staffingLevels.remove(jt);
+                        });
+                      },
+                    );
+                  }).toList(),
             ),
             const Divider(),
             const SizedBox(height: 12),
           ],
-          
+
           // Available job types to select from
           if (availableJobTypes.isNotEmpty) ...[
-            Text(
-              'Available Roles:',
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
+            Text('Available Roles:', style: Theme.of(context).textTheme.titleSmall),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8.0,
               runSpacing: 4.0,
-              children: availableJobTypes
-                  .where((jt) => !selectedJobTypes.contains(jt))
-                  .map((jt) => FilterChip(
-                        label: Text(jt),
-                        selected: false,
-                        onSelected: (selected) {
-                          if (selected) {
-                            setState(() {
-                              selectedJobTypes.add(jt);
-                            });
-                          }
-                        },
-                      ))
-                  .toList(),
+              children:
+                  availableJobTypes
+                      .where((jt) => !selectedJobTypes.contains(jt))
+                      .map(
+                        (jt) => FilterChip(
+                          label: Text(jt),
+                          selected: false,
+                          onSelected: (selected) {
+                            if (selected) {
+                              setState(() {
+                                selectedJobTypes.add(jt);
+                              });
+                            }
+                          },
+                        ),
+                      )
+                      .toList(),
             ),
             const Divider(),
             const SizedBox(height: 12),
           ],
-          
+
           // Add custom job type
           TextField(
             controller: _customJobTypeController,
@@ -925,10 +925,7 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
             onSubmitted: (_) => _addCustomJobType(),
           ),
           const SizedBox(height: 8),
-          ElevatedButton(
-            onPressed: _addCustomJobType,
-            child: const Text('Add Job Type'),
-          ),
+          ElevatedButton(onPressed: _addCustomJobType, child: const Text('Add Job Type')),
         ],
       ),
     );
@@ -955,10 +952,7 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
                     value: selectedChecklistTemplateIds.contains(d.id),
                     onChanged: (v) {
                       setState(
-                        () =>
-                            v!
-                                ? selectedChecklistTemplateIds.add(d.id)
-                                : selectedChecklistTemplateIds.remove(d.id),
+                        () => v! ? selectedChecklistTemplateIds.add(d.id) : selectedChecklistTemplateIds.remove(d.id),
                       );
                     },
                   ),
@@ -984,11 +978,7 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
           .collection('organizations')
           .doc(widget.organizationId)
           .collection('jobTypes')
-          .add({
-        'name': jt,
-        'createdAt': FieldValue.serverTimestamp(),
-        'organizationId': widget.organizationId,
-      });
+          .add({'name': jt, 'createdAt': FieldValue.serverTimestamp(), 'organizationId': widget.organizationId});
 
       // Update the local state
       setState(() {
@@ -997,7 +987,7 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
         _customJobTypeController.clear();
       });
     } catch (e) {
-      print('Error adding custom job type: $e');
+      debugPrint('Error adding custom job type: $e');
       // Still add locally if Firestore fails
       setState(() {
         availableJobTypes.add(jt);
@@ -1010,13 +1000,14 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
   void _showJobTypeManagement() {
     showDialog(
       context: context,
-      builder: (context) => ShiftJobTypeManagementDialog(
-        organizationId: widget.organizationId,
-        onJobTypesUpdated: () {
-          // Reload job types when the dialog closes
-          _loadAvailableJobTypes();
-        },
-      ),
+      builder:
+          (context) => ShiftJobTypeManagementDialog(
+            organizationId: widget.organizationId,
+            onJobTypesUpdated: () {
+              // Reload job types when the dialog closes
+              _loadAvailableJobTypes();
+            },
+          ),
     );
   }
 }

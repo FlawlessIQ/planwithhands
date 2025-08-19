@@ -1,46 +1,89 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hands_app/custom_code/widgets/UserManagementBottomSheet.dart';
-import 'package:hands_app/ui/location_bottom_sheet.dart';
-import 'package:hands_app/ui/UploadDocumentBottomSheet.dart';
+import 'package:hands_app/ui/location_bottom_sheet_new.dart';
 import 'package:hands_app/ui/checklist_bottom_sheet.dart';
 import 'package:hands_app/features/shifts/shift_template_bottom_sheet.dart';
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
 import 'package:hands_app/data/models/shift_data.dart';
-import 'package:hands_app/debug/scheduling_test_data_seeder.dart';
-import 'package:hands_app/debug/role_diagnostic.dart';
 import 'package:hands_app/routing/routes.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/services/daily_checklist_service.dart';
+import 'package:hands_app/utils/location_helper.dart';
+import 'package:hands_app/utils/jobtype_helper.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hands_app/state/app_state.dart';
+import 'package:hands_app/data/models/location_data.dart';
+// Admin tools widgets removed from this page; imports intentionally removed
+import 'dart:convert';
+import 'package:crypto/crypto.dart' as crypto;
 
-class AdminDashboardPage extends StatefulWidget {
+// Admin dashboard view selector
+enum AdminView { shiftsChecklists, usersLocations }
+
+class AdminDashboardPage extends ConsumerStatefulWidget {
   const AdminDashboardPage({super.key});
 
   @override
-  State<AdminDashboardPage> createState() => _AdminDashboardPageState();
+  ConsumerState<AdminDashboardPage> createState() => _AdminDashboardPageState();
 }
 
-class _AdminDashboardPageState extends State<AdminDashboardPage> {
+class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
   int? userRole;
   String? organizationId;
   bool isLoading = true;
+  bool _hasShownWelcomeDialog = false; // Prevent multiple welcome dialogs
 
-  // Location selection state
-  String? _selectedLocationId;
-  String? _selectedLocationName;
+  // Admin view toggle
+  AdminView _currentView = AdminView.shiftsChecklists; // default
+
+  // Available locations (no longer storing selected location locally)
   List<Map<String, dynamic>> _availableLocations = [];
 
   // Add refresh keys to force StreamBuilder updates
   final ValueNotifier<int> _refreshTrigger = ValueNotifier<int>(0);
 
+  /// Get the currently selected location ID from shared state
+  String? get _selectedLocationId {
+    return ref.read(appStateProvider).selectedLocation?.locationId;
+  }
+
+  /// Get the currently selected location name from shared state
+  String? get _selectedLocationName {
+    return ref.read(appStateProvider).selectedLocation?.locationName;
+  }
+
   @override
   void initState() {
     super.initState();
     _checkUserAccess();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    // Check if this is a new user setup flow
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final uri = GoRouterState.of(context).uri;
+      final isSetup = uri.queryParameters['setup'] == 'true';
+
+      if (isSetup && !_hasShownWelcomeDialog) {
+        debugPrint('[AdminDashboard] New user setup detected, will show location creation flow');
+        _hasShownWelcomeDialog = true; // Mark as shown to prevent duplicate dialogs
+        // Show the location creation flow regardless of existing locations
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            _showFirstLocationCreationFlow();
+          }
+        });
+      }
+    });
   }
 
   Future<void> _loadLocations() async {
@@ -83,21 +126,44 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         setState(() {
           _availableLocations = locations;
 
-          // Auto-select primary location or first location if available
+          // Auto-select primary location or first location if available and no location is currently selected
           if (locations.isNotEmpty) {
-            final primaryLocation = locations.firstWhere(
-              (loc) => loc['isPrimary'] == true,
-              orElse: () => locations.first,
-            );
-            _selectedLocationId = primaryLocation['id'] as String?;
-            _selectedLocationName = primaryLocation['name'] as String?;
-            debugPrint('[AdminDashboard] Selected location: ${primaryLocation['name']} (${primaryLocation['id']})');
+            final currentSelectedLocation = ref.read(appStateProvider).selectedLocation;
+
+            // Only auto-select if no location is currently selected or the current selection is invalid
+            if (currentSelectedLocation == null ||
+                !locations.any((loc) => loc['id'] == currentSelectedLocation.locationId)) {
+              final primaryLocation = locations.firstWhere(
+                (loc) => loc['isPrimary'] == true,
+                orElse: () => locations.first,
+              );
+
+              // Update shared state with selected location
+              final locationData = LocationData(
+                locationId: primaryLocation['id'],
+                locationName: primaryLocation['name'],
+                createdAt: DateTime.now(),
+                locationAddress: '',
+              );
+              ref.read(appStateProvider.notifier).setSelectedLocation(locationData);
+
+              debugPrint(
+                '[AdminDashboard] Auto-selected location: ${primaryLocation['name']} (${primaryLocation['id']})',
+              );
+            } else {
+              debugPrint('[AdminDashboard] Keeping existing selection: ${currentSelectedLocation.locationName}');
+            }
           } else {
-            _selectedLocationId = null;
-            _selectedLocationName = null;
-            debugPrint('[AdminDashboard] No locations found - will create default location');
-            // Create a default location for the organization
-            _createDefaultLocation();
+            // Clear selected location
+            ref.read(appStateProvider.notifier).setSelectedLocation(null);
+            debugPrint('[AdminDashboard] No locations found - will show location creation flow');
+
+            // Only show the location creation bottom sheet if we haven't already shown the welcome dialog
+            if (!_hasShownWelcomeDialog) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _showFirstLocationCreationFlow();
+              });
+            }
           }
         });
       }
@@ -109,52 +175,63 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     }
   }
 
-  Future<void> _createDefaultLocation() async {
-    if (organizationId == null) return;
-
-    try {
-      debugPrint('[AdminDashboard] Creating default location for organization: $organizationId');
-
-      // Create a default location
-      final defaultLocationData = {
-        'locationName': 'Main Location',
-        'street': '',
-        'city': '',
-        'state': '',
-        'zipCode': '',
-        'isPrimary': true,
-        'createdAt': FieldValue.serverTimestamp(),
-        'isActive': true,
-        'organizationId': organizationId,
-      };
-
-      final newLocationRef = await FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(organizationId)
-          .collection('locations')
-          .add(defaultLocationData);
-
-      debugPrint('[AdminDashboard] Default location created with ID: ${newLocationRef.id}');
-
-      // Reload locations after creating the default one
-      await _loadLocations();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Created default location. You can edit it in the Locations section.'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('[AdminDashboard] Error creating default location: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to create default location: $e'), backgroundColor: Colors.red));
-      }
+  /// Show a guided flow for creating the first location
+  void _showFirstLocationCreationFlow() {
+    if (organizationId == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Organization ID not available. Please try again.')));
+      return;
     }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false, // User must complete this step
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Welcome to Hands!'),
+            content: const Text(
+              'Let\'s get you started by setting up your first location. '
+              'This will be where your team members check in and out for shifts.',
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () {
+                  Navigator.of(context).pop(); // Close the welcome dialog
+                  _showLocationBottomSheetForFirstLocation(); // Show the location creation bottom sheet
+                },
+                child: const Text('Create My First Location'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  /// Show location bottom sheet specifically for first location creation with proper completion handling
+  void _showLocationBottomSheetForFirstLocation() {
+    if (organizationId == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Organization ID not available. Please try again.')));
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: false, // Don't allow dismissing during first location setup
+      enableDrag: false, // Don't allow dragging to dismiss
+      builder:
+          (context) => LocationWizard(
+            organizationId: organizationId!,
+            onCompleted: () async {
+              _triggerRefresh();
+              await _loadLocations();
+              // The bottom sheet will automatically close after completion
+              // No need to manually close it here since LocationWizard handles it
+            },
+          ),
+    );
   }
 
   @override
@@ -302,7 +379,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).primaryColor,
-        title: GenericAppBarContent(appBarTitle: 'Admin Dashboard', userRole: userRole),
+        title: GenericAppBarContent(appBarTitle: 'Setup', userRole: userRole),
         automaticallyImplyLeading: false,
         actions: [
           // Compact location selector for mobile
@@ -311,14 +388,21 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             child: PopupMenuButton<String>(
               enabled: _availableLocations.isNotEmpty,
               onSelected: (value) async {
-                setState(() {
-                  _selectedLocationId = value;
-                  _selectedLocationName =
-                      _availableLocations.firstWhere(
-                        (loc) => loc['id'] == value,
-                        orElse: () => {'name': 'Unknown Location'},
-                      )['name'];
-                });
+                // Find the selected location details
+                final selectedLoc = _availableLocations.firstWhere(
+                  (loc) => loc['id'] == value,
+                  orElse: () => {'id': value, 'name': 'Unknown Location'},
+                );
+
+                // Update shared state with selected location
+                final locationData = LocationData(
+                  locationId: selectedLoc['id'],
+                  locationName: selectedLoc['name'],
+                  createdAt: DateTime.now(),
+                  locationAddress: '',
+                );
+                ref.read(appStateProvider.notifier).setSelectedLocation(locationData);
+
                 _triggerRefresh();
               },
               itemBuilder:
@@ -363,7 +447,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                     return Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
+                        color: Colors.white.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: const Icon(Icons.location_on, color: Colors.white, size: 20),
@@ -373,7 +457,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                     return Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
+                        color: Colors.white.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
@@ -402,18 +486,19 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _buildUsersSection(),
+            _buildViewToggle(),
             const SizedBox(height: 16),
-            _buildShiftsSection(),
-            const SizedBox(height: 16),
-            _buildChecklistsSection(),
-            const SizedBox(height: 16),
-            _buildLocationsSection(),
-            const SizedBox(height: 16),
-            _buildDocumentsSection(),
-            // Debug section - only show in debug mode
-            if (kDebugMode) ...[const SizedBox(height: 16), _buildDebugSection()],
+            if (_currentView == AdminView.shiftsChecklists) ...[
+              _buildShiftsSection(),
+              const SizedBox(height: 16),
+              _buildChecklistsSection(),
+            ] else if (_currentView == AdminView.usersLocations) ...[
+              _buildUsersSection(),
+              const SizedBox(height: 16),
+              _buildLocationsSection(),
+            ],
           ],
         ),
       ),
@@ -421,151 +506,229 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     );
   }
 
-  Widget _buildUsersSection() {
-    return Card(
-      child: Column(
-        children: [
-          ListTile(
-            title: Text('Users', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-            trailing: ElevatedButton.icon(
-              onPressed: () => _showUserBottomSheet(),
-              icon: const Icon(Icons.add_circle_outline, size: 18, color: Colors.white),
-              label: const Text('Add New', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                minimumSize: const Size(0, 36),
-                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
-                elevation: 0,
+  Widget _buildViewToggle() {
+    // Silver-gradient two-segment toggle button
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isTight = constraints.maxWidth < 420;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('View', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Container(
+              height: 44,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFF5F5F7), Color(0xFFE9E9EA)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade300, width: 1),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6, offset: const Offset(0, 2)),
+                ],
+              ),
+              child: Row(
+                children: [
+                  _buildToggleSegment(
+                    context,
+                    label: isTight ? 'Shifts' : 'Shifts & Checklists',
+                    icon: Icons.schedule,
+                    selected: _currentView == AdminView.shiftsChecklists,
+                    onTap: () {
+                      if (_currentView != AdminView.shiftsChecklists && mounted) {
+                        setState(() => _currentView = AdminView.shiftsChecklists);
+                      }
+                    },
+                    left: true,
+                  ),
+                  _buildToggleSegment(
+                    context,
+                    label: isTight ? 'Users' : 'Users & Locations',
+                    icon: Icons.group,
+                    selected: _currentView == AdminView.usersLocations,
+                    onTap: () {
+                      if (_currentView != AdminView.usersLocations && mounted) {
+                        setState(() => _currentView = AdminView.usersLocations);
+                      }
+                    },
+                    left: false,
+                  ),
+                ],
               ),
             ),
+          ],
+        );
+      },
+    );
+  }
+
+  // --- Place this helper inside the _AdminDashboardPageState class ---
+  Widget _buildToggleSegment(
+    BuildContext context, {
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+    required bool left,
+  }) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeInOut,
+          decoration: BoxDecoration(
+            gradient:
+                selected
+                    ? const LinearGradient(
+                      colors: [Color(0xFFBFC1C6), Color(0xFFD7D8DB)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    )
+                    : null,
+            color: selected ? null : Colors.transparent,
+            borderRadius: BorderRadius.horizontal(
+              left: left ? const Radius.circular(12) : Radius.zero,
+              right: !left ? const Radius.circular(12) : Radius.zero,
+            ),
+            boxShadow:
+                selected
+                    ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 8, offset: const Offset(0, 2))]
+                    : [],
           ),
-          _buildUsersList(),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 20, color: selected ? Colors.black87 : Colors.black45),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected ? Colors.black87 : Colors.black54,
+                  fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                  fontSize: 15,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGradientSection({
+    required IconData icon,
+    required String title,
+    required List<Color> colors,
+    required VoidCallback onAdd,
+    required Widget child,
+  }) {
+    // Create darker background colors from the header gradient
+    final backgroundColors = colors.map((color) => color.withValues(alpha: 0.08)).toList();
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: colors),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            offset: const Offset(0, 4),
+            blurRadius: 12,
+            spreadRadius: 0,
+          ),
         ],
       ),
+      child: Container(
+        margin: const EdgeInsets.all(1), // Creates a subtle border effect
+        decoration: BoxDecoration(
+          gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: backgroundColors),
+          borderRadius: BorderRadius.circular(15),
+        ),
+        child: Column(
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: colors),
+                borderRadius: const BorderRadius.only(topLeft: Radius.circular(15), topRight: Radius.circular(15)),
+              ),
+              child: ListTile(
+                leading: Icon(icon, color: Colors.white, size: 24),
+                title: Text(
+                  title,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+                trailing: ElevatedButton.icon(
+                  onPressed: onAdd,
+                  icon: const Icon(Icons.add_circle_outline, size: 18, color: Colors.white),
+                  label: const Text('Add New', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white.withValues(alpha: 0.2),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    minimumSize: const Size(0, 36),
+                    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
+                    elevation: 0,
+                    side: const BorderSide(color: Colors.white, width: 1),
+                  ),
+                ),
+              ),
+            ),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUsersSection() {
+    return _buildGradientSection(
+      icon: Icons.group,
+      title: 'Users',
+      colors: [const Color(0xFF4c63d2), const Color(0xFF5a4dae)], // Darker purple-blue gradient
+      onAdd: () => _showUserBottomSheet(),
+      child: _buildUsersList(),
     );
   }
 
   Widget _buildShiftsSection() {
-    return _buildSection('Shifts', () => _showShiftBottomSheet(), _buildShiftsList());
+    return _buildGradientSection(
+      icon: Icons.schedule,
+      title: 'Shifts',
+      colors: [const Color(0xFF2e86de), const Color(0xFF006ba6)], // Darker blue gradient
+      onAdd: () => _showShiftBottomSheet(),
+      child: _buildShiftsList(),
+    );
   }
 
   Widget _buildChecklistsSection() {
-    return Card(
-      child: Column(
-        children: [
-          ListTile(
-            title: Text(
-              'Checklists',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Migration button (only show if there might be old checklists)
-                TextButton.icon(
-                  onPressed: () => _showMigrationDialog(),
-                  icon: const Icon(Icons.sync_alt, size: 16),
-                  label: const Text('Migrate', style: TextStyle(fontSize: 12)),
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.orange,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton.icon(
-                  onPressed: () => _showChecklistBottomSheet(),
-                  icon: const Icon(Icons.add_circle_outline, size: 18, color: Colors.white),
-                  label: const Text('Add New', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    minimumSize: const Size(0, 36),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
-                    elevation: 0,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Divider(),
-          _buildChecklistsList(),
-        ],
-      ),
+    return _buildGradientSection(
+      icon: Icons.checklist,
+      title: 'Checklists',
+      colors: [const Color(0xFF26de81), const Color(0xFF20bf6b)], // Darker green gradient
+      onAdd: () => _showChecklistBottomSheet(),
+      child: _buildChecklistsList(),
     );
   }
 
-  void _showMigrationDialog() {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Migrate Checklists to Locations'),
-            content: const Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('This will copy any organization-level checklists to all locations.'),
-                SizedBox(height: 8),
-                Text('Each location will get its own copy that can be customized independently.'),
-                SizedBox(height: 16),
-                Text(
-                  'This is useful when upgrading from the old checklist system.',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  _migrateChecklistsToLocations();
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-                child: const Text('Migrate'),
-              ),
-            ],
-          ),
-    );
-  }
+  // Deprecated: migration dialog removed
 
   Widget _buildLocationsSection() {
-    return _buildSection('Locations', () => _showLocationBottomSheet(), _buildLocationsList());
-  }
-
-  Widget _buildDocumentsSection() {
-    return _buildSection('Training Documents', () => _showUploadDocumentBottomSheet(), _buildDocumentsList());
-  }
-
-  Widget _buildSection(String title, VoidCallback onAdd, Widget content) {
-    return Card(
-      child: Column(
-        children: [
-          ListTile(
-            title: Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-            trailing: ElevatedButton.icon(
-              onPressed: onAdd,
-              icon: const Icon(Icons.add_circle_outline, size: 18, color: Colors.white),
-              label: const Text('Add New', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                minimumSize: const Size(0, 36),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
-                elevation: 0,
-              ),
-            ),
-          ),
-          const Divider(),
-          content,
-        ],
-      ),
+    return _buildGradientSection(
+      icon: Icons.location_on,
+      title: 'Locations',
+      colors: [const Color(0xFFe55039), const Color(0xFFfa7f72)], // Darker coral-red gradient
+      onAdd: () => _showLocationWizard(),
+      child: _buildLocationsList(),
     );
   }
+
+  // Admin tools removed from UI; helper removed.
 
   Widget _buildUsersList() {
     if (organizationId == null) {
@@ -632,27 +795,29 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       if (_selectedLocationId == null) return true;
                       if (role == 2) return true; // Admins always show
                       if (role == 0) {
-                        // General user: show if locationId matches selected location
-                        // OR if locationId doesn't match any current location (orphaned users)
-                        final userLocationId = userData['locationId'] as String?;
-                        if (userLocationId == null) return true; // No location data
-                        if (userLocationId == _selectedLocationId) return true; // Matches selected
+                        // General user: show if their locationIds contain the selected location
+                        // OR if they have no location data (include) or their locations are orphaned (include)
+                        final locIds = coerceToLocationIds(userData['locationIds'] ?? userData['locationId']);
 
-                        // Check if user's locationId exists in current available locations
-                        final locationExists = _availableLocations.any((loc) => loc['id'] == userLocationId);
-                        if (!locationExists) {
+                        if (locIds.isEmpty) return true; // No location data
+                        if (_selectedLocationId == null) return true; // No filter applied
+                        if (locIds.contains(_selectedLocationId)) return true; // Matches selected
+
+                        // If none of the user's locations exist in current available locations, treat as orphan and include
+                        final anyMatch = locIds.any((id) => _availableLocations.any((loc) => loc['id'] == id));
+                        if (!anyMatch) {
                           debugPrint(
-                            '[AdminDashboard] User ${doc.id} has orphaned locationId: $userLocationId - including anyway',
+                            '[AdminDashboard] User ${doc.id} has orphaned locationIds: $locIds - including anyway',
                           );
-                          return true; // Include orphaned users
+                          return true;
                         }
 
-                        return false; // User belongs to a different existing location
+                        return false;
                       }
                       if (role == 1) {
-                        // Manager: only show if locationIds contains selected location
-                        final locIds =
-                            userData['locationIds'] is List ? List<String>.from(userData['locationIds']) : [];
+                        // Manager: only show if any of their locationIds contains selected location
+                        final locIds = coerceToLocationIds(userData['locationIds'] ?? userData['locationId']);
+                        if (_selectedLocationId == null) return true;
                         return locIds.contains(_selectedLocationId);
                       }
                       return false;
@@ -671,18 +836,20 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                               : 'General User';
 
                       return ListTile(
-                        leading: const Icon(Icons.person),
-                        title: Text(name.isEmpty ? 'Unnamed User' : name),
-                        subtitle: Text('$email • $roleText'),
+                        leading: const Icon(Icons.person, color: Colors.white),
+                        title: Text(name.isEmpty ? 'Unnamed User' : name, style: const TextStyle(color: Colors.white)),
+                        subtitle: Text('$email • $roleText', style: const TextStyle(color: Colors.white70)),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             IconButton(
-                              icon: const Icon(Icons.edit),
+                              icon: const Icon(Icons.edit, color: Colors.white),
+                              iconSize: 18,
                               onPressed: () => _showUserBottomSheet(doc.id, doc.data() as Map<String, dynamic>),
                             ),
                             IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
+                              icon: const Icon(Icons.delete, color: Colors.white),
+                              iconSize: 18,
                               onPressed:
                                   () => _showDeleteConfirmation(
                                     context: context,
@@ -795,23 +962,29 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                   }
 
                   return ListTile(
-                    leading: const Icon(Icons.location_on),
-                    title: Text(displayName),
-                    subtitle: Text(addressDisplay.isEmpty ? 'No address provided' : addressDisplay),
+                    leading: const Icon(Icons.location_on, color: Colors.white),
+                    title: Text(displayName, style: const TextStyle(color: Colors.white)),
+                    subtitle: Text(
+                      addressDisplay.isEmpty ? 'No address provided' : addressDisplay,
+                      style: const TextStyle(color: Colors.white70),
+                    ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.edit),
-                          onPressed: () => _showLocationBottomSheet(doc.id, locationData),
+                          icon: const Icon(Icons.edit, color: Colors.white),
+                          iconSize: 18,
+                          onPressed: () => _showLocationBottomSheet(locationId: doc.id, initialData: locationData),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red),
+                          icon: const Icon(Icons.delete, color: Colors.white),
+                          iconSize: 18,
                           onPressed:
                               () => _showDeleteConfirmation(
                                 context: context,
                                 title: 'Delete Location',
-                                content: 'Are you sure you want to delete this location? This action cannot be undone.',
+                                content:
+                                    'Are you sure you want to delete ${displayName.isEmpty ? 'this location' : displayName}? This action cannot be undone.',
                                 onConfirm: () => _deleteLocation(doc.id),
                               ),
                         ),
@@ -872,8 +1045,8 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
               filteredShifts =
                   allShifts.where((shift) {
                     final shiftData = shift['data'] as Map<String, dynamic>;
-                    final locationIds = List<String>.from(shiftData['locationIds'] ?? []);
-                    return locationIds.contains(_selectedLocationId);
+                    final docLocationIds = coerceToLocationIds(shiftData['locationIds'] ?? shiftData['locationId']);
+                    return docLocationIds.contains(_selectedLocationId);
                   }).toList();
             }
 
@@ -906,8 +1079,8 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                   final name = shiftData['shiftName'] as String? ?? 'Unnamed Shift';
                   final startTime = shiftData['startTime'] ?? '';
                   final endTime = shiftData['endTime'] ?? '';
-                  final roles = List<String>.from(shiftData['jobType'] ?? []);
-                  final locationIds = List<String>.from(shiftData['locationIds'] ?? []);
+                  final roles = coerceToJobTypes(shiftData['jobTypes'] ?? shiftData['jobType']);
+                  final locationIds = coerceToLocationIds(shiftData['locationIds'] ?? shiftData['locationId']);
 
                   // Get location names for this shift
                   final locationNames =
@@ -920,16 +1093,19 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       }).toList();
 
                   return ListTile(
-                    leading: const Icon(Icons.schedule),
-                    title: Text(name),
+                    leading: const Icon(Icons.schedule, color: Colors.white),
+                    title: Text(name, style: const TextStyle(color: Colors.white)),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('$startTime - $endTime • ${roles.join(', ')}'),
+                        Text(
+                          '${_range12h(startTime, endTime)} • ${roles.join(', ')}',
+                          style: const TextStyle(color: Colors.white70),
+                        ),
                         if (locationNames.isNotEmpty)
                           Text(
                             'Locations: ${locationNames.join(', ')}',
-                            style: TextStyle(color: Theme.of(context).primaryColor, fontSize: 12),
+                            style: const TextStyle(color: Colors.white60, fontSize: 12),
                           ),
                       ],
                     ),
@@ -937,11 +1113,13 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.edit),
+                          icon: const Icon(Icons.edit, color: Colors.white),
+                          iconSize: 18,
                           onPressed: () => _showShiftBottomSheet(shiftId, ShiftData.fromJson(shiftData)),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red),
+                          icon: const Icon(Icons.delete, color: Colors.white),
+                          iconSize: 18,
                           onPressed:
                               () => _showDeleteConfirmation(
                                 context: context,
@@ -1029,18 +1207,20 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                   final taskCount = tasksList.length;
 
                   return ListTile(
-                    leading: const Icon(Icons.checklist),
-                    title: Text(name),
-                    subtitle: Text('$description • $taskCount tasks'),
+                    leading: const Icon(Icons.checklist, color: Colors.white),
+                    title: Text(name, style: const TextStyle(color: Colors.white)),
+                    subtitle: Text('$description • $taskCount tasks', style: const TextStyle(color: Colors.white70)),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.edit),
+                          icon: const Icon(Icons.edit, color: Colors.white),
+                          iconSize: 18,
                           onPressed: () => _showChecklistBottomSheet(doc.id, checklistData),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red),
+                          icon: const Icon(Icons.delete, color: Colors.white),
+                          iconSize: 18,
                           onPressed:
                               () => _showDeleteConfirmation(
                                 context: context,
@@ -1072,111 +1252,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     );
   }
 
-  Widget _buildDocumentsList() {
-    if (organizationId == null) {
-      return const Padding(padding: EdgeInsets.all(16.0), child: Text('No organization data available'));
-    }
-
-    return ValueListenableBuilder<int>(
-      valueListenable: _refreshTrigger,
-      builder: (context, value, child) {
-        return StreamBuilder<QuerySnapshot>(
-          stream:
-              FirestoreEnforcer.instance
-                  .collection('organizations')
-                  .doc(organizationId)
-                  .collection('training_documents')
-                  .snapshots(),
-          builder: (context, snapshot) {
-            if (snapshot.hasError) {
-              return Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Text('Error loading documents: ${snapshot.error}'),
-              );
-            }
-
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Padding(padding: EdgeInsets.all(16.0), child: Center(child: CircularProgressIndicator()));
-            }
-
-            final documents = snapshot.data?.docs ?? [];
-
-            if (documents.isEmpty) {
-              return const Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    Icon(Icons.description_outlined, size: 48, color: Colors.grey),
-                    SizedBox(height: 8),
-                    Text('No documents found', style: TextStyle(color: Colors.grey)),
-                    Text(
-                      'Upload training materials to get started',
-                      style: TextStyle(color: Colors.grey, fontSize: 12),
-                    ),
-                  ],
-                ),
-              );
-            }
-
-            return Column(
-              children:
-                  documents.map((doc) {
-                    final docData = doc.data() as Map<String, dynamic>;
-                    final title = docData['title'] ?? 'Untitled Document';
-                    final category = docData['category'] ?? 'Uncategorized';
-                    final fileType = docData['fileType'] ?? 'Unknown';
-
-                    return ListTile(
-                      leading: Icon(_getFileIcon(fileType)),
-                      title: Text(title),
-                      subtitle: Text(category),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit),
-                            onPressed: () => _showUploadDocumentBottomSheet(doc.id, docData),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red),
-                            onPressed:
-                                () => _showDeleteConfirmation(
-                                  context: context,
-                                  title: 'Delete Document',
-                                  content: 'Are you sure you want to delete $title? This action cannot be undone.',
-                                  onConfirm: () => _deleteDocument(doc.id),
-                                ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  IconData _getFileIcon(String fileType) {
-    switch (fileType.toLowerCase()) {
-      case 'pdf':
-        return Icons.picture_as_pdf;
-      case 'doc':
-      case 'docx':
-        return Icons.description;
-      case 'jpg':
-      case 'jpeg':
-      case 'png':
-        return Icons.image;
-      case 'mp4':
-      case 'mov':
-        return Icons.videocam;
-      default:
-        return Icons.description;
-    }
-  }
-
   // Bottom sheet methods
   void _showUserBottomSheet([String? userId, Map<String, dynamic>? userData]) {
     showModalBottomSheet(
@@ -1199,116 +1274,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             onShiftSaved: () {
               // Refresh the dashboard
               _triggerRefresh();
-            },
-          ),
-    );
-  }
-
-  void _showLocationBottomSheet([String? locationId, Map<String, dynamic>? locationData]) {
-    debugPrint('[AdminDashboard] Showing location bottom sheet');
-    debugPrint('[AdminDashboard] Location ID: $locationId');
-    debugPrint('[AdminDashboard] Location data: $locationData');
-    debugPrint('[AdminDashboard] Location data type: ${locationData.runtimeType}');
-
-    // Helper function to safely extract string values
-    String? safeGetString(dynamic value) {
-      if (value == null) return null;
-      if (value is String) return value;
-      if (value is Map) return value['value']?.toString();
-      return value.toString();
-    }
-
-    final safeName = safeGetString(locationData?['locationName']);
-    final safeStreet = safeGetString(locationData?['street']) ?? safeGetString(locationData?['address']);
-    final safeCity = safeGetString(locationData?['city']);
-    final safeState = safeGetString(locationData?['state']);
-    final safeZip = safeGetString(locationData?['zipCode']) ?? safeGetString(locationData?['zip']);
-
-    debugPrint('[AdminDashboard] Processed values:');
-    debugPrint('[AdminDashboard] - Name: $safeName');
-    debugPrint('[AdminDashboard] - Street: $safeStreet');
-    debugPrint('[AdminDashboard] - City: $safeCity');
-    debugPrint('[AdminDashboard] - State: $safeState');
-    debugPrint('[AdminDashboard] - Zip: $safeZip');
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder:
-          (context) => LocationBottomSheet(
-            initialName: safeName,
-            initialStreet: safeStreet,
-            initialCity: safeCity,
-            initialState: safeState,
-            initialZip: safeZip,
-            onSave: (updatedData) async {
-              // Handle save logic here
-              try {
-                debugPrint('[AdminDashboard] Saving location data: $updatedData');
-
-                if (organizationId == null) {
-                  throw Exception('Organization ID not available');
-                }
-
-                if (locationId != null) {
-                  // Update existing location
-                  await FirestoreEnforcer.instance
-                      .collection('organizations')
-                      .doc(organizationId)
-                      .collection('locations')
-                      .doc(locationId)
-                      .update({
-                        'locationName': updatedData['name'],
-                        'street': updatedData['street'],
-                        'city': updatedData['city'],
-                        'state': updatedData['state'],
-                        'zipCode': updatedData['zip'],
-                        'updatedAt': FieldValue.serverTimestamp(),
-                      });
-
-                  debugPrint('[AdminDashboard] Location updated successfully');
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Location updated successfully'), backgroundColor: Colors.green),
-                    );
-                  }
-                } else {
-                  // Create new location
-                  await FirestoreEnforcer.instance
-                      .collection('organizations')
-                      .doc(organizationId)
-                      .collection('locations')
-                      .add({
-                        'locationName': updatedData['name'],
-                        'street': updatedData['street'],
-                        'city': updatedData['city'],
-                        'state': updatedData['state'],
-                        'zipCode': updatedData['zip'],
-                        'isPrimary': false, // New locations are not primary by default
-                        'isActive': true,
-                        'organizationId': organizationId,
-                        'createdAt': FieldValue.serverTimestamp(),
-                        'createdBy': FirebaseAuth.instance.currentUser?.uid,
-                      });
-
-                  debugPrint('[AdminDashboard] Location created successfully');
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Location created successfully'), backgroundColor: Colors.green),
-                    );
-                  }
-                }
-
-                // Reload locations to reflect changes
-                await _loadLocations();
-              } catch (e) {
-                debugPrint('[AdminDashboard] Error saving location: $e');
-                if (mounted) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text('Error saving location: $e'), backgroundColor: Colors.red));
-                }
-              }
             },
           ),
     );
@@ -1345,6 +1310,78 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     );
   }
 
+  // Locations: add/edit using inline bottom sheet
+  void _showLocationWizard() {
+    if (organizationId == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Organization ID not available. Please try again.')));
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder:
+            (_) => LocationWizard(
+              organizationId: organizationId!,
+              onCompleted: () async {
+                _triggerRefresh();
+                await _loadLocations();
+              },
+            ),
+      ),
+    );
+  }
+
+  void _showLocationBottomSheet({String? locationId, Map<String, dynamic>? initialData}) {
+    if (organizationId == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Organization ID not available. Please try again.')));
+      return;
+    }
+
+    // Map initial data to old bottom sheet fields if present
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder:
+          (context) => LocationWizard(
+            organizationId: organizationId!,
+            locationId: locationId,
+            initialData: initialData,
+            onCompleted: () async {
+              _triggerRefresh();
+              await _loadLocations();
+            },
+          ),
+    );
+  }
+
+  Future<void> _deleteLocation(String locationId) async {
+    if (organizationId == null) return;
+    try {
+      final orgRef = FirestoreEnforcer.instance.collection('organizations').doc(organizationId);
+      await orgRef.collection('locations').doc(locationId).delete();
+      await orgRef
+          .update({'locationCount': FieldValue.increment(-1), 'updatedAt': FieldValue.serverTimestamp()})
+          .catchError((_) {});
+      _triggerRefresh();
+      await _loadLocations();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Location deleted'), backgroundColor: Colors.green));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error deleting location: $e'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
   Future<void> _saveChecklist({
     required Map<String, dynamic> checklistData,
     required List<String> selectedShiftIds,
@@ -1365,7 +1402,21 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         .collection('checklist_templates')
         .doc(existingChecklistId); // If null, a new ID is generated
 
-    batch.set(mainChecklistRef, checklistData, SetOptions(merge: true));
+    // Keep tasks on parent for backward UI, but also mirror to subcollection (canonical)
+    final List<Map<String, dynamic>> tasksArray =
+        (checklistData['tasks'] is List)
+            ? List<Map<String, dynamic>>.from(checklistData['tasks'])
+            : <Map<String, dynamic>>[];
+
+    // Also persist a quick count for lightweight admin listings
+    final checklistDocPayload = {
+      ...checklistData,
+      'taskCount': tasksArray.length,
+      'updatedAt': FieldValue.serverTimestamp(),
+      if (existingChecklistId == null) 'createdAt': FieldValue.serverTimestamp(),
+    };
+
+    batch.set(mainChecklistRef, checklistDocPayload, SetOptions(merge: true));
     final mainChecklistId = mainChecklistRef.id;
 
     // 2. If duplicating, save additional copies (but organization-level templates don't need location duplication)
@@ -1401,13 +1452,122 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     }
 
     try {
+      // Commit parent doc + shift associations first
       await batch.commit();
+
+      // Replace tasks in template's canonical subcollection
+      final tasksColl = mainChecklistRef.collection('tasks');
+
+      // 3a. Delete existing subcollection tasks (if any) in chunks (<=500 ops per batch)
+      final existingTasksSnap = await tasksColl.get();
+      if (existingTasksSnap.docs.isNotEmpty) {
+        WriteBatch delBatch = FirestoreEnforcer.instance.batch();
+        int opCount = 0;
+        for (final doc in existingTasksSnap.docs) {
+          delBatch.delete(doc.reference);
+          opCount++;
+          if (opCount == 450) {
+            // leave headroom
+            await delBatch.commit();
+            delBatch = FirestoreEnforcer.instance.batch();
+            opCount = 0;
+          }
+        }
+        if (opCount > 0) {
+          await delBatch.commit();
+        }
+      }
+
+      // 3b. Create new subcollection tasks with stable-ish IDs based on name (+dup index)
+      if (tasksArray.isNotEmpty) {
+        WriteBatch addBatch = FirestoreEnforcer.instance.batch();
+        int opCount = 0;
+        final Map<String, int> nameCounts = {};
+        for (int i = 0; i < tasksArray.length; i++) {
+          final t = tasksArray[i];
+          final rawName = (t['name'] ?? t['taskName'] ?? t['title'] ?? t['description'] ?? '').toString();
+          final normName = rawName.trim();
+          final photoRequired = (t['photoRequired'] ?? false) == true;
+          final order = t['order'] is int ? t['order'] : i;
+
+          // Track duplicates to avoid identical IDs
+          final count = (nameCounts[normName.toLowerCase()] ?? 0) + 1;
+          nameCounts[normName.toLowerCase()] = count;
+
+          final idSeed = normName.isEmpty ? 'untitled-$i' : '$normName|$count';
+          final hash = crypto.sha1.convert(utf8.encode(idSeed)).toString().substring(0, 16);
+          final taskDocRef = tasksColl.doc(hash);
+
+          addBatch.set(taskDocRef, {
+            // Prefer canonical field names used by services
+            'taskName': normName.isEmpty ? 'Untitled Task' : normName,
+            'name': normName, // keep for compatibility
+            'photoRequired': photoRequired,
+            'order': order,
+            // Optional metadata
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+
+          opCount++;
+          if (opCount == 450) {
+            // commit in chunks
+            await addBatch.commit();
+            addBatch = FirestoreEnforcer.instance.batch();
+            opCount = 0;
+          }
+        }
+        if (opCount > 0) {
+          await addBatch.commit();
+        }
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Checklist saved successfully!'), backgroundColor: Colors.green));
       }
       _triggerRefresh();
+      // Reseed today's existing daily checklists that reference this template so
+      // newly saved template tasks appear immediately in today's UI if the
+      // daily checklist was already generated earlier.
+      try {
+        final dcs = DailyChecklistService();
+        final now = DateTime.now();
+        final dateStr =
+            '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+
+        final locsSnap =
+            await FirestoreEnforcer.instance
+                .collection('organizations')
+                .doc(organizationId)
+                .collection('locations')
+                .get();
+        for (final locDoc in locsSnap.docs) {
+          final existingDaily =
+              await FirestoreEnforcer.instance
+                  .collection('organizations')
+                  .doc(organizationId)
+                  .collection('locations')
+                  .doc(locDoc.id)
+                  .collection('daily_checklists')
+                  .where('date', isEqualTo: dateStr)
+                  .where('checklistTemplateId', isEqualTo: mainChecklistId)
+                  .get();
+          for (final cd in existingDaily.docs) {
+            try {
+              await dcs.reseedChecklistTasksFromTemplate(
+                organizationId: organizationId!,
+                locationId: locDoc.id,
+                checklistId: cd.id,
+              );
+            } catch (e) {
+              debugPrint('[AdminDashboard] Error reseeding checklist ${cd.id}: $e');
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('[AdminDashboard] Reseed step failed: $e');
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -1417,53 +1577,26 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     }
   }
 
-  void _showUploadDocumentBottomSheet([String? docId, Map<String, dynamic>? docData]) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder:
-          (context) => UploadDocumentBottomSheet(
-            documentId: docId,
-            documentData: docData,
-            onDocumentUploaded: () {
-              _triggerRefresh();
-            },
-          ),
-    );
-  }
-
   Future<void> _deleteUser(String userId) async {
     try {
-      // Delete from root 'users' collection (not under organization)
-      await FirestoreEnforcer.instance.collection('users').doc(userId).delete();
+      // Call the server-side callable 'deleteUser' to remove Auth record + Firestore doc atomically
+      final functions = FirebaseFunctions.instanceFor(region: 'us-central1');
+      final callable = functions.httpsCallable('deleteUser');
+      final resp = await callable.call(<String, dynamic>{'uid': userId});
+      final data = resp.data as Map<String, dynamic>?;
+
       _triggerRefresh();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('User deleted successfully')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(data != null && data['message'] != null ? data['message'] : 'User deleted successfully'),
+          ),
+        );
       }
     } catch (e) {
+      debugPrint('[AdminDashboard] deleteUser callable error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting user: $e')));
-      }
-    }
-  }
-
-  Future<void> _deleteLocation(String locationId) async {
-    if (_selectedLocationId == null) return;
-
-    try {
-      await FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(organizationId)
-          .collection('locations')
-          .doc(locationId)
-          .delete();
-      _triggerRefresh();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location deleted successfully')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting location: $e')));
       }
     }
   }
@@ -1483,25 +1616,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting shift: $e')));
-      }
-    }
-  }
-
-  Future<void> _deleteDocument(String documentId) async {
-    try {
-      await FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(organizationId)
-          .collection('training_documents')
-          .doc(documentId)
-          .delete();
-      _triggerRefresh();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Document deleted successfully')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting document: $e')));
       }
     }
   }
@@ -1553,141 +1667,19 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     );
   }
 
-  /// Migration helper: Copy organization-level checklists to all locations
-  Future<void> _migrateChecklistsToLocations() async {
-    if (organizationId == null) return;
+  // Migration helper removed
 
-    try {
-      // Get all existing organization-level checklist templates
-      final orgChecklistsSnapshot =
-          await FirestoreEnforcer.instance
-              .collection('organizations')
-              .doc(organizationId)
-              .collection('checklist_templates')
-              .get();
-
-      if (orgChecklistsSnapshot.docs.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('No organization-level checklists found to migrate')));
-        }
-        return;
-      }
-
-      // Get all locations for the organization
-      final locationsSnapshot =
-          await FirestoreEnforcer.instance
-              .collection('organizations')
-              .doc(organizationId)
-              .collection('locations')
-              .get();
-
-      int migratedCount = 0;
-
-      // Copy each checklist to each location
-      for (final checklistDoc in orgChecklistsSnapshot.docs) {
-        final checklistData = checklistDoc.data();
-
-        for (final locationDoc in locationsSnapshot.docs) {
-          final locationData = locationDoc.data();
-          final locationName = locationData['locationName'] ?? 'Unknown Location';
-
-          // Create location-specific checklist
-          final locationChecklistData = {
-            ...checklistData,
-            'locationId': locationDoc.id,
-            'locationName': locationName,
-            'migratedFrom': 'organization-level',
-            'migratedAt': FieldValue.serverTimestamp(),
-            'updatedAt': FieldValue.serverTimestamp(),
-          };
-
-          await FirestoreEnforcer.instance
-              .collection('organizations')
-              .doc(organizationId)
-              .collection('locations')
-              .doc(locationDoc.id)
-              .collection('checklist_templates')
-              .add(locationChecklistData);
-
-          migratedCount++;
-        }
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Migrated $migratedCount location-specific checklists successfully')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error migrating checklists: $e')));
-      }
-    }
+  String _to12h(String hhmm) {
+    final parts = hhmm.split(':');
+    if (parts.length != 2) return hhmm;
+    final h24 = int.tryParse(parts[0]) ?? 0;
+    final m = int.tryParse(parts[1]) ?? 0;
+    var h12 = h24 % 12;
+    if (h12 == 0) h12 = 12;
+    final mm = m.toString().padLeft(2, '0');
+    final suffix = h24 >= 12 ? 'pm' : 'am';
+    return '$h12.$mm$suffix';
   }
 
-  Widget _buildDebugSection() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.bug_report, color: Colors.orange),
-                const SizedBox(width: 8),
-                Text(
-                  'Debug Tools',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.orange),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text('Development and testing utilities (Debug mode only)', style: TextStyle(color: Colors.grey[600])),
-            const SizedBox(height: 16),
-            // Role Diagnostic Widget
-            const RoleDiagnostic(),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: () async {
-                if (organizationId == null || _selectedLocationId == null) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(const SnackBar(content: Text('Please select an organization and location first')));
-                  return;
-                }
-                try {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Seeding test data...')));
-                  await SchedulingTestDataSeeder.seedTestData(
-                    organizationId: organizationId!,
-                    locationId: _selectedLocationId!,
-                  );
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('✅ Test data seeded successfully!'), backgroundColor: Colors.green),
-                    );
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(SnackBar(content: Text('Error seeding data: $e'), backgroundColor: Colors.red));
-                  }
-                }
-              },
-              icon: const Icon(Icons.data_usage),
-              label: const Text('Seed Test Data'),
-            ),
-            const SizedBox(height: 16),
-            // Role diagnostic widget
-            const RoleDiagnostic(),
-          ],
-        ),
-      ),
-    );
-  }
-} // End of _AdminDashboardPageState class
+  String _range12h(String startHhmm, String endHhmm) => '${_to12h(startHhmm)} – ${_to12h(endHhmm)}';
+}

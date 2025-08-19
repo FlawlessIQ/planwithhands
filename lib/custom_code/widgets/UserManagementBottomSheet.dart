@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hands_app/main.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/utils/jobtype_helper.dart';
 
 /// Dialog for managing job types with full CRUD functionality.
 class JobTypeManagementDialog extends StatefulWidget {
@@ -358,16 +359,10 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     // Available roles
     final availableRoles = useState<List<String>>([]);
 
-    // Extract job types safely
-    Set<String> extractJobTypes(dynamic jobTypeData) {
-      if (jobTypeData == null) return <String>{};
-      if (jobTypeData is List) {
-        return Set<String>.from(jobTypeData.whereType<String>());
-      }
-      return <String>{};
-    }
-
-    final selectedRoles = useState<Set<String>>(extractJobTypes(userData?['jobType']));
+    // Extract job types using canonical helper
+    final selectedRoles = useState<Set<String>>(
+      Set<String>.from(coerceToJobTypes(userData?['jobTypes'] ?? userData?['jobType'])),
+    );
 
     // Available locations
     final availableLocations = useState<List<Map<String, dynamic>>>([]);
@@ -404,13 +399,19 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       return result;
     }
 
-    final selectedLocationIds = useState<Set<String>>(
-      extractLocationIds(userData?['locationIds'], userData?['locationId']),
-    );
-    // For general users (role 0), single location
-    final selectedLocationId = useState<String?>(
-      extractLocationId(userData?['locationId']) ?? extractLocationId(userData?['primaryLocationId']),
-    );
+    // Initialize selectedLocationIds with existing data
+    Set<String> initialLocationIds = extractLocationIds(userData?['locationIds'], userData?['locationId']);
+
+    // For employees (role 0), if no locationIds but we have a single locationId, add it
+    if (initialLocationIds.isEmpty) {
+      final singleLocationId =
+          extractLocationId(userData?['locationId']) ?? extractLocationId(userData?['primaryLocationId']);
+      if (singleLocationId != null) {
+        initialLocationIds.add(singleLocationId);
+      }
+    }
+
+    final selectedLocationIds = useState<Set<String>>(initialLocationIds);
 
     final isLoading = useState(false);
     final isEditMode = userData != null;
@@ -426,12 +427,8 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     useEffect(() {
       if (availableLocations.value.length == 1) {
         final singleLoc = availableLocations.value.first['id'] as String;
-        // For general user
-        if (selectedAccessLevel.value == 0) {
-          selectedLocationId.value = singleLoc;
-        }
-        // For manager ensure at least that location
-        if (selectedAccessLevel.value == 1) {
+        // For both general users and managers, use the set-based approach
+        if (selectedAccessLevel.value == 0 || selectedAccessLevel.value == 1) {
           selectedLocationIds.value = {singleLoc};
         }
       }
@@ -597,8 +594,8 @@ class UserManagementBottomSheet extends HookConsumerWidget {
 
                 // Location selection (show only if more than one location available)
                 if (availableLocations.value.length > 1) ...[
-                  // For managers (role 1), allow multiple locations
-                  if (selectedAccessLevel.value == 1) ...[
+                  // For both employees (role 0) and managers (role 1), allow multiple locations
+                  if (selectedAccessLevel.value == 0 || selectedAccessLevel.value == 1) ...[
                     const SizedBox(height: 16),
                     Text(
                       'Locations (Select one or more)',
@@ -639,32 +636,6 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                           style: TextStyle(color: theme.colorScheme.error),
                         ),
                       ),
-                  ] else if (selectedAccessLevel.value == 0) ...[
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      value: selectedLocationId.value,
-                      decoration: const InputDecoration(
-                        labelText: 'Location',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.location_on_outlined),
-                      ),
-                      items:
-                          availableLocations.value.map((loc) {
-                            return DropdownMenuItem(
-                              value: loc['id'] as String,
-                              child: Text(loc['name'] ?? 'Unnamed Location'),
-                            );
-                          }).toList(),
-                      onChanged: (val) {
-                        selectedLocationId.value = val;
-                      },
-                      validator: (val) {
-                        if (selectedAccessLevel.value == 0 && (val == null || val.isEmpty)) {
-                          return 'Please select a location';
-                        }
-                        return null;
-                      },
-                    ),
                   ],
                 ] else if (availableLocations.value.isNotEmpty) ...[
                   // Auto-assign single location silently
@@ -723,15 +694,18 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                                 : () async {
                                   try {
                                     // Determine final locations, auto-assign if single option
-                                    String? locId = selectedLocationId.value;
+                                    String? locId; // No longer used for employees
                                     Set<String>? locIds = selectedLocationIds.value;
+
+                                    // For employees (role 0), use selectedLocationIds
                                     if (selectedAccessLevel.value == 0 &&
-                                        (locId == null || locId.isEmpty) &&
+                                        locIds.isEmpty &&
                                         availableLocations.value.length == 1) {
-                                      locId = availableLocations.value.first['id'] as String;
+                                      locIds = {availableLocations.value.first['id'] as String};
                                     }
+                                    // For managers (role 1), also use selectedLocationIds
                                     if (selectedAccessLevel.value == 1 &&
-                                        (locIds.isEmpty) &&
+                                        locIds.isEmpty &&
                                         availableLocations.value.length == 1) {
                                       locIds = {availableLocations.value.first['id'] as String};
                                     }
@@ -917,13 +891,21 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     if (!formKey.currentState!.validate()) {
       return;
     }
-    // Additional validation for location
+    // Enforce job type and location requirement for all users
+    if (roles.isEmpty) {
+      _showSnackBar(context, 'Please select at least one job type for this user.', isError: true);
+      return;
+    }
+    if (accessLevel == 2 && (locationIds == null || locationIds.isEmpty)) {
+      _showSnackBar(context, 'An admin must assign at least one location to each user.', isError: true);
+      return;
+    }
     if (accessLevel == 1 && (locationIds == null || locationIds.isEmpty)) {
       _showSnackBar(context, 'A manager must be assigned to at least one location.', isError: true);
       return;
     }
-    if (accessLevel == 0 && (locationId == null || locationId.isEmpty)) {
-      _showSnackBar(context, 'A general user must be assigned to a location.', isError: true);
+    if (accessLevel == 0 && (locationIds == null || locationIds.isEmpty)) {
+      _showSnackBar(context, 'An employee must be assigned to at least one location.', isError: true);
       return;
     }
 
@@ -1015,25 +997,28 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       'firstName': firstName,
       'lastName': lastName,
       'userRole': accessLevel,
-      'jobType': roles.toList(),
+      // write canonical jobTypes and keep legacy jobType for compatibility
+      'jobTypes': roles.toList(),
+      'jobType': (roles.isNotEmpty ? roles.toList().first : null),
       'updatedAt': FieldValue.serverTimestamp(),
     };
 
     // Handle location assignment based on user role
     if (accessLevel == 0) {
-      // General user - single location
-      updateData['locationId'] = locationId;
-      // Remove locationIds if it exists
-      updateData['locationIds'] = FieldValue.delete();
+      // Employee - now supports multiple locations
+      updateData['locationIds'] = locationIds?.toList() ?? [];
+      // Keep locationId for backwards compatibility (use first location)
+      updateData['locationId'] = locationIds?.first;
     } else if (accessLevel == 1) {
       // Manager - multiple locations
       updateData['locationIds'] = locationIds?.toList() ?? [];
       // Keep locationId for backwards compatibility (use first location)
-      updateData['locationId'] = locationIds?.isNotEmpty == true ? locationIds!.first : null;
+      updateData['locationId'] = locationIds?.first;
     } else {
       // Admin - has access to all locations, but keep locationId for primary
-      if (locationId != null) {
-        updateData['locationId'] = locationId;
+      if (locationIds != null && locationIds.isNotEmpty) {
+        updateData['locationIds'] = locationIds.toList();
+        updateData['locationId'] = locationIds.first;
       }
     }
 
@@ -1080,7 +1065,8 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       'firstName': firstName,
       'lastName': lastName,
       'userRole': accessLevel,
-      'jobType': roles.toList(),
+      'jobTypes': roles.toList(),
+      'jobType': (roles.isNotEmpty ? roles.toList().first : null),
       'locationId': locationId,
       'locationIds': locationIds?.toList(),
       'orgName': orgName,
@@ -1090,8 +1076,10 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     final functions = FirebaseFunctions.instanceFor(region: 'us-central1');
     final createUser = functions.httpsCallable('createUser');
 
+    // Canonicalize locationIds for clearer logging
+    final _logLocIds = locationIds != null ? locationIds.toList() : (locationId != null ? [locationId] : <String>[]);
     debugPrint(
-      'Calling createUser with payload: ${{'email': userEmail, 'firstName': firstName, 'lastName': lastName, 'userRole': accessLevel, 'jobType': roles.toList(), 'organizationId': organizationId, 'locationId': locationId, 'locationIds': locationIds?.toList(), 'orgName': orgName, 'adminEmail': adminEmail, 'inviteUrl': inviteUrl, 'templateId': templateId}}',
+      'Calling createUser with payload: ${{'email': userEmail, 'firstName': firstName, 'lastName': lastName, 'userRole': accessLevel, 'jobTypes': roles.toList(), 'organizationId': organizationId, 'locationId': _logLocIds.isNotEmpty ? _logLocIds.first : null, 'locationIds': _logLocIds, 'orgName': orgName, 'adminEmail': adminEmail, 'inviteUrl': inviteUrl, 'templateId': templateId}}',
     );
 
     final result = await createUser.call({
@@ -1100,7 +1088,8 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       'firstName': firstName,
       'lastName': lastName,
       'userRole': accessLevel,
-      'jobType': roles.toList(),
+      'jobTypes': roles.toList(),
+      'jobType': (roles.isNotEmpty ? roles.toList().first : null),
       'organizationId': organizationId,
       'locationId': locationId,
       'locationIds': locationIds?.toList(),

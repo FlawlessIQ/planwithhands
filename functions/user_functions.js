@@ -154,3 +154,28 @@ exports.createUser = functions.https.onCall(async (data, context) => {
     );
   }
 });
+
+
+// Minimal callable: deletes Auth user and Firestore doc for given uid, no org/role checks
+exports.deleteUser = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Must be signed in to call this function');
+  }
+  if (!data || !data.uid) {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing target user uid');
+  }
+  const targetUid = data.uid;
+  let authDeleted = false;
+  try {
+    await admin.auth().deleteUser(targetUid);
+    authDeleted = true;
+  } catch (e) {
+    // If user not in Auth, ignore
+  }
+  try {
+    await db.collection('users').doc(targetUid).delete();
+  } catch (e) {
+    // If doc not found, ignore
+  }
+  return { success: true, message: authDeleted ? 'User authentication and Firestore record deleted' : 'Firestore user record deleted (auth delete failed or user not present in Auth)' };
+});

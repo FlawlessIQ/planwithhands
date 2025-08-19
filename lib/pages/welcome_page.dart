@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hands_app/global_widgets/hands_icon.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/utils/jobtype_helper.dart';
 
 class WelcomePage extends ConsumerStatefulWidget {
   final String? email;
@@ -33,11 +34,11 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
   @override
   void initState() {
     super.initState();
-    print('[WELCOME] WelcomePage initState called');
-    print('[WELCOME] Email: ${widget.email}');
-    print('[WELCOME] OrganizationId: ${widget.organizationId}');
-    print('[WELCOME] InviteId: ${widget.inviteId}');
-    print('[WELCOME] Mode: ${widget.mode}');
+    debugPrint('[WELCOME] WelcomePage initState called');
+    debugPrint('[WELCOME] Email: ${widget.email}');
+    debugPrint('[WELCOME] OrganizationId: ${widget.organizationId}');
+    debugPrint('[WELCOME] InviteId: ${widget.inviteId}');
+    debugPrint('[WELCOME] Mode: ${widget.mode}');
 
     // Use post-frame callback to avoid showing dialogs during build
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -54,12 +55,12 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
   }
 
   Future<void> _loadPendingUser() async {
-    print('[WELCOME] _loadPendingUser called');
-    print('[WELCOME] widget.email: ${widget.email}');
-    print('[WELCOME] widget.organizationId: ${widget.organizationId}');
+    debugPrint('[WELCOME] _loadPendingUser called');
+    debugPrint('[WELCOME] widget.email: ${widget.email}');
+    debugPrint('[WELCOME] widget.organizationId: ${widget.organizationId}');
 
     if (widget.email == null || widget.organizationId == null) {
-      print('[WELCOME] ERROR: Email or organizationId is null');
+      debugPrint('[WELCOME] ERROR: Email or organizationId is null');
       _showErrorDialog('Invalid invite link');
       return;
     }
@@ -69,7 +70,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
     });
 
     try {
-      print('[WELCOME] Searching invites collection...');
+      debugPrint('[WELCOME] Searching invites collection...');
       // Look in the invites collection where the pending users are actually stored
       final inviteQuery =
           await FirestoreEnforcer.instance
@@ -79,18 +80,19 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
               .limit(1)
               .get();
 
-      print('[WELCOME] invites query result: ${inviteQuery.docs.length} docs');
+      debugPrint('[WELCOME] invites query result: ${inviteQuery.docs.length} docs');
 
       if (inviteQuery.docs.isNotEmpty) {
         final inviteData = inviteQuery.docs.first.data();
-        print('[WELCOME] Found invite: $inviteData');
+        debugPrint('[WELCOME] Found invite: $inviteData');
 
         // Convert invite data to pendingUser format for compatibility
         _pendingUser = {
           'firstName': inviteData['firstName'] ?? '',
           'lastName': inviteData['lastName'] ?? '',
           'userRole': inviteData['userRole'] ?? 0,
-          'jobType': inviteData['jobType'] ?? [],
+          // Normalize to canonical list
+          'jobType': coerceToJobTypes(inviteData['jobTypes'] ?? inviteData['jobType']),
           'locationId': inviteData['locationId'],
           'locationIds': inviteData['locationIds'],
           'emailAddress': inviteData['email'],
@@ -100,7 +102,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
           'used': inviteData['used'] ?? false,
         };
       } else {
-        print('[WELCOME] No invite found, checking users collection...');
+        debugPrint('[WELCOME] No invite found, checking users collection...');
         // Fallback: try to load from users collection (existing flow)
         // Try both field names for compatibility
         final userQuery1 =
@@ -111,11 +113,11 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                 .limit(1)
                 .get();
 
-        print('[WELCOME] users query (organizationId) result: ${userQuery1.docs.length} docs');
+        debugPrint('[WELCOME] users query (organizationId) result: ${userQuery1.docs.length} docs');
 
         if (userQuery1.docs.isNotEmpty) {
           final userData = userQuery1.docs.first.data();
-          print('[WELCOME] Found user with organizationId: $userData');
+          debugPrint('[WELCOME] Found user with organizationId: $userData');
           // Convert user data to pendingUser format
           final displayName = userData['displayName'] ?? '';
           final nameParts = displayName.split(' ');
@@ -123,7 +125,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
             'firstName': nameParts.isNotEmpty ? nameParts[0] : '',
             'lastName': nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '',
             'userRole': userData['userRole'] ?? 0,
-            'jobType': userData['jobType'] ?? [],
+            'jobType': coerceToJobTypes(userData['jobTypes'] ?? userData['jobType']),
             'locationId': userData['locationId'],
             'locationIds': userData['locationIds'],
             'emailAddress': userData['email'],
@@ -139,11 +141,11 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                   .limit(1)
                   .get();
 
-          print('[WELCOME] users query (orgId) result: ${userQuery2.docs.length} docs');
+          debugPrint('[WELCOME] users query (orgId) result: ${userQuery2.docs.length} docs');
 
           if (userQuery2.docs.isNotEmpty) {
             final userData = userQuery2.docs.first.data();
-            print('[WELCOME] Found user with orgId: $userData');
+            debugPrint('[WELCOME] Found user with orgId: $userData');
             // Convert user data to pendingUser format
             final displayName = userData['displayName'] ?? '';
             final nameParts = displayName.split(' ');
@@ -151,7 +153,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
               'firstName': nameParts.isNotEmpty ? nameParts[0] : '',
               'lastName': nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '',
               'userRole': userData['userRole'] ?? 0,
-              'jobType': userData['jobType'] ?? [],
+              'jobType': coerceToJobTypes(userData['jobTypes'] ?? userData['jobType']),
               'locationId': userData['locationId'],
               'locationIds': userData['locationIds'],
               'emailAddress': userData['email'],
@@ -162,7 +164,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
       }
 
       if (_pendingUser == null) {
-        print('[WELCOME] ERROR: No pending user found');
+        debugPrint('[WELCOME] ERROR: No pending user found');
         _showErrorDialog('Invite not found or has expired');
         return;
       }
@@ -170,9 +172,9 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
       // Use organization name from invite data if available, otherwise load from organizations collection
       if (_pendingUser!['orgName'] != null) {
         _organizationName = _pendingUser!['orgName'];
-        print('[WELCOME] Using organization name from invite: $_organizationName');
+        debugPrint('[WELCOME] Using organization name from invite: $_organizationName');
       } else {
-        print('[WELCOME] Loading organization name from organizations collection...');
+        debugPrint('[WELCOME] Loading organization name from organizations collection...');
         // Load organization name from organizations collection
         final orgDoc = await FirestoreEnforcer.instance.collection('organizations').doc(widget.organizationId).get();
 
@@ -181,15 +183,15 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
           // Try different possible field names for organization name
           _organizationName =
               orgData?['organizationName'] ?? orgData?['orgName'] ?? orgData?['name'] ?? 'Unknown Organization';
-          print('[WELCOME] Organization name from DB: $_organizationName');
-          print('[WELCOME] Available org fields: ${orgData?.keys.toList()}');
+          debugPrint('[WELCOME] Organization name from DB: $_organizationName');
+          debugPrint('[WELCOME] Available org fields: ${orgData?.keys.toList()}');
         } else {
-          print('[WELCOME] Organization document not found');
+          debugPrint('[WELCOME] Organization document not found');
           _organizationName = 'Unknown Organization';
         }
       }
     } catch (e) {
-      print('[WELCOME] ERROR in _loadPendingUser: $e');
+      debugPrint('[WELCOME] ERROR in _loadPendingUser: $e');
       _showErrorDialog('Failed to load invite details: ${e.toString()}');
     } finally {
       setState(() {
@@ -312,7 +314,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                       child: OutlinedButton.icon(
                         onPressed: () {
                           // TODO: Replace with actual App Store URL
-                          print('Opening App Store...');
+                          debugPrint('Opening App Store...');
                           // launch('https://apps.apple.com/app/hands-app');
                         },
                         icon: const Icon(Icons.phone_iphone),
@@ -325,7 +327,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                       child: OutlinedButton.icon(
                         onPressed: () {
                           // TODO: Replace with actual Google Play URL
-                          print('Opening Google Play...');
+                          debugPrint('Opening Google Play...');
                           // launch('https://play.google.com/store/apps/details?id=com.hands.app');
                         },
                         icon: const Icon(Icons.android),

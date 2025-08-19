@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/utils/jobtype_helper.dart';
 
 class SignInPage extends StatefulWidget {
   const SignInPage({super.key});
@@ -68,15 +69,10 @@ class _SignInPageState extends State<SignInPage> {
           // Get organization name if orgId is available
           if (orgId != null) {
             try {
-              final orgDoc =
-                  await FirestoreEnforcer.instance
-                      .collection('organizations')
-                      .doc(orgId)
-                      .get();
+              final orgDoc = await FirestoreEnforcer.instance.collection('organizations').doc(orgId).get();
 
               if (orgDoc.exists) {
-                organizationName =
-                    orgDoc.data()?['organizationName'] ?? 'Your Organization';
+                organizationName = orgDoc.data()?['organizationName'] ?? 'Your Organization';
               }
             } catch (e) {
               organizationName = 'Your Organization';
@@ -85,8 +81,7 @@ class _SignInPageState extends State<SignInPage> {
         }
       } else if (uid != null) {
         // Legacy flow - load user profile from Firestore
-        final userDoc =
-            await FirestoreEnforcer.instance.collection('users').doc(uid).get();
+        final userDoc = await FirestoreEnforcer.instance.collection('users').doc(uid).get();
 
         if (userDoc.exists) {
           final userData = userDoc.data() as Map<String, dynamic>;
@@ -97,15 +92,10 @@ class _SignInPageState extends State<SignInPage> {
           // Get organization name if orgId is available
           if (orgId != null) {
             try {
-              final orgDoc =
-                  await FirestoreEnforcer.instance
-                      .collection('organizations')
-                      .doc(orgId)
-                      .get();
+              final orgDoc = await FirestoreEnforcer.instance.collection('organizations').doc(orgId).get();
 
               if (orgDoc.exists) {
-                organizationName =
-                    orgDoc.data()?['organizationName'] ?? 'Your Organization';
+                organizationName = orgDoc.data()?['organizationName'] ?? 'Your Organization';
               }
             } catch (e) {
               organizationName = 'Your Organization';
@@ -134,10 +124,7 @@ class _SignInPageState extends State<SignInPage> {
 
     try {
       // Sign in with email link using the current URL
-      await FirebaseAuth.instance.signInWithEmailLink(
-        email: email!,
-        emailLink: Uri.base.toString(),
-      );
+      await FirebaseAuth.instance.signInWithEmailLink(email: email!, emailLink: Uri.base.toString());
 
       // Now update the password
       final user = FirebaseAuth.instance.currentUser!;
@@ -162,19 +149,30 @@ class _SignInPageState extends State<SignInPage> {
           final pendingUserData = pendingUserDoc.data();
 
           // Create user document with the authenticated user's UID
-          final userDoc = FirestoreEnforcer.instance
-              .collection('users')
-              .doc(user.uid);
+          final userDoc = FirestoreEnforcer.instance.collection('users').doc(user.uid);
+          // Defensive: ensure both locationId (legacy) and locationIds (canonical) are set
+          final dynamic pLocIds = pendingUserData['locationIds'];
+          final dynamic pLocId = pendingUserData['locationId'];
+          final List<String> canonicalLocIds =
+              pLocIds is Iterable ? List<String>.from(pLocIds) : (pLocId != null ? [pLocId.toString()] : <String>[]);
+
+          // Normalize job types to canonical list before writing user doc
+          final List<String> canonicalJobTypes = coerceToJobTypes(
+            pendingUserData['jobTypes'] ?? pendingUserData['jobType'],
+          );
+
           await userDoc.set({
             'userId': user.uid,
             'firstName': pendingUserData['firstName'],
             'lastName': pendingUserData['lastName'],
             'emailAddress': pendingUserData['emailAddress'],
             'userRole': pendingUserData['userRole'],
-            'jobType': pendingUserData['jobType'],
+            // write canonical jobTypes and keep legacy jobType for compatibility
+            'jobTypes': canonicalJobTypes,
+            'jobType': (canonicalJobTypes.isNotEmpty ? canonicalJobTypes.first : pendingUserData['jobType']),
             'organizationId': pendingUserData['organizationId'],
-            'locationId': pendingUserData['locationId'],
-            'locationIds': pendingUserData['locationIds'],
+            'locationId': canonicalLocIds.isNotEmpty ? canonicalLocIds.first : pendingUserData['locationId'],
+            'locationIds': canonicalLocIds,
             'createdAt': pendingUserData['createdAt'],
             'updatedAt': FieldValue.serverTimestamp(),
             'setupCompleted': true,
@@ -265,9 +263,7 @@ class _SignInPageState extends State<SignInPage> {
                     onPressed: () => _launchAppStore(),
                     icon: const Icon(Icons.apple, size: 18),
                     label: const Text('App Store'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
+                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -276,9 +272,7 @@ class _SignInPageState extends State<SignInPage> {
                     onPressed: () => _launchPlayStore(),
                     icon: const Icon(Icons.android, size: 18),
                     label: const Text('Play Store'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
+                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
                   ),
                 ),
               ],
@@ -291,9 +285,7 @@ class _SignInPageState extends State<SignInPage> {
                   Navigator.of(context).pop();
                   _navigateToHome();
                 },
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
+                style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
                 child: const Text('Continue to Dashboard'),
               ),
             ),
@@ -304,8 +296,7 @@ class _SignInPageState extends State<SignInPage> {
   }
 
   Future<void> _launchAppStore() async {
-    const url =
-        'https://apps.apple.com/app/hands-app/id123456789'; // Replace with actual App Store URL
+    const url = 'https://apps.apple.com/app/hands-app/id123456789'; // Replace with actual App Store URL
     if (await canLaunchUrl(Uri.parse(url))) {
       await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     } else {
@@ -332,11 +323,7 @@ class _SignInPageState extends State<SignInPage> {
   void _showError(String message) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 5),
-        ),
+        SnackBar(content: Text(message), backgroundColor: Colors.red, duration: const Duration(seconds: 5)),
       );
     }
   }
@@ -344,11 +331,7 @@ class _SignInPageState extends State<SignInPage> {
   void _showSuccess(String message) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 3),
-        ),
+        SnackBar(content: Text(message), backgroundColor: Colors.green, duration: const Duration(seconds: 3)),
       );
     }
   }
@@ -417,18 +400,12 @@ class _SignInPageState extends State<SignInPage> {
                       // Welcome Card
                       Card(
                         elevation: 4,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         child: Padding(
                           padding: const EdgeInsets.all(24.0),
                           child: Column(
                             children: [
-                              Icon(
-                                Icons.waving_hand,
-                                size: 48,
-                                color: theme.primaryColor,
-                              ),
+                              Icon(Icons.waving_hand, size: 48, color: theme.primaryColor),
                               const SizedBox(height: 16),
                               Text(
                                 'Welcome, ${userName ?? 'User'}!',
@@ -452,9 +429,7 @@ class _SignInPageState extends State<SignInPage> {
                               const SizedBox(height: 12),
                               Text(
                                 'Please set your password to complete your account setup.',
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: Colors.grey[600],
-                                ),
+                                style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
                                 textAlign: TextAlign.center,
                               ),
                             ],
@@ -487,8 +462,7 @@ class _SignInPageState extends State<SignInPage> {
                           labelText: 'Create Password',
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.lock),
-                          helperText:
-                              'At least 8 characters with uppercase, lowercase, and number',
+                          helperText: 'At least 8 characters with uppercase, lowercase, and number',
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -513,9 +487,7 @@ class _SignInPageState extends State<SignInPage> {
                           backgroundColor: theme.primaryColor,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           elevation: 2,
                         ),
                         child:
@@ -525,17 +497,12 @@ class _SignInPageState extends State<SignInPage> {
                                   width: 20,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.white,
-                                    ),
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                   ),
                                 )
                                 : const Text(
                                   'Set Password & Continue',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                                 ),
                       ),
                       const SizedBox(height: 24),
@@ -555,10 +522,7 @@ class _SignInPageState extends State<SignInPage> {
                             Expanded(
                               child: Text(
                                 'Your password will be securely encrypted. You can change it later in your account settings.',
-                                style: TextStyle(
-                                  color: Colors.blue[700],
-                                  fontSize: 14,
-                                ),
+                                style: TextStyle(color: Colors.blue[700], fontSize: 14),
                               ),
                             ),
                           ],

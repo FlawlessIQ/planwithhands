@@ -5,17 +5,18 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:async';
 import 'package:hands_app/data/models/shift_data.dart';
 import 'package:hands_app/models/daily_checklist.dart';
 import 'package:hands_app/services/daily_checklist_service.dart';
-import 'package:hands_app/services/app_permission_service.dart';
-import 'package:hands_app/widgets/permission_handler.dart';
+// removed unused imports - dialogs now use DailyChecklistService directly
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/utils/location_helper.dart';
+import 'package:hands_app/utils/jobtype_helper.dart';
+import 'package:hands_app/state/operational_state.dart';
 import 'package:hands_app/config/feature_flags.dart';
 import 'package:hands_app/data/models/missed_tasks_section.dart';
 import 'package:hands_app/data/models/task_data.dart';
@@ -35,6 +36,7 @@ class UserDashboardPage extends HookConsumerWidget {
     final hasLoadedOnce = useState(false);
     final userRole = useState<int>(0);
     final organizationId = useState<String?>(null);
+    final userJobTypes = useState<List<String>>([]);
     final missedTasksSections = useState<List<MissedTasksSection>>([]);
     final missedTasksLoading = useState(false);
     final lastLoadedDate = useState<String?>(null);
@@ -57,6 +59,9 @@ class UserDashboardPage extends HookConsumerWidget {
         final data = userDoc.data()!;
         userRole.value = data['userRole'] ?? 0;
         organizationId.value = data['organizationId'] as String?;
+        // Normalize jobType / jobTypes into a canonical List<String>
+        userJobTypes.value = coerceToJobTypes(data['jobTypes'] ?? data['jobType']);
+        debugPrint('[Dashboard] User jobTypes loaded: ${userJobTypes.value}');
       }
     }
 
@@ -86,11 +91,11 @@ class UserDashboardPage extends HookConsumerWidget {
                   .get();
           locationIds = locationsSnapshot.docs.map((doc) => doc.id).toList();
         } else if (userRoleValue == 1 && userData['locationIds'] != null) {
-          // Manager - get assigned locations
-          locationIds = List<String>.from(userData['locationIds']);
+          // Manager - get assigned locations (coerce to list if needed)
+          locationIds = coerceToLocationIds(userData['locationIds']);
         } else if (userData['locationId'] != null) {
-          // General user - get single location
-          locationIds = [userData['locationId']];
+          // General user - get single location (coerce to list for safety)
+          locationIds = coerceToLocationIds(userData['locationId']);
         }
 
         // Load location details for all locations
@@ -211,7 +216,10 @@ class UserDashboardPage extends HookConsumerWidget {
         debugPrint("[Dashboard][DEBUG] Found ${foundShifts.length} shifts after querying for today");
         foundShifts =
             selectedLocationId.value != null
-                ? foundShifts.where((shift) => shift.locationIds.contains(selectedLocationId.value)).toList()
+                ? foundShifts.where((shift) {
+                  final shiftLocs = coerceToLocationIds(shift.locationIds);
+                  return shiftLocs.contains(selectedLocationId.value);
+                }).toList()
                 : foundShifts;
         foundShifts.sort((a, b) => a.startTime.compareTo(b.startTime));
         debugPrint("[Dashboard][DEBUG] Setting ${foundShifts.length} shifts to assignedShifts");
@@ -230,70 +238,115 @@ class UserDashboardPage extends HookConsumerWidget {
         }
         allChecklists.value = checklistGroups;
 
-        // Load missed tasks for yesterday for the selected location
+        // Ensure daily checklists (and carry-forward of missed tasks) exist for today
+        // This makes sure missed tasks from yesterday are copied into today's
+        // checklist subcollections before we attempt to load them for the UI.
+        try {
+          await DailyChecklistService().ensureDailyChecklistsExist(organizationId.value!);
+          debugPrint('[Dashboard] ensureDailyChecklistsExist completed for org=${organizationId.value}');
+        } catch (e) {
+          debugPrint('[Dashboard] ensureDailyChecklistsExist error: $e');
+        }
+
+        // Load missed carry-forward tasks for yesterday using the centralized service
         try {
           missedTasksLoading.value = true;
-          debugPrint("[Dashboard] Starting to load missed tasks...");
-          final dailyChecklistService = DailyChecklistService();
+          debugPrint('[Dashboard] Loading missed tasks via DailyChecklistService (carried-into date = today)');
+
+          // We must query the checklists for the date that carry-forward tasks were carried INTO.
+          // Carry-forward tasks are copied into today's checklists with carriedIntoDate=today.
+          // Requesting today's date ensures we find those carry-forward items so toggles update the correct
+          // subcollection documents. Previously this used yesterday which could lead to missing/duplicated items
+          // and made completion toggles point at the wrong checklist doc.
           final today = DateTime.now();
-          debugPrint("[Dashboard] Calling getMissedTasksForDate for today to find yesterday's carry-forward tasks...");
-          debugPrint(
-            "[Dashboard] Parameters: orgId=${organizationId.value}, locationId=${selectedLocationId.value}, date=today",
-          );
-          final missedTasksData = await dailyChecklistService.getMissedTasksForDate(
+
+          // Use the new collectionGroup-backed stream/loader for missed tasks in subcollections
+          // Harden access: ensure we only request missed tasks for a location the user actually has access to.
+          // Determine an effectiveLocationId from the UI-selected location or fallback to a primary/first location
+          String? effectiveLocationId = selectedLocationId.value;
+
+          // If selected location isn't in availableLocations, pick the primary or first available (if any)
+          try {
+            final availableIds = availableLocations.value.map((l) => l['id'] as String).toList();
+            if (effectiveLocationId != null && !availableIds.contains(effectiveLocationId)) {
+              effectiveLocationId = null;
+            }
+            if (effectiveLocationId == null && availableIds.isNotEmpty) {
+              // For non-admin users we must always filter by a location; admins may leave it null.
+              if (userRole.value == 2) {
+                // Keep null for admins to allow org-wide view
+                effectiveLocationId = null;
+              } else {
+                // Choose the primary or first available location
+                final primary = availableLocations.value.firstWhere(
+                  (l) => l['isPrimary'] == true,
+                  orElse: () => availableLocations.value.first,
+                );
+                effectiveLocationId = primary['id'] as String;
+              }
+            }
+          } catch (e) {
+            debugPrint('[Dashboard] Error resolving effectiveLocationId for missed tasks: $e');
+            effectiveLocationId = selectedLocationId.value;
+          }
+
+          var sections = await DailyChecklistService().loadMissedTasksForToday(
             organizationId: organizationId.value!,
-            date: today,
-            locationId: selectedLocationId.value,
+            targetDate: today,
+            locationId: effectiveLocationId,
           );
-          debugPrint("[Dashboard] getMissedTasksForDate completed with ${missedTasksData.length} missed task entries");
-          final sectionsMap = <String, MissedTasksSection>{};
-          final yesterday = DateTime.now().subtract(Duration(days: 1));
-          for (final missedTaskData in missedTasksData) {
-            final shiftId = missedTaskData['shiftId'] as String? ?? 'unknown';
-            final shiftName = missedTaskData['shiftName'] as String? ?? 'Unknown Shift';
-            final locationId = missedTaskData['locationId'] as String?;
-            final taskName = missedTaskData['taskName'] as String? ?? 'Unknown Task';
-            final count = missedTaskData['count'] as int? ?? 1;
-            final key = '$shiftId|$locationId';
-            final tasks = <TaskData>[];
-            for (int i = 0; i < count; i++) {
-              tasks.add(
-                TaskData(
-                  taskId: '${taskName}_$i',
-                  taskName: taskName,
-                  createdAt: yesterday,
-                  dueDate: yesterday,
-                  completed: false,
-                  photoRequired: false,
-                  description: taskName,
-                  isCarryForward: false,
-                ),
-              );
+
+          // Role-based filtering: employees (userRole 0) should only see missed-task sections
+          // for shifts that match one of their jobTypes. Managers/admins (1/2) see all sections.
+          try {
+            if (userRole.value == 0 && userJobTypes.value.isNotEmpty) {
+              final Map<String, bool> shiftMatchCache = {};
+              final filtered = <MissedTasksSection>[];
+
+              for (final sec in sections) {
+                final sid = sec.shiftId;
+                bool matches = false;
+
+                if (shiftMatchCache.containsKey(sid)) {
+                  matches = shiftMatchCache[sid]!;
+                } else {
+                  try {
+                    final shiftDoc =
+                        await FirestoreEnforcer.instance
+                            .collection('organizations')
+                            .doc(organizationId.value!)
+                            .collection('shifts')
+                            .doc(sid)
+                            .get();
+
+                    if (shiftDoc.exists) {
+                      final data = shiftDoc.data()!;
+                      final shiftJobTypes = coerceToJobTypes(data['jobTypes'] ?? data['jobType']);
+                      matches = shiftJobTypes.toSet().intersection(userJobTypes.value.toSet()).isNotEmpty;
+                    } else {
+                      // If the shift doc is missing, treat as non-matching for employees
+                      matches = false;
+                    }
+                  } catch (e) {
+                    debugPrint('[Dashboard] Error loading shift $sid for missed-tasks filtering: $e');
+                    matches = false;
+                  }
+                  shiftMatchCache[sid] = matches;
+                }
+
+                if (matches) filtered.add(sec);
+              }
+
+              sections = filtered;
             }
-            if (sectionsMap.containsKey(key)) {
-              sectionsMap[key] = sectionsMap[key]!.copyWith(tasks: [...sectionsMap[key]!.tasks, ...tasks]);
-            } else {
-              sectionsMap[key] = MissedTasksSection(
-                shiftId: shiftId,
-                shiftName: shiftName,
-                startTime: null,
-                endTime: null,
-                tasks: tasks,
-                locationId: locationId,
-                checklistId: 'missed_$shiftId',
-                organizationId: organizationId.value!,
-              );
-            }
+          } catch (e) {
+            debugPrint('[Dashboard] Error filtering missed task sections by jobTypes: $e');
           }
-          final missedTasksSectionsList = sectionsMap.values.toList();
-          missedTasksSections.value = missedTasksSectionsList;
-          debugPrint("[Dashboard] Converted to ${missedTasksSectionsList.length} missed task sections");
-          for (int i = 0; i < missedTasksSectionsList.length; i++) {
-            final section = missedTasksSectionsList[i];
-            debugPrint("[Dashboard] Section $i: ${section.shiftName} - ${section.tasks.length} tasks");
-          }
+
+          missedTasksSections.value = sections;
+          debugPrint('[Dashboard] Loaded ${sections.length} missed task sections via service (CG)');
         } catch (e, stack) {
-          debugPrint("[Dashboard] Error loading missed tasks: $e\n$stack");
+          debugPrint('[Dashboard] Error loading missed tasks via service: $e\n$stack');
         } finally {
           missedTasksLoading.value = false;
         }
@@ -350,7 +403,7 @@ class UserDashboardPage extends HookConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).primaryColor,
-        title: GenericAppBarContent(appBarTitle: 'Task Workflow', userRole: userRole.value),
+        title: GenericAppBarContent(appBarTitle: 'Plan with Hands', userRole: userRole.value),
         automaticallyImplyLeading: false,
         actions: [
           // Compact location selector for mobile
@@ -463,227 +516,272 @@ class UserDashboardPage extends HookConsumerWidget {
                       // ...existing code...
                       if (errorMessage.value != null) _InfoCard(message: errorMessage.value!, color: Colors.red),
 
-                      // Assigned shifts and today's checklists/tasks
-                      assignedShifts.value.isNotEmpty
-                          ? ListView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: assignedShifts.value.length,
-                            itemBuilder: (context, shiftIndex) {
-                              final shift = assignedShifts.value[shiftIndex];
-                              final locationId = selectedLocationIds.value[shiftIndex];
-                              final checklists =
-                                  allChecklists.value.length > shiftIndex ? allChecklists.value[shiftIndex] : [];
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  _ShiftStatusCard(
-                                    title: "Your Assigned Shift",
-                                    shiftName: shift.shiftName,
-                                    timeRange: "${shift.startTime} - ${shift.endTime}",
-                                    color: Colors.green,
-                                    icon: Icons.work_outline,
-                                    onClearShift:
-                                        () => _leaveVolunteerShift(
-                                          context,
-                                          shift,
-                                          organizationId.value!,
-                                          assignedShifts,
-                                          selectedLocationIds,
-                                          allChecklists,
-                                          todayDayName,
-                                          todayString,
-                                        ),
-                                  ),
-                                  if (checklists.isNotEmpty)
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 8.0),
-                                      child: Text(
-                                        "Today's Checklists",
-                                        style: Theme.of(
-                                          context,
-                                        ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                      // Available Shifts button at top
+                      if (enableScheduling)
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            ElevatedButton.icon(
+                              icon: const Icon(Icons.volunteer_activism),
+                              label: const Text("Available Shifts"),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Theme.of(context).primaryColor,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                              ),
+                              onPressed: () async {
+                                debugPrint("[Dashboard] Available Shifts button pressed");
+                                final result = await showModalBottomSheet<Map<String, dynamic>>(
+                                  context: context,
+                                  isScrollControlled: true,
+                                  builder:
+                                      (_) => _HelpOutSheet(
+                                        organizationId: organizationId.value ?? '',
+                                        todayDayName: todayDayName,
+                                        selectedLocationId: selectedLocationId.value,
+                                        selectedLocationName: selectedLocationName.value ?? 'Unknown Location',
                                       ),
-                                    ),
-                                  ...checklists.map(
-                                    (checklist) => _ChecklistCard(
-                                      checklist: checklist,
-                                      onTaskToggled: () async {
-                                        // Refresh only this shift's checklists
-                                        final refreshed = await _loadChecklistsForShiftSimple(
-                                          shift,
-                                          locationId,
-                                          todayString,
-                                          organizationId.value!,
-                                        );
-                                        allChecklists.value[shiftIndex] = refreshed;
-                                        allChecklists.value = List.from(allChecklists.value);
-                                      },
-                                    ),
-                                  ),
-                                ],
-                              );
-                            },
+                                );
+
+                                if (result != null) {
+                                  final shift = result['shift'] as ShiftData;
+                                  final locationId = result['locationId'] as String;
+
+                                  debugPrint(
+                                    "[Dashboard] User chose to help with shift '${shift.shiftName}' at location '$locationId'",
+                                  );
+
+                                  // Add user to shift's volunteers array
+                                  final user = FirebaseAuth.instance.currentUser;
+                                  if (user != null) {
+                                    try {
+                                      await FirestoreEnforcer.instance
+                                          .collection('organizations')
+                                          .doc(organizationId.value!)
+                                          .collection('shifts')
+                                          .doc(shift.shiftId)
+                                          .update({
+                                            'volunteers': FieldValue.arrayUnion([user.uid]),
+                                            // Track that this user explicitly joined this shift for TODAY only
+                                            'volunteerJoins.${user.uid}': todayString,
+                                          });
+
+                                      // Show success message
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Successfully joined ${shift.shiftName}!'),
+                                          backgroundColor: Colors.green,
+                                          duration: const Duration(seconds: 2),
+                                        ),
+                                      );
+                                      debugPrint("[Dashboard] Successfully added user to shift volunteers");
+
+                                      // Mark this shift as selected in global operational state so its checklists auto-expand
+                                      try {
+                                        ref.read(operationalStateProvider.notifier).selectShift(shift);
+                                      } catch (e) {
+                                        debugPrint('[Dashboard] Failed to update OperationalState selectedShift: $e');
+                                      }
+
+                                      // Refresh the dashboard to show the new volunteer shift
+                                      debugPrint("[Dashboard] Refreshing dashboard after joining volunteer shift...");
+                                      await loadDashboardData();
+                                    } catch (e) {
+                                      debugPrint('[Dashboard] Error joining volunteer shift: $e');
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Error joining shift. Please try again.'),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                    }
+                                  }
+                                }
+                              },
+                            ),
+                            const SizedBox(height: 16),
+
+                            // Instructional text (hide when there is an active assigned shift)
+                            if (assignedShifts.value.isEmpty) _InstructionCard(),
+                            const SizedBox(height: 16),
+                          ],
+                        ),
+
+                      // (Missed tasks section moved below Today's Assigned Work - see later)
+
+                      // Today's assigned shifts and checklists/tasks
+                      assignedShifts.value.isNotEmpty
+                          ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(
+                                "Today's Assigned Work",
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: Colors.blue[800]),
+                              ),
+                              const SizedBox(height: 12),
+                              ListView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: assignedShifts.value.length,
+                                itemBuilder: (context, shiftIndex) {
+                                  final shift = assignedShifts.value[shiftIndex];
+                                  final locationId = selectedLocationIds.value[shiftIndex];
+                                  final checklists =
+                                      allChecklists.value.length > shiftIndex ? allChecklists.value[shiftIndex] : [];
+                                  return Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      _ShiftStatusCard(
+                                        title: "Your Assigned Shift",
+                                        shiftName: shift.shiftName,
+                                        timeRange: "${shift.startTime} - ${shift.endTime}",
+                                        color: Colors.green,
+                                        icon: Icons.work_outline,
+                                        onClearShift:
+                                            () => _leaveVolunteerShift(
+                                              context,
+                                              shift,
+                                              organizationId.value!,
+                                              assignedShifts,
+                                              selectedLocationIds,
+                                              allChecklists,
+                                              todayDayName,
+                                              todayString,
+                                            ),
+                                      ),
+                                      if (checklists.isNotEmpty)
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                          child: Text(
+                                            "Today's Checklists",
+                                            style: Theme.of(
+                                              context,
+                                            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                      ...checklists.map(
+                                        (checklist) => _ChecklistCard(
+                                          checklist: checklist,
+                                          onTaskToggled: () async {
+                                            // Refresh only this shift's checklists
+                                            final refreshed = await _loadChecklistsForShiftSimple(
+                                              shift,
+                                              locationId,
+                                              todayString,
+                                              organizationId.value!,
+                                            );
+                                            allChecklists.value[shiftIndex] = refreshed;
+                                            allChecklists.value = List.from(allChecklists.value);
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              ),
+                            ],
                           )
-                          : const Center(
+                          : Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.work_off_outlined, size: 64, color: Colors.grey),
-                                SizedBox(height: 16),
+                                Icon(Icons.work_off_outlined, size: 64, color: Colors.grey[400]),
+                                const SizedBox(height: 16),
                                 Text(
-                                  "No shift selected for today.",
+                                  "No shifts selected for today",
                                   textAlign: TextAlign.center,
-                                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: Colors.grey[600]),
                                 ),
-                                SizedBox(height: 8),
+                                const SizedBox(height: 8),
                                 Text(
                                   enableScheduling
-                                      ? "Choose a shift below to start working today."
+                                      ? "Use the 'Available Shifts' button above to select a shift and start working."
                                       : "Scheduling is currently disabled.",
                                   textAlign: TextAlign.center,
-                                  style: TextStyle(fontSize: 14, color: Colors.grey),
+                                  style: TextStyle(fontSize: 14, color: Colors.grey[500]),
                                 ),
                               ],
                             ),
                           ),
 
-                      // Missed Tasks Section (now below today's tasks)
-                      if (missedTasksSections.value.isNotEmpty) ...[
-                        const SizedBox(height: 32),
-                        _ShiftStatusCard(
-                          title: "Yesterday's Missed Tasks",
-                          shiftName: "Tasks that were not completed yesterday",
-                          timeRange:
-                              "${missedTasksSections.value.length} shift${missedTasksSections.value.length != 1 ? 's' : ''} with missed tasks",
-                          color: Colors.red,
-                          icon: Icons.warning_amber_outlined,
-                          onClearShift: null,
-                        ),
+                      // Missed tasks section (placed after Today's Assigned Work)
+                      if (missedTasksLoading.value || missedTasksSections.value.isNotEmpty) ...[
+                        _MissedTasksHeaderCard(),
                         const SizedBox(height: 8),
-                        ...missedTasksSections.value.map(
-                          (section) => _MissedTasksShiftCard(
-                            section: section,
-                            onUpdate: () async {
-                              // Reload dashboard to fetch updated missed tasks via getMissedTasksForDate
-                              await loadDashboardData();
-                            },
-                          ),
-                        ),
-                      ],
-
-                      const SizedBox(height: 16),
-                      if (enableScheduling)
-                        ElevatedButton.icon(
-                          icon: const Icon(Icons.volunteer_activism),
-                          label: const Text("Begin Working a Shift"),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Theme.of(context).primaryColor,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                          ),
-                          onPressed: () async {
-                            debugPrint("[Dashboard] Help Out button pressed");
-                            final result = await showModalBottomSheet<Map<String, dynamic>>(
-                              context: context,
-                              isScrollControlled: true,
-                              builder:
-                                  (_) => _HelpOutSheet(
-                                    organizationId: organizationId.value ?? '',
-                                    todayDayName: todayDayName,
-                                    selectedLocationId: selectedLocationId.value,
-                                    selectedLocationName: selectedLocationName.value ?? 'Unknown Location',
+                        if (missedTasksLoading.value)
+                          const Card(
+                            child: Padding(
+                              padding: EdgeInsets.all(16.0),
+                              child: Center(
+                                child: Column(
+                                  children: [
+                                    CircularProgressIndicator(),
+                                    SizedBox(height: 8),
+                                    Text('Loading missed tasks...'),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          )
+                        else if (missedTasksSections.value.isEmpty)
+                          Card(
+                            color: Colors.green[50],
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.check_circle, color: Colors.green[600], size: 32),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'All caught up!',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.green[800],
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'No missed tasks from yesterday.',
+                                          style: TextStyle(color: Colors.green[700]),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                            );
-
-                            if (result != null) {
-                              final shift = result['shift'] as ShiftData;
-                              final locationId = result['locationId'] as String;
-
-                              debugPrint(
-                                "[Dashboard] User chose to help with shift '${shift.shiftName}' at location '$locationId'",
-                              );
-
-                              // Add user to shift's volunteers array
-                              final user = FirebaseAuth.instance.currentUser;
-                              if (user != null) {
-                                try {
-                                  await FirestoreEnforcer.instance
-                                      .collection('organizations')
-                                      .doc(organizationId.value!)
-                                      .collection('shifts')
-                                      .doc(shift.shiftId)
-                                      .update({
-                                        'volunteers': FieldValue.arrayUnion([user.uid]),
-                                      });
-
-                                  // Show success message
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('Successfully joined ${shift.shiftName}!'),
-                                      backgroundColor: Colors.green,
-                                      duration: const Duration(seconds: 2),
-                                    ),
-                                  );
-                                  debugPrint("[Dashboard] Successfully added user to shift volunteers");
-
-                                  // Refresh the dashboard to show the new volunteer shift
-                                  debugPrint("[Dashboard] Refreshing dashboard after joining volunteer shift...");
-                                  try {
-                                    // Reload all shifts for today
-                                    List<ShiftData> refreshedShifts = await _getAllShiftsForToday(
-                                      user.uid,
-                                      todayDayName,
-                                      todayString,
-                                    );
-                                    debugPrint("[Dashboard] Refreshed shifts: ${refreshedShifts.length} found");
-
-                                    // Update the dashboard state
-                                    refreshedShifts.sort((a, b) => a.startTime.compareTo(b.startTime));
-                                    assignedShifts.value = refreshedShifts;
-                                    selectedLocationIds.value =
-                                        refreshedShifts
-                                            .map(
-                                              (shift) =>
-                                                  shift.locationIds.isNotEmpty ? shift.locationIds.first : 'default',
-                                            )
-                                            .toList();
-
-                                    // Load checklists for each shift
-                                    List<List<DailyChecklist>> checklistGroups = [];
-                                    for (int i = 0; i < refreshedShifts.length; i++) {
-                                      final shift = refreshedShifts[i];
-                                      final locationId = selectedLocationIds.value[i];
-                                      final checklists = await _loadChecklistsForShiftSimple(
-                                        shift,
-                                        locationId,
-                                        todayString,
-                                        organizationId.value!,
-                                      );
-                                      checklistGroups.add(checklists);
-                                    }
-                                    allChecklists.value = checklistGroups;
-
-                                    debugPrint(
-                                      "[Dashboard] Dashboard refresh completed with ${refreshedShifts.length} shifts",
-                                    );
-                                  } catch (refreshError) {
-                                    debugPrint("[Dashboard] Error refreshing dashboard: $refreshError");
-                                  }
-                                } catch (e) {
-                                  debugPrint('[Dashboard] Error joining volunteer shift: $e');
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Error joining shift. Please try again.'),
-                                      backgroundColor: Colors.red,
-                                    ),
-                                  );
-                                }
-                              }
-                            }
-                          },
-                        ),
+                                ],
+                              ),
+                            ),
+                          )
+                        else
+                          ...missedTasksSections.value.map(
+                            (section) => _MissedTasksShiftCard(
+                              section: section,
+                              onUpdate: (updatedSection) {
+                                // Update local missedTasksSections in-place so completed missed tasks remain visible
+                                final updated =
+                                    missedTasksSections.value
+                                        .map((s) {
+                                          if (s.shiftId == updatedSection.shiftId &&
+                                              s.locationId == updatedSection.locationId) {
+                                            return updatedSection;
+                                          }
+                                          return s;
+                                        })
+                                        .toList()
+                                        .cast<MissedTasksSection>();
+                                missedTasksSections.value = updated;
+                              },
+                            ),
+                          ),
+                        const SizedBox(height: 24),
+                      ],
                     ],
                   ),
                 ),
@@ -720,7 +818,12 @@ Future<List<ShiftData>> _getAllShiftsForToday(String userId, String todayDayName
 
   final userRole = userData['userRole'] ?? 0;
   debugPrint("[Dashboard][DEBUG] userRole=$userRole");
+
+  // New: support multi-location users for all roles. Prefer canonical 'locationIds' when present,
+  // otherwise fall back to legacy 'locationId'. Admins (2) still get all locations.
   List<String> locationIds = [];
+  List<String> userJobTypes = coerceToJobTypes(userData['jobTypes'] ?? userData['jobType']);
+  debugPrint("[Dashboard][DEBUG] userJobTypes: $userJobTypes");
 
   if (userRole == 2) {
     // Admin
@@ -729,14 +832,14 @@ Future<List<ShiftData>> _getAllShiftsForToday(String userId, String todayDayName
         await FirestoreEnforcer.instance.collection('organizations').doc(organizationId).collection('locations').get();
     locationIds = locationsSnapshot.docs.map((doc) => doc.id).toList();
     debugPrint("[Dashboard][DEBUG] Admin locationIds: $locationIds");
-  } else if (userRole == 1 && userData['locationIds'] != null) {
-    // Manager
-    locationIds = List<String>.from(userData['locationIds']);
-    debugPrint("[Dashboard][DEBUG] Manager locationIds: $locationIds");
+  } else if (userData['locationIds'] != null) {
+    // Any non-admin with canonical locationIds
+    locationIds = coerceToLocationIds(userData['locationIds']);
+    debugPrint("[Dashboard][DEBUG] User locationIds (from locationIds): $locationIds");
   } else if (userData['locationId'] != null) {
-    // General User
-    locationIds = [userData['locationId']];
-    debugPrint("[Dashboard][DEBUG] General user locationIds: $locationIds");
+    // Legacy single-location field
+    locationIds = coerceToLocationIds(userData['locationId']);
+    debugPrint("[Dashboard][DEBUG] User locationIds (from locationId): $locationIds");
   }
 
   if (locationIds.isEmpty) {
@@ -941,6 +1044,17 @@ Future<List<ShiftData>> _getAllShiftsForToday(String userId, String todayDayName
         debugPrint("[Dashboard][DEBUG] Volunteer shift doc.id=${doc.id}, data=$data");
         final shift = ShiftData.fromJson(data).copyWith(shiftId: doc.id);
 
+        // Only include volunteer shifts that the user explicitly joined today
+        final vj = (data['volunteerJoins'] as Map?)?.cast<String, dynamic>();
+        final joinedMarker = vj != null ? vj[userId] : null;
+        final joinedToday = joinedMarker == todayString;
+        if (!joinedToday) {
+          debugPrint(
+            "[Dashboard][DEBUG] Skipping volunteer shift ${shift.shiftName}: user didn't join today (marker=$joinedMarker, today=$todayString)",
+          );
+          continue;
+        }
+
         // Check if this shift is active for today
         final isActiveToday = await _isShiftActiveForToday(shift, todayDayName, todayString, isVolunteerShift: true);
 
@@ -966,6 +1080,23 @@ Future<List<ShiftData>> _getAllShiftsForToday(String userId, String todayDayName
     }
   } catch (e, stack) {
     debugPrint("[Dashboard][DEBUG] Error checking volunteer shifts: $e\n$stack");
+  }
+
+  // If this is a general user (userRole 0), filter visible shifts to only those matching the user's jobType(s)
+  try {
+    if (userRole == 0 && userJobTypes.isNotEmpty) {
+      final beforeCount = allShifts.length;
+      allShifts =
+          allShifts.where((s) {
+            final shiftJobs = s.jobType; // ShiftData.jobType is non-nullable List<String>
+            return shiftJobs.toSet().intersection(userJobTypes.toSet()).isNotEmpty;
+          }).toList();
+      debugPrint(
+        "[Dashboard][DEBUG] Filtered shifts by userJobTypes ($userJobTypes): removed ${beforeCount - allShifts.length} shifts",
+      );
+    }
+  } catch (e) {
+    debugPrint('[Dashboard][DEBUG] Error filtering shifts by jobType: $e');
   }
 
   debugPrint("[Dashboard][DEBUG] Final total with volunteers: ${allShifts.length} shifts");
@@ -996,11 +1127,9 @@ Future<bool> _isShiftActiveForToday(
       return false;
     }
 
-    // For volunteer shifts, if the user has already volunteered for today, show it regardless of time
-    if (isVolunteerShift) {
-      debugPrint("[Dashboard] Volunteer shift ${shift.shiftName} is scheduled for today - showing regardless of time");
-      return true;
-    }
+    // For volunteer shifts, we do NOT show them all day if the user previously volunteered.
+    // Instead, show volunteer shifts only starting 30 minutes before the shift start and until the shift ends.
+    // This prevents stale volunteer entries from appearing long before the shift.
 
     // Parse shift times
     final startTimeParts = shift.startTime.split(':');
@@ -1031,6 +1160,18 @@ Future<bool> _isShiftActiveForToday(
     if (now.isAfter(shiftStart) && now.isBefore(shiftEnd)) {
       debugPrint("[Dashboard] Currently within shift ${shift.shiftName} time window");
       return true;
+    }
+
+    // Special handling for volunteer shifts: only show them if we're within the pre-start window
+    // (30 minutes before start) or during the shift. This avoids showing volunteer shifts far in
+    // advance when the user signed up previously.
+    if (isVolunteerShift) {
+      final preWindowStart = shiftStart.subtract(const Duration(minutes: 30));
+      final withinVolunteerWindow = now.isAfter(preWindowStart) && now.isBefore(shiftEnd);
+      debugPrint(
+        "[Dashboard] Volunteer shift ${shift.shiftName}: preWindowStart=$preWindowStart, now=$now, shiftEnd=$shiftEnd, withinVolunteerWindow=$withinVolunteerWindow",
+      );
+      return withinVolunteerWindow;
     }
 
     // Check if shift has ended
@@ -1100,38 +1241,7 @@ Future<List<DailyChecklist>> _loadChecklistsForShiftSimple(
   }
 }
 
-// Helper method to show the help out sheet
-Future<void> _showHelpOutSheet(
-  BuildContext context,
-  ValueNotifier<List<DailyChecklist>> currentChecklists,
-  String todayString,
-  ValueNotifier<String> selectedLocationId,
-  ValueNotifier<ShiftData?> helpingShift,
-  String organizationId,
-) async {
-  final result = await showModalBottomSheet<Map<String, dynamic>>(
-    context: context,
-    isScrollControlled: true,
-    builder:
-        (_) => _HelpOutSheet(
-          organizationId: organizationId,
-          todayDayName: DateFormat('EEEE').format(DateTime.now()),
-          selectedLocationId: selectedLocationId.value,
-          selectedLocationName: 'Selected Location', // We'll get this from the locationId
-        ),
-  );
-
-  if (result != null) {
-    final shift = result['shift'] as ShiftData;
-    final locationId = result['locationId'] as String;
-
-    debugPrint("[Dashboard] User chose to help with shift '${shift.shiftName}' at location '$locationId'");
-
-    helpingShift.value = shift;
-    selectedLocationId.value = locationId;
-    currentChecklists.value = await _loadChecklistsForShiftSimple(shift, locationId, todayString, organizationId);
-  }
-}
+// _showHelpOutSheet helper removed - _HelpOutSheet is used inline where needed
 
 // Method to leave a volunteer shift (removes user from volunteers array)
 Future<void> _leaveVolunteerShift(
@@ -1174,7 +1284,7 @@ Future<void> _leaveVolunteerShift(
   if (confirmed != true) return;
 
   try {
-    // Remove user from volunteers array
+    // Remove user from volunteers array and their dated join marker
     await FirestoreEnforcer.instance
         .collection('organizations')
         .doc(organizationId)
@@ -1182,6 +1292,7 @@ Future<void> _leaveVolunteerShift(
         .doc(shift.shiftId)
         .update({
           'volunteers': FieldValue.arrayRemove([user.uid]),
+          'volunteerJoins.${user.uid}': FieldValue.delete(),
         });
 
     debugPrint("[Dashboard] Successfully removed user from shift volunteers");
@@ -1197,7 +1308,10 @@ Future<void> _leaveVolunteerShift(
       refreshedShifts.sort((a, b) => a.startTime.compareTo(b.startTime));
       assignedShifts.value = refreshedShifts;
       selectedLocationIds.value =
-          refreshedShifts.map((shift) => shift.locationIds.isNotEmpty ? shift.locationIds.first : 'default').toList();
+          refreshedShifts.map((shift) {
+            final locs = coerceToLocationIds(shift.locationIds);
+            return locs.isNotEmpty ? locs.first : 'default';
+          }).toList();
 
       // Load checklists for each remaining shift
       List<List<DailyChecklist>> checklistGroups = [];
@@ -1235,132 +1349,128 @@ class _HelpOutSheet extends StatelessWidget {
   final String selectedLocationName;
 
   const _HelpOutSheet({
-    Key? key,
+    super.key,
     required this.organizationId,
     required this.todayDayName,
     this.selectedLocationId,
     required this.selectedLocationName,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
-      initialChildSize: 0.7,
-      maxChildSize: 0.9,
+      initialChildSize: 1.0,
+      maxChildSize: 1.0,
       minChildSize: 0.5,
       builder: (context, scrollController) {
-        return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20)),
-          ),
-          child: Column(
-            children: [
-              // Handle bar
-              Container(
-                margin: const EdgeInsets.only(top: 8),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
-              ),
-              // Header
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Available Shifts',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Select a shift to begin working at $selectedLocationName',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
-                    ),
-                  ],
+        return SafeArea(
+          top: true,
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20)),
+            ),
+            child: Column(
+              children: [
+                // Header
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Available Shifts',
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Select a shift to begin working at $selectedLocationName',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const Divider(),
-              // Shifts list
-              Expanded(
-                child: FutureBuilder<List<ShiftData>>(
-                  future: _getAvailableShifts(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
+                const Divider(height: 1),
+                // Shifts list
+                Expanded(
+                  child: FutureBuilder<List<ShiftData>>(
+                    future: _getAvailableShifts(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
 
-                    if (snapshot.hasError) {
-                      return Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.error_outline, size: 48, color: Colors.grey[400]),
-                            const SizedBox(height: 16),
-                            Text('Error loading shifts', style: TextStyle(color: Colors.grey[600])),
-                          ],
-                        ),
-                      );
-                    }
-
-                    final shifts = snapshot.data ?? [];
-
-                    if (shifts.isEmpty) {
-                      return Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.work_off, size: 48, color: Colors.grey[400]),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No available shifts',
-                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: Colors.grey[600]),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'There are no shifts available for you to join today.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: Colors.grey[500]),
-                            ),
-                          ],
-                        ),
-                      );
-                    }
-
-                    return ListView.builder(
-                      controller: scrollController,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: shifts.length,
-                      itemBuilder: (context, index) {
-                        final shift = shifts[index];
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: Theme.of(context).primaryColor,
-                              child: const Icon(Icons.work, color: Colors.white, size: 20),
-                            ),
-                            title: Text(shift.shiftName, style: const TextStyle(fontWeight: FontWeight.w500)),
-                            subtitle: Text('${shift.startTime} - ${shift.endTime}'),
-                            trailing: ElevatedButton(
-                              onPressed: () {
-                                Navigator.of(context).pop({'shift': shift, 'locationId': selectedLocationId});
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Theme.of(context).primaryColor,
-                                foregroundColor: Colors.white,
-                              ),
-                              child: const Text('Join'),
-                            ),
+                      if (snapshot.hasError) {
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.error_outline, size: 48, color: Colors.grey[400]),
+                              const SizedBox(height: 16),
+                              Text('Error loading shifts', style: TextStyle(color: Colors.grey[600])),
+                            ],
                           ),
                         );
-                      },
-                    );
-                  },
+                      }
+
+                      final shifts = snapshot.data ?? [];
+
+                      if (shifts.isEmpty) {
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.work_off, size: 48, color: Colors.grey[400]),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No available shifts',
+                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: Colors.grey[600]),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'There are no shifts available for you to join today.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.grey[500]),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      return ListView.builder(
+                        controller: scrollController,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        itemCount: shifts.length,
+                        itemBuilder: (context, index) {
+                          final shift = shifts[index];
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: Theme.of(context).primaryColor,
+                                child: const Icon(Icons.work, color: Colors.white, size: 20),
+                              ),
+                              title: Text(shift.shiftName, style: const TextStyle(fontWeight: FontWeight.w500)),
+                              subtitle: Text('${shift.startTime} - ${shift.endTime}'),
+                              trailing: ElevatedButton(
+                                onPressed: () {
+                                  Navigator.of(context).pop({'shift': shift, 'locationId': selectedLocationId});
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Theme.of(context).primaryColor,
+                                  foregroundColor: Colors.white,
+                                ),
+                                child: const Text('Join'),
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
@@ -1381,15 +1491,77 @@ class _HelpOutSheet extends StatelessWidget {
       final shiftsSnapshot = await shiftsQuery.get();
       final shifts = <ShiftData>[];
 
+      // Load current user role and job types for filtering logic
+      int userRole = 0; // 0=user, 1=manager, 2=admin
+      final currentUser = FirebaseAuth.instance.currentUser;
+      List<String> userJobTypes = [];
+      if (currentUser != null) {
+        try {
+          final userDoc = await FirestoreEnforcer.instance.collection('users').doc(currentUser.uid).get();
+          if (userDoc.exists) {
+            final data = userDoc.data() as Map<String, dynamic>;
+            userRole = (data['userRole'] as int?) ?? 0;
+            userJobTypes = coerceToJobTypes(data['jobTypes'] ?? data['jobType']);
+          }
+        } catch (_) {
+          // ignore user load errors; fall back to defaults
+        }
+      }
+
+      // Helper: determine if a shift should be visible now in the Available Shifts sheet
+      bool isShiftWithinWindow(ShiftData shift) {
+        try {
+          // Scheduled for today?
+          if (!(shift.repeatsDaily || shift.days.contains(todayDayName))) {
+            return false;
+          }
+
+          // Parse times (HH:mm)
+          final sParts = shift.startTime.split(':');
+          final eParts = shift.endTime.split(':');
+          if (sParts.length != 2 || eParts.length != 2) return false;
+
+          final now = DateTime.now();
+          final startHour = int.tryParse(sParts[0]) ?? 0;
+          final startMinute = int.tryParse(sParts[1]) ?? 0;
+          final endHour = int.tryParse(eParts[0]) ?? 0;
+          final endMinute = int.tryParse(eParts[1]) ?? 0;
+
+          var shiftStart = DateTime(now.year, now.month, now.day, startHour, startMinute);
+          var shiftEnd = DateTime(now.year, now.month, now.day, endHour, endMinute);
+
+          // Handle overnight shifts
+          if (shiftEnd.isBefore(shiftStart)) {
+            shiftEnd = shiftEnd.add(const Duration(days: 1));
+          }
+
+          final visibleFrom = shiftStart.subtract(const Duration(minutes: 30));
+          final visibleUntil = shiftEnd.add(const Duration(hours: 1));
+          return now.isAfter(visibleFrom) && now.isBefore(visibleUntil);
+        } catch (_) {
+          return false;
+        }
+      }
+
       for (final doc in shiftsSnapshot.docs) {
         try {
           final data = doc.data();
           final shift = ShiftData.fromJson(data).copyWith(shiftId: doc.id);
 
-          // Check if shift is active for today
-          if (shift.repeatsDaily || shift.days.contains(todayDayName)) {
-            shifts.add(shift);
+          // Time-window filter: only show starting 30 min before start, hide 1 hour after end
+          if (!isShiftWithinWindow(shift)) continue;
+
+          // Role-based visibility:
+          // - userRole 1 (manager) and 2 (admin): see all shifts within window
+          // - userRole 0 (general user): only shifts matching user's jobType(s)
+          if (userRole == 0) {
+            final shiftJobs = shift.jobType; // List<String>
+            if (userJobTypes.isEmpty) continue;
+            final intersects = shiftJobs.toSet().intersection(userJobTypes.toSet()).isNotEmpty;
+            if (!intersects) continue;
           }
+
+          shifts.add(shift);
         } catch (e) {
           debugPrint('[HelpOutSheet] Error parsing shift ${doc.id}: $e');
         }
@@ -1410,7 +1582,7 @@ class _PhotoDialog extends StatefulWidget {
   final dynamic checklist;
   final VoidCallback onPhotoUpdated;
 
-  const _PhotoDialog({Key? key, required this.task, this.checklist, required this.onPhotoUpdated}) : super(key: key);
+  const _PhotoDialog({super.key, required this.task, this.checklist, required this.onPhotoUpdated});
 
   @override
   State<_PhotoDialog> createState() => _PhotoDialogState();
@@ -1420,6 +1592,15 @@ class _PhotoDialogState extends State<_PhotoDialog> {
   bool _isUploading = false;
   String? _currentPhotoUrl;
   final ImagePicker _picker = ImagePicker();
+
+  // Temporary fix for legacy URLs that used the wrong default bucket name
+  String _fixStorageUrl(String url) {
+    // Only adjust known bad bucket pattern
+    if (url.contains('plan-with-hands.firebasestorage.app')) {
+      return url.replaceAll('plan-with-hands.firebasestorage.app', 'plan-with-hands.appspot.com');
+    }
+    return url;
+  }
 
   @override
   void initState() {
@@ -1444,23 +1625,15 @@ class _PhotoDialogState extends State<_PhotoDialog> {
         return;
       }
 
-      // Upload to Firebase Storage
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        throw Exception('User not authenticated');
-      }
-
-      final storageRef = FirebaseStorage.instance
-          .ref()
-          .child('task_photos')
-          .child('${widget.task.taskId}_${DateTime.now().millisecondsSinceEpoch}.jpg');
-
-      // Upload the file
-      final uploadTask = await storageRef.putData(await image.readAsBytes());
-      final downloadUrl = await uploadTask.ref.getDownloadURL();
-
-      // Update the task in Firestore
-      await _updateTaskPhoto(downloadUrl);
+      // Upload via centralized service
+      final svc = DailyChecklistService();
+      final downloadUrl = await svc.uploadTaskPhoto(
+        organizationId: widget.checklist?.organizationId ?? widget.task.organizationId,
+        locationId: widget.checklist?.locationId ?? widget.task.locationId,
+        checklistId: widget.checklist?.id ?? widget.task.checklistId,
+        taskId: widget.task.taskId,
+        imageFile: image,
+      );
 
       setState(() {
         _currentPhotoUrl = downloadUrl;
@@ -1473,6 +1646,7 @@ class _PhotoDialogState extends State<_PhotoDialog> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Photo uploaded successfully!'), backgroundColor: Colors.green));
+        Navigator.of(context).pop(widget.task.copyWith(photoUrl: downloadUrl, proofImageUrl: downloadUrl));
       }
     } catch (e) {
       setState(() => _isUploading = false);
@@ -1503,23 +1677,15 @@ class _PhotoDialogState extends State<_PhotoDialog> {
         return;
       }
 
-      // Upload to Firebase Storage
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        throw Exception('User not authenticated');
-      }
-
-      final storageRef = FirebaseStorage.instance
-          .ref()
-          .child('task_photos')
-          .child('${widget.task.taskId}_${DateTime.now().millisecondsSinceEpoch}.jpg');
-
-      // Upload the file
-      final uploadTask = await storageRef.putData(await image.readAsBytes());
-      final downloadUrl = await uploadTask.ref.getDownloadURL();
-
-      // Update the task in Firestore
-      await _updateTaskPhoto(downloadUrl);
+      // Upload via centralized service
+      final svc = DailyChecklistService();
+      final downloadUrl = await svc.uploadTaskPhoto(
+        organizationId: widget.checklist?.organizationId ?? widget.task.organizationId,
+        locationId: widget.checklist?.locationId ?? widget.task.locationId,
+        checklistId: widget.checklist?.id ?? widget.task.checklistId,
+        taskId: widget.task.taskId,
+        imageFile: image,
+      );
 
       setState(() {
         _currentPhotoUrl = downloadUrl;
@@ -1532,6 +1698,7 @@ class _PhotoDialogState extends State<_PhotoDialog> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Photo captured and uploaded successfully!'), backgroundColor: Colors.green),
         );
+        Navigator.of(context).pop(widget.task.copyWith(photoUrl: downloadUrl, proofImageUrl: downloadUrl));
       }
     } catch (e) {
       setState(() => _isUploading = false);
@@ -1546,19 +1713,34 @@ class _PhotoDialogState extends State<_PhotoDialog> {
   }
 
   Future<void> _updateTaskPhoto(String photoUrl) async {
-    // Update the task in the daily checklist
-    if (widget.checklist != null) {
-      await FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(widget.checklist.organizationId)
-          .collection('locations')
-          .doc(widget.checklist.locationId)
-          .collection('daily_checklists')
-          .doc(widget.checklist.id)
-          .update({
-            'tasks.${widget.task.taskId}.photoUrl': photoUrl,
-            'tasks.${widget.task.taskId}.photoUploadedAt': FieldValue.serverTimestamp(),
-          });
+    // Prefer subcollection update via service if possible.
+    try {
+      final svc = DailyChecklistService();
+      if (widget.checklist != null) {
+        // Use checklist metadata when provided
+        await svc.updateTaskPhotoInSubcollection(
+          organizationId: widget.checklist.organizationId,
+          locationId: widget.checklist.locationId,
+          checklistId: widget.checklist.id,
+          taskId: widget.task.taskId,
+          proofImageUrl: photoUrl,
+        );
+        return;
+      }
+
+      // Fallback: if task object contains denormalized fields (TaskData), use them
+      if (widget.task != null && (widget.task.organizationId != null)) {
+        await svc.updateTaskPhotoInSubcollection(
+          organizationId: widget.task.organizationId,
+          locationId: widget.task.locationId,
+          checklistId: widget.task.checklistId,
+          taskId: widget.task.taskId,
+          proofImageUrl: photoUrl,
+        );
+      }
+    } catch (e) {
+      debugPrint('[PhotoDialog] Error updating task photo via service: $e');
+      rethrow;
     }
   }
 
@@ -1566,7 +1748,7 @@ class _PhotoDialogState extends State<_PhotoDialog> {
     try {
       setState(() => _isUploading = true);
 
-      // Remove photo URL from Firestore
+      // Remove photo URL via service
       await _updateTaskPhoto('');
 
       setState(() {
@@ -1580,6 +1762,7 @@ class _PhotoDialogState extends State<_PhotoDialog> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Photo removed successfully!'), backgroundColor: Colors.green));
+        Navigator.of(context).pop(widget.task.copyWith(photoUrl: '', proofImageUrl: ''));
       }
     } catch (e) {
       setState(() => _isUploading = false);
@@ -1596,17 +1779,32 @@ class _PhotoDialogState extends State<_PhotoDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Row(
-        children: [
-          const Icon(Icons.camera_alt, color: Colors.blue),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Task Photo',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-            ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      titlePadding: EdgeInsets.zero,
+      title: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Theme.of(context).primaryColor, Theme.of(context).primaryColor.withOpacity(0.85)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-        ],
+          borderRadius: const BorderRadius.only(topLeft: Radius.circular(12), topRight: Radius.circular(12)),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            const Icon(Icons.camera_alt, color: Colors.white),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Task Photo',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
       ),
       content: SizedBox(
         width: double.maxFinite,
@@ -1628,7 +1826,7 @@ class _PhotoDialogState extends State<_PhotoDialog> {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
                   child: Image.network(
-                    _currentPhotoUrl!,
+                    _fixStorageUrl(_currentPhotoUrl!),
                     fit: BoxFit.cover,
                     loadingBuilder: (context, child, loadingProgress) {
                       if (loadingProgress == null) return child;
@@ -1642,15 +1840,34 @@ class _PhotoDialogState extends State<_PhotoDialog> {
                       );
                     },
                     errorBuilder: (context, error, stackTrace) {
+                      final url = _currentPhotoUrl ?? '';
+                      final isLocalEmulator = url.contains('127.0.0.1') || url.contains('localhost:9199');
                       return Container(
                         color: Colors.grey[200],
-                        child: const Center(
+                        padding: const EdgeInsets.all(12),
+                        child: Center(
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.error, color: Colors.red, size: 32),
-                              SizedBox(height: 8),
-                              Text('Failed to load image'),
+                              const Icon(Icons.error, color: Colors.red, size: 32),
+                              const SizedBox(height: 8),
+                              if (isLocalEmulator) ...[
+                                const Text(
+                                  'Failed to load image from local Storage emulator',
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 8),
+                                SelectableText('URL: '),
+                                SelectableText(url, style: const TextStyle(fontSize: 12)),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Start the Firebase Storage emulator (127.0.0.1:9199) or re-upload the image to your production bucket.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: Colors.grey[700], fontSize: 12),
+                                ),
+                              ] else ...[
+                                const Text('Failed to load image', textAlign: TextAlign.center),
+                              ],
                             ],
                           ),
                         ),
@@ -1693,7 +1910,11 @@ class _PhotoDialogState extends State<_PhotoDialog> {
       ),
       actions: [
         // Cancel button
-        TextButton(onPressed: _isUploading ? null : () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(
+          onPressed: _isUploading ? null : () => Navigator.pop(context),
+          style: TextButton.styleFrom(foregroundColor: Colors.grey[800]),
+          child: const Text('Cancel'),
+        ),
 
         // Remove photo button (only show if photo exists)
         if (_currentPhotoUrl != null && _currentPhotoUrl!.isNotEmpty)
@@ -1708,7 +1929,10 @@ class _PhotoDialogState extends State<_PhotoDialog> {
           onPressed: _isUploading ? null : _takePhoto,
           icon: const Icon(Icons.camera_alt),
           label: const Text('Camera'),
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Theme.of(context).primaryColor,
+            foregroundColor: Colors.white,
+          ),
         ),
 
         // Gallery button
@@ -1716,7 +1940,10 @@ class _PhotoDialogState extends State<_PhotoDialog> {
           onPressed: _isUploading ? null : _pickAndUploadPhoto,
           icon: const Icon(Icons.photo_library),
           label: const Text('Gallery'),
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Theme.of(context).primaryColor,
+            foregroundColor: Colors.white,
+          ),
         ),
       ],
       actionsPadding: const EdgeInsets.all(16),
@@ -1730,7 +1957,7 @@ class _NotesDialog extends StatefulWidget {
   final dynamic checklist;
   final VoidCallback onNotesUpdated;
 
-  const _NotesDialog({Key? key, required this.task, this.checklist, required this.onNotesUpdated}) : super(key: key);
+  const _NotesDialog({super.key, required this.task, this.checklist, required this.onNotesUpdated});
 
   @override
   State<_NotesDialog> createState() => _NotesDialogState();
@@ -1759,18 +1986,23 @@ class _NotesDialogState extends State<_NotesDialog> {
       final notes = _notesController.text.trim();
 
       // Update the task notes in Firestore
+      final svc = DailyChecklistService();
       if (widget.checklist != null) {
-        await FirestoreEnforcer.instance
-            .collection('organizations')
-            .doc(widget.checklist.organizationId)
-            .collection('locations')
-            .doc(widget.checklist.locationId)
-            .collection('daily_checklists')
-            .doc(widget.checklist.id)
-            .update({
-              'tasks.${widget.task.taskId}.notes': notes,
-              'tasks.${widget.task.taskId}.notesUpdatedAt': FieldValue.serverTimestamp(),
-            });
+        await svc.updateTaskNotes(
+          organizationId: widget.checklist.organizationId,
+          locationId: widget.checklist.locationId,
+          checklistId: widget.checklist.id,
+          taskId: widget.task.taskId,
+          notes: notes,
+        );
+      } else if (widget.task != null && (widget.task.organizationId != null)) {
+        await svc.updateTaskNotes(
+          organizationId: widget.task.organizationId,
+          locationId: widget.task.locationId,
+          checklistId: widget.task.checklistId,
+          taskId: widget.task.taskId,
+          notes: notes,
+        );
       }
 
       widget.onNotesUpdated();
@@ -1779,7 +2011,7 @@ class _NotesDialogState extends State<_NotesDialog> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Notes saved successfully!'), backgroundColor: Colors.green));
-        Navigator.pop(context);
+        Navigator.pop(context, notes);
       }
     } catch (e) {
       debugPrint('Error saving notes: $e');
@@ -1799,17 +2031,32 @@ class _NotesDialogState extends State<_NotesDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Row(
-        children: [
-          const Icon(Icons.notes, color: Colors.blue),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Task Notes',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-            ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      titlePadding: EdgeInsets.zero,
+      title: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.deepPurple, Colors.deepPurpleAccent],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-        ],
+          borderRadius: const BorderRadius.only(topLeft: Radius.circular(12), topRight: Radius.circular(12)),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            const Icon(Icons.notes, color: Colors.white),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Task Notes',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
       ),
       content: SizedBox(
         width: double.maxFinite,
@@ -1844,12 +2091,19 @@ class _NotesDialogState extends State<_NotesDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: _isSaving ? null : () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(
+          onPressed: _isSaving ? null : () => Navigator.pop(context),
+          style: TextButton.styleFrom(foregroundColor: Colors.grey[800]),
+          child: const Text('Cancel'),
+        ),
         ElevatedButton.icon(
           onPressed: _isSaving ? null : _saveNotes,
           icon: const Icon(Icons.save),
           label: const Text('Save Notes'),
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Theme.of(context).primaryColor,
+            foregroundColor: Colors.white,
+          ),
         ),
       ],
       actionsPadding: const EdgeInsets.all(16),
@@ -1863,8 +2117,7 @@ class _NotCompletedReasonDialog extends StatefulWidget {
   final dynamic checklist;
   final VoidCallback onReasonUpdated;
 
-  const _NotCompletedReasonDialog({Key? key, required this.task, this.checklist, required this.onReasonUpdated})
-    : super(key: key);
+  const _NotCompletedReasonDialog({super.key, required this.task, this.checklist, required this.onReasonUpdated});
 
   @override
   State<_NotCompletedReasonDialog> createState() => _NotCompletedReasonDialogState();
@@ -1935,20 +2188,11 @@ class _NotCompletedReasonDialogState extends State<_NotCompletedReasonDialog> {
         return;
       }
 
-      // Update the task reason in Firestore
+      final svc = DailyChecklistService();
       if (widget.checklist != null) {
-        await FirestoreEnforcer.instance
-            .collection('organizations')
-            .doc(widget.checklist.organizationId)
-            .collection('locations')
-            .doc(widget.checklist.locationId)
-            .collection('daily_checklists')
-            .doc(widget.checklist.id)
-            .update({
-              'tasks.${widget.task.taskId}.notCompletedReason': finalReason,
-              'tasks.${widget.task.taskId}.reasonUpdatedAt': FieldValue.serverTimestamp(),
-              'tasks.${widget.task.taskId}.completed': false, // Ensure task is marked as not completed
-            });
+        await svc.updateTaskNotCompletedReason(widget.task, finalReason);
+      } else if (widget.task != null && (widget.task.organizationId != null)) {
+        await svc.updateTaskNotCompletedReason(widget.task, finalReason);
       }
 
       widget.onReasonUpdated();
@@ -1957,7 +2201,7 @@ class _NotCompletedReasonDialogState extends State<_NotCompletedReasonDialog> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Reason saved successfully!'), backgroundColor: Colors.green));
-        Navigator.pop(context);
+        Navigator.pop(context, finalReason);
       }
     } catch (e) {
       debugPrint('Error saving not completed reason: $e');
@@ -1977,17 +2221,32 @@ class _NotCompletedReasonDialogState extends State<_NotCompletedReasonDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Row(
-        children: [
-          const Icon(Icons.error_outline, color: Colors.orange),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Task Not Completed',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-            ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      titlePadding: EdgeInsets.zero,
+      title: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.orange.shade700, Colors.deepOrangeAccent],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-        ],
+          borderRadius: const BorderRadius.only(topLeft: Radius.circular(12), topRight: Radius.circular(12)),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            const Icon(Icons.error_outline, color: Colors.white),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Task Not Completed',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
       ),
       content: SizedBox(
         width: double.maxFinite,
@@ -2055,12 +2314,19 @@ class _NotCompletedReasonDialogState extends State<_NotCompletedReasonDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: _isSaving ? null : () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(
+          onPressed: _isSaving ? null : () => Navigator.pop(context),
+          style: TextButton.styleFrom(foregroundColor: Colors.grey[800]),
+          child: const Text('Cancel'),
+        ),
         ElevatedButton.icon(
           onPressed: _isSaving ? null : _saveReason,
           icon: const Icon(Icons.save),
           label: const Text('Save Reason'),
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Theme.of(context).primaryColor,
+            foregroundColor: Colors.white,
+          ),
         ),
       ],
       actionsPadding: const EdgeInsets.all(16),
@@ -2078,18 +2344,107 @@ extension TaskDataExtensions on TaskData {
   String get locationId => '';
 }
 
-// Stub method for _handleMenuAction inside _MissedTaskInteractionTile
-// Assuming _MissedTaskInteractionTile is a widget class defined in this file
-// We'll add an extension method to provide a default implementation
-extension MissedTaskInteractionTileExtension on _MissedTaskInteractionTile {
-  void _handleMenuAction(BuildContext context, String value) {
-    debugPrint('Menu action selected: $value');
-  }
-}
+// (Removed unused stub - real handlers are implemented on the widgets below)
 
 // If _MissedTasksCard is not used, you may comment it out or leave as is.
 
 // --- UI WIDGETS ---
+
+class _InstructionCard extends StatelessWidget {
+  const _InstructionCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: Colors.blue[50],
+      elevation: 1,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.blue[200]!),
+          gradient: LinearGradient(
+            colors: [Colors.blue[50]!, Colors.blue[100]!],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              Icon(Icons.info_outline, color: Colors.blue[700], size: 32),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "How to Use This Page",
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blue[800]),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      "This page lets you complete your assigned tasks for today. Select a shift to begin. You can mark tasks as done, upload photos, add notes, or give reasons if a task can't be completed.",
+                      style: TextStyle(fontSize: 14, color: Colors.blue[700], height: 1.4),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MissedTasksHeaderCard extends StatelessWidget {
+  const _MissedTasksHeaderCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: Colors.red[50],
+      elevation: 2,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.red[300]!),
+          gradient: LinearGradient(
+            colors: [Colors.red[50]!, Colors.red[100]!],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              Icon(Icons.warning_amber, color: Colors.red[700], size: 32),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Missed Tasks from Yesterday",
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red[800]),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      "Complete these tasks that were not finished yesterday",
+                      style: TextStyle(fontSize: 14, color: Colors.red[700]),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _ShiftStatusCard extends StatelessWidget {
   final String title;
@@ -2141,37 +2496,7 @@ class _ShiftStatusCard extends StatelessWidget {
   }
 }
 
-class _NoShiftCard extends StatelessWidget {
-  const _NoShiftCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      color: Colors.orange.withOpacity(0.1),
-      elevation: 1,
-      margin: const EdgeInsets.only(bottom: 16),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Row(
-          children: [
-            Icon(Icons.info_outline, color: Colors.orange[700], size: 32),
-            const SizedBox(width: 16),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text("No Shift Assigned", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  SizedBox(height: 4),
-                  Text("You can help out another shift today", style: TextStyle(fontSize: 14, color: Colors.grey)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+// _NoShiftCard removed - replaced by central no-shift UI in the dashboard
 
 class _InfoCard extends StatelessWidget {
   final String message;
@@ -2193,59 +2518,131 @@ class _InfoCard extends StatelessWidget {
   }
 }
 
-class _ChecklistCard extends HookWidget {
+class _ChecklistCard extends HookConsumerWidget {
   final DailyChecklist checklist;
   final VoidCallback? onTaskToggled;
 
   const _ChecklistCard({required this.checklist, this.onTaskToggled});
 
   @override
-  Widget build(BuildContext context) {
-    final isExpanded = useState(false);
-    final isCompleted = checklist.isCompleted;
-    final completedTasksCount = checklist.tasks.where((task) => task.isCompleted).length;
-    final totalTasks = checklist.tasks.length;
-    final statusColor = isCompleted ? Colors.green : Colors.orange;
-    final progressPercentage = totalTasks > 0 ? completedTasksCount / totalTasks : 0.0;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final opState = ref.watch(operationalStateProvider);
+    final initiallyExpanded =
+        (opState.selectedShift != null)
+            ? (opState.selectedShift!.shiftId == checklist.shiftId)
+            : opState.expandedChecklists.contains(checklist.id);
+
+    final isExpanded = useState(initiallyExpanded);
+    // Keep expansion in sync when the selectedShift or expandedChecklists changes
+    useEffect(() {
+      final newVal =
+          (opState.selectedShift != null)
+              ? (opState.selectedShift!.shiftId == checklist.shiftId)
+              : opState.expandedChecklists.contains(checklist.id);
+      isExpanded.value = newVal;
+      return null;
+    }, [opState.selectedShift, opState.expandedChecklists]);
+
+    final statusColor = checklist.isCompleted ? Colors.green : Colors.orange;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Column(
         children: [
+          // Header uses checklist metadata but task list is streamed from subcollection
           ListTile(
             title: Text(checklist.templateName ?? 'Checklist', style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text("$completedTasksCount of $totalTasks tasks completed"),
-                const SizedBox(height: 4),
-                LinearProgressIndicator(
-                  value: progressPercentage,
-                  backgroundColor: Colors.grey[300],
-                  valueColor: AlwaysStoppedAnimation<Color>(statusColor),
-                ),
-              ],
+            subtitle: StreamBuilder<List<TaskData>>(
+              stream: DailyChecklistService()
+                  .streamChecklistTasks(
+                    organizationId: checklist.organizationId,
+                    locationId: checklist.locationId,
+                    checklistId: checklist.id,
+                  )
+                  .map((list) => list),
+              builder: (context, snapshot) {
+                debugPrint(
+                  '[Dashboard][_ChecklistCard] header snapshot.hasData=${snapshot.hasData} checklistId=${checklist.id}',
+                );
+                if (!snapshot.hasData) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 4),
+                      LinearProgressIndicator(value: 0.0, backgroundColor: Colors.grey[300]),
+                    ],
+                  );
+                }
+
+                final tasks = snapshot.data!;
+                debugPrint(
+                  '[Dashboard][_ChecklistCard] header received ${tasks.length} tasks for checklist=${checklist.id}',
+                );
+                final totalTasks = tasks.length;
+                final completedTasksCount = tasks.where((t) => t.completed).length;
+                final progressPercentage = totalTasks > 0 ? completedTasksCount / totalTasks : 0.0;
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("$completedTasksCount of $totalTasks tasks completed"),
+                    const SizedBox(height: 4),
+                    LinearProgressIndicator(
+                      value: progressPercentage,
+                      backgroundColor: Colors.grey[300],
+                      valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+                    ),
+                  ],
+                );
+              },
             ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(isCompleted ? Icons.check_circle : Icons.pending_actions, color: statusColor),
+                Icon(checklist.isCompleted ? Icons.check_circle : Icons.pending_actions, color: statusColor),
                 const SizedBox(width: 8),
+                // Quick admin/debug actions removed ("Reseed from template" menu)
                 Icon(isExpanded.value ? Icons.expand_less : Icons.expand_more, color: Colors.grey[600]),
               ],
             ),
             onTap: () => isExpanded.value = !isExpanded.value,
           ),
+
           if (isExpanded.value)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Column(
-                children:
-                    checklist.tasks
-                        .map(
-                          (task) => _TaskTile(task: task, checklist: checklist, onTaskToggled: onTaskToggled ?? () {}),
-                        )
-                        .toList(),
+              child: StreamBuilder<List<TaskData>>(
+                stream: DailyChecklistService().streamChecklistTasks(
+                  organizationId: checklist.organizationId,
+                  locationId: checklist.locationId,
+                  checklistId: checklist.id,
+                ),
+                builder: (context, snapshot) {
+                  debugPrint(
+                    '[Dashboard][_ChecklistCard] expanded snapshot.hasData=${snapshot.hasData} checklistId=${checklist.id}',
+                  );
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  final tasks = snapshot.data!;
+                  debugPrint(
+                    '[Dashboard][_ChecklistCard] expanded received ${tasks.length} tasks for checklist=${checklist.id}',
+                  );
+
+                  return Column(
+                    children:
+                        tasks
+                            .map(
+                              (t) => _TaskTileFromData(
+                                taskData: t,
+                                checklist: checklist,
+                                onTaskToggled: onTaskToggled ?? () {},
+                              ),
+                            )
+                            .toList(),
+                  );
+                },
               ),
             ),
         ],
@@ -2254,70 +2651,76 @@ class _ChecklistCard extends HookWidget {
   }
 }
 
-class _TaskTile extends HookWidget {
-  final DailyChecklistTask task;
+// New tile that operates on TaskData (subcollection) and calls DailyChecklistService methods
+class _TaskTileFromData extends HookWidget {
+  final TaskData taskData;
   final DailyChecklist checklist;
   final VoidCallback onTaskToggled;
 
-  const _TaskTile({required this.task, required this.checklist, required this.onTaskToggled});
+  const _TaskTileFromData({required this.taskData, required this.checklist, required this.onTaskToggled});
 
   @override
   Widget build(BuildContext context) {
+    final isCompleted = taskData.completed;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         border: Border.all(color: Colors.grey[300]!),
         borderRadius: BorderRadius.circular(8),
-        color:
-            task.isCompleted
-                ? Colors.green[50]
-                : task.notCompletedReason != null
-                ? Colors.orange[50]
-                : Colors.grey[50],
+        color: isCompleted ? Colors.green[50] : Colors.grey[50],
       ),
       child: Column(
         children: [
           ListTile(
             dense: true,
             leading: Checkbox(
-              value: task.isCompleted,
-              onChanged: (value) => _handleTaskToggle(context, value ?? false),
+              value: isCompleted,
+              onChanged: (value) async {
+                await _handleTaskToggle(context, value ?? false);
+              },
               activeColor: Colors.green,
             ),
             title: Text(
-              task.description,
+              taskData.taskName,
               style: TextStyle(
-                decoration: task.isCompleted ? TextDecoration.lineThrough : null,
-                color: task.isCompleted ? Colors.grey[600] : Colors.black,
+                decoration: isCompleted ? TextDecoration.lineThrough : null,
+                color: isCompleted ? Colors.grey[600] : Colors.black,
               ),
             ),
-            subtitle: _buildSubtitle(),
+            subtitle: () {
+              final by =
+                  (taskData.completedByUserName?.isNotEmpty == true)
+                      ? taskData.completedByUserName
+                      : taskData.completedBy;
+              if (by == null || by.isEmpty) return null;
+              return Text("Completed by $by", style: TextStyle(fontSize: 12, color: Colors.grey[600]));
+            }(),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Photo status indicator
-                if (task.photoRequired)
+                // Show a photo icon when a photo URL exists; otherwise show the camera required indicator if the task requires a photo
+                if ((taskData.photoUrl ?? '').isNotEmpty)
                   IconButton(
-                    icon: Icon(
-                      Icons.camera_alt,
-                      size: 20,
-                      color: task.proofImageUrl != null ? Colors.green : Colors.orange,
-                    ),
+                    icon: Icon(Icons.photo, size: 20, color: Colors.green),
+                    tooltip: 'View photo',
+                    onPressed: () => _showPhotoDialog(context),
+                  )
+                else if (taskData.photoRequired)
+                  IconButton(
+                    icon: Icon(Icons.camera_alt, size: 20, color: Colors.orange),
                     onPressed: () => _showPhotoDialog(context),
                   ),
-                // Notes/reason indicator
-                if (task.notes != null && task.notes!.isNotEmpty)
+                if (taskData.notes != null && taskData.notes!.isNotEmpty)
                   IconButton(
                     icon: Icon(Icons.note, size: 20, color: Colors.blue[600]),
                     onPressed: () => _showNotesDialog(context),
                   ),
-                // Not completed reason indicator
-                if (task.notCompletedReason != null && task.notCompletedReason!.isNotEmpty)
+                if (taskData.notCompletedReason != null && taskData.notCompletedReason!.isNotEmpty)
                   IconButton(
                     icon: Icon(Icons.warning, size: 20, color: Colors.orange[700]),
                     onPressed: () => _showNotCompletedReasonDialog(context),
                   ),
-                // Actions menu
                 PopupMenuButton<String>(
                   icon: Icon(Icons.more_vert, size: 18, color: Colors.grey[600]),
                   onSelected: (value) => _handleMenuAction(context, value),
@@ -2342,96 +2745,43 @@ class _TaskTile extends HookWidget {
               ],
             ),
           ),
-          // Status indicators row
-          if (_hasStatusIndicators())
-            Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 8), child: Row(children: _buildStatusChips())),
         ],
       ),
     );
   }
 
-  Widget? _buildSubtitle() {
-    if (task.isCompleted && task.completedBy != null) {
-      return Text("Completed by ${task.completedBy}", style: TextStyle(fontSize: 12, color: Colors.grey[600]));
-    }
-    return null;
-  }
-
-  bool _hasStatusIndicators() {
-    return task.proofImageUrl != null ||
-        (task.notCompletedReason != null && task.notCompletedReason!.isNotEmpty) ||
-        (task.notes != null && task.notes!.isNotEmpty);
-  }
-
-  List<Widget> _buildStatusChips() {
-    List<Widget> chips = [];
-
-    if (task.proofImageUrl != null) {
-      chips.add(
-        Chip(
-          label: const Text('Photo attached', style: TextStyle(fontSize: 10)),
-          avatar: const Icon(Icons.camera_alt, size: 12),
-          backgroundColor: Colors.green[100],
-          padding: EdgeInsets.zero,
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
-      );
-      chips.add(const SizedBox(width: 4));
-    }
-
-    if (task.notCompletedReason != null && task.notCompletedReason!.isNotEmpty) {
-      chips.add(
-        Chip(
-          label: const Text('Cannot complete', style: TextStyle(fontSize: 10)),
-          avatar: const Icon(Icons.warning, size: 12),
-          backgroundColor: Colors.orange[100],
-          padding: EdgeInsets.zero,
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
-      );
-      chips.add(const SizedBox(width: 4));
-    }
-
-    if (task.notes != null && task.notes!.isNotEmpty) {
-      chips.add(
-        Chip(
-          label: const Text('Notes added', style: TextStyle(fontSize: 10)),
-          avatar: const Icon(Icons.note, size: 12),
-          backgroundColor: Colors.blue[100],
-          padding: EdgeInsets.zero,
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
-      );
-    }
-
-    return chips;
-  }
-
   Future<void> _handleTaskToggle(BuildContext context, bool isCompleted) async {
-    if (isCompleted && task.photoRequired && task.proofImageUrl == null) {
-      // Photo is required but not uploaded
-      final shouldContinue = await showDialog<bool>(
-        context: context,
-        builder:
-            (context) => AlertDialog(
-              title: const Text('Photo Required'),
-              content: const Text('This task requires a photo to be completed. Would you like to add a photo now?'),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Add Photo')),
-              ],
-            ),
-      );
-
-      if (shouldContinue == true) {
-        await _showPhotoDialog(context);
-        return;
-      } else {
-        return; // Don't complete the task
-      }
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("You must be logged in to complete tasks")));
+      return;
     }
 
-    await _toggleTask(context, isCompleted);
+    try {
+      await DailyChecklistService().updateTaskCompletionInSubcollection(
+        taskData,
+        isCompleted,
+        completedByUserEmail: user.email,
+        completedByUserId: user.uid,
+        completedByUserName: user.displayName,
+      );
+
+      onTaskToggled();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(isCompleted ? 'Task completed!' : 'Task unchecked'),
+          backgroundColor: isCompleted ? Colors.green : Colors.orange,
+        ),
+      );
+    } catch (e) {
+      debugPrint('Error updating task completion: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error updating task. Please try again.'), backgroundColor: Colors.red),
+      );
+    }
   }
 
   void _handleMenuAction(BuildContext context, String action) {
@@ -2448,94 +2798,44 @@ class _TaskTile extends HookWidget {
     }
   }
 
-  Future<void> _showPhotoDialog(BuildContext context) async {
-    showDialog(
+  void _showPhotoDialog(BuildContext context) async {
+    final updated = await showDialog<TaskData?>(
       context: context,
-      builder: (context) => _PhotoDialog(task: task, checklist: checklist, onPhotoUpdated: onTaskToggled),
+      builder: (_) => _PhotoDialog(task: taskData, checklist: checklist, onPhotoUpdated: onTaskToggled),
     );
-  }
-
-  Future<void> _showNotesDialog(BuildContext context) async {
-    showDialog(
-      context: context,
-      builder: (context) => _NotesDialog(task: task, checklist: checklist, onNotesUpdated: onTaskToggled),
-    );
-  }
-
-  Future<void> _showNotCompletedReasonDialog(BuildContext context) async {
-    showDialog(
-      context: context,
-      builder: (context) => _NotCompletedReasonDialog(task: task, checklist: checklist, onReasonUpdated: onTaskToggled),
-    );
-  }
-
-  Future<void> _toggleTask(BuildContext context, bool isCompleted) async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text("You must be logged in to complete tasks")));
-        return;
-      }
-
-      // Reference to the daily checklist document
-      final checklistRef = FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(checklist.organizationId)
-          .collection('locations')
-          .doc(checklist.locationId)
-          .collection('daily_checklists')
-          .doc(checklist.id);
-
-      // Update the task status in the array
-      final updatedTasks =
-          checklist.tasks.map((t) {
-            if (t.taskId == task.taskId) {
-              return t.copyWith(
-                isCompleted: isCompleted,
-                completedBy: isCompleted ? user.email ?? user.uid : null,
-                completedAt: isCompleted ? DateTime.now() : null,
-                notCompletedReason: isCompleted ? null : t.notCompletedReason,
-              );
-            }
-            return t;
-          }).toList();
-
-      // Determine if all tasks are completed
-      final allCompleted = updatedTasks.every((t) => t.isCompleted);
-
-      // Commit the update to Firestore
-      await checklistRef.update({
-        'tasks': updatedTasks.map((t) => t.toMap()).toList(),
-        'isCompleted': allCompleted,
-        'updatedAt': FieldValue.serverTimestamp(),
-        if (allCompleted) 'completedByUserId': user.uid,
-        if (allCompleted) 'completedAt': FieldValue.serverTimestamp(),
-      });
-
+    if (updated != null) {
       onTaskToggled();
+    }
+  }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(isCompleted ? "Task completed!" : "Task unchecked"),
-          backgroundColor: isCompleted ? Colors.green : Colors.orange,
-        ),
-      );
-    } catch (e) {
-      debugPrint("Error updating task: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Error updating task. Please try again."), backgroundColor: Colors.red),
-      );
+  void _showNotesDialog(BuildContext context) async {
+    final saved = await showDialog<String?>(
+      context: context,
+      builder: (_) => _NotesDialog(task: taskData, checklist: checklist, onNotesUpdated: onTaskToggled),
+    );
+    if (saved != null) {
+      onTaskToggled();
+    }
+  }
+
+  void _showNotCompletedReasonDialog(BuildContext context) async {
+    final saved = await showDialog<String?>(
+      context: context,
+      builder: (_) => _NotCompletedReasonDialog(task: taskData, checklist: checklist, onReasonUpdated: onTaskToggled),
+    );
+    if (saved != null) {
+      onTaskToggled();
     }
   }
 }
+
+// Legacy _TaskTile removed - replaced by _TaskTileFromData which operates on TaskData
 
 // --- MISSED TASKS WIDGET ---
 
 class _MissedTasksShiftCard extends HookWidget {
   final MissedTasksSection section;
-  final VoidCallback onUpdate;
+  final void Function(MissedTasksSection updatedSection) onUpdate;
 
   const _MissedTasksShiftCard({required this.section, required this.onUpdate});
 
@@ -2548,46 +2848,111 @@ class _MissedTasksShiftCard extends HookWidget {
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        children: [
-          ListTile(
-            title: Text(section.shiftName, style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text("$completedTasks of $totalTasks missed tasks completed"),
-                const SizedBox(height: 4),
-                LinearProgressIndicator(
-                  value: progress,
-                  backgroundColor: Colors.grey[300],
-                  valueColor: AlwaysStoppedAnimation<Color>(progress == 1.0 ? Colors.green : Colors.red),
-                ),
-              ],
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  progress == 1.0 ? Icons.check_circle : Icons.warning,
-                  color: progress == 1.0 ? Colors.green : Colors.red,
-                ),
-                const SizedBox(width: 8),
-                Icon(isExpanded.value ? Icons.expand_less : Icons.expand_more, color: Colors.grey[600]),
-              ],
-            ),
-            onTap: () => isExpanded.value = !isExpanded.value,
+      elevation: 2,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.red[300]!),
+          gradient: LinearGradient(
+            colors: [Colors.red[50]!, Colors.red[100]!],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-          if (isExpanded.value)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Column(
-                children:
-                    section.tasks
-                        .map((task) => _MissedTaskInteractionTile(task: task, section: section, onUpdate: onUpdate))
-                        .toList(),
+        ),
+        child: Column(
+          children: [
+            // Red gradient header for missed tasks
+            InkWell(
+              onTap: () => isExpanded.value = !isExpanded.value,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.red[600]!, Colors.red[500]!],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: const BorderRadius.only(topLeft: Radius.circular(12), topRight: Radius.circular(12)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.warning, color: Colors.white, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        section.shiftName.isNotEmpty ? section.shiftName : 'Unknown Shift',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '$totalTasks task${totalTasks != 1 ? 's' : ''}',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 12),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(isExpanded.value ? Icons.expand_less : Icons.expand_more, color: Colors.white),
+                  ],
+                ),
               ),
             ),
-        ],
+            // Progress and expand content
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "$completedTasks of $totalTasks missed tasks completed",
+                              style: TextStyle(color: Colors.red[800], fontWeight: FontWeight.w500),
+                            ),
+                            const SizedBox(height: 4),
+                            LinearProgressIndicator(
+                              value: progress,
+                              backgroundColor: Colors.grey[300],
+                              valueColor: AlwaysStoppedAnimation<Color>(progress == 1.0 ? Colors.green : Colors.red),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      GestureDetector(
+                        onTap: () => isExpanded.value = !isExpanded.value,
+                        child: Icon(
+                          progress == 1.0 ? Icons.check_circle : Icons.warning,
+                          color: progress == 1.0 ? Colors.green : Colors.red,
+                          size: 28,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (isExpanded.value) ...[
+                    const SizedBox(height: 16),
+                    Column(
+                      children:
+                          section.tasks
+                              .map(
+                                (task) => _MissedTaskInteractionTile(task: task, section: section, onUpdate: onUpdate),
+                              )
+                              .toList(),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2596,7 +2961,7 @@ class _MissedTasksShiftCard extends HookWidget {
 class _MissedTaskInteractionTile extends HookWidget {
   final TaskData task;
   final MissedTasksSection section;
-  final VoidCallback onUpdate;
+  final void Function(MissedTasksSection updatedSection) onUpdate;
 
   const _MissedTaskInteractionTile({required this.task, required this.section, required this.onUpdate});
 
@@ -2623,28 +2988,108 @@ class _MissedTaskInteractionTile extends HookWidget {
             color: task.completed ? Colors.grey[600] : Colors.black,
           ),
         ),
-        subtitle: Text(
-          task.completed ? "Completed" : "Not completed yesterday",
-          style: TextStyle(color: task.completed ? Colors.green : Colors.red[700]),
-        ),
-        trailing: PopupMenuButton<String>(
-          icon: Icon(Icons.more_vert, size: 18, color: Colors.grey[600]),
-          onSelected: (value) => _handleMenuAction(context, value),
-          itemBuilder:
-              (context) => [
-                const PopupMenuItem(
-                  value: 'photo',
-                  child: Row(children: [Icon(Icons.camera_alt, size: 18), SizedBox(width: 8), Text('Photo')]),
-                ),
-                const PopupMenuItem(
-                  value: 'notes',
-                  child: Row(children: [Icon(Icons.note, size: 18), SizedBox(width: 8), Text('Notes')]),
-                ),
-                const PopupMenuItem(
-                  value: 'not_completed',
-                  child: Row(children: [Icon(Icons.warning, size: 18), SizedBox(width: 8), Text('Cannot Complete')]),
-                ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (section.checklistName != null && section.checklistName!.isNotEmpty)
+              Text('Checklist: ${section.checklistName}', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+            Text(
+              task.completed
+                  ? ((task.completedByUserName ?? '').isNotEmpty
+                      ? 'Completed by ${task.completedByUserName}'
+                      : ((task.completedBy ?? '').isNotEmpty ? 'Completed by ${task.completedBy}' : 'Completed'))
+                  : 'Not completed yesterday',
+              style: TextStyle(color: task.completed ? Colors.green : Colors.red[700]),
+            ),
+            Row(
+              children: [
+                if ((task.notes ?? '').isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2.0, right: 8),
+                    child: Row(
+                      children: [
+                        Icon(Icons.note, size: 14, color: Colors.blue[600]),
+                        const SizedBox(width: 4),
+                        Text('Note', style: TextStyle(fontSize: 12, color: Colors.blue[700])),
+                      ],
+                    ),
+                  ),
+                if ((task.notCompletedReason ?? '').isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2.0),
+                    child: Row(
+                      children: [
+                        Icon(Icons.warning, size: 14, color: Colors.orange[700]),
+                        const SizedBox(width: 4),
+                        Text('Reason', style: TextStyle(fontSize: 12, color: Colors.orange[800])),
+                      ],
+                    ),
+                  ),
               ],
+            ),
+          ],
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if ((task.photoUrl ?? '').isNotEmpty)
+              IconButton(
+                icon: Icon(Icons.photo, size: 18, color: Colors.green),
+                tooltip: 'View photo',
+                onPressed: () async {
+                  final updated = await showDialog<TaskData?>(
+                    context: context,
+                    builder: (_) => _PhotoDialog(task: task, checklist: null, onPhotoUpdated: () {}),
+                  );
+                  if (updated != null) {
+                    onUpdate(
+                      section.copyWith(
+                        tasks:
+                            section.tasks
+                                .map(
+                                  (t) =>
+                                      t.taskId == task.taskId
+                                          ? t.copyWith(photoUrl: updated.photoUrl, proofImageUrl: updated.proofImageUrl)
+                                          : t,
+                                )
+                                .toList(),
+                      ),
+                    );
+                  }
+                },
+              ),
+            PopupMenuButton<String>(
+              icon: Icon(Icons.more_vert, size: 18, color: Colors.grey[600]),
+              onSelected: (value) async => _handleMenuAction(context, value),
+              itemBuilder:
+                  (context) => [
+                    const PopupMenuItem(
+                      value: 'photo',
+                      child: Row(children: [Icon(Icons.camera_alt, size: 18), SizedBox(width: 8), Text('Photo')]),
+                    ),
+                    const PopupMenuItem(
+                      value: 'notes',
+                      child: Row(children: [Icon(Icons.note, size: 18), SizedBox(width: 8), Text('Notes')]),
+                    ),
+                    const PopupMenuItem(
+                      value: 'not_completed',
+                      child: Row(
+                        children: [Icon(Icons.warning, size: 18), SizedBox(width: 8), Text('Cannot Complete')],
+                      ),
+                    ),
+                    if ((task.notes ?? '').isNotEmpty)
+                      const PopupMenuItem(
+                        value: 'clear_notes',
+                        child: Row(children: [Icon(Icons.delete, size: 18), SizedBox(width: 8), Text('Clear Notes')]),
+                      ),
+                    if ((task.notCompletedReason ?? '').isNotEmpty)
+                      const PopupMenuItem(
+                        value: 'clear_reason',
+                        child: Row(children: [Icon(Icons.delete, size: 18), SizedBox(width: 8), Text('Clear Reason')]),
+                      ),
+                  ],
+            ),
+          ],
         ),
       ),
     );
@@ -2680,19 +3125,58 @@ class _MissedTaskInteractionTile extends HookWidget {
           'tasks': section.tasks.map((t) => t.toJson()).toList(),
         });
       }
-      // Update the specific task status
-      final updatedTasks =
-          section.tasks.map((t) {
-            if (t.taskId == task.taskId) {
-              return t.copyWith(completed: isCompleted);
-            }
-            return t;
-          }).toList();
-      await checklistRef.update({
-        'tasks': updatedTasks.map((t) => t.toJson()).toList(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-      onUpdate();
+      // Use service to update the per-task subcollection when possible
+      if (task.organizationId != null && task.locationId != null && task.originalChecklistId != null) {
+        try {
+          await DailyChecklistService().updateTaskCompletionInSubcollection(
+            task,
+            isCompleted,
+            completedByUserEmail: user.email,
+            completedByUserId: user.uid,
+            completedByUserName: user.displayName,
+          );
+        } catch (e) {
+          debugPrint('[MissedTask] Falling back to checklist array update due to error: $e');
+          // Fallback to array-update below if needed
+          final updatedTasks =
+              section.tasks.map((t) {
+                if (t.taskId != task.taskId) return t;
+                return t.copyWith(
+                  completed: isCompleted,
+                  completedAt: isCompleted ? DateTime.now() : null,
+                  completedByUserId: isCompleted ? user.uid : null,
+                  completedByUserName: isCompleted ? (user.displayName ?? '') : null,
+                  completedByUserEmail: isCompleted ? (user.email ?? '') : null,
+                );
+              }).toList();
+          await checklistRef.update({
+            'tasks': updatedTasks.map((t) => t.toJson()).toList(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+      } else {
+        // Fallback: update array directly
+        final updatedTasks =
+            section.tasks.map((t) {
+              if (t.taskId != task.taskId) return t;
+              return t.copyWith(
+                completed: isCompleted,
+                completedAt: isCompleted ? DateTime.now() : null,
+                completedByUserId: isCompleted ? user.uid : null,
+                completedByUserName: isCompleted ? (user.displayName ?? '') : null,
+                completedByUserEmail: isCompleted ? (user.email ?? '') : null,
+              );
+            }).toList();
+        await checklistRef.update({
+          'tasks': updatedTasks.map((t) => t.toJson()).toList(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+      // Update local section and notify parent
+      final newTasks =
+          section.tasks.map((t) => t.taskId == task.taskId ? t.copyWith(completed: isCompleted) : t).toList();
+      final updatedSection = section.copyWith(tasks: newTasks);
+      onUpdate(updatedSection);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(isCompleted ? 'Task completed!' : 'Task unchecked'),
@@ -2707,24 +3191,70 @@ class _MissedTaskInteractionTile extends HookWidget {
     }
   }
 
-  void _handleMenuAction(BuildContext context, String value) {
+  Future<void> _handleMenuAction(BuildContext context, String value) async {
     switch (value) {
       case 'photo':
-        showDialog(
+        final updated = await showDialog<TaskData?>(
           context: context,
-          builder: (_) => _PhotoDialog(task: task, checklist: null, onPhotoUpdated: onUpdate),
+          builder: (_) => _PhotoDialog(task: task, checklist: null, onPhotoUpdated: () => onUpdate(section)),
         );
+        if (updated != null) {
+          final newTasks =
+              section.tasks
+                  .map(
+                    (t) =>
+                        t.taskId == task.taskId
+                            ? t.copyWith(photoUrl: updated.photoUrl, proofImageUrl: updated.proofImageUrl)
+                            : t,
+                  )
+                  .toList();
+          onUpdate(section.copyWith(tasks: newTasks));
+        }
         break;
       case 'notes':
-        showDialog(
+        final saved = await showDialog<String?>(
           context: context,
-          builder: (_) => _NotesDialog(task: task, checklist: null, onNotesUpdated: onUpdate),
+          builder: (_) => _NotesDialog(task: task, checklist: null, onNotesUpdated: () => onUpdate(section)),
         );
+        if (saved != null) {
+          final newTasks = section.tasks.map((t) => t.taskId == task.taskId ? t.copyWith(notes: saved) : t).toList();
+          onUpdate(section.copyWith(tasks: newTasks));
+        }
         break;
       case 'not_completed':
-        showDialog(
+        final saved = await showDialog<String?>(
           context: context,
-          builder: (_) => _NotCompletedReasonDialog(task: task, checklist: null, onReasonUpdated: onUpdate),
+          builder:
+              (_) => _NotCompletedReasonDialog(task: task, checklist: null, onReasonUpdated: () => onUpdate(section)),
+        );
+        if (saved != null) {
+          final newTasks =
+              section.tasks
+                  .map((t) => t.taskId == task.taskId ? t.copyWith(notCompletedReason: saved, completed: false) : t)
+                  .toList();
+          onUpdate(section.copyWith(tasks: newTasks));
+        }
+        break;
+      case 'clear_notes':
+        await DailyChecklistService().updateTaskNotes(
+          organizationId: task.organizationId ?? section.organizationId,
+          locationId: task.locationId ?? section.locationId ?? '',
+          checklistId: task.checklistId ?? section.checklistId ?? task.originalChecklistId ?? '',
+          taskId: task.taskId,
+          notes: '',
+        );
+        onUpdate(
+          section.copyWith(
+            tasks: section.tasks.map((t) => t.taskId == task.taskId ? t.copyWith(notes: '') : t).toList(),
+          ),
+        );
+        break;
+      case 'clear_reason':
+        await DailyChecklistService().updateTaskNotCompletedReason(task, null);
+        onUpdate(
+          section.copyWith(
+            tasks: section.tasks.map((t) => t.taskId == task.taskId ? t.copyWith(notCompletedReason: '') : t).toList(),
+          ),
         );
         break;
     }
@@ -2733,208 +3263,6 @@ class _MissedTaskInteractionTile extends HookWidget {
 
 // --- MISSED TASKS CARD ---
 
-class _MissedTasksCard extends StatelessWidget {
-  final MissedTasksSection section;
-  final String organizationId;
-  final VoidCallback onTaskCompleted;
+// _MissedTasksCard removed - replaced by per-section cards using _MissedTasksShiftCard and _MissedTaskInteractionTile
 
-  const _MissedTasksCard({required this.section, required this.organizationId, required this.onTaskCompleted});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.red.shade50, Colors.red.shade100],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.red.shade200),
-        ),
-        child: Column(
-          children: [
-            // Red gradient header
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Colors.red.shade600, Colors.red.shade500],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: const BorderRadius.only(topLeft: Radius.circular(12), topRight: Radius.circular(12)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.warning, color: Colors.white, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      "Yesterday's Missed Tasks - ${section.shiftName.isNotEmpty ? section.shiftName : 'Unknown Shift'}",
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '${section.tasks.length} task${section.tasks.length != 1 ? 's' : ''}',
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 12),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // Tasks content
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children:
-                    section.tasks
-                        .map(
-                          (task) => _MissedTaskTile(
-                            task: task,
-                            organizationId: organizationId,
-                            locationId: section.locationId,
-                            onTaskCompleted: onTaskCompleted,
-                          ),
-                        )
-                        .toList(),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MissedTaskTile extends StatelessWidget {
-  final TaskData task;
-  final String organizationId;
-  final String? locationId;
-  final VoidCallback onTaskCompleted;
-
-  const _MissedTaskTile({
-    required this.task,
-    required this.organizationId,
-    this.locationId,
-    required this.onTaskCompleted,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.orange[300]!),
-        borderRadius: BorderRadius.circular(8),
-        color: Colors.white,
-      ),
-      child: Row(
-        children: [
-          Checkbox(
-            value: task.completed,
-            onChanged: (value) async {
-              if (value == true) {
-                await _markTaskAsCompleted(context);
-              }
-            },
-            activeColor: Colors.green,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  task.taskName,
-                  style: TextStyle(
-                    decoration: task.completed ? TextDecoration.lineThrough : null,
-                    color: task.completed ? Colors.grey[600] : Colors.black,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                if (task.originalDate != null)
-                  Text(
-                    'From ${DateFormat('MMM dd').format(task.originalDate!)}',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                  ),
-              ],
-            ),
-          ),
-          if (task.photoRequired)
-            Icon(Icons.camera_alt, size: 16, color: task.photoUrl != null ? Colors.green : Colors.orange),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _markTaskAsCompleted(BuildContext context) async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text("You must be logged in to complete tasks")));
-        return;
-      }
-
-      // Update the task in Firestore
-      final checklistRef = FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(organizationId)
-          .collection('locations')
-          .doc(locationId ?? '')
-          .collection('daily_checklists')
-          .doc(task.originalChecklistId ?? '');
-
-      // Get the current checklist and update the task
-      final checklistDoc = await checklistRef.get();
-      if (!checklistDoc.exists) return;
-
-      final checklistData = checklistDoc.data()!;
-      final tasks = List<Map<String, dynamic>>.from(checklistData['tasks'] ?? []);
-
-      // Find and update the specific task
-      for (int i = 0; i < tasks.length; i++) {
-        final taskMap = tasks[i];
-        if (taskMap['taskId'] == task.originalTaskId || taskMap['id'] == task.originalTaskId) {
-          tasks[i] = {
-            ...taskMap,
-            'isCompleted': true,
-            'completed': true,
-            'completedBy': user.email ?? user.uid,
-            'completedAt': FieldValue.serverTimestamp(),
-            'resolvedLate': true,
-            'resolvedAt': FieldValue.serverTimestamp(),
-          };
-          break;
-        }
-      }
-
-      // Update the checklist
-      await checklistRef.update({'tasks': tasks, 'updatedAt': FieldValue.serverTimestamp()});
-
-      onTaskCompleted();
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Task completed!"), backgroundColor: Colors.green));
-    } catch (e) {
-      debugPrint("Error completing missed task: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Error completing task. Please try again."), backgroundColor: Colors.red),
-      );
-    }
-  }
-}
+// Legacy _MissedTaskTile removed - functionality replaced by _MissedTaskInteractionTile which operates on TaskData
