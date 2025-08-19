@@ -4,7 +4,7 @@ module.exports = {
     node: true,
   },
   parserOptions: {
-    "ecmaVersion": 2018,
+  "ecmaVersion": 2018,
   },
   extends: [
     "eslint:recommended",
@@ -17,6 +17,30 @@ module.exports = {
     "max-len": ["warn", {"code": 120}],
   },
   overrides: [
+    // TypeScript files use the TypeScript ESLint parser and recommended rules
+    {
+      files: ["**/*.ts"],
+      parser: "@typescript-eslint/parser",
+      parserOptions: {
+  project: './tsconfig.eslint.json',
+        sourceType: 'module'
+      },
+      plugins: ["@typescript-eslint"],
+      extends: [
+        "plugin:@typescript-eslint/recommended"
+      ],
+      rules: {
+        // allow explicit any in some migration/test code for now
+        "@typescript-eslint/no-explicit-any": "off"
+      }
+    },
+    {
+      files: ["test/**"],
+      env: { mocha: true },
+      rules: {
+        "@typescript-eslint/no-unused-expressions": "off"
+      }
+    },
     {
       files: ["**/*.spec.*"],
       env: {
