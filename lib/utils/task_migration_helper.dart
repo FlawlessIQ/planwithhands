@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/core/logging/logger.dart';
 
 /// Migration helper for transitioning from array-based tasks to subcollections
 ///
@@ -26,7 +27,7 @@ class TaskMigrationHelper {
 
       final checklistDoc = await checklistRef.get();
       if (!checklistDoc.exists) {
-        print('[Migration] Checklist not found: $checklistId');
+        logger.w('[Migration] Checklist not found: $checklistId');
         return;
       }
 
@@ -34,17 +35,17 @@ class TaskMigrationHelper {
       final tasksArray = data['tasks'] as List?;
 
       if (tasksArray == null || tasksArray.isEmpty) {
-        print('[Migration] No tasks to migrate for checklist: $checklistId');
+        logger.w('[Migration] No tasks to migrate for checklist: $checklistId');
         return;
       }
 
-      print('[Migration] Migrating ${tasksArray.length} tasks for checklist: $checklistId');
+  logger.i('[Migration] Migrating ${tasksArray.length} tasks for checklist: $checklistId');
 
       if (dryRun) {
-        print('[Migration] DRY RUN - would migrate:');
+        logger.d('[Migration] DRY RUN - would migrate:');
         for (final task in tasksArray) {
           final taskMap = task as Map<String, dynamic>;
-          print('  - Task: ${taskMap['taskName'] ?? taskMap['description'] ?? 'Unknown'}');
+          logger.d('  - Task: ${taskMap['taskName'] ?? taskMap['description'] ?? 'Unknown'}');
         }
         return;
       }
@@ -75,9 +76,9 @@ class TaskMigrationHelper {
       // Optionally remove the array field (be careful with this!)
       // await checklistRef.update({'tasks': FieldValue.delete()});
 
-      print('[Migration] Successfully migrated $migratedCount tasks for checklist: $checklistId');
+  logger.i('[Migration] Successfully migrated $migratedCount tasks for checklist: $checklistId');
     } catch (e) {
-      print('[Migration] Error migrating checklist $checklistId: $e');
+  logger.e('[Migration] Error migrating checklist $checklistId: $e', e);
       rethrow;
     }
   }
@@ -94,7 +95,7 @@ class TaskMigrationHelper {
       final startDateStr = _formatDate(startDate);
       final endDateStr = _formatDate(endDate);
 
-      print('[Migration] Migrating checklists from $startDateStr to $endDateStr');
+      logger.i('[Migration] Migrating checklists from $startDateStr to $endDateStr');
 
       final query = _firestore
           .collection('organizations')
@@ -107,7 +108,7 @@ class TaskMigrationHelper {
 
       final snapshot = await query.get();
 
-      print('[Migration] Found ${snapshot.docs.length} checklists to migrate');
+  logger.i('[Migration] Found ${snapshot.docs.length} checklists to migrate');
 
       for (final doc in snapshot.docs) {
         await migrateSingleChecklist(
@@ -118,9 +119,9 @@ class TaskMigrationHelper {
         );
       }
 
-      print('[Migration] Completed migration for date range');
+  logger.i('[Migration] Completed migration for date range');
     } catch (e) {
-      print('[Migration] Error migrating date range: $e');
+  logger.e('[Migration] Error migrating date range: $e', e);
       rethrow;
     }
   }
@@ -282,17 +283,17 @@ class MigrationExample {
     const locationId = 'your_location_id';
 
     // 1. Generate a migration report first
-    print('=== MIGRATION REPORT ===');
+  logger.i('=== MIGRATION REPORT ===');
     final report = await migrationHelper.generateMigrationReport(
       organizationId: organizationId,
       locationId: locationId,
       startDate: DateTime.now().subtract(const Duration(days: 30)),
       endDate: DateTime.now(),
     );
-    print('Report: $report');
+  logger.i('Report: $report');
 
     // 2. Run a dry run migration for the last week
-    print('\n=== DRY RUN MIGRATION ===');
+  logger.i('\n=== DRY RUN MIGRATION ===');
     await migrationHelper.migrateDateRange(
       organizationId: organizationId,
       locationId: locationId,
@@ -313,13 +314,13 @@ class MigrationExample {
     // );
 
     // 4. Verify migration results
-    print('\n=== POST-MIGRATION REPORT ===');
+  logger.i('\n=== POST-MIGRATION REPORT ===');
     final postReport = await migrationHelper.generateMigrationReport(
       organizationId: organizationId,
       locationId: locationId,
       startDate: DateTime.now().subtract(const Duration(days: 7)),
       endDate: DateTime.now(),
     );
-    print('Post-migration Report: $postReport');
+  logger.i('Post-migration Report: $postReport');
   }
 }

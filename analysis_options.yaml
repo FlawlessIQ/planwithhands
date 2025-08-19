@@ -28,8 +28,6 @@ linter:
 # in this repo to avoid CI failures while we address them incrementally.
 analyzer:
   errors:
-    avoid_print: ignore
-    use_build_context_synchronously: ignore
     file_names: ignore
 
 # Additional information about this file can be found at

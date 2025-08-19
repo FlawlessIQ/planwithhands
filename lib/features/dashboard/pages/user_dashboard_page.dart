@@ -20,6 +20,7 @@ import 'package:hands_app/state/operational_state.dart';
 import 'package:hands_app/config/feature_flags.dart';
 import 'package:hands_app/data/models/missed_tasks_section.dart';
 import 'package:hands_app/data/models/task_data.dart';
+import 'package:hands_app/core/logging/logger.dart';
 
 // --- MAIN DASHBOARD PAGE ---
 
@@ -61,7 +62,7 @@ class UserDashboardPage extends HookConsumerWidget {
         organizationId.value = data['organizationId'] as String?;
         // Normalize jobType / jobTypes into a canonical List<String>
         userJobTypes.value = coerceToJobTypes(data['jobTypes'] ?? data['jobType']);
-        debugPrint('[Dashboard] User jobTypes loaded: ${userJobTypes.value}');
+        logger.d('[Dashboard] User jobTypes loaded: ${userJobTypes.value}');
       }
     }
 
@@ -138,9 +139,9 @@ class UserDashboardPage extends HookConsumerWidget {
           selectedLocationName.value = primaryLocation['name'];
         }
 
-        debugPrint("[Dashboard] Loaded ${locations.length} locations, selected: ${selectedLocationName.value}");
+        logger.d("[Dashboard] Loaded ${locations.length} locations, selected: ${selectedLocationName.value}");
       } catch (e) {
-        debugPrint("[Dashboard] Error loading locations: $e");
+        logger.e("[Dashboard] Error loading locations: $e", e);
       } finally {
         isLoadingLocations.value = false;
       }
@@ -158,9 +159,7 @@ class UserDashboardPage extends HookConsumerWidget {
 
       // Check if it's a new day - if so, clear existing shift assignments
       if (lastLoadedDate.value != null && lastLoadedDate.value != todayString) {
-        debugPrint(
-          "[Dashboard] New day detected (${lastLoadedDate.value} -> $todayString), clearing shift assignments",
-        );
+        logger.d("[Dashboard] New day detected (${lastLoadedDate.value} -> $todayString), clearing shift assignments");
         assignedShifts.value = [];
         allChecklists.value = [];
         selectedLocationIds.value = [];
@@ -184,7 +183,7 @@ class UserDashboardPage extends HookConsumerWidget {
       }
 
       try {
-        debugPrint("[Dashboard] Loading dashboard data for date: $todayString");
+        logger.d("[Dashboard] Loading dashboard data for date: $todayString");
 
         // Scheduling feature flag
         if (!enableScheduling) {
@@ -199,9 +198,9 @@ class UserDashboardPage extends HookConsumerWidget {
         // Only run cleanup once per day to avoid interfering with active work
         // DISABLED: Cleanup is too aggressive and removes users from active shifts
         // TODO: Implement a more conservative cleanup that only runs overnight
-        debugPrint("[Dashboard] ===== DAILY SHIFT CLEANUP DISABLED =====");
+        logger.d("[Dashboard] ===== DAILY SHIFT CLEANUP DISABLED =====");
         // await _performDailyVolunteerCleanupIfNeeded(organizationId.value!, lastCleanupDate, todayString);
-        debugPrint("[Dashboard] ===== DAILY SHIFT CLEANUP SKIPPED =====");
+        logger.d("[Dashboard] ===== DAILY SHIFT CLEANUP SKIPPED =====");
 
         // Always start with empty shifts for a fresh daily experience
         // Users must actively select or be assigned shifts each day
@@ -213,7 +212,7 @@ class UserDashboardPage extends HookConsumerWidget {
         // Get today's shifts with proper time-based validation
         // This will automatically clean up expired volunteer shifts
         List<ShiftData> foundShifts = await _getAllShiftsForToday(user.uid, todayDayName, todayString);
-        debugPrint("[Dashboard][DEBUG] Found ${foundShifts.length} shifts after querying for today");
+        logger.d("[Dashboard][DEBUG] Found ${foundShifts.length} shifts after querying for today");
         foundShifts =
             selectedLocationId.value != null
                 ? foundShifts.where((shift) {
@@ -222,7 +221,7 @@ class UserDashboardPage extends HookConsumerWidget {
                 }).toList()
                 : foundShifts;
         foundShifts.sort((a, b) => a.startTime.compareTo(b.startTime));
-        debugPrint("[Dashboard][DEBUG] Setting ${foundShifts.length} shifts to assignedShifts");
+        logger.d("[Dashboard][DEBUG] Setting ${foundShifts.length} shifts to assignedShifts");
         assignedShifts.value = foundShifts;
 
         // Set selectedLocationIds to just the selected location for all shifts
@@ -243,15 +242,15 @@ class UserDashboardPage extends HookConsumerWidget {
         // checklist subcollections before we attempt to load them for the UI.
         try {
           await DailyChecklistService().ensureDailyChecklistsExist(organizationId.value!);
-          debugPrint('[Dashboard] ensureDailyChecklistsExist completed for org=${organizationId.value}');
+          logger.d('[Dashboard] ensureDailyChecklistsExist completed for org=${organizationId.value}');
         } catch (e) {
-          debugPrint('[Dashboard] ensureDailyChecklistsExist error: $e');
+          logger.e('[Dashboard] ensureDailyChecklistsExist error: $e', e);
         }
 
         // Load missed carry-forward tasks for yesterday using the centralized service
         try {
           missedTasksLoading.value = true;
-          debugPrint('[Dashboard] Loading missed tasks via DailyChecklistService (carried-into date = today)');
+          logger.d('[Dashboard] Loading missed tasks via DailyChecklistService (carried-into date = today)');
 
           // We must query the checklists for the date that carry-forward tasks were carried INTO.
           // Carry-forward tasks are copied into today's checklists with carriedIntoDate=today.
@@ -286,7 +285,7 @@ class UserDashboardPage extends HookConsumerWidget {
               }
             }
           } catch (e) {
-            debugPrint('[Dashboard] Error resolving effectiveLocationId for missed tasks: $e');
+            logger.e('[Dashboard] Error resolving effectiveLocationId for missed tasks: $e', e);
             effectiveLocationId = selectedLocationId.value;
           }
 
@@ -328,7 +327,7 @@ class UserDashboardPage extends HookConsumerWidget {
                       matches = false;
                     }
                   } catch (e) {
-                    debugPrint('[Dashboard] Error loading shift $sid for missed-tasks filtering: $e');
+                    logger.e('[Dashboard] Error loading shift $sid for missed-tasks filtering: $e', e);
                     matches = false;
                   }
                   shiftMatchCache[sid] = matches;
@@ -340,18 +339,18 @@ class UserDashboardPage extends HookConsumerWidget {
               sections = filtered;
             }
           } catch (e) {
-            debugPrint('[Dashboard] Error filtering missed task sections by jobTypes: $e');
+            logger.e('[Dashboard] Error filtering missed task sections by jobTypes: $e', e);
           }
 
           missedTasksSections.value = sections;
-          debugPrint('[Dashboard] Loaded ${sections.length} missed task sections via service (CG)');
+          logger.d('[Dashboard] Loaded ${sections.length} missed task sections via service (CG)');
         } catch (e, stack) {
-          debugPrint('[Dashboard] Error loading missed tasks via service: $e\n$stack');
+          logger.e('[Dashboard] Error loading missed tasks via service: $e', e, stack);
         } finally {
           missedTasksLoading.value = false;
         }
       } catch (e, stack) {
-        debugPrint("[Dashboard] Error loading dashboard data: $e\n$stack");
+        logger.e("[Dashboard] Error loading dashboard data: $e", e, stack);
         errorMessage.value = "An error occurred while loading your dashboard.";
       } finally {
         isLoading.value = false;
@@ -363,7 +362,7 @@ class UserDashboardPage extends HookConsumerWidget {
         // Load locations after user role is fetched
         if (organizationId.value != null) {
           await loadLocations();
-          debugPrint("[Dashboard] Loaded ${availableLocations.value.length} locations from initialization hook");
+          logger.d("[Dashboard] Loaded ${availableLocations.value.length} locations from initialization hook");
         }
       });
       if (!hasLoadedOnce.value) {
@@ -377,7 +376,7 @@ class UserDashboardPage extends HookConsumerWidget {
     useEffect(() {
       // If we've loaded before and it's a new day, reload the dashboard
       if (hasLoadedOnce.value && lastLoadedDate.value != null && lastLoadedDate.value != todayString) {
-        debugPrint("[Dashboard] Day changed detected in useEffect, reloading dashboard");
+        logger.d("[Dashboard] Day changed detected in useEffect, reloading dashboard");
         loadDashboardData();
       }
       return null;
@@ -389,7 +388,7 @@ class UserDashboardPage extends HookConsumerWidget {
       if (hasLoadedOnce.value) {
         // Refresh every 5 minutes
         refreshTimer = Timer.periodic(const Duration(minutes: 5), (timer) {
-          debugPrint("[Dashboard] Auto-refresh triggered");
+          logger.d("[Dashboard] Auto-refresh triggered");
           loadDashboardData();
         });
       }
@@ -531,7 +530,7 @@ class UserDashboardPage extends HookConsumerWidget {
                                 textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                               ),
                               onPressed: () async {
-                                debugPrint("[Dashboard] Available Shifts button pressed");
+                                logger.d("[Dashboard] Available Shifts button pressed");
                                 final result = await showModalBottomSheet<Map<String, dynamic>>(
                                   context: context,
                                   isScrollControlled: true,
@@ -548,7 +547,7 @@ class UserDashboardPage extends HookConsumerWidget {
                                   final shift = result['shift'] as ShiftData;
                                   final locationId = result['locationId'] as String;
 
-                                  debugPrint(
+                                  logger.d(
                                     "[Dashboard] User chose to help with shift '${shift.shiftName}' at location '$locationId'",
                                   );
 
@@ -575,20 +574,20 @@ class UserDashboardPage extends HookConsumerWidget {
                                           duration: const Duration(seconds: 2),
                                         ),
                                       );
-                                      debugPrint("[Dashboard] Successfully added user to shift volunteers");
+                                      logger.d("[Dashboard] Successfully added user to shift volunteers");
 
                                       // Mark this shift as selected in global operational state so its checklists auto-expand
                                       try {
                                         ref.read(operationalStateProvider.notifier).selectShift(shift);
                                       } catch (e) {
-                                        debugPrint('[Dashboard] Failed to update OperationalState selectedShift: $e');
+                                        logger.e('[Dashboard] Failed to update OperationalState selectedShift: $e', e);
                                       }
 
                                       // Refresh the dashboard to show the new volunteer shift
-                                      debugPrint("[Dashboard] Refreshing dashboard after joining volunteer shift...");
+                                      logger.d("[Dashboard] Refreshing dashboard after joining volunteer shift...");
                                       await loadDashboardData();
                                     } catch (e) {
-                                      debugPrint('[Dashboard] Error joining volunteer shift: $e');
+                                      logger.e('[Dashboard] Error joining volunteer shift: $e', e);
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         const SnackBar(
                                           content: Text('Error joining shift. Please try again.'),
@@ -795,163 +794,163 @@ class UserDashboardPage extends HookConsumerWidget {
 // Helper to get all shifts for today
 Future<List<ShiftData>> _getAllShiftsForToday(String userId, String todayDayName, String todayString) async {
   if (!enableScheduling) return [];
-  debugPrint(
+
+  logger.d(
     "[Dashboard][DEBUG] _getAllShiftsForToday called for userId=$userId, todayDayName=$todayDayName, todayString=$todayString",
   );
+
   final currentUser = FirebaseAuth.instance.currentUser;
-  debugPrint("[Dashboard][DEBUG] FirebaseAuth.currentUser: ${currentUser != null ? currentUser.uid : 'null'}");
+  logger.d("[Dashboard][DEBUG] FirebaseAuth.currentUser: ${currentUser != null ? currentUser.uid : 'null'}");
+
+  // Load user document
   final userDoc = await FirestoreEnforcer.instance.collection('users').doc(userId).get();
-  debugPrint("[Dashboard][DEBUG] userDoc.exists=${userDoc.exists}");
+  logger.d("[Dashboard][DEBUG] userDoc.exists=${userDoc.exists}");
   if (!userDoc.exists) {
-    debugPrint("[Dashboard][DEBUG] No user document found for userId=$userId");
+    logger.w("[Dashboard][DEBUG] No user document found for userId=$userId");
     return [];
   }
 
-  final userData = userDoc.data()!;
-  debugPrint("[Dashboard][DEBUG] userData: $userData");
+  final userData = userDoc.data() as Map<String, dynamic>;
+  logger.d("[Dashboard][DEBUG] userData: $userData");
+
   final organizationId = userData['organizationId'] as String?;
-  debugPrint("[Dashboard][DEBUG] organizationId=$organizationId");
   if (organizationId == null) {
-    debugPrint("[Dashboard][DEBUG][ERROR] organizationId is null for userId=$userId. userData: $userData");
+    logger.e("[Dashboard][DEBUG][ERROR] organizationId is null for userId=$userId. userData: $userData");
     return [];
   }
+  logger.d("[Dashboard][DEBUG] organizationId=$organizationId");
 
   final userRole = userData['userRole'] ?? 0;
-  debugPrint("[Dashboard][DEBUG] userRole=$userRole");
+  logger.d("[Dashboard][DEBUG] userRole=$userRole");
 
-  // New: support multi-location users for all roles. Prefer canonical 'locationIds' when present,
-  // otherwise fall back to legacy 'locationId'. Admins (2) still get all locations.
+  final userJobTypes = coerceToJobTypes(userData['jobTypes'] ?? userData['jobType']);
+  logger.d("[Dashboard][DEBUG] userJobTypes: $userJobTypes");
+
+  // Resolve location IDs
   List<String> locationIds = [];
-  List<String> userJobTypes = coerceToJobTypes(userData['jobTypes'] ?? userData['jobType']);
-  debugPrint("[Dashboard][DEBUG] userJobTypes: $userJobTypes");
-
-  if (userRole == 2) {
-    // Admin
-    debugPrint("[Dashboard][DEBUG] User is admin, fetching all locations for org $organizationId");
-    final locationsSnapshot =
-        await FirestoreEnforcer.instance.collection('organizations').doc(organizationId).collection('locations').get();
-    locationIds = locationsSnapshot.docs.map((doc) => doc.id).toList();
-    debugPrint("[Dashboard][DEBUG] Admin locationIds: $locationIds");
-  } else if (userData['locationIds'] != null) {
-    // Any non-admin with canonical locationIds
-    locationIds = coerceToLocationIds(userData['locationIds']);
-    debugPrint("[Dashboard][DEBUG] User locationIds (from locationIds): $locationIds");
-  } else if (userData['locationId'] != null) {
-    // Legacy single-location field
-    locationIds = coerceToLocationIds(userData['locationId']);
-    debugPrint("[Dashboard][DEBUG] User locationIds (from locationId): $locationIds");
+  try {
+    if (userRole == 2) {
+      // Admin: fetch all org locations
+      final locationsSnapshot =
+          await FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(organizationId)
+              .collection('locations')
+              .get();
+      locationIds = locationsSnapshot.docs.map((d) => d.id).toList();
+      logger.d("[Dashboard][DEBUG] Admin locationIds: $locationIds");
+    } else if (userData['locationIds'] != null) {
+      locationIds = coerceToLocationIds(userData['locationIds']);
+      logger.d("[Dashboard][DEBUG] User locationIds (from locationIds): $locationIds");
+    } else if (userData['locationId'] != null) {
+      locationIds = coerceToLocationIds(userData['locationId']);
+      logger.d("[Dashboard][DEBUG] User locationIds (from locationId): $locationIds");
+    }
+  } catch (e, stack) {
+    logger.e("[Dashboard][DEBUG] Error resolving locations for user: $e", e, stack);
   }
 
   if (locationIds.isEmpty) {
-    debugPrint("[Dashboard][DEBUG][ERROR] locationIds is empty for userId=$userId. userData: $userData");
+    logger.w("[Dashboard][DEBUG][ERROR] locationIds is empty for userId=$userId. userData: $userData");
     return [];
   }
 
-  // 1. Get all published schedule IDs for the user's locations for the relevant date
+  // 1. Get all published schedule IDs for the user's locations and date
   final publishedScheduleIds = <String>{};
-  debugPrint(
-    "[Dashboard][DEBUG] Querying published schedules for org=$organizationId, locationIds=$locationIds, date=$todayString",
-  );
-  final schedulesSnapshot =
-      await FirestoreEnforcer.instance
-          .collectionGroup('schedules')
-          .where('organizationId', isEqualTo: organizationId)
-          .where('locationId', whereIn: locationIds)
-          .where('published', isEqualTo: true)
-          .where('date', isEqualTo: todayString)
-          .get();
-  debugPrint("[Dashboard][DEBUG] schedulesSnapshot.docs.length=${schedulesSnapshot.docs.length}");
+  try {
+    logger.d(
+      "[Dashboard][DEBUG] Querying published schedules for org=$organizationId, locationIds=$locationIds, date=$todayString",
+    );
+    final schedulesSnapshot =
+        await FirestoreEnforcer.instance
+            .collectionGroup('schedules')
+            .where('organizationId', isEqualTo: organizationId)
+            .where('locationId', whereIn: locationIds)
+            .where('published', isEqualTo: true)
+            .where('date', isEqualTo: todayString)
+            .get();
 
-  for (final doc in schedulesSnapshot.docs) {
-    publishedScheduleIds.add(doc.id);
-    final docData = doc.data();
-    debugPrint("[Dashboard][DEBUG] Published schedule doc.id=${doc.id}, doc.data=$docData");
-    if (!docData.containsKey('organizationId')) {
-      debugPrint(
-        "[Dashboard][DEBUG][ERROR] Published schedule doc.id=${doc.id} is missing organizationId field! docData: $docData",
-      );
+    logger.d("[Dashboard][DEBUG] schedulesSnapshot.docs.length=${schedulesSnapshot.docs.length}");
+    for (final doc in schedulesSnapshot.docs) {
+      publishedScheduleIds.add(doc.id);
+      final docData = doc.data();
+      logger.d("[Dashboard][DEBUG] Published schedule doc.id=${doc.id}, doc.data=$docData");
+      if (!docData.containsKey('organizationId')) {
+        logger.e(
+          "[Dashboard][DEBUG][ERROR] Published schedule doc.id=${doc.id} is missing organizationId field! docData: $docData",
+        );
+      }
+      if (!docData.containsKey('locationId')) {
+        logger.e(
+          "[Dashboard][DEBUG][ERROR] Published schedule doc.id=${doc.id} is missing locationId field! docData: $docData",
+        );
+      }
+      if (!docData.containsKey('date')) {
+        logger.e(
+          "[Dashboard][DEBUG][ERROR] Published schedule doc.id=${doc.id} is missing date field! docData: $docData",
+        );
+      }
     }
-    if (!docData.containsKey('locationId')) {
-      debugPrint(
-        "[Dashboard][DEBUG][ERROR] Published schedule doc.id=${doc.id} is missing locationId field! docData: $docData",
-      );
-    }
-    if (!docData.containsKey('date')) {
-      debugPrint(
-        "[Dashboard][DEBUG][ERROR] Published schedule doc.id=${doc.id} is missing date field! docData: $docData",
-      );
-    }
+  } catch (e, stack) {
+    logger.e("[Dashboard][DEBUG][ERROR] Error querying published schedules: $e", e, stack);
   }
 
   if (publishedScheduleIds.isEmpty) {
-    debugPrint(
+    logger.w(
       "[Dashboard][DEBUG][ERROR] No published schedules found for today. org=$organizationId, locationIds=$locationIds, date=$todayString",
     );
-    debugPrint("[Dashboard][DEBUG] No published schedules, but checking for volunteer shifts...");
-    // Continue to check volunteer shifts even if no published schedules
   } else {
-    debugPrint("[Dashboard][DEBUG] Found published schedule IDs: $publishedScheduleIds");
+    logger.d("[Dashboard][DEBUG] Found published schedule IDs: $publishedScheduleIds");
   }
 
-  // 2. Get schedule entries for the user that are part of a published schedule
-  debugPrint("[Dashboard][DEBUG] Querying entries for org=$organizationId, userId=$userId, date=$todayString");
-
-  List<ShiftData> allShifts = [];
-
-  // Only query scheduled shifts if there are published schedules
+  // 2. Query entries for the user and convert to shifts
+  final List<ShiftData> allShifts = [];
   if (publishedScheduleIds.isNotEmpty) {
     try {
-      // For collection group queries, we can't filter by organizationId/date since entries don't have these fields
-      // Instead, we'll query by assignedUserIds and filter the results
       final querySnapshot =
           await FirestoreEnforcer.instance
               .collectionGroup('entries')
               .where('assignedUserIds', arrayContains: userId)
               .get();
-      debugPrint("[Dashboard][DEBUG] entries querySnapshot.docs.length=${querySnapshot.docs.length}");
 
+      logger.d("[Dashboard][DEBUG] entries querySnapshot.docs.length=${querySnapshot.docs.length}");
       for (final doc in querySnapshot.docs) {
         final data = doc.data();
-        debugPrint("[Dashboard][DEBUG] schedule_entry doc.id=${doc.id}, data=$data");
+        logger.d("[Dashboard][DEBUG] schedule_entry doc.id=${doc.id}, data=$data");
+
         if (!data.containsKey('organizationId')) {
-          debugPrint(
+          logger.e(
             "[Dashboard][DEBUG][ERROR] schedule_entry doc.id=${doc.id} is missing organizationId field! data: $data",
           );
+          continue;
         }
         if (!data.containsKey('locationId')) {
-          debugPrint(
+          logger.e(
             "[Dashboard][DEBUG][ERROR] schedule_entry doc.id=${doc.id} is missing locationId field! data: $data",
           );
+          continue;
         }
         if (!data.containsKey('date')) {
-          debugPrint("[Dashboard][DEBUG][ERROR] schedule_entry doc.id=${doc.id} is missing date field! data: $data");
+          logger.e("[Dashboard][DEBUG][ERROR] schedule_entry doc.id=${doc.id} is missing date field! data: $data");
+          continue;
         }
         if (!data.containsKey('assignedUserIds')) {
-          debugPrint(
+          logger.e(
             "[Dashboard][DEBUG][ERROR] schedule_entry doc.id=${doc.id} is missing assignedUserIds field! data: $data",
           );
-        }
-      }
-
-      // Convert entries to shifts by fetching the actual shift documents
-      for (final doc in querySnapshot.docs) {
-        final data = doc.data();
-        final entryScheduleId = data['scheduleId'] as String?;
-        final shiftId = data['shiftId'] as String?;
-
-        debugPrint(
-          "[Dashboard][DEBUG] Processing entry doc.id=${doc.id}, scheduleId=$entryScheduleId, shiftId=$shiftId",
-        );
-
-        if (entryScheduleId == null || shiftId == null) continue;
-
-        // Check if this entry belongs to one of today's published schedules
-        if (!publishedScheduleIds.contains(entryScheduleId)) {
-          debugPrint("[Dashboard][DEBUG] Entry ${doc.id} not in published schedules, skipping");
           continue;
         }
 
-        // Fetch the actual shift document
+        final entryScheduleId = data['scheduleId'] as String?;
+        final shiftId = data['shiftId'] as String?;
+        logger.d("[Dashboard][DEBUG] Processing entry doc.id=${doc.id}, scheduleId=$entryScheduleId, shiftId=$shiftId");
+
+        if (entryScheduleId == null || shiftId == null) continue;
+        if (!publishedScheduleIds.contains(entryScheduleId)) {
+          logger.d("[Dashboard][DEBUG] Entry ${doc.id} not in published schedules, skipping");
+          continue;
+        }
+
         try {
           final shiftDoc =
               await FirestoreEnforcer.instance
@@ -960,146 +959,90 @@ Future<List<ShiftData>> _getAllShiftsForToday(String userId, String todayDayName
                   .collection('shifts')
                   .doc(shiftId)
                   .get();
-
           if (shiftDoc.exists) {
             final shift = ShiftData.fromJson(shiftDoc.data()!).copyWith(shiftId: shiftDoc.id);
             allShifts.add(shift);
-            debugPrint("[Dashboard][DEBUG] Added shift from collection group: ${shift.shiftName}");
+            logger.d("[Dashboard][DEBUG] Added shift from collection group: ${shift.shiftName}");
           }
-        } catch (e) {
-          debugPrint("[Dashboard][DEBUG] Error fetching shift $shiftId: $e");
+        } catch (e, stack) {
+          logger.e("[Dashboard][DEBUG] Error fetching shift $shiftId: $e", e, stack);
         }
       }
-
-      debugPrint("[Dashboard][DEBUG] Found ${allShifts.length} published shifts for the user.");
+      logger.d("[Dashboard][DEBUG] Found ${allShifts.length} published shifts for the user.");
     } catch (e, stack) {
-      debugPrint("[Dashboard][DEBUG][ERROR] Error in collectionGroup query: $e\n$stack");
-      debugPrint("[Dashboard][DEBUG] Falling back to direct location queries...");
-
-      // Fallback: Query each location directly instead of using collectionGroup
-      for (final locationId in locationIds) {
-        final scheduleId = 'schedule_${todayString}_$locationId';
-        if (publishedScheduleIds.contains(scheduleId)) {
-          try {
-            final entriesSnapshot =
-                await FirestoreEnforcer.instance
-                    .collection('organizations')
-                    .doc(organizationId)
-                    .collection('locations')
-                    .doc(locationId)
-                    .collection('schedules')
-                    .doc(scheduleId)
-                    .collection('entries')
-                    .where('assignedUserIds', arrayContains: userId)
-                    .get();
-
-            debugPrint("[Dashboard][DEBUG] Found ${entriesSnapshot.docs.length} entries in location $locationId");
-
-            for (final entryDoc in entriesSnapshot.docs) {
-              final entryData = entryDoc.data();
-              debugPrint("[Dashboard][DEBUG] Entry in $locationId: ${entryDoc.id}, data=$entryData");
-
-              if (entryData.containsKey('shiftId')) {
-                final shiftId = entryData['shiftId'] as String;
-                final shiftDoc =
-                    await FirestoreEnforcer.instance
-                        .collection('organizations')
-                        .doc(organizationId)
-                        .collection('shifts')
-                        .doc(shiftId)
-                        .get();
-
-                if (shiftDoc.exists) {
-                  final shift = ShiftData.fromJson(shiftDoc.data()!).copyWith(shiftId: shiftDoc.id);
-                  allShifts.add(shift);
-                  debugPrint("[Dashboard][DEBUG] Added shift: ${shift.shiftName}");
-                }
-              }
-            }
-          } catch (e) {
-            debugPrint("[Dashboard][DEBUG] Error querying location $locationId: $e");
-          }
-        }
-      }
-
-      debugPrint("[Dashboard][DEBUG] Fallback found ${allShifts.length} shifts");
+      logger.e("[Dashboard][DEBUG][ERROR] Error in collectionGroup query: $e", e, stack);
     }
   }
 
-  // Always check for volunteer shifts where user is in the volunteers array
-  debugPrint("[Dashboard][DEBUG] Checking for volunteer shifts...");
+  // 3. Also include volunteer shifts the user joined (if active today)
   try {
-    final volunteeredShiftsQuery = FirestoreEnforcer.instance
-        .collection('organizations')
-        .doc(organizationId)
-        .collection('shifts')
-        .where('volunteers', arrayContains: userId);
+    logger.d("[Dashboard][DEBUG] Checking for volunteer shifts...");
+    final volunteeredShiftsSnapshot =
+        await FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(organizationId)
+            .collection('shifts')
+            .where('volunteers', arrayContains: userId)
+            .get();
 
-    final volunteeredShiftsSnapshot = await volunteeredShiftsQuery.get();
-    debugPrint("[Dashboard][DEBUG] Found ${volunteeredShiftsSnapshot.docs.length} volunteer shifts");
-
+    logger.d("[Dashboard][DEBUG] Found ${volunteeredShiftsSnapshot.docs.length} volunteer shifts");
     for (final doc in volunteeredShiftsSnapshot.docs) {
       try {
         final data = doc.data();
-        debugPrint("[Dashboard][DEBUG] Volunteer shift doc.id=${doc.id}, data=$data");
+        logger.d("[Dashboard][DEBUG] Volunteer shift doc.id=${doc.id}, data=$data");
         final shift = ShiftData.fromJson(data).copyWith(shiftId: doc.id);
 
-        // Only include volunteer shifts that the user explicitly joined today
         final vj = (data['volunteerJoins'] as Map?)?.cast<String, dynamic>();
         final joinedMarker = vj != null ? vj[userId] : null;
         final joinedToday = joinedMarker == todayString;
         if (!joinedToday) {
-          debugPrint(
+          logger.d(
             "[Dashboard][DEBUG] Skipping volunteer shift ${shift.shiftName}: user didn't join today (marker=$joinedMarker, today=$todayString)",
           );
           continue;
         }
 
-        // Check if this shift is active for today
         final isActiveToday = await _isShiftActiveForToday(shift, todayDayName, todayString, isVolunteerShift: true);
-
         if (isActiveToday) {
-          debugPrint(
+          logger.d(
             "[Dashboard][DEBUG] Found active volunteer shift for today: ${shift.shiftName} (ID: ${shift.shiftId})",
           );
-          // Check if this shift is not already in the list
           if (!allShifts.any((existingShift) => existingShift.shiftId == shift.shiftId)) {
             allShifts.add(shift);
-            debugPrint("[Dashboard][DEBUG] Added volunteer shift to list: ${shift.shiftName}");
+            logger.d("[Dashboard][DEBUG] Added volunteer shift to list: ${shift.shiftName}");
           } else {
-            debugPrint("[Dashboard][DEBUG] Volunteer shift already in list: ${shift.shiftName}");
+            logger.d("[Dashboard][DEBUG] Volunteer shift already in list: ${shift.shiftName}");
           }
         } else {
-          debugPrint("[Dashboard][DEBUG] Volunteer shift ${shift.shiftName} is not active today");
-          // DISABLED: Cleanup during navigation is too aggressive
-          // await _cleanupExpiredVolunteerShift(shift, userId, organizationId, todayString);
+          logger.d("[Dashboard][DEBUG] Volunteer shift ${shift.shiftName} is not active today");
         }
       } catch (e, stack) {
-        debugPrint("[Dashboard][DEBUG] Failed to parse volunteer shift doc ${doc.id}: $e\n$stack");
+        logger.e("[Dashboard][DEBUG] Failed to parse volunteer shift doc ${doc.id}: $e", e, stack);
       }
     }
   } catch (e, stack) {
-    debugPrint("[Dashboard][DEBUG] Error checking volunteer shifts: $e\n$stack");
+    logger.e("[Dashboard][DEBUG] Error checking volunteer shifts: $e", e, stack);
   }
 
-  // If this is a general user (userRole 0), filter visible shifts to only those matching the user's jobType(s)
+  // 4. Role-based filtering: employees (userRole 0) should only see shifts matching their jobTypes
   try {
     if (userRole == 0 && userJobTypes.isNotEmpty) {
       final beforeCount = allShifts.length;
-      allShifts =
+      final filtered =
           allShifts.where((s) {
-            final shiftJobs = s.jobType; // ShiftData.jobType is non-nullable List<String>
+            final shiftJobs = s.jobType;
             return shiftJobs.toSet().intersection(userJobTypes.toSet()).isNotEmpty;
           }).toList();
-      debugPrint(
-        "[Dashboard][DEBUG] Filtered shifts by userJobTypes ($userJobTypes): removed ${beforeCount - allShifts.length} shifts",
+      logger.d(
+        "[Dashboard][DEBUG] Filtered shifts by userJobTypes ($userJobTypes): removed ${beforeCount - filtered.length} shifts",
       );
+      return filtered;
     }
-  } catch (e) {
-    debugPrint('[Dashboard][DEBUG] Error filtering shifts by jobType: $e');
+  } catch (e, stack) {
+    logger.e('[Dashboard][DEBUG] Error filtering shifts by jobType: $e', e, stack);
   }
 
-  debugPrint("[Dashboard][DEBUG] Final total with volunteers: ${allShifts.length} shifts");
+  logger.d("[Dashboard][DEBUG] Final total with volunteers: ${allShifts.length} shifts");
   return allShifts;
 }
 
@@ -1111,9 +1054,7 @@ Future<bool> _isShiftActiveForToday(
   bool isVolunteerShift = false,
 }) async {
   try {
-    debugPrint(
-      "[Dashboard] Checking if shift ${shift.shiftName} is active for today ($todayString, $todayDayName), isVolunteerShift: $isVolunteerShift",
-    );
+  logger.d("[Dashboard] Checking if shift ${shift.shiftName} is active for today ($todayString, $todayDayName), isVolunteerShift: $isVolunteerShift");
 
     // Parse today's date
     final today = DateTime.parse(todayString);
@@ -1123,7 +1064,7 @@ Future<bool> _isShiftActiveForToday(
     final isScheduledToday = shift.repeatsDaily || shift.days.contains(todayDayName);
 
     if (!isScheduledToday) {
-      debugPrint("[Dashboard] Shift ${shift.shiftName} is not scheduled for $todayDayName");
+      logger.d("[Dashboard] Shift ${shift.shiftName} is not scheduled for $todayDayName");
       return false;
     }
 
@@ -1136,7 +1077,7 @@ Future<bool> _isShiftActiveForToday(
     final endTimeParts = shift.endTime.split(':');
 
     if (startTimeParts.length != 2 || endTimeParts.length != 2) {
-      debugPrint("[Dashboard] Invalid time format for shift ${shift.shiftName}: ${shift.startTime} - ${shift.endTime}");
+      logger.e("[Dashboard] Invalid time format for shift ${shift.shiftName}: ${shift.startTime} - ${shift.endTime}");
       return false;
     }
 
@@ -1153,12 +1094,12 @@ Future<bool> _isShiftActiveForToday(
     if (shiftEnd.isBefore(shiftStart)) {
       // Shift ends the next day
       shiftEnd = shiftEnd.add(const Duration(days: 1));
-      debugPrint("[Dashboard] Shift ${shift.shiftName} spans midnight: $shiftStart to $shiftEnd");
+      logger.d("[Dashboard] Shift ${shift.shiftName} spans midnight: $shiftStart to $shiftEnd");
     }
 
     // If current time is within the shift window, always consider it active
     if (now.isAfter(shiftStart) && now.isBefore(shiftEnd)) {
-      debugPrint("[Dashboard] Currently within shift ${shift.shiftName} time window");
+      logger.d("[Dashboard] Currently within shift ${shift.shiftName} time window");
       return true;
     }
 
@@ -1168,7 +1109,7 @@ Future<bool> _isShiftActiveForToday(
     if (isVolunteerShift) {
       final preWindowStart = shiftStart.subtract(const Duration(minutes: 30));
       final withinVolunteerWindow = now.isAfter(preWindowStart) && now.isBefore(shiftEnd);
-      debugPrint(
+      logger.d(
         "[Dashboard] Volunteer shift ${shift.shiftName}: preWindowStart=$preWindowStart, now=$now, shiftEnd=$shiftEnd, withinVolunteerWindow=$withinVolunteerWindow",
       );
       return withinVolunteerWindow;
@@ -1177,18 +1118,18 @@ Future<bool> _isShiftActiveForToday(
     // Check if shift has ended
     final hasEnded = now.isAfter(shiftEnd);
 
-    debugPrint("[Dashboard] Shift ${shift.shiftName}: start=$shiftStart, end=$shiftEnd, now=$now, hasEnded=$hasEnded");
+    logger.d("[Dashboard] Shift ${shift.shiftName}: start=$shiftStart, end=$shiftEnd, now=$now, hasEnded=$hasEnded");
 
     // If shift has ended, it's not active
     if (hasEnded) {
-      debugPrint("[Dashboard] Shift ${shift.shiftName} has ended");
+      logger.d("[Dashboard] Shift ${shift.shiftName} has ended");
       return false;
     }
 
     // Shift is active if it's scheduled for today and hasn't ended yet
     return !hasEnded;
   } catch (e, stack) {
-    debugPrint("[Dashboard] Error checking if shift is active: $e\n$stack");
+    logger.e("[Dashboard] Error checking if shift is active: $e\n$stack", e, stack);
     return false;
   }
 }
@@ -1201,8 +1142,8 @@ Future<List<DailyChecklist>> _loadChecklistsForShiftSimple(
   String organizationId,
 ) async {
   try {
-    debugPrint("[Dashboard] Loading checklists for shift: ${shift.shiftName} (${shift.shiftId})");
-    debugPrint("[Dashboard] Location: $locationId, Date: $todayString, Org: $organizationId");
+    logger.d("[Dashboard] Loading checklists for shift: ${shift.shiftName} (${shift.shiftId})");
+    logger.d("[Dashboard] Location: $locationId, Date: $todayString, Org: $organizationId");
 
     final checklistSnapshot =
         await FirestoreEnforcer.instance
@@ -1215,12 +1156,12 @@ Future<List<DailyChecklist>> _loadChecklistsForShiftSimple(
             .where('date', isEqualTo: todayString)
             .get();
 
-    debugPrint("[Dashboard] Found ${checklistSnapshot.docs.length} existing checklists");
+    logger.d("[Dashboard] Found ${checklistSnapshot.docs.length} existing checklists");
     final checklists = checklistSnapshot.docs.map((doc) => DailyChecklist.fromMap(doc.data(), doc.id)).toList();
 
     // Fallback logic
     if (checklists.isEmpty && shift.checklistTemplateIds.isNotEmpty) {
-      debugPrint("[Dashboard] No existing checklists found, generating from templates: ${shift.checklistTemplateIds}");
+      logger.d("[Dashboard] No existing checklists found, generating from templates: ${shift.checklistTemplateIds}");
       final dailyChecklistService = DailyChecklistService();
       final generatedChecklists = await dailyChecklistService.generateDailyChecklists(
         organizationId: organizationId,
@@ -1229,14 +1170,14 @@ Future<List<DailyChecklist>> _loadChecklistsForShiftSimple(
         shiftData: shift,
         date: todayString,
       );
-      debugPrint("[Dashboard] Generated ${generatedChecklists.length} checklists");
+      logger.d("[Dashboard] Generated ${generatedChecklists.length} checklists");
       return generatedChecklists;
     }
 
-    debugPrint("[Dashboard] Returning ${checklists.length} checklists for shift ${shift.shiftName}");
+    logger.d("[Dashboard] Returning ${checklists.length} checklists for shift ${shift.shiftName}");
     return checklists;
   } catch (e, stack) {
-    debugPrint("[Dashboard] Error loading checklists: $e\n$stack");
+    logger.e("[Dashboard] Error loading checklists: $e\n$stack", e, stack);
     return [];
   }
 }
@@ -1295,14 +1236,14 @@ Future<void> _leaveVolunteerShift(
           'volunteerJoins.${user.uid}': FieldValue.delete(),
         });
 
-    debugPrint("[Dashboard] Successfully removed user from shift volunteers");
+  logger.d("[Dashboard] Successfully removed user from shift volunteers");
 
-    // Refresh the dashboard to remove the shift from display
-    debugPrint("[Dashboard] Refreshing dashboard after leaving volunteer shift...");
+  // Refresh the dashboard to remove the shift from display
+  logger.d("[Dashboard] Refreshing dashboard after leaving volunteer shift...");
     try {
       // Reload all shifts for today
       List<ShiftData> refreshedShifts = await _getAllShiftsForToday(user.uid, todayDayName, todayString);
-      debugPrint("[Dashboard] Refreshed shifts after leaving: ${refreshedShifts.length} found");
+  logger.d("[Dashboard] Refreshed shifts after leaving: ${refreshedShifts.length} found");
 
       // Update the dashboard state
       refreshedShifts.sort((a, b) => a.startTime.compareTo(b.startTime));
@@ -1323,16 +1264,16 @@ Future<void> _leaveVolunteerShift(
       }
       allChecklists.value = checklistGroups;
 
-      debugPrint("[Dashboard] Dashboard refresh completed after leaving shift");
+  logger.d("[Dashboard] Dashboard refresh completed after leaving shift");
     } catch (refreshError) {
-      debugPrint("[Dashboard] Error refreshing dashboard after leaving shift: $refreshError");
+  logger.e("[Dashboard] Error refreshing dashboard after leaving shift: $refreshError", refreshError);
     }
 
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Successfully left volunteer shift!'), backgroundColor: Colors.green));
   } catch (e) {
-    debugPrint('Error leaving volunteer shift: $e');
+  logger.e('Error leaving volunteer shift: $e', e);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Error leaving shift. Please try again.'), backgroundColor: Colors.red),
     );
@@ -1561,17 +1502,17 @@ class _HelpOutSheet extends StatelessWidget {
           }
 
           shifts.add(shift);
-        } catch (e) {
-          debugPrint('[HelpOutSheet] Error parsing shift ${doc.id}: $e');
+          } catch (e) {
+          logger.e('[HelpOutSheet] Error parsing shift ${doc.id}: $e', e);
         }
       }
 
       shifts.sort((a, b) => a.startTime.compareTo(b.startTime));
       return shifts;
-    } catch (e) {
-      debugPrint('[HelpOutSheet] Error loading shifts: $e');
-      return [];
-    }
+      } catch (e) {
+        logger.e('[HelpOutSheet] Error loading shifts: $e', e);
+        return [];
+      }
   }
 }
 
@@ -1649,7 +1590,7 @@ class _PhotoDialogState extends State<_PhotoDialog> {
       }
     } catch (e) {
       setState(() => _isUploading = false);
-      debugPrint('Error uploading photo: $e');
+  logger.e('Error uploading photo: $e', e);
 
       if (mounted) {
         ScaffoldMessenger.of(
@@ -1701,7 +1642,7 @@ class _PhotoDialogState extends State<_PhotoDialog> {
       }
     } catch (e) {
       setState(() => _isUploading = false);
-      debugPrint('Error taking photo: $e');
+  logger.e('Error taking photo: $e', e);
 
       if (mounted) {
         ScaffoldMessenger.of(
@@ -1738,7 +1679,7 @@ class _PhotoDialogState extends State<_PhotoDialog> {
         );
       }
     } catch (e) {
-      debugPrint('[PhotoDialog] Error updating task photo via service: $e');
+      logger.e('[PhotoDialog] Error updating task photo via service: $e', e);
       rethrow;
     }
   }
@@ -1765,7 +1706,7 @@ class _PhotoDialogState extends State<_PhotoDialog> {
       }
     } catch (e) {
       setState(() => _isUploading = false);
-      debugPrint('Error removing photo: $e');
+  logger.e('Error removing photo: $e', e);
 
       if (mounted) {
         ScaffoldMessenger.of(
@@ -2013,7 +1954,7 @@ class _NotesDialogState extends State<_NotesDialog> {
         Navigator.pop(context, notes);
       }
     } catch (e) {
-      debugPrint('Error saving notes: $e');
+  logger.e('Error saving notes: $e', e);
 
       if (mounted) {
         ScaffoldMessenger.of(
@@ -2203,7 +2144,7 @@ class _NotCompletedReasonDialogState extends State<_NotCompletedReasonDialog> {
         Navigator.pop(context, finalReason);
       }
     } catch (e) {
-      debugPrint('Error saving not completed reason: $e');
+  logger.e('Error saving not completed reason: $e', e);
 
       if (mounted) {
         ScaffoldMessenger.of(
@@ -2560,7 +2501,7 @@ class _ChecklistCard extends HookConsumerWidget {
                   )
                   .map((list) => list),
               builder: (context, snapshot) {
-                debugPrint(
+                logger.d(
                   '[Dashboard][_ChecklistCard] header snapshot.hasData=${snapshot.hasData} checklistId=${checklist.id}',
                 );
                 if (!snapshot.hasData) {
@@ -2573,8 +2514,18 @@ class _ChecklistCard extends HookConsumerWidget {
                   );
                 }
 
-                final tasks = snapshot.data!;
-                debugPrint(
+                final tasks = snapshot.data;
+                if (tasks == null) {
+                  // Defensive: if data is unexpectedly null, show the same loading affordance as before
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 4),
+                      LinearProgressIndicator(value: 0.0, backgroundColor: Colors.grey[300]),
+                    ],
+                  );
+                }
+                logger.d(
                   '[Dashboard][_ChecklistCard] header received ${tasks.length} tasks for checklist=${checklist.id}',
                 );
                 final totalTasks = tasks.length;
@@ -2617,29 +2568,32 @@ class _ChecklistCard extends HookConsumerWidget {
                   checklistId: checklist.id,
                 ),
                 builder: (context, snapshot) {
-                  debugPrint(
+                  logger.d(
                     '[Dashboard][_ChecklistCard] expanded snapshot.hasData=${snapshot.hasData} checklistId=${checklist.id}',
                   );
                   if (!snapshot.hasData) {
                     return const Center(child: CircularProgressIndicator());
                   }
 
-                  final tasks = snapshot.data!;
-                  debugPrint(
+                  final tasks = snapshot.data;
+                  if (tasks == null) {
+                    // Defensive: keep showing the loading spinner while data is absent
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  logger.d(
                     '[Dashboard][_ChecklistCard] expanded received ${tasks.length} tasks for checklist=${checklist.id}',
                   );
 
                   return Column(
-                    children:
-                        tasks
-                            .map(
-                              (t) => _TaskTileFromData(
-                                taskData: t,
-                                checklist: checklist,
-                                onTaskToggled: onTaskToggled ?? () {},
-                              ),
-                            )
-                            .toList(),
+                    children: tasks
+                        .map(
+                          (t) => _TaskTileFromData(
+                            taskData: t,
+                            checklist: checklist,
+                            onTaskToggled: onTaskToggled ?? () {},
+                          ),
+                        )
+                        .toList(),
                   );
                 },
               ),
@@ -2776,7 +2730,7 @@ class _TaskTileFromData extends HookWidget {
         ),
       );
     } catch (e) {
-      debugPrint('Error updating task completion: $e');
+  logger.e('Error updating task completion: $e', e);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Error updating task. Please try again.'), backgroundColor: Colors.red),
       );
@@ -3135,7 +3089,7 @@ class _MissedTaskInteractionTile extends HookWidget {
             completedByUserName: user.displayName,
           );
         } catch (e) {
-          debugPrint('[MissedTask] Falling back to checklist array update due to error: $e');
+          logger.w('[MissedTask] Falling back to checklist array update due to error: $e');
           // Fallback to array-update below if needed
           final updatedTasks =
               section.tasks.map((t) {
@@ -3183,7 +3137,7 @@ class _MissedTaskInteractionTile extends HookWidget {
         ),
       );
     } catch (e) {
-      debugPrint("Error updating missed task: $e");
+  logger.e("Error updating missed task: $e", e);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Error updating task. Please try again."), backgroundColor: Colors.red),
       );

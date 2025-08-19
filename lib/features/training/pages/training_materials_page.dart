@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hands_app/state/user_state.dart';
+import 'package:hands_app/core/logging/logger.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 // Ensure userStateProvider is exported from user_state.dart
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
@@ -43,9 +44,9 @@ class ViewDocumentsPage extends HookConsumerWidget {
     final organizationId = useState<String?>(null);
     final isLoadingOrgId = useState<bool>(true);
 
-    debugPrint('DEBUG: userState: $userState');
-    debugPrint('DEBUG: userState.userData: ${userState.userData}');
-    debugPrint('DEBUG: organizationId from userState: ${userState.userData?.organizationId}');
+  logger.d('DEBUG: userState: $userState');
+  logger.d('DEBUG: userState.userData: ${userState.userData}');
+  logger.d('DEBUG: organizationId from userState: ${userState.userData?.organizationId}');
     debugPrint('DEBUG: organizationId from useState: ${organizationId.value}');
 
     // Fallback mechanism to get organizationId directly from Firebase Auth/Firestore
@@ -56,29 +57,29 @@ class ViewDocumentsPage extends HookConsumerWidget {
           if (userState.userData?.organizationId != null) {
             organizationId.value = userState.userData!.organizationId;
             isLoadingOrgId.value = false;
-            debugPrint('DEBUG: Using organizationId from userState: ${organizationId.value}');
+            logger.d('DEBUG: Using organizationId from userState: ${organizationId.value}');
             return;
           }
 
           // Fallback: Get from Firebase Auth + Firestore directly
           final currentUser = FirebaseAuth.instance.currentUser;
           if (currentUser != null) {
-            debugPrint('DEBUG: Current user UID: ${currentUser.uid}');
+            logger.d('DEBUG: Current user UID: ${currentUser.uid}');
             final userDoc = await FirestoreEnforcer.instance.collection('users').doc(currentUser.uid).get();
 
             if (userDoc.exists) {
               final userData = userDoc.data() as Map<String, dynamic>;
               final orgId = userData['organizationId'] as String?;
               organizationId.value = orgId;
-              debugPrint('DEBUG: Loaded organizationId from Firestore: $orgId');
+              logger.d('DEBUG: Loaded organizationId from Firestore: $orgId');
             } else {
-              debugPrint('DEBUG: User document does not exist');
+              logger.w('DEBUG: User document does not exist');
             }
           } else {
-            debugPrint('DEBUG: No current user');
+            logger.w('DEBUG: No current user');
           }
         } catch (e) {
-          debugPrint('DEBUG: Error loading organizationId: $e');
+          logger.e('DEBUG: Error loading organizationId: $e', e);
         } finally {
           isLoadingOrgId.value = false;
         }
@@ -379,8 +380,8 @@ class ViewDocumentsPage extends HookConsumerWidget {
   }
 
   Stream<QuerySnapshot> _getDocumentsStream(String organizationId, String category) {
-    debugPrint('DEBUG: Getting documents for orgId: $organizationId, category: $category');
-    debugPrint('DEBUG: Full path: organizations/$organizationId/training_documents');
+  logger.d('DEBUG: Getting documents for orgId: $organizationId, category: $category');
+  logger.d('DEBUG: Full path: organizations/$organizationId/training_documents');
 
     // Updated path to match admin dashboard's nested path structure
     Query query = FirestoreEnforcer.instance
@@ -389,12 +390,12 @@ class ViewDocumentsPage extends HookConsumerWidget {
         .collection('training_documents');
 
     if (category != 'All') {
-      debugPrint('DEBUG: Filtering by category: $category');
+  logger.d('DEBUG: Filtering by category: $category');
       query = query.where('category', isEqualTo: category);
       // Re-enable orderBy with category filter
       query = query.orderBy('createdAt', descending: true);
     } else {
-      debugPrint('DEBUG: No category filter, getting all documents');
+  logger.d('DEBUG: No category filter, getting all documents');
       // For "All" category, try without orderBy first
       // query = query.orderBy('createdAt', descending: true);
     }
@@ -402,21 +403,21 @@ class ViewDocumentsPage extends HookConsumerWidget {
     return query
         .snapshots()
         .map((snapshot) {
-          debugPrint('DEBUG: Query executed successfully');
-          debugPrint('DEBUG: Found ${snapshot.docs.length} documents');
+          logger.d('DEBUG: Query executed successfully');
+          logger.d('DEBUG: Found ${snapshot.docs.length} documents');
 
           if (snapshot.docs.isEmpty) {
-            debugPrint('DEBUG: No documents found - checking if collection exists');
+            logger.d('DEBUG: No documents found - checking if collection exists');
           }
 
           for (var doc in snapshot.docs) {
-            debugPrint('DEBUG: Document ${doc.id}: ${doc.data()}');
+            logger.d('DEBUG: Document ${doc.id}: ${doc.data()}');
           }
           return snapshot;
         })
         .handleError((error) {
-          debugPrint('DEBUG: Stream error: $error');
-          debugPrint('DEBUG: Error type: ${error.runtimeType}');
+          logger.e('DEBUG: Stream error: $error', error);
+          logger.d('DEBUG: Error type: ${error.runtimeType}');
         });
   }
 }

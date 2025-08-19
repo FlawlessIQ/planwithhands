@@ -119,6 +119,8 @@ export const syncTodayOnShiftChange = functions
             completed: false,
             photoRequired,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            // TTL: expire tasks after 30 days
+            expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)),
             dueDate,
             isCarryForward: false,
             organizationId: orgId,
@@ -156,6 +158,8 @@ export const syncTodayOnShiftChange = functions
           dateString,
           checklistTemplateIds: templatesToProcess,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          // TTL for ephemeral checklist parents
+          expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)),
         };
 
         batch.set(newChecklistRef, checklistDoc, {merge: true});

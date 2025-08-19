@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:intl/intl.dart';
+import 'package:hands_app/core/logging/logger.dart';
 
 /// Service to handle daily summary notifications for admins
 class DailySummaryService {
@@ -14,7 +14,7 @@ class DailySummaryService {
       final date = targetDate ?? DateTime.now();
       final dateStr = _formatDate(date);
 
-      debugPrint('[DailySummaryService] Generating daily summary for org: $organizationId, date: $dateStr');
+  logger.d('[DailySummaryService] Generating daily summary for org: $organizationId, date: $dateStr');
 
       // Collect all notes and missed task reasons for the day
       final summaryData = await _collectDailySummaryData(organizationId, date);
@@ -24,7 +24,7 @@ class DailySummaryService {
       final missedTaskEntries = summaryData['missedTaskEntries'] ?? <Map<String, dynamic>>[];
 
       if ((notesEntries as List).isEmpty && (missedTaskEntries as List).isEmpty) {
-        debugPrint('[DailySummaryService] No notes or missed task reasons found for $dateStr - skipping notification');
+        logger.d('[DailySummaryService] No notes or missed task reasons found for $dateStr - skipping notification');
         return;
       }
 
@@ -32,7 +32,7 @@ class DailySummaryService {
       final adminUsers = await _getAdminUsers(organizationId);
 
       if (adminUsers.isEmpty) {
-        debugPrint('[DailySummaryService] No admin users found for organization $organizationId');
+        logger.w('[DailySummaryService] No admin users found for organization $organizationId');
         return;
       }
 
@@ -48,10 +48,9 @@ class DailySummaryService {
         content: notificationContent,
       );
 
-      debugPrint('[DailySummaryService] Daily summary notification sent to ${adminUsers.length} admin(s)');
+  logger.d('[DailySummaryService] Daily summary notification sent to ${adminUsers.length} admin(s)');
     } catch (e, stackTrace) {
-      debugPrint('[DailySummaryService] Error generating daily summary: $e');
-      debugPrint('[DailySummaryService] Stack trace: $stackTrace');
+  logger.e('[DailySummaryService] Error generating daily summary', e, stackTrace);
     }
   }
 
@@ -66,7 +65,7 @@ class DailySummaryService {
       final locationsQuery =
           await _firestore.collection('organizations').doc(organizationId).collection('locations').get();
 
-      debugPrint('[DailySummaryService] Found ${locationsQuery.docs.length} locations');
+  logger.d('[DailySummaryService] Found ${locationsQuery.docs.length} locations');
 
       // Get shift names map for reference
       final shiftNames = await _getShiftNames(organizationId);
@@ -78,7 +77,7 @@ class DailySummaryService {
         final locationId = locationDoc.id;
         final locationName = locationDoc.data()['locationName'] as String? ?? 'Unknown Location';
 
-        debugPrint('[DailySummaryService] Processing location: $locationName ($locationId)');
+  logger.d('[DailySummaryService] Processing location: $locationName ($locationId)');
 
         // Query daily checklists for this location on the target date
         final checklistsQuery =
@@ -91,7 +90,7 @@ class DailySummaryService {
                 .where('date', isEqualTo: dateStr)
                 .get();
 
-        debugPrint('[DailySummaryService] Found ${checklistsQuery.docs.length} checklists for location $locationId');
+  logger.d('[DailySummaryService] Found ${checklistsQuery.docs.length} checklists for location $locationId');
 
         for (final checklistDoc in checklistsQuery.docs) {
           final checklistData = checklistDoc.data();
@@ -100,7 +99,7 @@ class DailySummaryService {
           final templateName = checklistData['templateName'] as String? ?? 'Unknown Checklist';
           final tasks = List<Map<String, dynamic>>.from(checklistData['tasks'] ?? []);
 
-          debugPrint('[DailySummaryService] Processing checklist: $shiftName - $templateName (${tasks.length} tasks)');
+          logger.d('[DailySummaryService] Processing checklist: $shiftName - $templateName (${tasks.length} tasks)');
 
           for (final taskData in tasks) {
             final taskName =
@@ -126,7 +125,7 @@ class DailySummaryService {
                 'completedAt': taskData['completedAt'],
               });
 
-              debugPrint('[DailySummaryService] Found notes for task: $taskName by $userName');
+              logger.d('[DailySummaryService] Found notes for task: $taskName by $userName');
             }
 
             // Check for not completed reasons
@@ -146,20 +145,19 @@ class DailySummaryService {
                 'reason': reason,
               });
 
-              debugPrint('[DailySummaryService] Found missed task reason: $taskName - $reason');
+              logger.d('[DailySummaryService] Found missed task reason: $taskName - $reason');
             }
           }
         }
       }
 
-      debugPrint(
+      logger.d(
         '[DailySummaryService] Summary: ${notesEntries.length} notes, ${missedTaskEntries.length} missed task reasons',
       );
 
       return {'notesEntries': notesEntries, 'missedTaskEntries': missedTaskEntries};
     } catch (e, stackTrace) {
-      debugPrint('[DailySummaryService] Error collecting daily summary data: $e');
-      debugPrint('[DailySummaryService] Stack trace: $stackTrace');
+  logger.e('[DailySummaryService] Error collecting daily summary data', e, stackTrace);
       return {'notesEntries': <Map<String, dynamic>>[], 'missedTaskEntries': <Map<String, dynamic>>[]};
     }
   }
@@ -175,7 +173,7 @@ class DailySummaryService {
               .where('isActive', isEqualTo: true)
               .get();
 
-      return usersQuery.docs.map((doc) {
+  return usersQuery.docs.map((doc) {
         final data = doc.data();
         return {
           'userId': doc.id,
@@ -185,7 +183,7 @@ class DailySummaryService {
         };
       }).toList();
     } catch (e) {
-      debugPrint('[DailySummaryService] Error getting admin users: $e');
+  logger.e('[DailySummaryService] Error getting admin users', e);
       return [];
     }
   }
@@ -196,14 +194,14 @@ class DailySummaryService {
       final shiftsQuery = await _firestore.collection('organizations').doc(organizationId).collection('shifts').get();
 
       final Map<String, String> shiftNames = {};
-      for (final doc in shiftsQuery.docs) {
+  for (final doc in shiftsQuery.docs) {
         final data = doc.data();
         shiftNames[doc.id] = data['shiftName'] as String? ?? 'Unknown Shift';
       }
 
       return shiftNames;
     } catch (e) {
-      debugPrint('[DailySummaryService] Error getting shift names: $e');
+  logger.e('[DailySummaryService] Error getting shift names', e);
       return {};
     }
   }
@@ -214,7 +212,7 @@ class DailySummaryService {
       final usersQuery = await _firestore.collection('users').where('organizationId', isEqualTo: organizationId).get();
 
       final Map<String, String> userNames = {};
-      for (final doc in usersQuery.docs) {
+  for (final doc in usersQuery.docs) {
         final data = doc.data();
         final firstName = data['firstName'] as String? ?? '';
         final lastName = data['lastName'] as String? ?? '';
@@ -223,7 +221,7 @@ class DailySummaryService {
 
       return userNames;
     } catch (e) {
-      debugPrint('[DailySummaryService] Error getting user names: $e');
+  logger.e('[DailySummaryService] Error getting user names', e);
       return {};
     }
   }
@@ -301,7 +299,8 @@ class DailySummaryService {
   }) async {
     try {
       final batch = _firestore.batch();
-      final timestamp = FieldValue.serverTimestamp();
+    final timestamp = FieldValue.serverTimestamp();
+    final expiresAt = Timestamp.fromDate(DateTime.now().add(const Duration(days: 30)));
 
       for (final admin in adminUsers) {
         final notificationRef =
@@ -312,7 +311,8 @@ class DailySummaryService {
           'message': content,
           'recipientId': admin['userId'],
           'type': 'daily_summary',
-          'createdAt': timestamp,
+      'createdAt': timestamp,
+      'expiresAt': expiresAt,
           'readBy': <String>[],
           'archivedBy': <String>[],
           // Add targets for filtering if needed
@@ -322,14 +322,13 @@ class DailySummaryService {
           },
         });
 
-        debugPrint('[DailySummaryService] Queued notification for admin: ${admin['firstName']} ${admin['lastName']}');
+        logger.d('[DailySummaryService] Queued notification for admin: ${admin['firstName']} ${admin['lastName']}');
       }
 
       await batch.commit();
-      debugPrint('[DailySummaryService] Successfully sent notifications to ${adminUsers.length} admin(s)');
+      logger.d('[DailySummaryService] Successfully sent notifications to ${adminUsers.length} admin(s)');
     } catch (e, stackTrace) {
-      debugPrint('[DailySummaryService] Error sending notifications to admins: $e');
-      debugPrint('[DailySummaryService] Stack trace: $stackTrace');
+      logger.e('[DailySummaryService] Error sending notifications to admins', e, stackTrace);
       rethrow;
     }
   }
@@ -343,7 +342,7 @@ class DailySummaryService {
     final alreadySent = await hasDailySummaryBeenSent(organizationId, date);
 
     if (alreadySent) {
-      debugPrint('[DailySummaryService] Daily summary already sent for ${_formatDate(date)}');
+      logger.d('[DailySummaryService] Daily summary already sent for ${_formatDate(date)}');
       return;
     }
 
@@ -368,7 +367,7 @@ class DailySummaryService {
 
       return doc.exists;
     } catch (e) {
-      debugPrint('[DailySummaryService] Error checking if daily summary was sent: $e');
+  logger.e('[DailySummaryService] Error checking if daily summary was sent', e);
       return false;
     }
   }
@@ -384,9 +383,9 @@ class DailySummaryService {
           .doc(dateStr)
           .set({'date': dateStr, 'sentAt': FieldValue.serverTimestamp(), 'organizationId': organizationId});
 
-      debugPrint('[DailySummaryService] Marked daily summary as sent for $dateStr');
+  logger.d('[DailySummaryService] Marked daily summary as sent for $dateStr');
     } catch (e) {
-      debugPrint('[DailySummaryService] Error marking daily summary as sent: $e');
+  logger.e('[DailySummaryService] Error marking daily summary as sent', e);
     }
   }
 
@@ -424,21 +423,20 @@ class DailySummaryService {
           }
 
           // If any shift hasn't ended yet, return false
-          if (now.isBefore(shiftEndTime)) {
-            debugPrint('[DailySummaryService] Shift ${shiftData['shiftName']} ends at $endTime - not all shifts ended');
+            if (now.isBefore(shiftEndTime)) {
+            logger.d('[DailySummaryService] Shift ${shiftData['shiftName']} ends at $endTime - not all shifts ended');
             return false;
           }
-        } catch (e) {
-          debugPrint('[DailySummaryService] Error parsing shift end time: $endTime - $e');
+          } catch (e) {
+          logger.e('[DailySummaryService] Error parsing shift end time: $endTime', e);
           continue;
         }
       }
 
-      debugPrint('[DailySummaryService] All shifts have ended for the day');
+  logger.d('[DailySummaryService] All shifts have ended for the day');
       return true;
     } catch (e, stackTrace) {
-      debugPrint('[DailySummaryService] Error checking if all shifts ended: $e');
-      debugPrint('[DailySummaryService] Stack trace: $stackTrace');
+  logger.e('[DailySummaryService] Error checking if all shifts ended', e, stackTrace);
       return false;
     }
   }

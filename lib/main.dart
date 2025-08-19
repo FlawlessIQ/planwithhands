@@ -16,6 +16,7 @@ import 'package:hands_app/services/daily_background_service.dart';
 import 'package:hands_app/services/push_notification_service.dart';
 import 'package:hands_app/debug/functions_connection_debug.dart';
 import 'package:timezone/data/latest.dart' as tz;
+import 'package:hands_app/core/logging/logger.dart';
 
 // Global provider for Crashlytics availability
 final crashlyticsEnabledProvider = StateProvider<bool>((ref) => false);
@@ -28,7 +29,7 @@ void main() async {
   // Set URL strategy for web to use path-based URLs
   if (kIsWeb) {
     usePathUrlStrategy();
-    debugPrint('[MAIN] Setting path URL strategy for web');
+  logger.d('[MAIN] Setting path URL strategy for web');
   }
 
   // Initialize Firebase
@@ -40,10 +41,10 @@ void main() async {
     if (kIsWeb && (Uri.base.host.contains('localhost') || Uri.base.host.contains('127.0.0.1'))) {
       // Use explicit 127.0.0.1 so web SDK requests match the emulator binding
       FirebaseStorage.instance.useStorageEmulator('127.0.0.1', 9199);
-      debugPrint('[MAIN] Using Firebase Storage emulator at 127.0.0.1:9199');
+      logger.d('[MAIN] Using Firebase Storage emulator at 127.0.0.1:9199');
     }
   } catch (e) {
-    debugPrint('[MAIN] Failed to configure Storage emulator: $e');
+    logger.e('[MAIN] Failed to configure Storage emulator: $e', e);
   }
 
   // Initialize push notifications on mobile platforms
@@ -82,18 +83,18 @@ void main() async {
           // Instead just check if it's available without trying to set it
           if (Firebase.apps.isNotEmpty) {
             crashlyticsEnabled = true;
-            debugPrint('Crashlytics should be available on web');
+            logger.d('Crashlytics should be available on web');
           }
         } catch (webError) {
-          debugPrint('Could not initialize Crashlytics on web: $webError');
+    logger.w('Could not initialize Crashlytics on web: $webError');
           // Just continue without Crashlytics on web
         }
       }
     } else {
-      debugPrint('Debug mode detected, disabling Crashlytics');
+  logger.d('Debug mode detected, disabling Crashlytics');
     }
   } catch (e) {
-    debugPrint('Error during Crashlytics initialization: $e');
+  logger.e('Error during Crashlytics initialization: $e', e);
   }
 
   // Set up error handlers based on Crashlytics availability
@@ -109,11 +110,11 @@ void main() async {
     // Use console logging for errors when Crashlytics is disabled
     FlutterError.onError = (FlutterErrorDetails details) {
       FlutterError.presentError(details);
-      debugPrint('Flutter error: ${details.exception}');
+      logger.e('Flutter error: ${details.exception}', details.exception);
     };
 
     PlatformDispatcher.instance.onError = (error, stack) {
-      debugPrint('Uncaught platform error: $error\n$stack');
+      logger.e('Uncaught platform error: $error', error, stack);
       return true;
     };
   }
@@ -127,7 +128,7 @@ void main() async {
   // Web-specific optimizations
   if (kIsWeb) {
     // Configure web renderer for better performance
-    debugPrint('Running on web - applying performance optimizations');
+    logger.d('Running on web - applying performance optimizations');
   }
 
   // Initialize background services
@@ -147,14 +148,14 @@ void main() async {
 /// Initialize background services
 void _initializeBackgroundServices() {
   try {
-    debugPrint('[MAIN] Initializing background services');
+    logger.d('[MAIN] Initializing background services');
 
     // Initialize daily summary monitoring
     DailyBackgroundService.initialize();
 
-    debugPrint('[MAIN] Background services initialized successfully');
+    logger.d('[MAIN] Background services initialized successfully');
   } catch (e) {
-    debugPrint('[MAIN] Error initializing background services: $e');
+    logger.e('[MAIN] Error initializing background services: $e', e);
   }
 }
 

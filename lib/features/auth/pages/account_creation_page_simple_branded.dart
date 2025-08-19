@@ -8,6 +8,7 @@ import 'package:hands_app/config/feature_flags.dart';
 import 'package:flutter/services.dart';
 import 'package:hands_app/global_widgets/hands_icon.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/core/logging/logger.dart';
 
 class SimpleSignUpPage extends StatefulWidget {
   final String? email;
@@ -173,7 +174,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
         await _createNewOrganization();
       }
     } catch (e) {
-      print('Error creating account: $e');
+      logger.e('Error creating account: $e', e);
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -232,7 +233,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
 
   Future<void> _createNewOrganization() async {
     try {
-      print('Starting new organization creation...');
+  logger.d('Starting new organization creation...');
 
       // Create user with Firebase Auth
       final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
@@ -241,14 +242,14 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
       );
 
       final user = credential.user!;
-      print('Firebase Auth user created: ${user.uid}');
+  logger.d('Firebase Auth user created: ${user.uid}');
 
       // Update user profile
       await user.updateDisplayName('${firstNameController.text} ${lastNameController.text}');
 
       // Generate organization ID
       final orgId = FirestoreEnforcer.instance.collection('organizations').doc().id;
-      print('Generated organization ID: $orgId');
+  logger.d('Generated organization ID: $orgId');
 
       // Create organization document
       await FirestoreEnforcer.instance.collection('organizations').doc(orgId).set({
@@ -263,7 +264,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
   'trialEndsAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
         'settings': {'allowUserRegistration': true, 'requireLocationSelection': true, 'defaultShiftLength': 8},
       });
-      print('Organization document created');
+  logger.i('Organization document created');
 
       // Create user document
       await FirestoreEnforcer.instance.collection('users').doc(user.uid).set({
@@ -284,7 +285,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
           'canManageSettings': true,
         },
       });
-      print('User document created successfully');
+  logger.i('User document created successfully');
 
       // Show success message
       if (mounted) {
@@ -312,7 +313,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
       );
       debugPrint('Stripe checkout initiated (quantity: $_locations)');
     } catch (e) {
-      print('Error in _createNewOrganization: $e');
+      logger.e('Error in _createNewOrganization: $e', e);
       rethrow;
     }
   }

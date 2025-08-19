@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import '../../firebase_options.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/core/logging/logger.dart';
 
 Future<void> main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -52,11 +53,11 @@ Future<void> main() async {
       updates['lastName'] = '';
     }
     if (updates.isNotEmpty) {
-      print('Updating user $uid with $updates');
+      logger.i('Updating user $uid with $updates');
       await usersRef.doc(uid).update(updates);
     } else {
-      print('User $uid is already up to date.');
+      logger.d('User $uid is already up to date.');
     }
   }
-  print('Firestore user document update complete.');
+  logger.i('Firestore user document update complete.');
 }

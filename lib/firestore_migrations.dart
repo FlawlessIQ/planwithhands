@@ -62,7 +62,7 @@ Future<void> migrateChecklistsToSubcollections(String orgId) async {
     final data = checklistDoc.data();
     final tasks = data['tasks'] as List? ?? [];
     // Remove old tasks array
-    await checklistDoc.reference.update({'tasks': FieldValue.delete()});
+  await checklistDoc.reference.update({'tasks': FieldValue.delete()});
 
     // Fan out tasks into subcollection
     for (int i = 0; i < tasks.length; i++) {
@@ -70,6 +70,8 @@ Future<void> migrateChecklistsToSubcollections(String orgId) async {
       await checklistDoc.reference.collection('tasks').add({
         'description': task is String ? task : (task['description'] ?? ''),
         'order': i,
+        'createdAt': FieldValue.serverTimestamp(),
+        'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
       });
     }
   }
@@ -99,10 +101,10 @@ Future<void> migrateAllChecklistsToSubcollections(String orgId) async {
           for (final task in tasks) {
             final taskId =
                 task['taskId'] ?? firestore.collection('dummy').doc().id;
-            await checklistDoc.reference
-                .collection('tasks')
-                .doc(taskId)
-                .set(task);
+      await checklistDoc.reference
+        .collection('tasks')
+        .doc(taskId)
+        .set({...task, 'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30)))});
           }
         }
       }

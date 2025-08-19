@@ -1,3 +1,4 @@
+/// <reference types="mocha" />
 import {checklistIdFor, daysFromNow, generateForOrgDate} from "../src/dailyGenerator";
 import {expect} from "chai";
 import * as admin from "firebase-admin";

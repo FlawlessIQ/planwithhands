@@ -147,6 +147,8 @@ export const syncTodayOnTemplateChange = functions
               shiftId,
               templateId,
               dateString,
+                    // TTL: expire tasks after 30 days
+                    expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)),
             };
 
             batch.set(taskDocRef, docData, {merge: true});

@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:hands_app/services/daily_summary_service.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hands_app/core/logging/logger.dart';
 
 /// Background service to handle daily operations like summary notifications
 class DailyBackgroundService {
@@ -22,7 +22,7 @@ class DailyBackgroundService {
 
   /// Start monitoring for end-of-day summary triggers
   void startDailySummaryMonitoring() {
-    debugPrint('[DailyBackgroundService] Starting daily summary monitoring');
+  logger.d('[DailyBackgroundService] Starting daily summary monitoring');
 
     // Check every 30 minutes if it's time to send daily summaries
     _dailySummaryTimer = Timer.periodic(const Duration(minutes: 30), (timer) {
@@ -35,7 +35,7 @@ class DailyBackgroundService {
 
   /// Stop monitoring
   void stopDailySummaryMonitoring() {
-    debugPrint('[DailyBackgroundService] Stopping daily summary monitoring');
+  logger.d('[DailyBackgroundService] Stopping daily summary monitoring');
     _dailySummaryTimer?.cancel();
     _dailySummaryTimer = null;
   }
@@ -43,7 +43,7 @@ class DailyBackgroundService {
   /// Check all organizations and send daily summaries if appropriate
   Future<void> _checkAndSendDailySummaries() async {
     try {
-      debugPrint('[DailyBackgroundService] Checking for organizations that need daily summaries');
+  logger.d('[DailyBackgroundService] Checking for organizations that need daily summaries');
 
       // Get all organizations that might need daily summaries
       final orgIds = await _getActiveOrganizations();
@@ -52,8 +52,7 @@ class DailyBackgroundService {
         await _checkOrganizationForDailySummary(orgId);
       }
     } catch (e, stackTrace) {
-      debugPrint('[DailyBackgroundService] Error checking daily summaries: $e');
-      debugPrint('[DailyBackgroundService] Stack trace: $stackTrace');
+      logger.e('[DailyBackgroundService] Error checking daily summaries', e, stackTrace);
     }
   }
 
@@ -78,10 +77,10 @@ class DailyBackgroundService {
         }
       }
 
-      debugPrint('[DailyBackgroundService] Found ${orgIds.length} active organizations with admin users');
+  logger.d('[DailyBackgroundService] Found ${orgIds.length} active organizations with admin users');
       return orgIds.toList();
     } catch (e) {
-      debugPrint('[DailyBackgroundService] Error getting active organizations: $e');
+  logger.e('[DailyBackgroundService] Error getting active organizations', e);
       return [];
     }
   }
@@ -98,21 +97,20 @@ class DailyBackgroundService {
         return; // Already checked today
       }
 
-      debugPrint('[DailyBackgroundService] Checking organization $organizationId for daily summary');
+  logger.d('[DailyBackgroundService] Checking organization $organizationId for daily summary');
 
       // Determine if it's an appropriate time to send the daily summary
       final shouldSend = await _shouldSendDailySummary(organizationId, now);
 
       if (shouldSend) {
-        debugPrint('[DailyBackgroundService] Sending daily summary for organization $organizationId');
+  logger.d('[DailyBackgroundService] Sending daily summary for organization $organizationId');
         await _summaryService.scheduleDailySummary(organizationId: organizationId);
 
         // Mark as checked for today
         _lastCheckedTimes[organizationId] = now;
       }
     } catch (e, stackTrace) {
-      debugPrint('[DailyBackgroundService] Error checking organization $organizationId: $e');
-      debugPrint('[DailyBackgroundService] Stack trace: $stackTrace');
+      logger.e('[DailyBackgroundService] Error checking organization $organizationId', e, stackTrace);
     }
   }
 
@@ -122,15 +120,15 @@ class DailyBackgroundService {
       // Time-based check: only send between 8 PM and 11:59 PM
       final hour = now.hour;
       if (hour < 20) {
-        // Before 8 PM
-        debugPrint('[DailyBackgroundService] Too early for daily summary ($hour:${now.minute})');
+  // Before 8 PM
+  logger.d('[DailyBackgroundService] Too early for daily summary ($hour:${now.minute})');
         return false;
       }
 
       // Check if summary already sent today
       final alreadySent = await _summaryService.hasDailySummaryBeenSent(organizationId, now);
       if (alreadySent) {
-        debugPrint('[DailyBackgroundService] Daily summary already sent for organization $organizationId');
+        logger.d('[DailyBackgroundService] Daily summary already sent for organization $organizationId');
         return false;
       }
 
@@ -138,7 +136,7 @@ class DailyBackgroundService {
       final allShiftsEnded = await _summaryService.areAllShiftsEndedForDay(organizationId: organizationId);
 
       if (allShiftsEnded) {
-        debugPrint(
+        logger.d(
           '[DailyBackgroundService] All shifts ended for organization $organizationId - ready to send summary',
         );
         return true;
@@ -146,18 +144,18 @@ class DailyBackgroundService {
 
       // If it's after 10 PM, send regardless of shift status
       if (hour >= 22) {
-        debugPrint(
+        logger.d(
           '[DailyBackgroundService] After 10 PM - sending summary regardless of shift status for org $organizationId',
         );
         return true;
       }
 
-      debugPrint(
+      logger.d(
         '[DailyBackgroundService] Not ready to send daily summary for organization $organizationId (shifts still active, time: $hour:${now.minute})',
       );
       return false;
     } catch (e) {
-      debugPrint('[DailyBackgroundService] Error determining if should send daily summary: $e');
+      logger.e('[DailyBackgroundService] Error determining if should send daily summary', e);
       return false;
     }
   }
@@ -166,11 +164,10 @@ class DailyBackgroundService {
   /// This can be called from the UI or when a specific event occurs
   Future<void> triggerDailySummary({required String organizationId, DateTime? targetDate}) async {
     try {
-      debugPrint('[DailyBackgroundService] Manually triggering daily summary for organization $organizationId');
+  logger.d('[DailyBackgroundService] Manually triggering daily summary for organization $organizationId');
       await _summaryService.generateAndSendDailySummary(organizationId: organizationId, targetDate: targetDate);
     } catch (e, stackTrace) {
-      debugPrint('[DailyBackgroundService] Error manually triggering daily summary: $e');
-      debugPrint('[DailyBackgroundService] Stack trace: $stackTrace');
+      logger.e('[DailyBackgroundService] Error manually triggering daily summary', e, stackTrace);
       rethrow;
     }
   }
@@ -179,7 +176,7 @@ class DailyBackgroundService {
   /// This can be called from shift monitoring logic
   Future<void> onShiftEnded({required String organizationId, required String shiftId}) async {
     try {
-      debugPrint('[DailyBackgroundService] Shift $shiftId ended in organization $organizationId');
+  logger.d('[DailyBackgroundService] Shift $shiftId ended in organization $organizationId');
 
       // Check if this was the last shift for the day
       final allShiftsEnded = await _summaryService.areAllShiftsEndedForDay(organizationId: organizationId);
@@ -188,28 +185,27 @@ class DailyBackgroundService {
         // Wait a bit to ensure all task updates are processed
         await Future.delayed(const Duration(minutes: 1));
 
-        debugPrint('[DailyBackgroundService] All shifts ended - triggering daily summary');
+        logger.d('[DailyBackgroundService] All shifts ended - triggering daily summary');
         await triggerDailySummary(organizationId: organizationId);
       } else {
-        debugPrint('[DailyBackgroundService] Other shifts still active in organization $organizationId');
+        logger.d('[DailyBackgroundService] Other shifts still active in organization $organizationId');
       }
     } catch (e, stackTrace) {
-      debugPrint('[DailyBackgroundService] Error handling shift end: $e');
-      debugPrint('[DailyBackgroundService] Stack trace: $stackTrace');
+      logger.e('[DailyBackgroundService] Error handling shift end', e, stackTrace);
     }
   }
 
   /// Initialize the background service
   /// This should be called when the app starts
   static void initialize() {
-    debugPrint('[DailyBackgroundService] Initializing daily background service');
+  logger.d('[DailyBackgroundService] Initializing daily background service');
     instance.startDailySummaryMonitoring();
   }
 
   /// Dispose the background service
   /// This should be called when the app is disposed
   static void dispose() {
-    debugPrint('[DailyBackgroundService] Disposing daily background service');
+  logger.d('[DailyBackgroundService] Disposing daily background service');
     instance.stopDailySummaryMonitoring();
     _instance = null;
   }
