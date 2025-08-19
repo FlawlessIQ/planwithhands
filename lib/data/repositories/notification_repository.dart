@@ -38,6 +38,7 @@ class NotificationRepository {
           'title': title,
           'message': body,
           'createdAt': FieldValue.serverTimestamp(),
+          'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
           'readBy': [],
           if (groupId != null) 'groupId': groupId,
         });

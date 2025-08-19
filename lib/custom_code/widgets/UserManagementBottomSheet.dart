@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hands_app/main.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/utils/jobtype_helper.dart';
+import 'package:hands_app/core/logging/logger.dart';
 
 /// Dialog for managing job types with full CRUD functionality.
 class JobTypeManagementDialog extends StatefulWidget {
@@ -78,7 +79,7 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
         _isLoading = false;
       });
     } catch (e) {
-      print('Error loading job types: $e');
+      logger.e('Error loading job types: $e', e);
       setState(() => _isLoading = false);
     }
   }
@@ -107,7 +108,7 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
       _showSnackBar('Job type added successfully');
       await _loadJobTypes();
     } catch (e) {
-      print('Error adding job type: $e');
+      logger.e('Error adding job type: $e', e);
       _showSnackBar('Failed to add job type', isError: true);
     }
   }
@@ -158,7 +159,7 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
         _showSnackBar('Job type updated successfully');
         await _loadJobTypes();
       } catch (e) {
-        print('Error updating job type: $e');
+        logger.e('Error updating job type: $e', e);
         _showSnackBar('Failed to update job type', isError: true);
       }
     }
@@ -196,7 +197,7 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
         _showSnackBar('Job type deleted successfully');
         await _loadJobTypes();
       } catch (e) {
-        print('Error deleting job type: $e');
+        logger.e('Error deleting job type: $e', e);
         _showSnackBar('Failed to delete job type', isError: true);
       }
     }
@@ -372,10 +373,10 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       if (locationData == null) return null;
       if (locationData is String) return locationData;
       if (locationData is Map) {
-        debugPrint('Warning: Location data is a Map: $locationData');
+  logger.w('Warning: Location data is a Map: $locationData');
         return locationData['id'] as String?;
       }
-      debugPrint('Warning: Unexpected location data type: ${locationData.runtimeType}, value: $locationData');
+  logger.w('Warning: Unexpected location data type: ${locationData.runtimeType}, value: $locationData');
       return null;
     }
 
@@ -725,15 +726,19 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                                       ref,
                                     );
                                   } on FirebaseFunctionsException catch (e) {
-                                    debugPrint('createUser failed [${e.code}]: ${e.message}');
-                                    _showSnackBar(
-                                      context,
-                                      'Cloud Function Error [${e.code}]: ${e.message}',
-                                      isError: true,
-                                    );
+                                    logger.e('createUser failed [${e.code}]: ${e.message}', e);
+                                    if (context.mounted) {
+                                      _showSnackBar(
+                                        context,
+                                        'Cloud Function Error [${e.code}]: ${e.message}',
+                                        isError: true,
+                                      );
+                                    }
                                   } catch (e, st) {
-                                    debugPrint('Unexpected error: $e\n$st');
-                                    _showSnackBar(context, 'Unexpected error: ${e.toString()}', isError: true);
+                                    logger.e('Unexpected error: $e\n$st', e);
+                                    if (context.mounted) {
+                                      _showSnackBar(context, 'Unexpected error: ${e.toString()}', isError: true);
+                                    }
                                   }
                                 },
                         style: ElevatedButton.styleFrom(
@@ -817,7 +822,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
         availableRoles.value = jobTypes;
       }
     } catch (e) {
-      print('Error loading job types: $e');
+      logger.e('Error loading job types: $e', e);
       // Fallback to default job types
       availableRoles.value = ['Bartender', 'Server', 'Kitchen Staff', 'Dishwasher', 'Host/Hostess', 'Manager'];
     }
@@ -868,7 +873,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
           }).toList();
       availableLocations.value = locations;
     } catch (e) {
-      // print('Error loading locations: $e');
+      logger.w('Error loading locations: $e', e);
       availableLocations.value = [];
     }
   }
@@ -913,7 +918,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     try {
       final organizationId = await _getOrganizationId();
       if (organizationId == null || organizationId.isEmpty) {
-        _showSnackBar(context, 'Organization ID is missing. Please check your admin account.', isError: true);
+        if (context.mounted) _showSnackBar(context, 'Organization ID is missing. Please check your admin account.', isError: true);
         isLoading.value = false;
         return;
       }
@@ -952,17 +957,17 @@ class UserManagementBottomSheet extends HookConsumerWidget {
         try {
           FirebaseCrashlytics.instance.recordError(e, s);
         } catch (crashlyticsError) {
-          debugPrint('Failed to record error to Crashlytics: $crashlyticsError');
+          logger.w('Failed to record error to Crashlytics: $crashlyticsError');
         }
       } else {
-        debugPrint('Crashlytics is not enabled, printing error to console: $e');
-        debugPrint(s.toString());
+  logger.w('Crashlytics is not enabled, printing error to console: $e');
+  logger.d(s.toString());
       }
       String errorMsg =
           e is FirebaseFunctionsException && e.code == 'already-exists'
               ? 'A user with this email already exists.'
               : 'An error occurred: ${e.toString()}';
-      _showSnackBar(context, errorMsg, isError: true);
+  if (context.mounted) _showSnackBar(context, errorMsg, isError: true);
 
       // Show error in a dialog for easier debugging
       if (context.mounted) {
@@ -1053,14 +1058,14 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     final inviteUrl =
         'https://plan-with-hands.web.app/welcome?email=$userEmail&orgId=$organizationId&inviteId=$inviteToken';
 
-    print('[USER_MANAGEMENT] Generated invite URL: $inviteUrl');
+  logger.d('[USER_MANAGEMENT] Generated invite URL: $inviteUrl');
 
     // Store invite in Firestore
     await FirestoreEnforcer.instance.collection('invites').doc(inviteToken).set({
       'email': userEmail,
       'organizationId': organizationId,
       'createdAt': FieldValue.serverTimestamp(),
-      'expiresAt': DateTime.now().add(const Duration(days: 7)),
+      'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 7))),
       'used': false,
       'firstName': firstName,
       'lastName': lastName,
@@ -1077,9 +1082,9 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     final createUser = functions.httpsCallable('createUser');
 
     // Canonicalize locationIds for clearer logging
-    final _logLocIds = locationIds != null ? locationIds.toList() : (locationId != null ? [locationId] : <String>[]);
-    debugPrint(
-      'Calling createUser with payload: ${{'email': userEmail, 'firstName': firstName, 'lastName': lastName, 'userRole': accessLevel, 'jobTypes': roles.toList(), 'organizationId': organizationId, 'locationId': _logLocIds.isNotEmpty ? _logLocIds.first : null, 'locationIds': _logLocIds, 'orgName': orgName, 'adminEmail': adminEmail, 'inviteUrl': inviteUrl, 'templateId': templateId}}',
+    final logLocIds = locationIds != null ? locationIds.toList() : (locationId != null ? [locationId] : <String>[]);
+  logger.d(
+      'Calling createUser with payload: ${{'email': userEmail, 'firstName': firstName, 'lastName': lastName, 'userRole': accessLevel, 'jobTypes': roles.toList(), 'organizationId': organizationId, 'locationId': logLocIds.isNotEmpty ? logLocIds.first : null, 'locationIds': logLocIds, 'orgName': orgName, 'adminEmail': adminEmail, 'inviteUrl': inviteUrl, 'templateId': templateId}}',
     );
 
     final result = await createUser.call({
@@ -1099,7 +1104,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       'templateId': templateId,
     });
 
-    debugPrint('createUser result: ${result.data}');
+  logger.d('createUser result: ${result.data}');
 
     if (result.data != null && result.data['success'] == true) {
       if (context.mounted) {
@@ -1165,21 +1170,21 @@ Future<void> _sendPasswordResetEmail(BuildContext context, String email) async {
 
       await FirebaseAuth.instance.sendPasswordResetEmail(email: email, actionCodeSettings: actionCodeSettings);
     } catch (settingsError) {
-      debugPrint('Failed to send with action code settings: $settingsError');
+    logger.w('Failed to send with action code settings: $settingsError');
       // Fallback to simpler reset email
       await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
     }
 
-    debugPrint('Successfully sent password reset email to $email');
+  logger.d('Successfully sent password reset email to $email');
   } catch (e, s) {
-    debugPrint('Error sending password reset: $e');
+  logger.e('Error sending password reset: $e', e);
     // Defensively check if Crashlytics is enabled before recording.
     try {
       if (FirebaseCrashlytics.instance.isCrashlyticsCollectionEnabled) {
         FirebaseCrashlytics.instance.recordError(e, s);
       }
     } catch (crashlyticsError) {
-      debugPrint('Crashlytics error: $crashlyticsError');
+  logger.w('Crashlytics error: $crashlyticsError');
     }
     rethrow;
   }
@@ -1243,7 +1248,7 @@ void _reloadRoles(ValueNotifier<List<String>> availableRoles) async {
     availableRoles.value =
         jobTypes.isEmpty ? ['Bartender', 'Server', 'Kitchen Staff', 'Dishwasher', 'Host/Hostess', 'Manager'] : jobTypes;
   } catch (e) {
-    print('Error reloading job types: $e');
+    logger.e('Error reloading job types: $e', e);
     // Fallback to default job types
     availableRoles.value = ['Bartender', 'Server', 'Kitchen Staff', 'Dishwasher', 'Host/Hostess', 'Manager'];
   }
@@ -1271,15 +1276,15 @@ Future<void> _testEmailDelivery(BuildContext context, String email) async {
         );
       }
 
-      debugPrint('Test email sent via Firebase Auth to: $email');
+  logger.d('Test email sent via Firebase Auth to: $email');
       return;
     } catch (authError) {
-      debugPrint('Firebase Auth test email failed: $authError');
+  logger.w('Firebase Auth test email failed: $authError');
 
       // Cloud function test email removed in new flow. Only Firebase Auth test email is supported.
     }
   } catch (e) {
-    debugPrint('Test email error: $e');
+  logger.e('Test email error: $e', e);
     if (context.mounted) {
       ScaffoldMessenger.of(
         context,

@@ -940,11 +940,15 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
               .collection('checklist_templates')
               .get(),
       builder: (context, s) {
-        if (!s.hasData) return const Center(child: CircularProgressIndicator());
-        final docs = s.data!.docs;
+        if (s.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+        if (s.hasError) return Center(child: Text('Error loading checklists: ${s.error}'));
+        final snap = s.data;
+        if (snap == null || snap.docs.isEmpty) {
+          return const Center(child: Text('No checklists available'));
+        }
+        final docs = snap.docs;
         return Column(
-          children:
-              docs.map((d) {
+          children: docs.map((d) {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 8.0),
                   child: CheckboxListTile(

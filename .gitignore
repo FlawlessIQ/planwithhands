@@ -110,3 +110,4 @@ unlinked_spec.ds
 
 # Large generated files
 pubspec.lock
+functions/.runtimeconfig.json

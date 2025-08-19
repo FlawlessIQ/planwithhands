@@ -1,0 +1,31 @@
+name: Functions CI - Emulator tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  functions-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install root dependencies
+        run: |
+          cd functions
+          npm ci
+
+      - name: Run functions tests under Firestore emulator
+        run: |
+          cd functions
+          npx firebase emulators:exec --only firestore "npm test"
+        env:
+          FIREBASE_PROJSCT: 'demo'

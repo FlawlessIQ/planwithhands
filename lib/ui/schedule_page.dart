@@ -9,6 +9,7 @@ import 'package:hands_app/ui/shift_bottom_sheet.dart';
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/core/logging/logger.dart';
 
 class SchedulePage extends StatefulWidget {
   const SchedulePage({super.key});
@@ -58,7 +59,7 @@ class _SchedulePageState extends State<SchedulePage> {
         if (_userRole == 2) _isAdmin = true;
       }
     } catch (e) {
-      debugPrint('Error getting user data: $e');
+      logger.e('Error getting user data: $e', e);
     }
 
     // If no organization found, can't continue
@@ -81,7 +82,7 @@ class _SchedulePageState extends State<SchedulePage> {
 
       _selectedLocation = _locations.isNotEmpty ? _locations.first['id'] as String : null;
     } catch (e) {
-      debugPrint('Error loading locations: $e');
+      logger.e('Error loading locations: $e', e);
     }
 
     // Default date range: next 7 days
@@ -116,10 +117,8 @@ class _SchedulePageState extends State<SchedulePage> {
   }
 
   Future<void> _addOrEditShift([ScheduleEntryData? scheduleEntry, ShiftData? template]) async {
-    debugPrint(
-      "_addOrEditShift called with scheduleEntry: ${scheduleEntry?.toString()}, template: ${template?.shiftName}",
-    );
-    debugPrint("_orgId: $_orgId, _selectedLocation: $_selectedLocation");
+  logger.d('_addOrEditShift called with scheduleEntry: ${scheduleEntry?.toString()}, template: ${template?.shiftName}');
+  logger.d('_orgId: $_orgId, _selectedLocation: $_selectedLocation');
 
     // Find the template for this shift (needed for defaultParLevels and shiftName)
     final shiftTemplatesSnap =
@@ -130,8 +129,8 @@ class _SchedulePageState extends State<SchedulePage> {
             .where('locationIds', arrayContains: _selectedLocation)
             .get();
 
-    final templates = shiftTemplatesSnap.docs;
-    debugPrint("Found ${templates.length} shift templates");
+  final templates = shiftTemplatesSnap.docs;
+  logger.d('Found ${templates.length} shift templates');
 
     Map<String, dynamic>? templateData;
     String? shiftId;
@@ -140,7 +139,7 @@ class _SchedulePageState extends State<SchedulePage> {
       // Editing existing schedule entry
       shiftId = scheduleEntry.shiftId;
       final matchingTemplates = templates.where((doc) => doc.id == scheduleEntry.shiftId).toList();
-      debugPrint("Found ${matchingTemplates.length} matching templates for shiftId: ${scheduleEntry.shiftId}");
+  logger.d('Found ${matchingTemplates.length} matching templates for shiftId: ${scheduleEntry.shiftId}');
       if (matchingTemplates.isNotEmpty) {
         templateData = matchingTemplates.first.data();
         debugPrint("Template data found: ${templateData.keys}");
@@ -149,7 +148,7 @@ class _SchedulePageState extends State<SchedulePage> {
       // Creating new schedule entry from template
       shiftId = template.shiftId;
       final matchingTemplates = templates.where((doc) => doc.id == template.shiftId).toList();
-      debugPrint("Found ${matchingTemplates.length} matching templates for template shiftId: ${template.shiftId}");
+  logger.d('Found ${matchingTemplates.length} matching templates for template shiftId: ${template.shiftId}');
       if (matchingTemplates.isNotEmpty) {
         templateData = matchingTemplates.first.data();
         debugPrint("Template data found for new entry: ${templateData.keys}");
@@ -157,7 +156,7 @@ class _SchedulePageState extends State<SchedulePage> {
     }
 
     if ((scheduleEntry != null || template != null) && templateData != null && shiftId != null) {
-      debugPrint("Opening ShiftBottomSheet for shiftId: $shiftId");
+  logger.d('Opening ShiftBottomSheet for shiftId: $shiftId');
       final shiftName = templateData['shiftName'] ?? 'Unnamed Shift';
       final defaultParLevels = Map<String, int>.from(templateData['staffingLevels'] ?? {});
       final dayShiftKey = scheduleEntry?.dayShiftKey ?? '${DateFormat('yyyy-MM-dd').format(_selectedDate)}_$shiftId';
@@ -182,14 +181,12 @@ class _SchedulePageState extends State<SchedulePage> {
             ),
       );
     } else {
-      debugPrint(
-        "Cannot open ShiftBottomSheet: scheduleEntry=${scheduleEntry != null}, template=${template != null}, templateData=${templateData != null}, shiftId=$shiftId",
-      );
+      logger.w('Cannot open ShiftBottomSheet: scheduleEntry=${scheduleEntry != null}, template=${template != null}, templateData=${templateData != null}, shiftId=$shiftId');
       if (scheduleEntry == null && template == null) {
-        debugPrint("Both scheduleEntry and template are null");
+        logger.d('Both scheduleEntry and template are null');
       }
       if (templateData == null) {
-        debugPrint("templateData is null for shiftId: $shiftId");
+        logger.d('templateData is null for shiftId: $shiftId');
       }
       ScaffoldMessenger.of(
         context,
@@ -268,6 +265,7 @@ class _SchedulePageState extends State<SchedulePage> {
           'type': 'schedule',
           'createdAt': FieldValue.serverTimestamp(),
           'dismissed': false,
+          'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
         });
       }
       if (mounted) {
@@ -834,14 +832,14 @@ class _SchedulePageState extends State<SchedulePage> {
           StreamBuilder<QuerySnapshot>(
             stream: FirestoreEnforcer.instance.collection('organizations').doc(_orgId).collection('shifts').snapshots(),
             builder: (context, shiftSnapshot) {
-              if (!shiftSnapshot.hasData) {
+              if (shiftSnapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
-              // Filter templates for selected location
-              final allDocs = shiftSnapshot.data!.docs;
-              // Show all shift templates (remove filter for testing)
-              final docs = allDocs;
-              if (docs.isEmpty) {
+              if (shiftSnapshot.hasError) {
+                return Center(child: Text('Error loading shifts: ${shiftSnapshot.error}'));
+              }
+              final snap = shiftSnapshot.data;
+              if (snap == null || snap.docs.isEmpty) {
                 return const Center(
                   child: Padding(
                     padding: EdgeInsets.all(32),
@@ -852,9 +850,9 @@ class _SchedulePageState extends State<SchedulePage> {
                   ),
                 );
               }
-              final shifts =
-                  docs.map((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
+
+              final shifts = snap.docs.map((doc) {
+                    final data = (doc.data() ?? {}) as Map<String, dynamic>;
                     // Build activeDays list: prefer non-empty activeDays, otherwise fallback to days strings
                     final List<dynamic> storedActive = data['activeDays'] as List<dynamic>? ?? [];
                     final rawDays =

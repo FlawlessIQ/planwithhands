@@ -4,6 +4,7 @@ import 'package:hands_app/services/daily_checklist_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/utils/location_helper.dart';
+import 'package:hands_app/core/logging/logger.dart';
 
 /// Daily checklist generator script
 /// This script should be run once per day (ideally at 00:01) to generate
@@ -19,7 +20,7 @@ class DailyChecklistGenerator {
     final todayString = _formatDate(date);
     final todayDayName = _getDayName(date);
 
-    debugPrint('[DailyChecklistGenerator] Starting generation for date: $todayString ($todayDayName)');
+  logger.d('[DailyChecklistGenerator] Starting generation for date: $todayString ($todayDayName)');
 
     try {
       // Get all organizations
@@ -27,7 +28,7 @@ class DailyChecklistGenerator {
 
       for (final orgDoc in organizationsSnapshot.docs) {
         final organizationId = orgDoc.id;
-        debugPrint('[DailyChecklistGenerator] Processing organization: $organizationId');
+  logger.d('[DailyChecklistGenerator] Processing organization: $organizationId');
 
         await _generateChecklistsForOrganization(
           organizationId: organizationId,
@@ -36,9 +37,9 @@ class DailyChecklistGenerator {
         );
       }
 
-      debugPrint('[DailyChecklistGenerator] Completed generation for all organizations');
+  logger.d('[DailyChecklistGenerator] Completed generation for all organizations');
     } catch (e, stack) {
-      debugPrint('[DailyChecklistGenerator] Error during generation: $e\n$stack');
+  logger.e('[DailyChecklistGenerator] Error during generation: $e\n$stack', e);
       rethrow;
     }
   }
@@ -54,7 +55,7 @@ class DailyChecklistGenerator {
       final shiftsSnapshot =
           await _firestore.collection('organizations').doc(organizationId).collection('shifts').get();
 
-      debugPrint('[DailyChecklistGenerator] Found ${shiftsSnapshot.docs.length} shifts for org $organizationId');
+  logger.d('[DailyChecklistGenerator] Found ${shiftsSnapshot.docs.length} shifts for org $organizationId');
 
       for (final shiftDoc in shiftsSnapshot.docs) {
         try {
@@ -64,11 +65,11 @@ class DailyChecklistGenerator {
           final isScheduledToday = _isShiftScheduledToday(shiftData, todayDayName);
 
           if (!isScheduledToday) {
-            debugPrint('[DailyChecklistGenerator] Shift ${shiftData.shiftName} is not scheduled for $todayDayName');
+            logger.d('[DailyChecklistGenerator] Shift ${shiftData.shiftName} is not scheduled for $todayDayName');
             continue;
           }
 
-          debugPrint('[DailyChecklistGenerator] Processing shift: ${shiftData.shiftName} for $todayDayName');
+          logger.d('[DailyChecklistGenerator] Processing shift: ${shiftData.shiftName} for $todayDayName');
 
           // Generate checklists for each location in this shift
           await _generateChecklistsForShift(
@@ -77,12 +78,12 @@ class DailyChecklistGenerator {
             todayString: todayString,
           );
         } catch (e, stack) {
-          debugPrint('[DailyChecklistGenerator] Error processing shift ${shiftDoc.id}: $e\n$stack');
+          logger.e('[DailyChecklistGenerator] Error processing shift ${shiftDoc.id}: $e\n$stack', e);
           // Continue with other shifts
         }
       }
     } catch (e, stack) {
-      debugPrint('[DailyChecklistGenerator] Error processing organization $organizationId: $e\n$stack');
+  logger.e('[DailyChecklistGenerator] Error processing organization $organizationId: $e\n$stack', e);
       rethrow;
     }
   }
@@ -102,9 +103,7 @@ class DailyChecklistGenerator {
     // Process each location for this shift
     for (final locationId in coerceToLocationIds(shiftData.locationIds)) {
       try {
-        debugPrint(
-          '[DailyChecklistGenerator] Generating checklists for shift ${shiftData.shiftName} at location $locationId',
-        );
+    logger.d('[DailyChecklistGenerator] Generating checklists for shift ${shiftData.shiftName} at location $locationId');
 
         final checklists = await _dailyChecklistService.generateDailyChecklists(
           organizationId: organizationId,
@@ -114,13 +113,9 @@ class DailyChecklistGenerator {
           date: todayString,
         );
 
-        debugPrint(
-          '[DailyChecklistGenerator] Generated ${checklists.length} checklists for shift ${shiftData.shiftName} at location $locationId',
-        );
+  logger.d('[DailyChecklistGenerator] Generated ${checklists.length} checklists for shift ${shiftData.shiftName} at location $locationId');
       } catch (e, stack) {
-        debugPrint(
-          '[DailyChecklistGenerator] Error generating checklists for shift ${shiftData.shiftName} at location $locationId: $e\n$stack',
-        );
+  logger.e('[DailyChecklistGenerator] Error generating checklists for shift ${shiftData.shiftName} at location $locationId: $e\n$stack', e);
         // Continue with other locations
       }
     }
@@ -155,7 +150,7 @@ class DailyChecklistGenerator {
     final todayString = _formatDate(date);
     final todayDayName = _getDayName(date);
 
-    debugPrint('[DailyChecklistGenerator] Generating checklists for organization $organizationId on $todayString');
+  logger.d('[DailyChecklistGenerator] Generating checklists for organization $organizationId on $todayString');
 
     await _generateChecklistsForOrganization(
       organizationId: organizationId,
@@ -187,9 +182,9 @@ class DailyChecklistGenerator {
 
       await _generateChecklistsForShift(organizationId: organizationId, shiftData: shiftData, todayString: todayString);
 
-      debugPrint('[DailyChecklistGenerator] Generated checklists for specific shift $shiftId');
+  logger.d('[DailyChecklistGenerator] Generated checklists for specific shift $shiftId');
     } catch (e, stack) {
-      debugPrint('[DailyChecklistGenerator] Error generating checklists for specific shift $shiftId: $e\n$stack');
+  logger.e('[DailyChecklistGenerator] Error generating checklists for specific shift $shiftId: $e\n$stack', e);
       rethrow;
     }
   }

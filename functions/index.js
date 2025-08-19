@@ -8,10 +8,10 @@ module.exports = {
 };
 
 module.exports.migrateChecklistTemplates =
-  require('./migrations/migrate_checklist_templates_to_subcollections').migrateChecklistTemplates;
+  require("./migrations/migrate_checklist_templates_to_subcollections").migrateChecklistTemplates;
 
-module.exports.repairTemplateTaskTitles = require('./migrations/repair_template_task_titles').repairTemplateTaskTitles;
-module.exports.repairTaskTitlesFromCsv = require('./migrations/repair_task_titles_from_csv').repairTaskTitlesFromCsv;
+module.exports.repairTemplateTaskTitles = require("./migrations/repair_template_task_titles").repairTemplateTaskTitles;
+module.exports.repairTaskTitlesFromCsv = require("./migrations/repair_task_titles_from_csv").repairTaskTitlesFromCsv;
 
 // Create and deploy your first functions
 // https://firebase.google.com/docs/functions/get-started

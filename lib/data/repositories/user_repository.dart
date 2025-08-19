@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/data/models/user_data.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/core/logging/logger.dart';
 
 class UserRepository {
   final FirebaseFirestore _firestore = FirestoreEnforcer.instance;
@@ -12,7 +13,7 @@ class UserRepository {
         return UserData.fromJson(userDoc.data()!);
       }
     } catch (e) {
-      print('Error fetching user data: $e');
+      logger.e('Error fetching user data: $e', e);
     }
     return null;
   }

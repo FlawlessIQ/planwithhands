@@ -6,13 +6,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hands_app/core/logging/logger.dart';
 
 /// Top-level function for handling background messages
 /// Must be annotated with @pragma('vm:entry-point') for Flutter 3.3+
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  debugPrint('[FCM] Background message received: ${message.messageId}');
-  debugPrint('[FCM] Background message data: ${message.data}');
+  logger.d('[FCM] Background message received: ${message.messageId}');
+  logger.d('[FCM] Background message data: ${message.data}');
 
   // Handle background message logic here if needed
   // Note: Don't show UI or navigate from here
@@ -52,7 +53,7 @@ class PushNotificationService {
     if (_isInitialized) return;
 
     try {
-      debugPrint('[PushNotificationService] Initializing...');
+  logger.d('[PushNotificationService] Initializing...');
 
       // Initialize local notifications for Android
       if (!kIsWeb && Platform.isAndroid) {
@@ -74,9 +75,9 @@ class PushNotificationService {
       await _getInitialToken();
 
       _isInitialized = true;
-      debugPrint('[PushNotificationService] Initialization complete');
+  logger.d('[PushNotificationService] Initialization complete');
     } catch (e) {
-      debugPrint('[PushNotificationService] Initialization error: $e');
+  logger.e('[PushNotificationService] Initialization error', e);
       rethrow;
     }
   }
@@ -120,8 +121,8 @@ class PushNotificationService {
   void _setupMessageHandlers() {
     // Handle foreground messages
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      debugPrint('[FCM] Foreground message received: ${message.messageId}');
-      debugPrint('[FCM] Message data: ${message.data}');
+  logger.d('[FCM] Foreground message received: ${message.messageId}');
+  logger.d('[FCM] Message data: ${message.data}');
 
       _onForegroundMessage(message);
 
@@ -131,7 +132,7 @@ class PushNotificationService {
 
     // Handle notification taps when app is in background/terminated
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      debugPrint('[FCM] Notification opened app: ${message.messageId}');
+  logger.d('[FCM] Notification opened app: ${message.messageId}');
       _onOpenedMessage(message);
     });
 
@@ -143,7 +144,7 @@ class PushNotificationService {
   Future<void> _checkInitialMessage() async {
     final initialMessage = await _firebaseMessaging.getInitialMessage();
     if (initialMessage != null) {
-      debugPrint('[FCM] App launched from notification: ${initialMessage.messageId}');
+      logger.d('[FCM] App launched from notification: ${initialMessage.messageId}');
       _onOpenedMessage(initialMessage);
     }
   }
@@ -151,7 +152,7 @@ class PushNotificationService {
   /// Set up token refresh listener
   void _setupTokenRefreshListener() {
     _firebaseMessaging.onTokenRefresh.listen((String token) {
-      debugPrint('[FCM] Token refreshed: ${token.substring(0, 20)}...');
+      logger.d('[FCM] Token refreshed: ${token.substring(0, 20)}...');
       _currentToken = token;
       _tokenStreamController.add(token);
     });
@@ -161,9 +162,9 @@ class PushNotificationService {
   Future<void> _getInitialToken() async {
     try {
       final token = await _firebaseMessaging.getToken();
-      if (token != null) {
+        if (token != null) {
         _currentToken = token;
-        debugPrint('[FCM] Initial token: ${token.substring(0, 20)}...');
+        logger.d('[FCM] Initial token: ${token.substring(0, 20)}...');
         _tokenStreamController.add(token);
       }
     } catch (e) {
@@ -206,7 +207,7 @@ class PushNotificationService {
           return NotificationPermissionResult.notDetermined;
       }
     } catch (e) {
-      debugPrint('[PushNotificationService] Error requesting permission: $e');
+  logger.e('[PushNotificationService] Error requesting permission', e);
       return NotificationPermissionResult.error;
     }
   }
@@ -226,7 +227,7 @@ class PushNotificationService {
           return NotificationPermissionResult.notDetermined;
       }
     } catch (e) {
-      debugPrint('[PushNotificationService] Error checking permission status: $e');
+  logger.e('[PushNotificationService] Error checking permission status', e);
       return NotificationPermissionResult.error;
     }
   }
@@ -235,9 +236,9 @@ class PushNotificationService {
   Future<void> subscribeToTopic(String topic) async {
     try {
       await _firebaseMessaging.subscribeToTopic(topic);
-      debugPrint('[FCM] Subscribed to topic: $topic');
+  logger.d('[FCM] Subscribed to topic: $topic');
     } catch (e) {
-      debugPrint('[FCM] Error subscribing to topic $topic: $e');
+  logger.e('[FCM] Error subscribing to topic $topic', e);
       rethrow;
     }
   }
@@ -246,9 +247,9 @@ class PushNotificationService {
   Future<void> unsubscribeFromTopic(String topic) async {
     try {
       await _firebaseMessaging.unsubscribeFromTopic(topic);
-      debugPrint('[FCM] Unsubscribed from topic: $topic');
+  logger.d('[FCM] Unsubscribed from topic: $topic');
     } catch (e) {
-      debugPrint('[FCM] Error unsubscribing from topic $topic: $e');
+  logger.e('[FCM] Error unsubscribing from topic $topic', e);
       rethrow;
     }
   }
@@ -281,7 +282,7 @@ class PushNotificationService {
   void _openThread(String threadId) {
     final ctx = navigatorKey.currentContext;
     if (ctx == null) {
-      debugPrint('[PushNotificationService] navigator context null; scheduling post-frame nav');
+      logger.w('[PushNotificationService] navigator context null; scheduling post-frame nav');
       WidgetsBinding.instance.addPostFrameCallback((_) => _openThread(threadId));
       return;
     }
@@ -315,7 +316,7 @@ class PushNotificationService {
             isMessage && message.data['threadId'] != null ? 'thread:${message.data['threadId']}' : message.messageId,
       );
     } catch (e) {
-      debugPrint('[PushNotificationService] Error showing local notification: $e');
+  logger.e('[PushNotificationService] Error showing local notification', e);
     }
   }
 
@@ -338,7 +339,7 @@ class PushNotificationService {
         await openAppSettings();
       }
     } catch (e) {
-      debugPrint('[PushNotificationService] Error opening app settings: $e');
+  logger.e('[PushNotificationService] Error opening app settings', e);
     }
   }
 

@@ -67,9 +67,22 @@ class _InvitationPageState extends State<InvitationPage> {
         }
 
         // If the token is valid, redirect to the sign-up page
-        final inviteData = snapshot.data!.data() as Map<String, dynamic>;
-        final email = inviteData['email'] as String;
-        final organizationId = inviteData['organizationId'] as String;
+        final invitationDoc = snapshot.data;
+        if (invitationDoc == null) {
+          return _buildErrorScaffold('This invitation is invalid or has expired.');
+        }
+
+        final inviteData = invitationDoc.data() as Map<String, dynamic>?;
+        if (inviteData == null) {
+          return _buildErrorScaffold('This invitation is invalid or has expired.');
+        }
+
+        final email = inviteData['email'] as String?;
+        final organizationId = inviteData['organizationId'] as String?;
+
+        if (email == null || organizationId == null) {
+          return _buildErrorScaffold('This invitation is invalid or missing required information.');
+        }
 
         // Use a post-frame callback to navigate after the build is complete
         WidgetsBinding.instance.addPostFrameCallback((_) {

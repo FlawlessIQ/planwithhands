@@ -5,6 +5,7 @@ import 'package:hands_app/data/models/schedule_entry_data.dart';
 import 'package:hands_app/data/models/extended_user_data.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/utils/location_helper.dart';
+import 'package:hands_app/core/logging/logger.dart';
 // jobtype_helper import removed — not used in this file
 
 class ShiftBottomSheet extends StatefulWidget {
@@ -108,7 +109,7 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
         setState(() => roleNames = names);
       }
     } catch (e) {
-      debugPrint('Error loading role names: $e');
+  logger.e('Error loading role names: $e', e);
       // If there's an error, still create a basic mapping for the required roles
       final names = <String, String>{};
       for (final roleName in requiredRoles.keys) {
@@ -122,25 +123,25 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
 
   Future<void> _loadAvailableUsers() async {
     try {
-      debugPrint(
+  logger.d(
         'Loading users for org: ${widget.organizationId}, location: ${widget.locationId}, dayShiftKey: ${widget.dayShiftKey}',
       );
 
       // Debug: Check current user authentication and role
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser != null) {
-        debugPrint('Current user UID: ${currentUser.uid}');
+  logger.d('Current user UID: ${currentUser.uid}');
         try {
           final currentUserDoc = await FirestoreEnforcer.instance.collection('users').doc(currentUser.uid).get();
           if (currentUserDoc.exists) {
             final userData = currentUserDoc.data()!;
-            debugPrint('Current user role: ${userData['userRole']}, org: ${userData['organizationId']}');
+            logger.d('Current user role: ${userData['userRole']}, org: ${userData['organizationId']}');
           }
         } catch (e) {
-          debugPrint('Error getting current user data: $e');
+          logger.e('Error getting current user data: $e', e);
         }
       } else {
-        debugPrint('No authenticated user found');
+  logger.w('No authenticated user found');
       }
 
       final usersSnapshot =
@@ -149,12 +150,12 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
               .where('organizationId', isEqualTo: widget.organizationId)
               .get();
 
-      debugPrint('Found ${usersSnapshot.docs.length} users in organization');
+  logger.d('Found ${usersSnapshot.docs.length} users in organization');
 
       final users = <ExtendedUserData>[];
       for (final doc in usersSnapshot.docs) {
         final userData = ExtendedUserData.fromMap(doc.data(), doc.id);
-        debugPrint(
+  logger.d(
           'Processing user: ${userData.fullName}, roles: ${userData.jobTypes}, userRole: ${userData.userRole}',
         );
         // Filter users by availability if provided
@@ -181,15 +182,15 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
         // Include users who: have relevant role OR are already assigned, AND have location access, AND (are available OR already assigned)
         if (hasRelevantRole && hasLocationAccess && (isAvailable || assignedUserIds.contains(userData.userId))) {
           users.add(userData);
-          debugPrint('\u2713 Added user: ${userData.fullName}');
+          logger.d('\u2713 Added user: ${userData.fullName}');
         } else {
-          debugPrint(
+          logger.d(
             '\u2717 Excluded user: ${userData.fullName} - hasRelevantRole=$hasRelevantRole, hasLocationAccess=$hasLocationAccess, isAvailable=$isAvailable, isAssigned=${assignedUserIds.contains(userData.userId)}',
           );
         }
       }
 
-      debugPrint('Final user count: ${users.length}');
+  logger.d('Final user count: ${users.length}');
 
       // Sort users: assigned first, then by name
       users.sort((a, b) {
@@ -206,7 +207,7 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
         setState(() => availableUsers = users);
       }
     } catch (e) {
-      debugPrint('Error loading available users: $e');
+  logger.e('Error loading available users: $e', e);
     }
   }
 
@@ -229,7 +230,7 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
 
       return assignedUsers;
     } catch (e) {
-      debugPrint('Error loading assigned users: $e');
+  logger.e('Error loading assigned users: $e', e);
       return [];
     }
   }
@@ -581,15 +582,17 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
                                         .where('organizationId', isEqualTo: widget.organizationId)
                                         .get(),
                                 builder: (context, snapshot) {
-                                  if (!snapshot.hasData) {
+                                  if (snapshot.connectionState == ConnectionState.waiting) {
                                     return const Center(child: CircularProgressIndicator());
                                   }
-                                  final allUsers =
-                                      snapshot.data!.docs
-                                          .map(
-                                            (doc) =>
-                                                ExtendedUserData.fromMap(doc.data() as Map<String, dynamic>, doc.id),
-                                          )
+                                  if (snapshot.hasError) {
+                                    return Center(child: Text('Error loading users: ${snapshot.error}'));
+                                  }
+                                  final snap = snapshot.data;
+                                  final allUsers = snap == null
+                                      ? <ExtendedUserData>[]
+                                      : snap.docs
+                                          .map((doc) => ExtendedUserData.fromMap(doc.data() as Map<String, dynamic>, doc.id))
                                           .toList();
                                   final matchingUserIds = availableUsers.map((u) => u.userId).toSet();
                                   final alreadyAssigned = assignedUserIds;
@@ -757,11 +760,18 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
               .collection('entries')
               .where('assignedUserIds', arrayContains: user.userId)
               .get(),
-      builder: (context, snapshot) {
+        builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text('Error checking assignments: ${snapshot.error}'));
+        }
         bool isDoubleBooked = false;
-        if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+        final snap = snapshot.data;
+        if (snap != null && snap.docs.isNotEmpty) {
           // If the user is assigned to any other entry for this schedule (day)
-          for (final doc in snapshot.data!.docs) {
+          for (final doc in snap.docs) {
             final entry = ScheduleEntryData.fromMap(doc.data() as Map<String, dynamic>, doc.id);
             // Exclude current shift
             if (entry.shiftId != widget.shiftId) {

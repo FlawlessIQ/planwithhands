@@ -24,6 +24,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/constants/firestore_names.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/services/push_notification_service.dart';
+import 'package:hands_app/core/logging/logger.dart';
 
 enum AppRoutes {
   homePage('/'),
@@ -258,33 +259,33 @@ class _ThreadRouteGate extends ConsumerWidget {
 final router = GoRouter(
   navigatorKey: PushNotificationService.navigatorKey,
   redirect: (context, state) {
-    // Debug logging for ALL routing
-    debugPrint('[ROUTER] ===============================');
-    debugPrint('[ROUTER] TESTING - Current path: ${state.matchedLocation}');
-    debugPrint('[ROUTER] TESTING - URI path: ${state.uri.path}');
-    debugPrint('[ROUTER] TESTING - Full path: ${state.fullPath}');
-    debugPrint('[ROUTER] TESTING - Query params: ${state.uri.queryParameters}');
-    debugPrint('[ROUTER] TESTING - Raw URI: ${state.uri.toString()}');
-    debugPrint('[ROUTER] TESTING - Browser URL: ${Uri.base.toString()}');
-    debugPrint('[ROUTER] ===============================');
+  // Debug logging for ALL routing
+  logger.d('[ROUTER] ===============================');
+  logger.d('[ROUTER] TESTING - Current path: ${state.matchedLocation}');
+  logger.d('[ROUTER] TESTING - URI path: ${state.uri.path}');
+  logger.d('[ROUTER] TESTING - Full path: ${state.fullPath}');
+  logger.d('[ROUTER] TESTING - Query params: ${state.uri.queryParameters}');
+  logger.d('[ROUTER] TESTING - Raw URI: ${state.uri.toString()}');
+  logger.d('[ROUTER] TESTING - Browser URL: ${Uri.base.toString()}');
+  logger.d('[ROUTER] ===============================');
 
     // AGGRESSIVE BROWSER URL PARSING
     final browserUri = Uri.base;
     final routerPath = state.uri.path;
 
-    debugPrint('[ROUTER] Browser path: ${browserUri.path}');
-    debugPrint('[ROUTER] Router path: $routerPath');
+  logger.d('[ROUTER] Browser path: ${browserUri.path}');
+  logger.d('[ROUTER] Router path: $routerPath');
 
     // If browser shows welcome but router doesn't, force welcome navigation
     if (browserUri.path == '/welcome' && routerPath != '/welcome') {
-      debugPrint('[ROUTER] *** FORCING WELCOME NAVIGATION ***');
+  logger.d('[ROUTER] *** FORCING WELCOME NAVIGATION ***');
       final email = browserUri.queryParameters['email'];
       final orgId = browserUri.queryParameters['orgId'];
       final inviteId = browserUri.queryParameters['inviteId'];
 
       if (email != null && orgId != null) {
         final welcomeUrl = '/welcome?email=$email&orgId=$orgId&inviteId=${inviteId ?? ''}';
-        debugPrint('[ROUTER] Redirecting to: $welcomeUrl');
+  logger.d('[ROUTER] Redirecting to: $welcomeUrl');
         return welcomeUrl;
       }
     }

@@ -19,6 +19,7 @@ import 'package:hands_app/utils/jobtype_helper.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hands_app/state/app_state.dart';
 import 'package:hands_app/data/models/location_data.dart';
+import 'package:hands_app/core/logging/logger.dart';
 // Admin tools widgets removed from this page; imports intentionally removed
 import 'dart:convert';
 import 'package:crypto/crypto.dart' as crypto;
@@ -74,7 +75,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
       final isSetup = uri.queryParameters['setup'] == 'true';
 
       if (isSetup && !_hasShownWelcomeDialog) {
-        debugPrint('[AdminDashboard] New user setup detected, will show location creation flow');
+        logger.d('[AdminDashboard] New user setup detected, will show location creation flow');
         _hasShownWelcomeDialog = true; // Mark as shown to prevent duplicate dialogs
         // Show the location creation flow regardless of existing locations
         Future.delayed(const Duration(milliseconds: 500), () {
@@ -88,11 +89,11 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
 
   Future<void> _loadLocations() async {
     if (organizationId == null) {
-      debugPrint('[AdminDashboard] Cannot load locations - organizationId is null');
+      logger.w('[AdminDashboard] Cannot load locations - organizationId is null');
       return;
     }
 
-    debugPrint('[AdminDashboard] Loading locations for organization: $organizationId');
+    logger.d('[AdminDashboard] Loading locations for organization: $organizationId');
 
     try {
       final locationsSnap =
@@ -102,12 +103,12 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
               .collection('locations')
               .get();
 
-      debugPrint('[AdminDashboard] Found ${locationsSnap.docs.length} locations');
+  logger.d('[AdminDashboard] Found ${locationsSnap.docs.length} locations');
 
       final locations =
           locationsSnap.docs.map((doc) {
             final data = doc.data();
-            debugPrint('[AdminDashboard] Location ${doc.id}: ${data['locationName'] ?? 'Unnamed'}');
+            logger.d('[AdminDashboard] Location ${doc.id}: ${data['locationName'] ?? 'Unnamed'}');
             return {
               'id': doc.id,
               'name': data['locationName'] ?? 'Unnamed Location',
@@ -147,16 +148,16 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
               );
               ref.read(appStateProvider.notifier).setSelectedLocation(locationData);
 
-              debugPrint(
+              logger.d(
                 '[AdminDashboard] Auto-selected location: ${primaryLocation['name']} (${primaryLocation['id']})',
               );
             } else {
-              debugPrint('[AdminDashboard] Keeping existing selection: ${currentSelectedLocation.locationName}');
+              logger.d('[AdminDashboard] Keeping existing selection: ${currentSelectedLocation.locationName}');
             }
           } else {
             // Clear selected location
             ref.read(appStateProvider.notifier).setSelectedLocation(null);
-            debugPrint('[AdminDashboard] No locations found - will show location creation flow');
+              logger.i('[AdminDashboard] No locations found - will show location creation flow');
 
             // Only show the location creation bottom sheet if we haven't already shown the welcome dialog
             if (!_hasShownWelcomeDialog) {
@@ -168,7 +169,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
         });
       }
     } catch (e) {
-      debugPrint('[AdminDashboard] Error loading locations: $e');
+  logger.e('[AdminDashboard] Error loading locations: $e', e);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load locations: $e')));
       }
@@ -255,7 +256,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
       if (userDoc.exists) {
         final userData = userDoc.data();
         if (userData == null) {
-          debugPrint('[AdminDashboard] User document exists but data is null');
+          logger.w('[AdminDashboard] User document exists but data is null');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -271,11 +272,11 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
         final role = userData['userRole'] as int? ?? 0;
         final orgId = userData['organizationId'] as String?;
 
-        debugPrint('[AdminDashboard] User role: $role, OrgId: $orgId');
+  logger.d('[AdminDashboard] User role: $role, OrgId: $orgId');
 
         // Only allow admin access (userRole = 2) and require organizationId
         if (role != 2 || orgId == null) {
-          debugPrint('[AdminDashboard] Access denied - role: $role, orgId: $orgId');
+          logger.w('[AdminDashboard] Access denied - role: $role, orgId: $orgId');
           if (mounted) {
             context.go(AppRoutes.userDashboardPage.path);
           }
@@ -288,7 +289,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
         if (orgDoc.exists) {
           final orgData = orgDoc.data();
           if (orgData == null) {
-            debugPrint('[AdminDashboard] Organization document exists but data is null: $orgId');
+            logger.w('[AdminDashboard] Organization document exists but data is null: $orgId');
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
@@ -303,8 +304,8 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
 
           final subscriptionStatus = orgData['subscriptionStatus'] as String? ?? 'pending';
 
-          debugPrint('[AdminDashboard] Organization data keys: ${orgData.keys.toList()}');
-          debugPrint('[AdminDashboard] Subscription status: $subscriptionStatus');
+          logger.d('[AdminDashboard] Organization data keys: ${orgData.keys.toList()}');
+          logger.d('[AdminDashboard] Subscription status: $subscriptionStatus');
 
           // Allow active, trialing, or trial subscriptions
           if (!(subscriptionStatus == 'active' || subscriptionStatus == 'trialing' || subscriptionStatus == 'trial')) {
@@ -322,7 +323,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
             return;
           }
         } else {
-          debugPrint('[AdminDashboard] Organization document not found: $orgId');
+          logger.w('[AdminDashboard] Organization document not found: $orgId');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -345,7 +346,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
           _loadLocations();
         }
       } else {
-        debugPrint('[AdminDashboard] User document not found');
+  logger.w('[AdminDashboard] User document not found');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('User not found. Please contact support.'), backgroundColor: Colors.red),
@@ -355,7 +356,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
         return;
       }
     } catch (e) {
-      debugPrint('[AdminDashboard] Error checking user access: $e');
+  logger.e('[AdminDashboard] Error checking user access: $e', e);
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -747,15 +748,18 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                   .snapshots(),
           builder: (context, snapshot) {
             // Debug logging
-            debugPrint('[AdminDashboard] Organization ID: $organizationId');
-            debugPrint('[AdminDashboard] User snapshot has data: ${snapshot.hasData}');
+            logger.d('[AdminDashboard] Organization ID: $organizationId');
+            logger.d('[AdminDashboard] User snapshot has data: ${snapshot.hasData}');
             if (snapshot.hasData) {
-              debugPrint('[AdminDashboard] Number of users found: ${snapshot.data!.docs.length}');
-              for (final doc in snapshot.data!.docs) {
-                final userData = doc.data() as Map<String, dynamic>;
-                debugPrint(
-                  '[AdminDashboard] User ${doc.id}: ${userData['email']} - orgId: ${userData['organizationId']}',
-                );
+              final snapshotData = snapshot.data;
+              if (snapshotData != null) {
+                logger.d('[AdminDashboard] Number of users found: ${snapshotData.docs.length}');
+                for (final doc in snapshotData.docs) {
+                  final userData = doc.data() as Map<String, dynamic>;
+                  logger.d(
+                    '[AdminDashboard] User ${doc.id}: ${userData['email']} - orgId: ${userData['organizationId']}',
+                  );
+                }
               }
             }
 
@@ -806,7 +810,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                         // If none of the user's locations exist in current available locations, treat as orphan and include
                         final anyMatch = locIds.any((id) => _availableLocations.any((loc) => loc['id'] == id));
                         if (!anyMatch) {
-                          debugPrint(
+                          logger.d(
                             '[AdminDashboard] User ${doc.id} has orphaned locationIds: $locIds - including anyway',
                           );
                           return true;
@@ -928,7 +932,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                   final locationData = doc.data() as Map<String, dynamic>;
 
                   // Debug logging
-                  debugPrint('[AdminDashboard] Processing location ${doc.id}: $locationData');
+                  logger.d('[AdminDashboard] Processing location ${doc.id}: $locationData');
 
                   // Safe string extraction function
                   String safeGetString(dynamic value) {
@@ -1561,12 +1565,12 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                 checklistId: cd.id,
               );
             } catch (e) {
-              debugPrint('[AdminDashboard] Error reseeding checklist ${cd.id}: $e');
+              logger.e('[AdminDashboard] Error reseeding checklist ${cd.id}: $e', e);
             }
           }
         }
       } catch (e) {
-        debugPrint('[AdminDashboard] Reseed step failed: $e');
+  logger.e('[AdminDashboard] Reseed step failed: $e', e);
       }
     } catch (e) {
       if (mounted) {
@@ -1594,7 +1598,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
         );
       }
     } catch (e) {
-      debugPrint('[AdminDashboard] deleteUser callable error: $e');
+  logger.e('[AdminDashboard] deleteUser callable error: $e', e);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting user: $e')));
       }

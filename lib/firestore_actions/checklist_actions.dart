@@ -15,14 +15,16 @@ class ChecklistActions {
         .doc(orgId)
         .collection('checklists')
         .doc(checklistId);
-    await checklistRef.set(checklistData);
+  // Ensure ephemeral checklists expire after 30 days unless callers choose permanent docs
+  await checklistRef.set({...checklistData, 'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))) });
     for (final task in tasks) {
       // Generate deterministic ID and set document explicitly
       final taskId = generateFirestoreId(
         'tasks',
         task['description'] as String? ?? task['title'] as String? ?? 'item',
       );
-      await checklistRef.collection('tasks').doc(taskId).set(task);
+  // Ensure tasks have TTL set so ephemeral tasks expire after 30 days
+  await checklistRef.collection('tasks').doc(taskId).set({...task, 'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30)))});
     }
   }
 
