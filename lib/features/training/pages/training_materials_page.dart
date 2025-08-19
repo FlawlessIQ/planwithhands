@@ -277,11 +277,16 @@ class ViewDocumentsPage extends HookConsumerWidget {
                   return Center(child: Text('Error loading documents: ${snapshot.error}'));
                 }
 
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                if (!snapshot.hasData) {
                   return const Center(child: Text('No documents available.'));
                 }
 
-                final docs = snapshot.data!.docs;
+                final snapshotData = snapshot.data;
+                if (snapshotData == null || snapshotData.docs.isEmpty) {
+                  return const Center(child: Text('No documents available.'));
+                }
+
+                final docs = snapshotData.docs;
 
                 return ListView.separated(
                   padding: const EdgeInsets.all(16),

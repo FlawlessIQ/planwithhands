@@ -581,15 +581,17 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
                                         .where('organizationId', isEqualTo: widget.organizationId)
                                         .get(),
                                 builder: (context, snapshot) {
-                                  if (!snapshot.hasData) {
+                                  if (snapshot.connectionState == ConnectionState.waiting) {
                                     return const Center(child: CircularProgressIndicator());
                                   }
-                                  final allUsers =
-                                      snapshot.data!.docs
-                                          .map(
-                                            (doc) =>
-                                                ExtendedUserData.fromMap(doc.data() as Map<String, dynamic>, doc.id),
-                                          )
+                                  if (snapshot.hasError) {
+                                    return Center(child: Text('Error loading users: ${snapshot.error}'));
+                                  }
+                                  final snap = snapshot.data;
+                                  final allUsers = snap == null
+                                      ? <ExtendedUserData>[]
+                                      : snap.docs
+                                          .map((doc) => ExtendedUserData.fromMap(doc.data() as Map<String, dynamic>, doc.id))
                                           .toList();
                                   final matchingUserIds = availableUsers.map((u) => u.userId).toSet();
                                   final alreadyAssigned = assignedUserIds;
@@ -757,11 +759,18 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
               .collection('entries')
               .where('assignedUserIds', arrayContains: user.userId)
               .get(),
-      builder: (context, snapshot) {
+        builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text('Error checking assignments: ${snapshot.error}'));
+        }
         bool isDoubleBooked = false;
-        if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+        final snap = snapshot.data;
+        if (snap != null && snap.docs.isNotEmpty) {
           // If the user is assigned to any other entry for this schedule (day)
-          for (final doc in snapshot.data!.docs) {
+          for (final doc in snap.docs) {
             final entry = ScheduleEntryData.fromMap(doc.data() as Map<String, dynamic>, doc.id);
             // Exclude current shift
             if (entry.shiftId != widget.shiftId) {

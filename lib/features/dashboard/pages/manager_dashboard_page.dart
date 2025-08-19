@@ -1265,7 +1265,10 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
               builder: (context, tasksSnapshot) {
                 if (!tasksSnapshot.hasData) return const LinearProgressIndicator(value: 0);
 
-                final taskDocs = tasksSnapshot.data!.docs;
+                final tasksSnapshotData = tasksSnapshot.data;
+                if (tasksSnapshotData == null) return const LinearProgressIndicator(value: 0);
+
+                final taskDocs = tasksSnapshotData.docs;
                 if (taskDocs.isEmpty) {
                   return Column(
                     children: [
@@ -1387,7 +1390,28 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
               );
             }
 
-            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            if (!snapshot.hasData) {
+              return Container(
+                height: 200,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.grey[50],
+                  border: Border.all(color: Colors.grey[200]!),
+                ),
+                child: const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.analytics_outlined, size: 48, color: Colors.grey),
+                      SizedBox(height: 8),
+                      Text('No historical data available yet', style: TextStyle(color: Colors.grey)),
+                    ],
+                  ),
+                ),
+              );
+            }
+            final snapshotData = snapshot.data;
+            if (snapshotData == null || snapshotData.isEmpty) {
               return Container(
                 height: 200,
                 decoration: BoxDecoration(
@@ -1408,7 +1432,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
               );
             }
 
-            final analytics = snapshot.data!;
+            final analytics = snapshotData;
             final topPerformers = analytics['topPerformers'] as List<Map<String, dynamic>>;
             final poorPerformers = analytics['poorPerformers'] as List<Map<String, dynamic>>;
             final dayAnalysis = analytics['dayAnalysis'] as List<Map<String, dynamic>>;
@@ -1458,11 +1482,16 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
           key: ValueKey('${_selectedLocationId}_dots'), // Force rebuild when location changes
           future: _calculateShiftPerformanceAnalytics(),
           builder: (context, snapshot) {
-            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            if (!snapshot.hasData) {
               return const SizedBox.shrink();
             }
 
-            final analytics = snapshot.data!;
+            final snapshotData = snapshot.data;
+            if (snapshotData == null || snapshotData.isEmpty) {
+              return const SizedBox.shrink();
+            }
+
+            final analytics = snapshotData;
             final topPerformers = analytics['topPerformers'] as List<Map<String, dynamic>>;
             final poorPerformers = analytics['poorPerformers'] as List<Map<String, dynamic>>;
             final dayAnalysis = analytics['dayAnalysis'] as List<Map<String, dynamic>>;
@@ -2140,7 +2169,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
             stream: _buildSimpleAuditQuery(),
             builder: (context, fallbackSnapshot) {
               if (!fallbackSnapshot.hasData) {
-                return Card(
+                  return Card(
                   child: Padding(
                     padding: const EdgeInsets.all(20),
                     child: Column(
@@ -2156,7 +2185,25 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                 );
               }
 
-              final docs = fallbackSnapshot.data!.docs;
+                final fallbackSnapshotData = fallbackSnapshot.data;
+                if (fallbackSnapshotData == null) {
+                  return Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        children: [
+                          Icon(Icons.error_outline, size: 48, color: Colors.red[400]),
+                          const SizedBox(height: 8),
+                          const Text('Error loading audit data'),
+                          const SizedBox(height: 8),
+                          Text('Error: ${snapshot.error}', style: TextStyle(color: Colors.red, fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
+                final docs = fallbackSnapshotData.docs;
               // If fallback is checklist docs, use existing filter; if task docs, map via new helper
               final filteredResults =
                   docs.isNotEmpty && ((docs.first.data() as Map<String, dynamic>?)?.containsKey('tasks') ?? false)
@@ -2233,7 +2280,12 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final docs = snapshot.data!.docs;
+        final snapshotData = snapshot.data;
+        if (snapshotData == null) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final docs = snapshotData.docs;
         debugPrint('Audit query returned ${docs.length} documents');
 
         final filteredResults =

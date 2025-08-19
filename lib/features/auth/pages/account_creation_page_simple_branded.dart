@@ -260,7 +260,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
         'createdBy': user.uid,
         'isActive': true,
         'subscriptionStatus': 'trial',
-        'trialEndsAt': DateTime.now().add(const Duration(days: 30)),
+  'trialEndsAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
         'settings': {'allowUserRegistration': true, 'requireLocationSelection': true, 'defaultShiftLength': 8},
       });
       print('Organization document created');

@@ -750,12 +750,15 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
             debugPrint('[AdminDashboard] Organization ID: $organizationId');
             debugPrint('[AdminDashboard] User snapshot has data: ${snapshot.hasData}');
             if (snapshot.hasData) {
-              debugPrint('[AdminDashboard] Number of users found: ${snapshot.data!.docs.length}');
-              for (final doc in snapshot.data!.docs) {
-                final userData = doc.data() as Map<String, dynamic>;
-                debugPrint(
-                  '[AdminDashboard] User ${doc.id}: ${userData['email']} - orgId: ${userData['organizationId']}',
-                );
+              final snapshotData = snapshot.data;
+              if (snapshotData != null) {
+                debugPrint('[AdminDashboard] Number of users found: ${snapshotData.docs.length}');
+                for (final doc in snapshotData.docs) {
+                  final userData = doc.data() as Map<String, dynamic>;
+                  debugPrint(
+                    '[AdminDashboard] User ${doc.id}: ${userData['email']} - orgId: ${userData['organizationId']}',
+                  );
+                }
               }
             }
 

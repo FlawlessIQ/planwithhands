@@ -1349,7 +1349,6 @@ class _HelpOutSheet extends StatelessWidget {
   final String selectedLocationName;
 
   const _HelpOutSheet({
-    super.key,
     required this.organizationId,
     required this.todayDayName,
     this.selectedLocationId,
@@ -1582,7 +1581,7 @@ class _PhotoDialog extends StatefulWidget {
   final dynamic checklist;
   final VoidCallback onPhotoUpdated;
 
-  const _PhotoDialog({super.key, required this.task, this.checklist, required this.onPhotoUpdated});
+  const _PhotoDialog({required this.task, this.checklist, required this.onPhotoUpdated});
 
   @override
   State<_PhotoDialog> createState() => _PhotoDialogState();
@@ -1957,7 +1956,7 @@ class _NotesDialog extends StatefulWidget {
   final dynamic checklist;
   final VoidCallback onNotesUpdated;
 
-  const _NotesDialog({super.key, required this.task, this.checklist, required this.onNotesUpdated});
+  const _NotesDialog({required this.task, this.checklist, required this.onNotesUpdated});
 
   @override
   State<_NotesDialog> createState() => _NotesDialogState();
@@ -2117,7 +2116,7 @@ class _NotCompletedReasonDialog extends StatefulWidget {
   final dynamic checklist;
   final VoidCallback onReasonUpdated;
 
-  const _NotCompletedReasonDialog({super.key, required this.task, this.checklist, required this.onReasonUpdated});
+  const _NotCompletedReasonDialog({required this.task, this.checklist, required this.onReasonUpdated});
 
   @override
   State<_NotCompletedReasonDialog> createState() => _NotCompletedReasonDialogState();

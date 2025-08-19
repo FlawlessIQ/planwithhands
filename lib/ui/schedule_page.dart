@@ -834,14 +834,14 @@ class _SchedulePageState extends State<SchedulePage> {
           StreamBuilder<QuerySnapshot>(
             stream: FirestoreEnforcer.instance.collection('organizations').doc(_orgId).collection('shifts').snapshots(),
             builder: (context, shiftSnapshot) {
-              if (!shiftSnapshot.hasData) {
+              if (shiftSnapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
-              // Filter templates for selected location
-              final allDocs = shiftSnapshot.data!.docs;
-              // Show all shift templates (remove filter for testing)
-              final docs = allDocs;
-              if (docs.isEmpty) {
+              if (shiftSnapshot.hasError) {
+                return Center(child: Text('Error loading shifts: ${shiftSnapshot.error}'));
+              }
+              final snap = shiftSnapshot.data;
+              if (snap == null || snap.docs.isEmpty) {
                 return const Center(
                   child: Padding(
                     padding: EdgeInsets.all(32),
@@ -852,9 +852,9 @@ class _SchedulePageState extends State<SchedulePage> {
                   ),
                 );
               }
-              final shifts =
-                  docs.map((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
+
+              final shifts = snap.docs.map((doc) {
+                    final data = (doc.data() ?? {}) as Map<String, dynamic>;
                     // Build activeDays list: prefer non-empty activeDays, otherwise fallback to days strings
                     final List<dynamic> storedActive = data['activeDays'] as List<dynamic>? ?? [];
                     final rawDays =

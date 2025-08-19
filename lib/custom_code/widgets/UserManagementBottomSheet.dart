@@ -1060,7 +1060,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       'email': userEmail,
       'organizationId': organizationId,
       'createdAt': FieldValue.serverTimestamp(),
-      'expiresAt': DateTime.now().add(const Duration(days: 7)),
+      'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 7))),
       'used': false,
       'firstName': firstName,
       'lastName': lastName,
@@ -1077,9 +1077,9 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     final createUser = functions.httpsCallable('createUser');
 
     // Canonicalize locationIds for clearer logging
-    final _logLocIds = locationIds != null ? locationIds.toList() : (locationId != null ? [locationId] : <String>[]);
+    final logLocIds = locationIds != null ? locationIds.toList() : (locationId != null ? [locationId] : <String>[]);
     debugPrint(
-      'Calling createUser with payload: ${{'email': userEmail, 'firstName': firstName, 'lastName': lastName, 'userRole': accessLevel, 'jobTypes': roles.toList(), 'organizationId': organizationId, 'locationId': _logLocIds.isNotEmpty ? _logLocIds.first : null, 'locationIds': _logLocIds, 'orgName': orgName, 'adminEmail': adminEmail, 'inviteUrl': inviteUrl, 'templateId': templateId}}',
+      'Calling createUser with payload: ${{'email': userEmail, 'firstName': firstName, 'lastName': lastName, 'userRole': accessLevel, 'jobTypes': roles.toList(), 'organizationId': organizationId, 'locationId': logLocIds.isNotEmpty ? logLocIds.first : null, 'locationIds': logLocIds, 'orgName': orgName, 'adminEmail': adminEmail, 'inviteUrl': inviteUrl, 'templateId': templateId}}',
     );
 
     final result = await createUser.call({

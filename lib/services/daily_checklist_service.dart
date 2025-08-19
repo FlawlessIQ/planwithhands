@@ -137,6 +137,8 @@ class DailyChecklistService {
           'templateName': templateName,
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
+          // expiresAt: client-set 30 days TTL. We set a best-effort server timestamp here.
+          'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
         }, SetOptions(merge: true));
 
         // If the tasks subcollection is empty, populate it from the template tasks
@@ -159,6 +161,7 @@ class DailyChecklistService {
                 'taskId': taskId,
                 'taskName': t['taskName'] ?? t['title'] ?? t['name'] ?? t['description'] ?? 'Untitled Task',
                 'createdAt': FieldValue.serverTimestamp(),
+                'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
                 'dueDate': t['dueDate'],
                 'completed': false,
                 'isCarryForward': false,
@@ -174,6 +177,7 @@ class DailyChecklistService {
                 'checklistName': templateName,
                 'templateName': templateName,
                 'order': i,
+                'isCarryForwardEligible': t['isCarryForwardEligible'] == true,
               });
             }
             await batch.commit();
@@ -1680,8 +1684,9 @@ class DailyChecklistService {
                 final tmap = Map<String, dynamic>.from(td.data());
                 // Ensure canonical keys exist for downstream logic
                 if (!tmap.containsKey('taskId')) tmap['taskId'] = td.id;
-                if (!tmap.containsKey('taskName'))
+                if (!tmap.containsKey('taskName')) {
                   tmap['taskName'] = tmap['name'] ?? tmap['title'] ?? tmap['description'];
+                }
 
                 // Avoid duplicates: check if parent-array already contains this task by id or name
                 final exists = tasksList.any((existing) {
@@ -1789,7 +1794,7 @@ class DailyChecklistService {
             final tasksColl = todayRef.collection('tasks');
             final batch = _firestore.batch();
             int i = 0;
-            for (final cf in carryForwardTasks) {
+              for (final cf in carryForwardTasks) {
               final originalTaskId = cf['originalTaskId'] as String;
               // Deterministic CF doc id based on original ids + today checklist id
               final digest = sha1.convert(utf8.encode('cf|${doc.id}|$originalTaskId|$todayChecklistId')).toString();
@@ -1799,9 +1804,11 @@ class DailyChecklistService {
                 'taskId': cfId,
                 'taskName': cf['taskName'],
                 'createdAt': Timestamp.now(),
+                'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
                 'dueDate': Timestamp.now(),
                 'completed': false,
                 'isCarryForward': true,
+                'isCarryForwardEligible': true,
                 'originalDate': data['date'],
                 'originalChecklistId': doc.id,
                 'originalTaskId': originalTaskId,
