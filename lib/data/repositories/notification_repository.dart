@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/utils/firestore_ttl_helper.dart';
 
 class NotificationRepository {
   final FirebaseFirestore firestore;
@@ -29,19 +30,22 @@ class NotificationRepository {
     required String body,
     String? groupId,
   }) async {
-    await firestore
+    final notificationData = {
+      'recipientId': recipientId,
+      'title': title,
+      'message': body,
+      'createdAt': FieldValue.serverTimestamp(),
+      'readBy': [],
+      if (groupId != null) 'groupId': groupId,
+    };
+
+    final collectionRef = firestore
         .collection('organizations')
         .doc(orgId)
-        .collection('notifications')
-        .add({
-          'recipientId': recipientId,
-          'title': title,
-          'message': body,
-          'createdAt': FieldValue.serverTimestamp(),
-          'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
-          'readBy': [],
-          if (groupId != null) 'groupId': groupId,
-        });
+        .collection('notifications');
+
+    // Use TTL helper to automatically add expiresAt
+    await FirestoreTTLHelper.addWithTTL(collectionRef, notificationData);
   }
 
   // Mark notification as read

@@ -6,6 +6,7 @@ import 'package:hands_app/data/models/shift_data.dart';
 import 'package:hands_app/utils/jobtype_helper.dart';
 import 'package:uuid/uuid.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/utils/firestore_ttl_helper.dart';
 import 'package:hands_app/data/models/missed_tasks_section.dart';
 import 'package:hands_app/utils/location_helper.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -128,7 +129,7 @@ class DailyChecklistService {
       // Ensure parent checklist doc exists (idempotent). We store minimal metadata
       // on the parent doc and keep tasks in the canonical 'tasks' subcollection.
       try {
-        await checklistRef.set({
+        final checklistData = {
           'id': checklistId,
           'organizationId': organizationId,
           'locationId': locationId,
@@ -138,9 +139,9 @@ class DailyChecklistService {
           'templateName': templateName,
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
-          // expiresAt: client-set 30 days TTL. We set a best-effort server timestamp here.
-          'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
-        }, SetOptions(merge: true));
+        };
+        
+        await FirestoreTTLHelper.setWithTTL(checklistRef, checklistData, options: SetOptions(merge: true));
 
         // If the tasks subcollection is empty, populate it from the template tasks
         final tasksColl = checklistRef.collection('tasks');
@@ -158,11 +159,10 @@ class DailyChecklistService {
                 dateString: dateString,
               );
               final taskRef = tasksColl.doc(taskId);
-              batch.set(taskRef, {
+              final taskData = {
                 'taskId': taskId,
                 'taskName': t['taskName'] ?? t['title'] ?? t['name'] ?? t['description'] ?? 'Untitled Task',
                 'createdAt': FieldValue.serverTimestamp(),
-                'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
                 'dueDate': t['dueDate'],
                 'completed': false,
                 'isCarryForward': false,
@@ -179,7 +179,8 @@ class DailyChecklistService {
                 'templateName': templateName,
                 'order': i,
                 'isCarryForwardEligible': t['isCarryForwardEligible'] == true,
-              });
+              };
+              FirestoreTTLHelper.batchSetWithTTL(batch, taskRef, taskData);
             }
             await batch.commit();
             debugPrint(
@@ -1823,11 +1824,10 @@ class DailyChecklistService {
               final digest = sha1.convert(utf8.encode('cf|${doc.id}|$originalTaskId|$todayChecklistId')).toString();
               final cfId = digest.substring(0, 16);
               final ref = tasksColl.doc(cfId);
-              batch.set(ref, {
+              final cfTaskData = {
                 'taskId': cfId,
                 'taskName': cf['taskName'],
                 'createdAt': Timestamp.now(),
-                'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
                 'dueDate': Timestamp.now(),
                 'completed': false,
                 'isCarryForward': true,
@@ -1847,7 +1847,8 @@ class DailyChecklistService {
                 'templateName': (data['templateName'] as String?) ?? 'Checklist',
                 'dateString': todayStr,
                 'order': 100000 + i,
-              }, SetOptions(merge: true));
+              };
+              FirestoreTTLHelper.batchSetWithTTL(batch, ref, cfTaskData);
               i++;
             }
             try {

@@ -37,6 +37,7 @@ exports.syncTodayOnShiftChange = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const idHelpers_1 = require("./idHelpers");
+const firestoreTTLHelper_1 = require("./firestoreTTLHelper");
 const MAX_BATCH_WRITES = Number(process.env.MAX_BATCH_WRITES || 400);
 exports.syncTodayOnShiftChange = functions
     .region(process.env.FUNCTION_REGION || "us-central1")
@@ -133,8 +134,6 @@ exports.syncTodayOnShiftChange = functions
                 completed: false,
                 photoRequired,
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                // TTL: expire tasks after 30 days
-                expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)),
                 dueDate,
                 isCarryForward: false,
                 organizationId: orgId,
@@ -144,7 +143,7 @@ exports.syncTodayOnShiftChange = functions
                 templateId,
                 dateString,
             };
-            batch.set(taskDocRef, docData, { merge: true });
+            firestoreTTLHelper_1.FirestoreTTLHelper.batchSetWithTTL(batch, taskDocRef, docData, { merge: true });
             currentBatchWrites += 1;
             inserted += 1;
             totalInserted += 1;
@@ -168,10 +167,8 @@ exports.syncTodayOnShiftChange = functions
             dateString,
             checklistTemplateIds: templatesToProcess,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            // TTL for ephemeral checklist parents
-            expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)),
         };
-        batch.set(newChecklistRef, checklistDoc, { merge: true });
+        firestoreTTLHelper_1.FirestoreTTLHelper.batchSetWithTTL(batch, newChecklistRef, checklistDoc, { merge: true });
         currentBatchWrites += 1;
         totalChecklistsCreated += 1;
         // add tasks from all templates

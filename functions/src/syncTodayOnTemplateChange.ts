@@ -1,6 +1,7 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import {dateStringUTC, deterministicTaskId} from "./idHelpers";
+import {FirestoreTTLHelper} from "./firestoreTTLHelper";
 
 const MAX_BATCH_WRITES = Number(process.env.MAX_BATCH_WRITES || 400);
 
@@ -147,11 +148,9 @@ export const syncTodayOnTemplateChange = functions
               shiftId,
               templateId,
               dateString,
-                    // TTL: expire tasks after 30 days
-                    expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)),
             };
 
-            batch.set(taskDocRef, docData, {merge: true});
+            FirestoreTTLHelper.batchSetWithTTL(batch, taskDocRef, docData, {merge: true});
             currentBatchWrites += 1;
             totalInserted += 1;
 

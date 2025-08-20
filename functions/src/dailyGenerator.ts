@@ -2,6 +2,7 @@ import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import {DateTime} from "luxon";
 import * as crypto from "crypto";
+import {FirestoreTTLHelper} from "./firestoreTTLHelper";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -123,10 +124,9 @@ export const scheduledDailyGenerator = functions.pubsub
                 dateString,
                 createdAt: nowTs,
                 createdBy: "generator",
-                expiresAt,
               } as Record<string, any>;
 
-              batch.set(checklistRef, checklistData);
+              FirestoreTTLHelper.batchSetWithTTL(batch, checklistRef, checklistData);
 
               // Optional: create tasks from a template collection for this shift
               try {
@@ -141,11 +141,10 @@ export const scheduledDailyGenerator = functions.pubsub
                     order: tdata.order || taskCount,
                     createdAt: nowTs,
                     createdBy: "generator",
-                    expiresAt,
                     isComplete: false,
                     isCarryForwardEligible: tdata.isCarryForwardEligible === true,
                   };
-                  batch.set(taskRef, taskData);
+                  FirestoreTTLHelper.batchSetWithTTL(batch, taskRef, taskData);
                   taskCount++;
                 }
 
@@ -163,10 +162,9 @@ export const scheduledDailyGenerator = functions.pubsub
                     isCarryForward: true,
                     isCarryForwardEligible: ydata.isCarryForwardEligible === true,
                     carryForwardedFrom: `${yesterdayChecklistId}/${ytask.id}`,
-                    expiresAt,
                   };
                   // Ensure we don't carry non-eligible tasks
-                  batch.set(newTaskRef, newTask);
+                  FirestoreTTLHelper.batchSetWithTTL(batch, newTaskRef, newTask);
                   carriedTasks++;
                 }
               } catch {
@@ -332,11 +330,10 @@ export async function generateForOrgDate(orgId: string, dateString: string) {
             const digest = crypto.createHash("sha1").update(`cf|${yDoc.id}|${originalTaskId}|${checklistId}`).digest("hex");
             const cfId = digest.substring(0, 16);
             const ref = checklistRef.collection("tasks").doc(cfId);
-            batch.set(ref, {
+            const cfTaskData = {
               taskId: cfId,
               taskName: cf.taskName,
               createdAt: admin.firestore.Timestamp.now(),
-              expiresAt: daysFromNow(30),
               dueDate: admin.firestore.Timestamp.now(),
               completed: false,
               isCarryForward: true,
@@ -353,7 +350,8 @@ export async function generateForOrgDate(orgId: string, dateString: string) {
               templateName: ydata.templateName || "Checklist",
               dateString: dateString,
               order: 100000 + i,
-            });
+            };
+            FirestoreTTLHelper.batchSetWithTTL(batch, ref, cfTaskData);
             i++;
           }
           await batch.commit();

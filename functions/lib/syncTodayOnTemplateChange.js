@@ -37,6 +37,7 @@ exports.syncTodayOnTemplateChange = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const idHelpers_1 = require("./idHelpers");
+const firestoreTTLHelper_1 = require("./firestoreTTLHelper");
 const MAX_BATCH_WRITES = Number(process.env.MAX_BATCH_WRITES || 400);
 exports.syncTodayOnTemplateChange = functions
     .region(process.env.FUNCTION_REGION || "us-central1")
@@ -141,10 +142,8 @@ exports.syncTodayOnTemplateChange = functions
                     shiftId,
                     templateId,
                     dateString,
-                    // TTL: expire tasks after 30 days
-                    expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)),
                 };
-                batch.set(taskDocRef, docData, { merge: true });
+                firestoreTTLHelper_1.FirestoreTTLHelper.batchSetWithTTL(batch, taskDocRef, docData, { merge: true });
                 currentBatchWrites += 1;
                 totalInserted += 1;
                 if (currentBatchWrites >= MAX_BATCH_WRITES) {

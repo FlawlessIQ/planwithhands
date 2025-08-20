@@ -41,6 +41,7 @@ const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const luxon_1 = require("luxon");
 const crypto = __importStar(require("crypto"));
+const firestoreTTLHelper_1 = require("./firestoreTTLHelper");
 admin.initializeApp();
 const db = admin.firestore();
 // Helper: add days to a JS Date
@@ -151,9 +152,8 @@ exports.scheduledDailyGenerator = functions.pubsub
                         dateString,
                         createdAt: nowTs,
                         createdBy: "generator",
-                        expiresAt,
                     };
-                    batch.set(checklistRef, checklistData);
+                    firestoreTTLHelper_1.FirestoreTTLHelper.batchSetWithTTL(batch, checklistRef, checklistData);
                     // Optional: create tasks from a template collection for this shift
                     try {
                         const templatesRef = db.collection("organizations").doc(orgId).collection("shift_templates").doc(shiftId).collection("tasks");
@@ -167,11 +167,10 @@ exports.scheduledDailyGenerator = functions.pubsub
                                 order: tdata.order || taskCount,
                                 createdAt: nowTs,
                                 createdBy: "generator",
-                                expiresAt,
                                 isComplete: false,
                                 isCarryForwardEligible: tdata.isCarryForwardEligible === true,
                             };
-                            batch.set(taskRef, taskData);
+                            firestoreTTLHelper_1.FirestoreTTLHelper.batchSetWithTTL(batch, taskRef, taskData);
                             taskCount++;
                         }
                         // Carry-forward: copy incomplete tasks from yesterday
@@ -188,10 +187,9 @@ exports.scheduledDailyGenerator = functions.pubsub
                                 isCarryForward: true,
                                 isCarryForwardEligible: ydata.isCarryForwardEligible === true,
                                 carryForwardedFrom: `${yesterdayChecklistId}/${ytask.id}`,
-                                expiresAt,
                             };
                             // Ensure we don't carry non-eligible tasks
-                            batch.set(newTaskRef, newTask);
+                            firestoreTTLHelper_1.FirestoreTTLHelper.batchSetWithTTL(batch, newTaskRef, newTask);
                             carriedTasks++;
                         }
                     }
@@ -350,11 +348,10 @@ async function generateForOrgDate(orgId, dateString) {
                         const digest = crypto.createHash("sha1").update(`cf|${yDoc.id}|${originalTaskId}|${checklistId}`).digest("hex");
                         const cfId = digest.substring(0, 16);
                         const ref = checklistRef.collection("tasks").doc(cfId);
-                        batch.set(ref, {
+                        const cfTaskData = {
                             taskId: cfId,
                             taskName: cf.taskName,
                             createdAt: admin.firestore.Timestamp.now(),
-                            expiresAt: daysFromNow(30),
                             dueDate: admin.firestore.Timestamp.now(),
                             completed: false,
                             isCarryForward: true,
@@ -371,7 +368,8 @@ async function generateForOrgDate(orgId, dateString) {
                             templateName: ydata.templateName || "Checklist",
                             dateString: dateString,
                             order: 100000 + i,
-                        });
+                        };
+                        firestoreTTLHelper_1.FirestoreTTLHelper.batchSetWithTTL(batch, ref, cfTaskData);
                         i++;
                     }
                     await batch.commit();

@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hands_app/main.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/utils/firestore_ttl_helper.dart';
 import 'package:hands_app/utils/jobtype_helper.dart';
 import 'package:hands_app/core/logging/logger.dart';
 
@@ -1108,12 +1109,11 @@ class UserManagementBottomSheet extends HookConsumerWidget {
 
     logger.d('[USER_MANAGEMENT] Generated invite URL: $inviteUrl');
 
-    // Store invite in Firestore
+    // Store invite in Firestore using TTL helper
     Map<String, dynamic> inviteData = {
       'email': userEmail,
       'organizationId': organizationId,
       'createdAt': FieldValue.serverTimestamp(),
-      'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 7))),
       'used': false,
       'firstName': firstName,
       'lastName': lastName,
@@ -1135,7 +1135,8 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       inviteData['jobType'] = null;
     }
 
-    await FirestoreEnforcer.instance.collection('invites').doc(inviteToken).set(inviteData);
+    final inviteRef = FirestoreEnforcer.instance.collection('invites').doc(inviteToken);
+    await FirestoreTTLHelper.setWithTTL(inviteRef, inviteData);
 
     final functions = FirebaseFunctions.instanceFor(region: 'us-central1');
     final createUser = functions.httpsCallable('createUser');
