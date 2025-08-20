@@ -26,3 +26,23 @@ export const repairTemplateTaskTitles = repairModule.repairTemplateTaskTitles as
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const repairCsvModule = require("../migrations/repair_task_titles_from_csv");
 export const repairTaskTitlesFromCsv = repairCsvModule.repairTaskTitlesFromCsv as any;
+
+// Export user functions
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const userModule = require("../user_functions");
+export const createUser = userModule.createUser as any;
+export const deleteUser = userModule.deleteUser as any;
+
+// Export other JS-based functions
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const stripeModule = require("../stripe_functions");
+export const createCheckoutSession = stripeModule.createCheckoutSession as any;
+export const stripeWebhook = stripeModule.stripeWebhook as any;
+export const cancelSubscription = stripeModule.cancelSubscription as any;
+export const updateSubscription = stripeModule.updateSubscription as any;
+export const createBillingPortalSession = stripeModule.createBillingPortalSession as any;
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const placesModule = require("../places_functions");
+export const placesAutocompleteHttp = placesModule.placesAutocompleteHttp as any;
+export const placeDetailsHttp = placesModule.placeDetailsHttp as any;

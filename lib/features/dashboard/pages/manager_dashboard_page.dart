@@ -85,12 +85,12 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
   void _startAutoRefresh() {
     // Refresh live shifts every 2 minutes
-        _refreshTimer = Timer.periodic(const Duration(minutes: 2), (timer) async {
-          if (mounted && _selectedLocationId != null) {
-              logger.d('[ManagerDashboard] Auto-refreshing live shifts...');
-              await _loadLiveShifts();
-            }
-        });
+    _refreshTimer = Timer.periodic(const Duration(minutes: 2), (timer) async {
+      if (mounted && _selectedLocationId != null) {
+        logger.d('[ManagerDashboard] Auto-refreshing live shifts...');
+        await _loadLiveShifts();
+      }
+    });
   }
 
   Future<void> _fetchUserRole() async {
@@ -118,8 +118,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
   Future<void> _ensureDailyChecklistsExist() async {
     try {
       final service = DailyChecklistService();
-  await service.ensureDailyChecklistsExist(widget.organizationId);
-  logger.d('Daily checklist generation check completed for organization ${widget.organizationId}');
+      await service.ensureDailyChecklistsExist(widget.organizationId);
+      logger.d('Daily checklist generation check completed for organization ${widget.organizationId}');
     } catch (e) {
       logger.e('Error ensuring daily checklists exist: $e');
     }
@@ -132,7 +132,11 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
     try {
       final locationsSnap =
-              await FirestoreEnforcer.instance.collection('organizations').doc(widget.organizationId).collection('locations').get();
+          await FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(widget.organizationId)
+              .collection('locations')
+              .get();
 
       final locations =
           locationsSnap.docs.map((doc) {
@@ -172,7 +176,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
         await _loadAll();
       }
     } catch (e) {
-  logger.e('Error loading locations: $e', e);
+      logger.e('Error loading locations: $e', e);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load locations: $e')));
       }
@@ -239,7 +243,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
         today: today,
         locationId: _selectedLocationId,
       );
-  logger.d('[ManagerDashboard] Loaded ${_yesterdayMissed.length} carry-forward groups from yesterday');
+      logger.d('[ManagerDashboard] Loaded ${_yesterdayMissed.length} carry-forward groups from yesterday');
     } catch (e, st) {
       logger.e('[ManagerDashboard] getMissedTasksForDate error: $e\n$st');
       _errorYesterday = e.toString();
@@ -254,10 +258,10 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
     setState(() => _loadingLive = true);
 
     try {
-          logger.d('[ManagerDashboard] Starting _loadLiveShifts for location: $_selectedLocationId');
+      logger.d('[ManagerDashboard] Starting _loadLiveShifts for location: $_selectedLocationId');
 
       if (_selectedLocationId == null) {
-    logger.d('[ManagerDashboard] No location selected, clearing shifts');
+        logger.d('[ManagerDashboard] No location selected, clearing shifts');
         setState(() {
           _liveShifts = [];
           _availableRoles = ['all'];
@@ -267,10 +271,10 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
       final today = DateTime.now();
       final todayStr = DateFormat('yyyy-MM-dd').format(today);
-  logger.d('[ManagerDashboard] Loading shifts for date: $todayStr');
+      logger.d('[ManagerDashboard] Loading shifts for date: $todayStr');
 
       // Get all shifts for the selected location
-  logger.d('[ManagerDashboard] Querying shifts with locationIds containing: $_selectedLocationId');
+      logger.d('[ManagerDashboard] Querying shifts with locationIds containing: $_selectedLocationId');
       var shiftsQuery =
           await FirestoreEnforcer.instance
               .collection('organizations')
@@ -279,13 +283,13 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
               .where('locationIds', arrayContains: _selectedLocationId)
               .get();
 
-  logger.d('[ManagerDashboard] Found ${shiftsQuery.docs.length} shifts for location $_selectedLocationId');
+      logger.d('[ManagerDashboard] Found ${shiftsQuery.docs.length} shifts for location $_selectedLocationId');
 
       List<QueryDocumentSnapshot> shiftDocs = shiftsQuery.docs;
 
       // If no shifts found with locationIds, try alternative query
       if (shiftDocs.isEmpty) {
-  logger.d('[ManagerDashboard] No shifts found with locationIds, trying alternative query...');
+        logger.d('[ManagerDashboard] No shifts found with locationIds, trying alternative query...');
         final alternativeQuery =
             await FirestoreEnforcer.instance
                 .collection('organizations')
@@ -293,7 +297,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                 .collection('shifts')
                 .get();
 
-  logger.d('[ManagerDashboard] Alternative query found ${alternativeQuery.docs.length} total shifts');
+        logger.d('[ManagerDashboard] Alternative query found ${alternativeQuery.docs.length} total shifts');
 
         // Filter shifts that match the location (handle legacy single-id or list)
         shiftDocs =
@@ -303,7 +307,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
               return docLocationIds.contains(_selectedLocationId);
             }).toList();
 
-  logger.d('[ManagerDashboard] Filtered to ${shiftDocs.length} shifts for location $_selectedLocationId');
+        logger.d('[ManagerDashboard] Filtered to ${shiftDocs.length} shifts for location $_selectedLocationId');
       }
 
       List<Map<String, dynamic>> todaysShifts = [];
@@ -315,7 +319,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
         final endTime = shiftData['endTime'] ?? '';
         final role = shiftData['role'] ?? '';
 
-  logger.d('[ManagerDashboard] Processing shift: $shiftName (${shiftDoc.id}) - $startTime to $endTime');
+        logger.d('[ManagerDashboard] Processing shift: $shiftName (${shiftDoc.id}) - $startTime to $endTime');
 
         // Query per-task documents for this shift/date/location (subcollection model)
         double completionPct = 0.0;
@@ -372,7 +376,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
         // Calculate time status
         String timeStatus = _calculateTimeStatus(startTime, endTime);
-  logger.d('[ManagerDashboard] Time status for $shiftName: $timeStatus');
+        logger.d('[ManagerDashboard] Time status for $shiftName: $timeStatus');
 
         todaysShifts.add({
           'shiftId': shiftDoc.id,
@@ -391,17 +395,17 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
       final roles =
           todaysShifts.map((shift) => shift['role'] as String? ?? '').where((role) => role.isNotEmpty).toSet().toList();
 
-  logger.d('[ManagerDashboard] Available roles: $roles');
-  logger.d('[ManagerDashboard] Final shifts count: ${todaysShifts.length}');
+      logger.d('[ManagerDashboard] Available roles: $roles');
+      logger.d('[ManagerDashboard] Final shifts count: ${todaysShifts.length}');
 
       setState(() {
         _liveShifts = todaysShifts;
         _availableRoles = ['all', ...roles];
       });
 
-  logger.d('[ManagerDashboard] Successfully loaded ${_liveShifts.length} today\'s shifts');
+      logger.d('[ManagerDashboard] Successfully loaded ${_liveShifts.length} today\'s shifts');
     } catch (e, st) {
-  logger.e('[ManagerDashboard] _loadLiveShifts error: $e\n$st', e);
+      logger.e('[ManagerDashboard] _loadLiveShifts error: $e\n$st', e);
     } finally {
       if (mounted) {
         setState(() => _loadingLive = false);
@@ -438,7 +442,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
     setState(() => _loadingFrequent = true);
 
     try {
-  logger.d('[ManagerDashboard] Starting _loadFrequentMisses30d for location: $_selectedLocationId');
+      logger.d('[ManagerDashboard] Starting _loadFrequentMisses30d for location: $_selectedLocationId');
       final service = DailyChecklistService();
       _frequentMisses30d = await service.getFrequentlyMissedTasks(
         organizationId: widget.organizationId,
@@ -446,7 +450,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
         limit: 10,
         locationId: _selectedLocationId,
       );
-  logger.d('[ManagerDashboard] Loaded ${_frequentMisses30d.length} frequently missed tasks');
+      logger.d('[ManagerDashboard] Loaded ${_frequentMisses30d.length} frequently missed tasks');
       if (_frequentMisses30d.isNotEmpty) {
         logger.d('[ManagerDashboard] First 3 frequent misses:');
         for (int i = 0; i < _frequentMisses30d.length && i < 3; i++) {
@@ -2166,7 +2170,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
             stream: _buildSimpleAuditQuery(),
             builder: (context, fallbackSnapshot) {
               if (!fallbackSnapshot.hasData) {
-                  return Card(
+                return Card(
                   child: Padding(
                     padding: const EdgeInsets.all(20),
                     child: Column(
@@ -2182,25 +2186,25 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                 );
               }
 
-                final fallbackSnapshotData = fallbackSnapshot.data;
-                if (fallbackSnapshotData == null) {
-                  return Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        children: [
-                          Icon(Icons.error_outline, size: 48, color: Colors.red[400]),
-                          const SizedBox(height: 8),
-                          const Text('Error loading audit data'),
-                          const SizedBox(height: 8),
-                          Text('Error: ${snapshot.error}', style: TextStyle(color: Colors.red, fontSize: 12)),
-                        ],
-                      ),
+              final fallbackSnapshotData = fallbackSnapshot.data;
+              if (fallbackSnapshotData == null) {
+                return Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      children: [
+                        Icon(Icons.error_outline, size: 48, color: Colors.red[400]),
+                        const SizedBox(height: 8),
+                        const Text('Error loading audit data'),
+                        const SizedBox(height: 8),
+                        Text('Error: ${snapshot.error}', style: TextStyle(color: Colors.red, fontSize: 12)),
+                      ],
                     ),
-                  );
-                }
+                  ),
+                );
+              }
 
-                final docs = fallbackSnapshotData.docs;
+              final docs = fallbackSnapshotData.docs;
               // If fallback is checklist docs, use existing filter; if task docs, map via new helper
               final filteredResults =
                   docs.isNotEmpty && ((docs.first.data() as Map<String, dynamic>?)?.containsKey('tasks') ?? false)
@@ -2282,8 +2286,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
           return const Center(child: CircularProgressIndicator());
         }
 
-  final docs = snapshotData.docs;
-  logger.d('Audit query returned ${docs.length} documents');
+        final docs = snapshotData.docs;
+        logger.d('Audit query returned ${docs.length} documents');
 
         final filteredResults =
             docs.isNotEmpty && ((docs.first.data() as Map<String, dynamic>?)?.containsKey('tasks') ?? false)
@@ -2444,7 +2448,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
       // Get tasks from this checklist
       final tasks = List<Map<String, dynamic>>.from(data['tasks'] ?? []);
 
-  logger.d('Processing checklist ${doc.id} (shift: $shiftName): ${tasks.length} tasks found');
+      logger.d('Processing checklist ${doc.id} (shift: $shiftName): ${tasks.length} tasks found');
 
       for (int i = 0; i < tasks.length; i++) {
         final task = tasks[i];
@@ -2555,11 +2559,11 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
       }
     }
 
-  logger.d('Total tasks after filtering: ${allTasks.length}');
-  logger.d('Selected shift: $_selectedShift');
+    logger.d('Total tasks after filtering: ${allTasks.length}');
+    logger.d('Selected shift: $_selectedShift');
     if (_selectedShift != 'all') {
-  final shiftTasks = allTasks.where((task) => task['shiftId'] == _selectedShift).length;
-  logger.d('Tasks matching selected shift: $shiftTasks');
+      final shiftTasks = allTasks.where((task) => task['shiftId'] == _selectedShift).length;
+      logger.d('Tasks matching selected shift: $shiftTasks');
     }
 
     // Sort by timestamp (most recent first)
@@ -2943,11 +2947,11 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
   Future<Map<String, dynamic>> _calculateShiftPerformanceAnalytics() async {
     try {
-    logger.d('Starting shift performance analytics calculation for location: $_selectedLocationId');
+      logger.d('Starting shift performance analytics calculation for location: $_selectedLocationId');
 
       // Early return if no location selected
       if (_selectedLocationId == null) {
-    logger.d('No location selected, returning empty analytics');
+        logger.d('No location selected, returning empty analytics');
         return {
           'topPerformers': <Map<String, dynamic>>[],
           'poorPerformers': <Map<String, dynamic>>[],
@@ -2977,8 +2981,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
       final checklists = allChecklists;
 
-  logger.d('Found ${checklists.length} checklists for analytics');
-  logger.d('Available shifts: ${_shifts.length} (${_shifts.map((s) => s['name']).join(', ')})');
+      logger.d('Found ${checklists.length} checklists for analytics');
+      logger.d('Available shifts: ${_shifts.length} (${_shifts.map((s) => s['name']).join(', ')})');
 
       if (checklists.isEmpty) {
         logger.d('No checklists found for performance analytics');
@@ -3015,7 +3019,9 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
         final completionRate = completedTasks / totalTasks;
 
-  logger.d('Checklist ${doc.id}: $completedTasks/$totalTasks tasks completed (${(completionRate * 100).round()}%)');
+        logger.d(
+          'Checklist ${doc.id}: $completedTasks/$totalTasks tasks completed (${(completionRate * 100).round()}%)',
+        );
 
         // Group by shift
         shiftData.putIfAbsent(shiftId, () => []);
@@ -3034,7 +3040,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
         }
       }
 
-  logger.d('Grouped data by ${shiftData.length} shifts');
+      logger.d('Grouped data by ${shiftData.length} shifts');
 
       // Calculate average performance for each shift
       List<Map<String, dynamic>> shiftPerformances = [];
@@ -3054,7 +3060,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                 )['name']
                 : 'Unknown Shift ($shiftId)';
 
-  logger.d('Shift $shiftName: ${(avgCompletionRate * 100).round()}% avg completion ($totalSessions sessions)');
+        logger.d('Shift $shiftName: ${(avgCompletionRate * 100).round()}% avg completion ($totalSessions sessions)');
 
         shiftPerformances.add({
           'shiftId': shiftId,
@@ -3072,7 +3078,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
       final topPerformers = shiftPerformances.take(3).toList();
       final poorPerformers = shiftPerformances.reversed.take(3).toList().reversed.toList();
 
-  logger.d('Top performers: ${topPerformers.length}, Poor performers: ${poorPerformers.length}');
+      logger.d('Top performers: ${topPerformers.length}, Poor performers: ${poorPerformers.length}');
 
       // Calculate day-of-week analysis
       List<Map<String, dynamic>> dayAnalysis = [];
@@ -3117,7 +3123,9 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
         }
       }
 
-      logger.d('Analytics complete: ${topPerformers.length} top, ${poorPerformers.length} poor, ${dayAnalysis.length} day issues');
+      logger.d(
+        'Analytics complete: ${topPerformers.length} top, ${poorPerformers.length} poor, ${dayAnalysis.length} day issues',
+      );
 
       return {'topPerformers': topPerformers, 'poorPerformers': poorPerformers, 'dayAnalysis': dayAnalysis};
     } catch (e, stackTrace) {

@@ -52,15 +52,8 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
 
   // Convert string role to integer for storage
   int _getRoleAsInt() {
-    switch (userRole) {
-      case 'Owner':
-      case 'Administrator':
-        return 2; // Admin
-      case 'Manager':
-        return 1; // Manager
-      default:
-        return 0; // User
-    }
+    // Always return 2 (Admin) for full access since they are paying customers
+    return 2; // Admin - full access to all features
   }
 
   // Removed legacy tiered pricing mapping
@@ -233,7 +226,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
 
   Future<void> _createNewOrganization() async {
     try {
-  logger.d('Starting new organization creation...');
+      logger.d('Starting new organization creation...');
 
       // Create user with Firebase Auth
       final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
@@ -242,14 +235,14 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
       );
 
       final user = credential.user!;
-  logger.d('Firebase Auth user created: ${user.uid}');
+      logger.d('Firebase Auth user created: ${user.uid}');
 
       // Update user profile
       await user.updateDisplayName('${firstNameController.text} ${lastNameController.text}');
 
       // Generate organization ID
       final orgId = FirestoreEnforcer.instance.collection('organizations').doc().id;
-  logger.d('Generated organization ID: $orgId');
+      logger.d('Generated organization ID: $orgId');
 
       // Create organization document
       await FirestoreEnforcer.instance.collection('organizations').doc(orgId).set({
@@ -261,10 +254,10 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
         'createdBy': user.uid,
         'isActive': true,
         'subscriptionStatus': 'trial',
-  'trialEndsAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
+        'trialEndsAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
         'settings': {'allowUserRegistration': true, 'requireLocationSelection': true, 'defaultShiftLength': 8},
       });
-  logger.i('Organization document created');
+      logger.i('Organization document created');
 
       // Create user document
       await FirestoreEnforcer.instance.collection('users').doc(user.uid).set({
@@ -285,7 +278,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
           'canManageSettings': true,
         },
       });
-  logger.i('User document created successfully');
+      logger.i('User document created successfully');
 
       // Show success message
       if (mounted) {
@@ -569,9 +562,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                       decoration: const InputDecoration(labelText: 'Your Role', border: OutlineInputBorder()),
                       items: const [
                         DropdownMenuItem(value: 'Owner', child: Text('Owner')),
-                        DropdownMenuItem(value: 'Manager', child: Text('Manager')),
-                        DropdownMenuItem(value: 'Administrator', child: Text('Administrator')),
-                        DropdownMenuItem(value: 'Other', child: Text('Other')),
+                        DropdownMenuItem(value: 'Management', child: Text('Management')),
                       ],
                       onChanged: (value) => setState(() => userRole = value),
                       validator: (v) => v == null ? 'Select your role' : null,

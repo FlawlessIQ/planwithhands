@@ -33,24 +33,42 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.repairTaskTitlesFromCsv = exports.repairTemplateTaskTitles = exports.migrateChecklistTemplates = exports.syncTodayOnShiftChange = exports.syncTodayOnTemplateChange = void 0;
+exports.placeDetailsHttp = exports.placesAutocompleteHttp = exports.createBillingPortalSession = exports.updateSubscription = exports.cancelSubscription = exports.stripeWebhook = exports.createCheckoutSession = exports.deleteUser = exports.createUser = exports.repairTaskTitlesFromCsv = exports.repairTemplateTaskTitles = exports.migrateChecklistTemplates = exports.syncTodayOnShiftChange = exports.syncTodayOnTemplateChange = void 0;
+/* eslint-disable @typescript-eslint/no-require-imports */
 const admin = __importStar(require("firebase-admin"));
 // Ensure admin is initialized (idempotent)
 admin.initializeApp();
 // Re-export the JS function implementation under a TypeScript entrypoint name.
 // This allows us to have a TS entry while keeping the existing JS implementation.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const syncModule = require('./syncTodayOnTemplateChange');
+const syncModule = require("./syncTodayOnTemplateChange");
 exports.syncTodayOnTemplateChange = syncModule.syncTodayOnTemplateChange;
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const syncShiftModule = require('./syncTodayOnShiftChange');
+const syncShiftModule = require("./syncTodayOnShiftChange");
 exports.syncTodayOnShiftChange = syncShiftModule.syncTodayOnShiftChange;
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const migrateModule = require('../migrations/migrate_checklist_templates_to_subcollections');
+const migrateModule = require("../migrations/migrate_checklist_templates_to_subcollections");
 exports.migrateChecklistTemplates = migrateModule.migrateChecklistTemplates;
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const repairModule = require('../migrations/repair_template_task_titles');
+const repairModule = require("../migrations/repair_template_task_titles");
 exports.repairTemplateTaskTitles = repairModule.repairTemplateTaskTitles;
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const repairCsvModule = require('../migrations/repair_task_titles_from_csv');
+const repairCsvModule = require("../migrations/repair_task_titles_from_csv");
 exports.repairTaskTitlesFromCsv = repairCsvModule.repairTaskTitlesFromCsv;
+// Export user functions
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const userModule = require("../user_functions");
+exports.createUser = userModule.createUser;
+exports.deleteUser = userModule.deleteUser;
+// Export other JS-based functions
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const stripeModule = require("../stripe_functions");
+exports.createCheckoutSession = stripeModule.createCheckoutSession;
+exports.stripeWebhook = stripeModule.stripeWebhook;
+exports.cancelSubscription = stripeModule.cancelSubscription;
+exports.updateSubscription = stripeModule.updateSubscription;
+exports.createBillingPortalSession = stripeModule.createBillingPortalSession;
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const placesModule = require("../places_functions");
+exports.placesAutocompleteHttp = placesModule.placesAutocompleteHttp;
+exports.placeDetailsHttp = placesModule.placeDetailsHttp;

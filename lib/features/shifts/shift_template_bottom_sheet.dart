@@ -948,7 +948,8 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
         }
         final docs = snap.docs;
         return Column(
-          children: docs.map((d) {
+          children:
+              docs.map((d) {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 8.0),
                   child: CheckboxListTile(

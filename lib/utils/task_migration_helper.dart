@@ -39,7 +39,7 @@ class TaskMigrationHelper {
         return;
       }
 
-  logger.i('[Migration] Migrating ${tasksArray.length} tasks for checklist: $checklistId');
+      logger.i('[Migration] Migrating ${tasksArray.length} tasks for checklist: $checklistId');
 
       if (dryRun) {
         logger.d('[Migration] DRY RUN - would migrate:');
@@ -76,9 +76,9 @@ class TaskMigrationHelper {
       // Optionally remove the array field (be careful with this!)
       // await checklistRef.update({'tasks': FieldValue.delete()});
 
-  logger.i('[Migration] Successfully migrated $migratedCount tasks for checklist: $checklistId');
+      logger.i('[Migration] Successfully migrated $migratedCount tasks for checklist: $checklistId');
     } catch (e) {
-  logger.e('[Migration] Error migrating checklist $checklistId: $e', e);
+      logger.e('[Migration] Error migrating checklist $checklistId: $e', e);
       rethrow;
     }
   }
@@ -108,7 +108,7 @@ class TaskMigrationHelper {
 
       final snapshot = await query.get();
 
-  logger.i('[Migration] Found ${snapshot.docs.length} checklists to migrate');
+      logger.i('[Migration] Found ${snapshot.docs.length} checklists to migrate');
 
       for (final doc in snapshot.docs) {
         await migrateSingleChecklist(
@@ -119,9 +119,9 @@ class TaskMigrationHelper {
         );
       }
 
-  logger.i('[Migration] Completed migration for date range');
+      logger.i('[Migration] Completed migration for date range');
     } catch (e) {
-  logger.e('[Migration] Error migrating date range: $e', e);
+      logger.e('[Migration] Error migrating date range: $e', e);
       rethrow;
     }
   }
@@ -283,17 +283,17 @@ class MigrationExample {
     const locationId = 'your_location_id';
 
     // 1. Generate a migration report first
-  logger.i('=== MIGRATION REPORT ===');
+    logger.i('=== MIGRATION REPORT ===');
     final report = await migrationHelper.generateMigrationReport(
       organizationId: organizationId,
       locationId: locationId,
       startDate: DateTime.now().subtract(const Duration(days: 30)),
       endDate: DateTime.now(),
     );
-  logger.i('Report: $report');
+    logger.i('Report: $report');
 
     // 2. Run a dry run migration for the last week
-  logger.i('\n=== DRY RUN MIGRATION ===');
+    logger.i('\n=== DRY RUN MIGRATION ===');
     await migrationHelper.migrateDateRange(
       organizationId: organizationId,
       locationId: locationId,
@@ -314,13 +314,13 @@ class MigrationExample {
     // );
 
     // 4. Verify migration results
-  logger.i('\n=== POST-MIGRATION REPORT ===');
+    logger.i('\n=== POST-MIGRATION REPORT ===');
     final postReport = await migrationHelper.generateMigrationReport(
       organizationId: organizationId,
       locationId: locationId,
       startDate: DateTime.now().subtract(const Duration(days: 7)),
       endDate: DateTime.now(),
     );
-  logger.i('Post-migration Report: $postReport');
+    logger.i('Post-migration Report: $postReport');
   }
 }

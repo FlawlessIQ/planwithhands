@@ -1,7 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
@@ -29,7 +29,7 @@ void main() async {
   // Set URL strategy for web to use path-based URLs
   if (kIsWeb) {
     usePathUrlStrategy();
-  logger.d('[MAIN] Setting path URL strategy for web');
+    logger.d('[MAIN] Setting path URL strategy for web');
   }
 
   // Initialize Firebase
@@ -86,15 +86,15 @@ void main() async {
             logger.d('Crashlytics should be available on web');
           }
         } catch (webError) {
-    logger.w('Could not initialize Crashlytics on web: $webError');
+          logger.w('Could not initialize Crashlytics on web: $webError');
           // Just continue without Crashlytics on web
         }
       }
     } else {
-  logger.d('Debug mode detected, disabling Crashlytics');
+      logger.d('Debug mode detected, disabling Crashlytics');
     }
   } catch (e) {
-  logger.e('Error during Crashlytics initialization: $e', e);
+    logger.e('Error during Crashlytics initialization: $e', e);
   }
 
   // Set up error handlers based on Crashlytics availability

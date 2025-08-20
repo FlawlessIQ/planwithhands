@@ -373,10 +373,10 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       if (locationData == null) return null;
       if (locationData is String) return locationData;
       if (locationData is Map) {
-  logger.w('Warning: Location data is a Map: $locationData');
+        logger.w('Warning: Location data is a Map: $locationData');
         return locationData['id'] as String?;
       }
-  logger.w('Warning: Unexpected location data type: ${locationData.runtimeType}, value: $locationData');
+      logger.w('Warning: Unexpected location data type: ${locationData.runtimeType}, value: $locationData');
       return null;
     }
 
@@ -540,6 +540,43 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                   onChanged: (value) => selectedAccessLevel.value = value ?? 0,
                   onSaved: (value) {},
                 ),
+                const SizedBox(height: 12),
+
+                // Role Description Panel
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: theme.primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: theme.primaryColor.withOpacity(0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.info_outline, color: theme.primaryColor, size: 18),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Role Permissions',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: theme.primaryColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _getRoleDescription(selectedAccessLevel.value),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.textTheme.bodyMedium?.color?.withOpacity(0.8),
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 20),
 
                 // Job Type and Location selection
@@ -661,17 +698,6 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                       ),
                     ],
                   ),
-
-                  // Debug test email option
-                  if (kDebugMode) ...[
-                    const SizedBox(height: 8),
-                    OutlinedButton.icon(
-                      onPressed: isLoading.value ? null : () => _testEmailDelivery(context, emailController.text),
-                      icon: const Icon(Icons.bug_report),
-                      label: const Text('Test Email Delivery'),
-                      style: OutlinedButton.styleFrom(foregroundColor: Colors.deepPurple),
-                    ),
-                  ],
                 ],
 
                 const SizedBox(height: 24),
@@ -769,6 +795,18 @@ class UserManagementBottomSheet extends HookConsumerWidget {
         ),
       ),
     );
+  }
+
+  String _getRoleDescription(int userRole) {
+    switch (userRole) {
+      case 2:
+        return 'Full access — can manage subscriptions, add/edit/delete users, locations, shifts, and checklists, and send messages.';
+      case 1:
+        return 'Can view all performance metrics and data, but cannot manage subscriptions, shifts, or send messages.';
+      case 0:
+      default:
+        return 'Can complete tasks, view training materials and documents, and read messages sent by admins.';
+    }
   }
 
   Future<void> _loadRolesAndLocations(
@@ -896,9 +934,10 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     if (!formKey.currentState!.validate()) {
       return;
     }
-    // Enforce job type and location requirement for all users
-    if (roles.isEmpty) {
-      _showSnackBar(context, 'Please select at least one job type for this user.', isError: true);
+    // Enforce job type requirement only for employees (userRole 0)
+    // Managers (userRole 1) and Admins (userRole 2) have access to all shifts
+    if (accessLevel == 0 && roles.isEmpty) {
+      _showSnackBar(context, 'Please select at least one job type for this employee.', isError: true);
       return;
     }
     if (accessLevel == 2 && (locationIds == null || locationIds.isEmpty)) {
@@ -918,7 +957,8 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     try {
       final organizationId = await _getOrganizationId();
       if (organizationId == null || organizationId.isEmpty) {
-        if (context.mounted) _showSnackBar(context, 'Organization ID is missing. Please check your admin account.', isError: true);
+        if (context.mounted)
+          _showSnackBar(context, 'Organization ID is missing. Please check your admin account.', isError: true);
         isLoading.value = false;
         return;
       }
@@ -960,14 +1000,14 @@ class UserManagementBottomSheet extends HookConsumerWidget {
           logger.w('Failed to record error to Crashlytics: $crashlyticsError');
         }
       } else {
-  logger.w('Crashlytics is not enabled, printing error to console: $e');
-  logger.d(s.toString());
+        logger.w('Crashlytics is not enabled, printing error to console: $e');
+        logger.d(s.toString());
       }
       String errorMsg =
           e is FirebaseFunctionsException && e.code == 'already-exists'
               ? 'A user with this email already exists.'
               : 'An error occurred: ${e.toString()}';
-  if (context.mounted) _showSnackBar(context, errorMsg, isError: true);
+      if (context.mounted) _showSnackBar(context, errorMsg, isError: true);
 
       // Show error in a dialog for easier debugging
       if (context.mounted) {
@@ -1002,11 +1042,19 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       'firstName': firstName,
       'lastName': lastName,
       'userRole': accessLevel,
-      // write canonical jobTypes and keep legacy jobType for compatibility
-      'jobTypes': roles.toList(),
-      'jobType': (roles.isNotEmpty ? roles.toList().first : null),
       'updatedAt': FieldValue.serverTimestamp(),
     };
+
+    // Handle job types based on user role
+    if (accessLevel == 0) {
+      // Employee - requires job types
+      updateData['jobTypes'] = roles.toList();
+      updateData['jobType'] = (roles.isNotEmpty ? roles.toList().first : null);
+    } else {
+      // Manager (1) and Admin (2) - have access to all shifts, set to empty/null
+      updateData['jobTypes'] = [];
+      updateData['jobType'] = null;
+    }
 
     // Handle location assignment based on user role
     if (accessLevel == 0) {
@@ -1058,10 +1106,10 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     final inviteUrl =
         'https://plan-with-hands.web.app/welcome?email=$userEmail&orgId=$organizationId&inviteId=$inviteToken';
 
-  logger.d('[USER_MANAGEMENT] Generated invite URL: $inviteUrl');
+    logger.d('[USER_MANAGEMENT] Generated invite URL: $inviteUrl');
 
     // Store invite in Firestore
-    await FirestoreEnforcer.instance.collection('invites').doc(inviteToken).set({
+    Map<String, dynamic> inviteData = {
       'email': userEmail,
       'organizationId': organizationId,
       'createdAt': FieldValue.serverTimestamp(),
@@ -1070,21 +1118,47 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       'firstName': firstName,
       'lastName': lastName,
       'userRole': accessLevel,
-      'jobTypes': roles.toList(),
-      'jobType': (roles.isNotEmpty ? roles.toList().first : null),
       'locationId': locationId,
       'locationIds': locationIds?.toList(),
       'orgName': orgName,
       'adminEmail': adminEmail,
-    });
+    };
+
+    // Handle job types based on user role
+    if (accessLevel == 0) {
+      // Employee - requires job types
+      inviteData['jobTypes'] = roles.toList();
+      inviteData['jobType'] = (roles.isNotEmpty ? roles.toList().first : null);
+    } else {
+      // Manager (1) and Admin (2) - have access to all shifts, set to empty/null
+      inviteData['jobTypes'] = [];
+      inviteData['jobType'] = null;
+    }
+
+    await FirestoreEnforcer.instance.collection('invites').doc(inviteToken).set(inviteData);
 
     final functions = FirebaseFunctions.instanceFor(region: 'us-central1');
     final createUser = functions.httpsCallable('createUser');
 
     // Canonicalize locationIds for clearer logging
     final logLocIds = locationIds != null ? locationIds.toList() : (locationId != null ? [locationId] : <String>[]);
-  logger.d(
-      'Calling createUser with payload: ${{'email': userEmail, 'firstName': firstName, 'lastName': lastName, 'userRole': accessLevel, 'jobTypes': roles.toList(), 'organizationId': organizationId, 'locationId': logLocIds.isNotEmpty ? logLocIds.first : null, 'locationIds': logLocIds, 'orgName': orgName, 'adminEmail': adminEmail, 'inviteUrl': inviteUrl, 'templateId': templateId}}',
+
+    // Prepare job types based on user role
+    List<String> finalJobTypes = [];
+    String? finalJobType;
+
+    if (accessLevel == 0) {
+      // Employee - use selected job types
+      finalJobTypes = roles.toList();
+      finalJobType = (roles.isNotEmpty ? roles.toList().first : null);
+    } else {
+      // Manager (1) and Admin (2) - have access to all shifts, set to empty/null
+      finalJobTypes = [];
+      finalJobType = null;
+    }
+
+    logger.d(
+      'Calling createUser with payload: ${{'email': userEmail, 'firstName': firstName, 'lastName': lastName, 'userRole': accessLevel, 'jobTypes': finalJobTypes, 'organizationId': organizationId, 'locationId': logLocIds.isNotEmpty ? logLocIds.first : null, 'locationIds': logLocIds, 'orgName': orgName, 'adminEmail': adminEmail, 'inviteUrl': inviteUrl, 'templateId': templateId}}',
     );
 
     final result = await createUser.call({
@@ -1093,8 +1167,8 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       'firstName': firstName,
       'lastName': lastName,
       'userRole': accessLevel,
-      'jobTypes': roles.toList(),
-      'jobType': (roles.isNotEmpty ? roles.toList().first : null),
+      'jobTypes': finalJobTypes,
+      'jobType': finalJobType,
       'organizationId': organizationId,
       'locationId': locationId,
       'locationIds': locationIds?.toList(),
@@ -1104,7 +1178,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       'templateId': templateId,
     });
 
-  logger.d('createUser result: ${result.data}');
+    logger.d('createUser result: ${result.data}');
 
     if (result.data != null && result.data['success'] == true) {
       if (context.mounted) {
@@ -1170,21 +1244,21 @@ Future<void> _sendPasswordResetEmail(BuildContext context, String email) async {
 
       await FirebaseAuth.instance.sendPasswordResetEmail(email: email, actionCodeSettings: actionCodeSettings);
     } catch (settingsError) {
-    logger.w('Failed to send with action code settings: $settingsError');
+      logger.w('Failed to send with action code settings: $settingsError');
       // Fallback to simpler reset email
       await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
     }
 
-  logger.d('Successfully sent password reset email to $email');
+    logger.d('Successfully sent password reset email to $email');
   } catch (e, s) {
-  logger.e('Error sending password reset: $e', e);
+    logger.e('Error sending password reset: $e', e);
     // Defensively check if Crashlytics is enabled before recording.
     try {
       if (FirebaseCrashlytics.instance.isCrashlyticsCollectionEnabled) {
         FirebaseCrashlytics.instance.recordError(e, s);
       }
     } catch (crashlyticsError) {
-  logger.w('Crashlytics error: $crashlyticsError');
+      logger.w('Crashlytics error: $crashlyticsError');
     }
     rethrow;
   }
@@ -1255,40 +1329,3 @@ void _reloadRoles(ValueNotifier<List<String>> availableRoles) async {
 }
 
 // All cloud function HTTP helpers removed for the new flow.
-
-Future<void> _testEmailDelivery(BuildContext context, String email) async {
-  try {
-    // Show testing dialog
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Testing email delivery...')));
-    }
-
-    // Try Firebase Auth default method
-    try {
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Test email sent via Firebase Auth. Check your inbox and spam folder.'),
-            duration: Duration(seconds: 8),
-          ),
-        );
-      }
-
-  logger.d('Test email sent via Firebase Auth to: $email');
-      return;
-    } catch (authError) {
-  logger.w('Firebase Auth test email failed: $authError');
-
-      // Cloud function test email removed in new flow. Only Firebase Auth test email is supported.
-    }
-  } catch (e) {
-  logger.e('Test email error: $e', e);
-    if (context.mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Email test failed: ${e.toString()}'), backgroundColor: Colors.red));
-    }
-  }
-}

@@ -103,7 +103,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
               .collection('locations')
               .get();
 
-  logger.d('[AdminDashboard] Found ${locationsSnap.docs.length} locations');
+      logger.d('[AdminDashboard] Found ${locationsSnap.docs.length} locations');
 
       final locations =
           locationsSnap.docs.map((doc) {
@@ -157,7 +157,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
           } else {
             // Clear selected location
             ref.read(appStateProvider.notifier).setSelectedLocation(null);
-              logger.i('[AdminDashboard] No locations found - will show location creation flow');
+            logger.i('[AdminDashboard] No locations found - will show location creation flow');
 
             // Only show the location creation bottom sheet if we haven't already shown the welcome dialog
             if (!_hasShownWelcomeDialog) {
@@ -169,7 +169,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
         });
       }
     } catch (e) {
-  logger.e('[AdminDashboard] Error loading locations: $e', e);
+      logger.e('[AdminDashboard] Error loading locations: $e', e);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load locations: $e')));
       }
@@ -272,7 +272,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
         final role = userData['userRole'] as int? ?? 0;
         final orgId = userData['organizationId'] as String?;
 
-  logger.d('[AdminDashboard] User role: $role, OrgId: $orgId');
+        logger.d('[AdminDashboard] User role: $role, OrgId: $orgId');
 
         // Only allow admin access (userRole = 2) and require organizationId
         if (role != 2 || orgId == null) {
@@ -346,7 +346,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
           _loadLocations();
         }
       } else {
-  logger.w('[AdminDashboard] User document not found');
+        logger.w('[AdminDashboard] User document not found');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('User not found. Please contact support.'), backgroundColor: Colors.red),
@@ -356,7 +356,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
         return;
       }
     } catch (e) {
-  logger.e('[AdminDashboard] Error checking user access: $e', e);
+      logger.e('[AdminDashboard] Error checking user access: $e', e);
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -1570,7 +1570,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
           }
         }
       } catch (e) {
-  logger.e('[AdminDashboard] Reseed step failed: $e', e);
+        logger.e('[AdminDashboard] Reseed step failed: $e', e);
       }
     } catch (e) {
       if (mounted) {
@@ -1583,24 +1583,78 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
 
   Future<void> _deleteUser(String userId) async {
     try {
+      logger.d('[AdminDashboard] Starting user deletion for userId: $userId');
+
       // Call the server-side callable 'deleteUser' to remove Auth record + Firestore doc atomically
       final functions = FirebaseFunctions.instanceFor(region: 'us-central1');
       final callable = functions.httpsCallable('deleteUser');
+
+      logger.d('[AdminDashboard] Calling deleteUser function with uid: $userId');
+
       final resp = await callable.call(<String, dynamic>{'uid': userId});
       final data = resp.data as Map<String, dynamic>?;
+
+      logger.d('[AdminDashboard] deleteUser function response: $data');
 
       _triggerRefresh();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(data != null && data['message'] != null ? data['message'] : 'User deleted successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } on FirebaseFunctionsException catch (e) {
+      logger.e(
+        '[AdminDashboard] FirebaseFunctionsException: code=${e.code}, message=${e.message}, details=${e.details}',
+        e,
+      );
+
+      // If the function doesn't exist or fails, try fallback deletion (Firestore only)
+      if (e.code == 'not-found' || e.code == 'unimplemented') {
+        logger.w('[AdminDashboard] Cloud function not found, attempting Firestore-only deletion');
+        await _deleteUserFallback(userId);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error deleting user: ${e.message} (Code: ${e.code})'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    } catch (e) {
+      logger.e('[AdminDashboard] deleteUser callable error: $e', e);
+
+      // Try fallback deletion
+      logger.w('[AdminDashboard] Attempting fallback Firestore-only deletion');
+      await _deleteUserFallback(userId);
+    }
+  }
+
+  Future<void> _deleteUserFallback(String userId) async {
+    try {
+      logger.d('[AdminDashboard] Starting fallback user deletion for userId: $userId');
+
+      // Delete user document from Firestore (Auth record will remain)
+      await FirestoreEnforcer.instance.collection('users').doc(userId).delete();
+
+      logger.d('[AdminDashboard] User document deleted from Firestore: $userId');
+
+      _triggerRefresh();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('User deleted from database. Note: Authentication record may still exist.'),
+            backgroundColor: Colors.orange,
           ),
         );
       }
     } catch (e) {
-  logger.e('[AdminDashboard] deleteUser callable error: $e', e);
+      logger.e('[AdminDashboard] Fallback deletion error: $e', e);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting user: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to delete user: $e'), backgroundColor: Colors.red));
       }
     }
   }

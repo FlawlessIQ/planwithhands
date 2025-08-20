@@ -44,9 +44,9 @@ class ViewDocumentsPage extends HookConsumerWidget {
     final organizationId = useState<String?>(null);
     final isLoadingOrgId = useState<bool>(true);
 
-  logger.d('DEBUG: userState: $userState');
-  logger.d('DEBUG: userState.userData: ${userState.userData}');
-  logger.d('DEBUG: organizationId from userState: ${userState.userData?.organizationId}');
+    logger.d('DEBUG: userState: $userState');
+    logger.d('DEBUG: userState.userData: ${userState.userData}');
+    logger.d('DEBUG: organizationId from userState: ${userState.userData?.organizationId}');
     debugPrint('DEBUG: organizationId from useState: ${organizationId.value}');
 
     // Fallback mechanism to get organizationId directly from Firebase Auth/Firestore
@@ -279,12 +279,12 @@ class ViewDocumentsPage extends HookConsumerWidget {
                 }
 
                 if (!snapshot.hasData) {
-                  return const Center(child: Text('No documents available.'));
+                  return _buildEmptyState(context, userRole, showUploadSheet);
                 }
 
                 final snapshotData = snapshot.data;
                 if (snapshotData == null || snapshotData.docs.isEmpty) {
-                  return const Center(child: Text('No documents available.'));
+                  return _buildEmptyState(context, userRole, showUploadSheet);
                 }
 
                 final docs = snapshotData.docs;
@@ -380,8 +380,8 @@ class ViewDocumentsPage extends HookConsumerWidget {
   }
 
   Stream<QuerySnapshot> _getDocumentsStream(String organizationId, String category) {
-  logger.d('DEBUG: Getting documents for orgId: $organizationId, category: $category');
-  logger.d('DEBUG: Full path: organizations/$organizationId/training_documents');
+    logger.d('DEBUG: Getting documents for orgId: $organizationId, category: $category');
+    logger.d('DEBUG: Full path: organizations/$organizationId/training_documents');
 
     // Updated path to match admin dashboard's nested path structure
     Query query = FirestoreEnforcer.instance
@@ -390,12 +390,12 @@ class ViewDocumentsPage extends HookConsumerWidget {
         .collection('training_documents');
 
     if (category != 'All') {
-  logger.d('DEBUG: Filtering by category: $category');
+      logger.d('DEBUG: Filtering by category: $category');
       query = query.where('category', isEqualTo: category);
       // Re-enable orderBy with category filter
       query = query.orderBy('createdAt', descending: true);
     } else {
-  logger.d('DEBUG: No category filter, getting all documents');
+      logger.d('DEBUG: No category filter, getting all documents');
       // For "All" category, try without orderBy first
       // query = query.orderBy('createdAt', descending: true);
     }
@@ -419,6 +419,57 @@ class ViewDocumentsPage extends HookConsumerWidget {
           logger.e('DEBUG: Stream error: $error', error);
           logger.d('DEBUG: Error type: ${error.runtimeType}');
         });
+  }
+
+  Widget _buildEmptyState(BuildContext context, int userRole, VoidCallback showUploadSheet) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Role-based icon and content
+            if (userRole != 2) ...[
+              // Regular users
+              const Icon(Icons.folder_open, size: 64, color: Colors.grey),
+              const SizedBox(height: 16),
+              Text(
+                "No training materials available yet.",
+                style: Theme.of(context).textTheme.titleMedium,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                "Your manager or admin will upload training guides, checklists, and helpful documents here.",
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey),
+              ),
+            ] else ...[
+              // Admin users (userRole == 2)
+              const Icon(Icons.upload_file, size: 64, color: Colors.blueGrey),
+              const SizedBox(height: 16),
+              Text(
+                "No training or documents uploaded yet.",
+                style: Theme.of(context).textTheme.titleMedium,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                "Get started by uploading materials your team needs:\n• Step-by-step training guides\n• Safety procedures and compliance documents\n• Operations manuals and checklists\n• Quick reference files for new hires",
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: showUploadSheet,
+                icon: const Icon(Icons.add),
+                label: const Text("Add New"),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }
 

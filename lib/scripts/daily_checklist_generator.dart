@@ -20,7 +20,7 @@ class DailyChecklistGenerator {
     final todayString = _formatDate(date);
     final todayDayName = _getDayName(date);
 
-  logger.d('[DailyChecklistGenerator] Starting generation for date: $todayString ($todayDayName)');
+    logger.d('[DailyChecklistGenerator] Starting generation for date: $todayString ($todayDayName)');
 
     try {
       // Get all organizations
@@ -28,7 +28,7 @@ class DailyChecklistGenerator {
 
       for (final orgDoc in organizationsSnapshot.docs) {
         final organizationId = orgDoc.id;
-  logger.d('[DailyChecklistGenerator] Processing organization: $organizationId');
+        logger.d('[DailyChecklistGenerator] Processing organization: $organizationId');
 
         await _generateChecklistsForOrganization(
           organizationId: organizationId,
@@ -37,9 +37,9 @@ class DailyChecklistGenerator {
         );
       }
 
-  logger.d('[DailyChecklistGenerator] Completed generation for all organizations');
+      logger.d('[DailyChecklistGenerator] Completed generation for all organizations');
     } catch (e, stack) {
-  logger.e('[DailyChecklistGenerator] Error during generation: $e\n$stack', e);
+      logger.e('[DailyChecklistGenerator] Error during generation: $e\n$stack', e);
       rethrow;
     }
   }
@@ -55,7 +55,7 @@ class DailyChecklistGenerator {
       final shiftsSnapshot =
           await _firestore.collection('organizations').doc(organizationId).collection('shifts').get();
 
-  logger.d('[DailyChecklistGenerator] Found ${shiftsSnapshot.docs.length} shifts for org $organizationId');
+      logger.d('[DailyChecklistGenerator] Found ${shiftsSnapshot.docs.length} shifts for org $organizationId');
 
       for (final shiftDoc in shiftsSnapshot.docs) {
         try {
@@ -83,7 +83,7 @@ class DailyChecklistGenerator {
         }
       }
     } catch (e, stack) {
-  logger.e('[DailyChecklistGenerator] Error processing organization $organizationId: $e\n$stack', e);
+      logger.e('[DailyChecklistGenerator] Error processing organization $organizationId: $e\n$stack', e);
       rethrow;
     }
   }
@@ -103,7 +103,9 @@ class DailyChecklistGenerator {
     // Process each location for this shift
     for (final locationId in coerceToLocationIds(shiftData.locationIds)) {
       try {
-    logger.d('[DailyChecklistGenerator] Generating checklists for shift ${shiftData.shiftName} at location $locationId');
+        logger.d(
+          '[DailyChecklistGenerator] Generating checklists for shift ${shiftData.shiftName} at location $locationId',
+        );
 
         final checklists = await _dailyChecklistService.generateDailyChecklists(
           organizationId: organizationId,
@@ -113,9 +115,14 @@ class DailyChecklistGenerator {
           date: todayString,
         );
 
-  logger.d('[DailyChecklistGenerator] Generated ${checklists.length} checklists for shift ${shiftData.shiftName} at location $locationId');
+        logger.d(
+          '[DailyChecklistGenerator] Generated ${checklists.length} checklists for shift ${shiftData.shiftName} at location $locationId',
+        );
       } catch (e, stack) {
-  logger.e('[DailyChecklistGenerator] Error generating checklists for shift ${shiftData.shiftName} at location $locationId: $e\n$stack', e);
+        logger.e(
+          '[DailyChecklistGenerator] Error generating checklists for shift ${shiftData.shiftName} at location $locationId: $e\n$stack',
+          e,
+        );
         // Continue with other locations
       }
     }
@@ -150,7 +157,7 @@ class DailyChecklistGenerator {
     final todayString = _formatDate(date);
     final todayDayName = _getDayName(date);
 
-  logger.d('[DailyChecklistGenerator] Generating checklists for organization $organizationId on $todayString');
+    logger.d('[DailyChecklistGenerator] Generating checklists for organization $organizationId on $todayString');
 
     await _generateChecklistsForOrganization(
       organizationId: organizationId,
@@ -182,9 +189,9 @@ class DailyChecklistGenerator {
 
       await _generateChecklistsForShift(organizationId: organizationId, shiftData: shiftData, todayString: todayString);
 
-  logger.d('[DailyChecklistGenerator] Generated checklists for specific shift $shiftId');
+      logger.d('[DailyChecklistGenerator] Generated checklists for specific shift $shiftId');
     } catch (e, stack) {
-  logger.e('[DailyChecklistGenerator] Error generating checklists for specific shift $shiftId: $e\n$stack', e);
+      logger.e('[DailyChecklistGenerator] Error generating checklists for specific shift $shiftId: $e\n$stack', e);
       rethrow;
     }
   }

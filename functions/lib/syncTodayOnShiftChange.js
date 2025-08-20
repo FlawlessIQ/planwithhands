@@ -39,20 +39,20 @@ const admin = __importStar(require("firebase-admin"));
 const idHelpers_1 = require("./idHelpers");
 const MAX_BATCH_WRITES = Number(process.env.MAX_BATCH_WRITES || 400);
 exports.syncTodayOnShiftChange = functions
-    .region(process.env.FUNCTION_REGION || 'us-central1')
-    .firestore.document('organizations/{orgId}/locations/{locId}/shifts/{shiftId}')
+    .region(process.env.FUNCTION_REGION || "us-central1")
+    .firestore.document("organizations/{orgId}/locations/{locId}/shifts/{shiftId}")
     .onUpdate(async (change, context) => {
     const orgId = context.params.orgId;
     const locId = context.params.locId;
     const shiftId = context.params.shiftId;
     const beforeData = (change.before.data() || {});
     const afterData = (change.after.data() || {});
-    const beforeTemplateIds = Array.isArray(beforeData.checklistTemplateIds)
-        ? beforeData.checklistTemplateIds
-        : [];
-    const afterTemplateIds = Array.isArray(afterData.checklistTemplateIds)
-        ? afterData.checklistTemplateIds
-        : [];
+    const beforeTemplateIds = Array.isArray(beforeData.checklistTemplateIds) ?
+        beforeData.checklistTemplateIds :
+        [];
+    const afterTemplateIds = Array.isArray(afterData.checklistTemplateIds) ?
+        afterData.checklistTemplateIds :
+        [];
     const beforeStart = beforeData.startTime || null;
     const beforeEnd = beforeData.endTime || null;
     const afterStart = afterData.startTime || null;
@@ -61,17 +61,17 @@ exports.syncTodayOnShiftChange = functions
     const templatesEqual = JSON.stringify(beforeTemplateIds) === JSON.stringify(afterTemplateIds);
     const timesEqual = JSON.stringify({ beforeStart, beforeEnd }) === JSON.stringify({ afterStart, afterEnd });
     if (templatesEqual && timesEqual) {
-        console.log('[syncTodayOnShiftChange] no relevant changes for shift', shiftId);
+        console.log("[syncTodayOnShiftChange] no relevant changes for shift", shiftId);
         return null;
     }
     const dateString = (0, idHelpers_1.dateStringUTC)(new Date());
-    console.log('[syncTodayOnShiftChange] shift changed, syncing today checks for', dateString, 'shift', shiftId);
+    console.log("[syncTodayOnShiftChange] shift changed, syncing today checks for", dateString, "shift", shiftId);
     const db = admin.firestore();
     const dailyChecklistsColl = db.collection(`organizations/${orgId}/locations/${locId}/daily_checklists`);
     // Find today's checklist(s) for this shift
     const checklistQuery = dailyChecklistsColl
-        .where('shiftId', '==', shiftId)
-        .where('dateString', '==', dateString);
+        .where("shiftId", "==", shiftId)
+        .where("dateString", "==", dateString);
     const checklistSnap = await checklistQuery.get();
     const checklists = checklistSnap.docs || [];
     // If none exist, we'll create one checklist and populate tasks from templates
@@ -85,7 +85,7 @@ exports.syncTodayOnShiftChange = functions
             await batch.commit();
         }
         catch (err) {
-            console.error('[syncTodayOnShiftChange] batch commit failed', err);
+            console.error("[syncTodayOnShiftChange] batch commit failed", err);
             throw err;
         }
     };
@@ -96,19 +96,19 @@ exports.syncTodayOnShiftChange = functions
         // get existing task ids via listDocuments to avoid reads
         let existingTaskIds = new Set();
         try {
-            const taskDocRefs = await checklistRef.collection('tasks').listDocuments();
+            const taskDocRefs = await checklistRef.collection("tasks").listDocuments();
             existingTaskIds = new Set(taskDocRefs.map((r) => r.id));
         }
         catch (err) {
-            console.warn('[syncTodayOnShiftChange] listDocuments failed, falling back to get():', err);
-            const tasksSnap = await checklistRef.collection('tasks').get();
+            console.warn("[syncTodayOnShiftChange] listDocuments failed, falling back to get():", err);
+            const tasksSnap = await checklistRef.collection("tasks").get();
             existingTaskIds = new Set(tasksSnap.docs.map((d) => d.id));
         }
         // fetch template doc
         const templateRef = db.doc(`organizations/${orgId}/checklist_templates/${templateId}`);
         const templateSnap = await templateRef.get();
         if (!templateSnap.exists) {
-            console.warn('[syncTodayOnShiftChange] template not found', templateId);
+            console.warn("[syncTodayOnShiftChange] template not found", templateId);
             return 0;
         }
         const templateData = templateSnap.data() || {};
@@ -116,16 +116,16 @@ exports.syncTodayOnShiftChange = functions
         let inserted = 0;
         const midnightIso = `${dateString}T00:00:00Z`;
         for (const t of templateTasks) {
-            const templateTaskId = (t && (t.id || t.taskId || t.templateTaskId || '')).toString();
+            const templateTaskId = (t && (t.id || t.taskId || t.templateTaskId || "")).toString();
             if (!templateTaskId)
                 continue;
             const taskId = (0, idHelpers_1.deterministicTaskId)(templateTaskId, checklistId, dateString);
             if (existingTaskIds.has(taskId))
                 continue; // preserve existing
-            const taskName = (t && (t.taskName || t.title || t.name || '')).toString();
+            const taskName = (t && (t.taskName || t.title || t.name || "")).toString();
             const photoRequired = Boolean(t && t.photoRequired);
             const dueDate = admin.firestore.Timestamp.fromDate(new Date(midnightIso));
-            const taskDocRef = checklistRef.collection('tasks').doc(taskId);
+            const taskDocRef = checklistRef.collection("tasks").doc(taskId);
             const docData = {
                 taskId,
                 templateTaskId,
@@ -193,6 +193,6 @@ exports.syncTodayOnShiftChange = functions
     if (currentBatchWrites > 0) {
         await commitBatch(batch);
     }
-    console.log('[syncTodayOnShiftChange] completed. created=', totalChecklistsCreated, 'inserted=', totalInserted);
+    console.log("[syncTodayOnShiftChange] completed. created=", totalChecklistsCreated, "inserted=", totalInserted);
     return { created: totalChecklistsCreated, inserted: totalInserted };
 });

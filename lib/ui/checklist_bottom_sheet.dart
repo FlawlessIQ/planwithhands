@@ -37,8 +37,8 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
   final Set<String> _selectedShiftIds = {};
   bool _loadingShifts = false;
 
-  // Step 3: Option to duplicate
-  bool _duplicateToOtherLocations = false;
+  // Step 3: Selected locations to duplicate to
+  final Set<String> _selectedLocationIds = {};
 
   // Step 4: Tasks & Order
   List<Map<String, dynamic>> _tasks = [];
@@ -174,7 +174,16 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
                       // Allow jumping to any step when editing (checklistId != null),
                       // but only allow backward/previous steps when creating.
                       if (widget.checklistId != null) {
-                        setState(() => _currentStep = index);
+                        // When editing, allow jumping to any step, but handle location step auto-skip
+                        final otherLocations =
+                            widget.availableLocations.where((location) => location['id'] != widget.locationId).toList();
+
+                        // If trying to go to location step but no other locations available, skip to tasks
+                        if (index == 2 && otherLocations.isEmpty) {
+                          setState(() => _currentStep = 3);
+                        } else {
+                          setState(() => _currentStep = index);
+                        }
                       } else if (index <= _currentStep) {
                         setState(() => _currentStep = index);
                       }
@@ -221,7 +230,10 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
                           child: _buildInfoStep(),
                         ),
                         isActive: _currentStep >= 0,
-                        state: _currentStep > 0 ? StepState.complete : StepState.indexed,
+                        state:
+                            widget.checklistId != null
+                                ? (_currentStep == 0 ? StepState.indexed : StepState.complete)
+                                : (_currentStep > 0 ? StepState.complete : StepState.indexed),
                       ),
                       Step(
                         title: BottomSheetStyles.stepTitle('Assign to shifts'),
@@ -231,9 +243,11 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
                         ),
                         isActive: _currentStep >= 1,
                         state:
-                            _currentStep > 1
-                                ? StepState.complete
-                                : (_currentStep == 1 ? StepState.indexed : StepState.disabled),
+                            widget.checklistId != null
+                                ? (_currentStep == 1 ? StepState.indexed : StepState.complete)
+                                : (_currentStep > 1
+                                    ? StepState.complete
+                                    : (_currentStep == 1 ? StepState.indexed : StepState.disabled)),
                       ),
                       Step(
                         title: BottomSheetStyles.stepTitle('Locations'),
@@ -243,9 +257,11 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
                         ),
                         isActive: _currentStep >= 2,
                         state:
-                            _currentStep > 2
-                                ? StepState.complete
-                                : (_currentStep == 2 ? StepState.indexed : StepState.disabled),
+                            widget.checklistId != null
+                                ? (_currentStep == 2 ? StepState.indexed : StepState.complete)
+                                : (_currentStep > 2
+                                    ? StepState.complete
+                                    : (_currentStep == 2 ? StepState.indexed : StepState.disabled)),
                       ),
                       Step(
                         title: BottomSheetStyles.stepTitle('Tasks'),
@@ -254,7 +270,10 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
                           child: _buildTasksStep(),
                         ),
                         isActive: _currentStep >= 3,
-                        state: _currentStep == 3 ? StepState.indexed : StepState.disabled,
+                        state:
+                            widget.checklistId != null
+                                ? (_currentStep == 3 ? StepState.indexed : StepState.complete)
+                                : (_currentStep == 3 ? StepState.indexed : StepState.disabled),
                       ),
                     ],
                   ),
@@ -272,8 +291,10 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
       if (_validateCurrentStep()) {
         setState(() => _currentStep++);
 
-        // Skip location step if only one location available
-        if (_currentStep == 2 && widget.availableLocations.length <= 1) {
+        // Skip location step if only one location available or no other locations
+        final otherLocations =
+            widget.availableLocations.where((location) => location['id'] != widget.locationId).toList();
+        if (_currentStep == 2 && otherLocations.isEmpty) {
           setState(() => _currentStep++);
         }
       }
@@ -287,7 +308,9 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
       setState(() => _currentStep--);
 
       // Skip location step if only one location available (going backwards)
-      if (_currentStep == 2 && widget.availableLocations.length <= 1) {
+      final otherLocations =
+          widget.availableLocations.where((location) => location['id'] != widget.locationId).toList();
+      if (_currentStep == 2 && otherLocations.isEmpty) {
         setState(() => _currentStep--);
       }
     } else {
@@ -390,28 +413,75 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
   }
 
   Widget _buildLocationStep() {
+    // Get available locations excluding the current one
+    final otherLocations = widget.availableLocations.where((location) => location['id'] != widget.locationId).toList();
+
+    if (otherLocations.isEmpty) {
+      return const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('This checklist will be saved for the currently selected location.'),
+          SizedBox(height: BottomSheetStyles.verticalSectionSpacing),
+          Padding(
+            padding: EdgeInsets.all(8.0),
+            child: Text('There are no other locations in this organization to duplicate to.'),
+          ),
+        ],
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text('This checklist will be saved for the currently selected location.'),
         const SizedBox(height: BottomSheetStyles.verticalSectionSpacing),
-        if (widget.availableLocations.length > 1)
-          CheckboxListTile(
-            title: const Text('Duplicate this checklist to all other locations'),
-            subtitle: const Text(
-              'A copy will be created for each other location. This is useful for company-wide checklists.',
-            ),
-            value: _duplicateToOtherLocations,
-            onChanged: (val) {
+        const Text(
+          'Select additional locations to duplicate this checklist to:',
+          style: TextStyle(fontWeight: FontWeight.w500),
+        ),
+        const SizedBox(height: 12),
+        ...otherLocations.map((location) {
+          final locationId = location['id'] as String;
+          final locationName = location['name'] as String? ?? 'Unnamed Location';
+
+          return CheckboxListTile(
+            title: Text(locationName),
+            subtitle: Text('Location ID: ${locationId.substring(0, 8)}...'),
+            value: _selectedLocationIds.contains(locationId),
+            onChanged: (bool? value) {
               setState(() {
-                _duplicateToOtherLocations = val ?? false;
+                if (value == true) {
+                  _selectedLocationIds.add(locationId);
+                } else {
+                  _selectedLocationIds.remove(locationId);
+                }
               });
             },
-          )
-        else
-          const Padding(
-            padding: EdgeInsets.all(8.0),
-            child: Text('There are no other locations in this organization to duplicate to.'),
+          );
+        }).toList(),
+        if (_selectedLocationIds.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.blue, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Checklist will be duplicated to ${_selectedLocationIds.length} additional location${_selectedLocationIds.length == 1 ? '' : 's'}',
+                      style: TextStyle(color: Colors.blue[700], fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
       ],
     );
@@ -582,7 +652,7 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
     final result = {
       'checklistData': checklistPayload,
       'selectedShiftIds': _selectedShiftIds.toList(),
-      'duplicateToAll': _duplicateToOtherLocations,
+      'selectedLocationIds': _selectedLocationIds.toList(),
     };
 
     widget.onSave(result);

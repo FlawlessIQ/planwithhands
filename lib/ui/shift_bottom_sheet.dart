@@ -109,7 +109,7 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
         setState(() => roleNames = names);
       }
     } catch (e) {
-  logger.e('Error loading role names: $e', e);
+      logger.e('Error loading role names: $e', e);
       // If there's an error, still create a basic mapping for the required roles
       final names = <String, String>{};
       for (final roleName in requiredRoles.keys) {
@@ -123,14 +123,14 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
 
   Future<void> _loadAvailableUsers() async {
     try {
-  logger.d(
+      logger.d(
         'Loading users for org: ${widget.organizationId}, location: ${widget.locationId}, dayShiftKey: ${widget.dayShiftKey}',
       );
 
       // Debug: Check current user authentication and role
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser != null) {
-  logger.d('Current user UID: ${currentUser.uid}');
+        logger.d('Current user UID: ${currentUser.uid}');
         try {
           final currentUserDoc = await FirestoreEnforcer.instance.collection('users').doc(currentUser.uid).get();
           if (currentUserDoc.exists) {
@@ -141,7 +141,7 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
           logger.e('Error getting current user data: $e', e);
         }
       } else {
-  logger.w('No authenticated user found');
+        logger.w('No authenticated user found');
       }
 
       final usersSnapshot =
@@ -150,14 +150,12 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
               .where('organizationId', isEqualTo: widget.organizationId)
               .get();
 
-  logger.d('Found ${usersSnapshot.docs.length} users in organization');
+      logger.d('Found ${usersSnapshot.docs.length} users in organization');
 
       final users = <ExtendedUserData>[];
       for (final doc in usersSnapshot.docs) {
         final userData = ExtendedUserData.fromMap(doc.data(), doc.id);
-  logger.d(
-          'Processing user: ${userData.fullName}, roles: ${userData.jobTypes}, userRole: ${userData.userRole}',
-        );
+        logger.d('Processing user: ${userData.fullName}, roles: ${userData.jobTypes}, userRole: ${userData.userRole}');
         // Filter users by availability if provided
         final userRoles = Set<String>.from(userData.jobTypes);
         final shiftRoles = Set<String>.from(requiredRoles.keys);
@@ -190,7 +188,7 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
         }
       }
 
-  logger.d('Final user count: ${users.length}');
+      logger.d('Final user count: ${users.length}');
 
       // Sort users: assigned first, then by name
       users.sort((a, b) {
@@ -207,7 +205,7 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
         setState(() => availableUsers = users);
       }
     } catch (e) {
-  logger.e('Error loading available users: $e', e);
+      logger.e('Error loading available users: $e', e);
     }
   }
 
@@ -230,7 +228,7 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
 
       return assignedUsers;
     } catch (e) {
-  logger.e('Error loading assigned users: $e', e);
+      logger.e('Error loading assigned users: $e', e);
       return [];
     }
   }
@@ -589,11 +587,17 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
                                     return Center(child: Text('Error loading users: ${snapshot.error}'));
                                   }
                                   final snap = snapshot.data;
-                                  final allUsers = snap == null
-                                      ? <ExtendedUserData>[]
-                                      : snap.docs
-                                          .map((doc) => ExtendedUserData.fromMap(doc.data() as Map<String, dynamic>, doc.id))
-                                          .toList();
+                                  final allUsers =
+                                      snap == null
+                                          ? <ExtendedUserData>[]
+                                          : snap.docs
+                                              .map(
+                                                (doc) => ExtendedUserData.fromMap(
+                                                  doc.data() as Map<String, dynamic>,
+                                                  doc.id,
+                                                ),
+                                              )
+                                              .toList();
                                   final matchingUserIds = availableUsers.map((u) => u.userId).toSet();
                                   final alreadyAssigned = assignedUserIds;
                                   final nonMatchingUsers =
@@ -760,7 +764,7 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
               .collection('entries')
               .where('assignedUserIds', arrayContains: user.userId)
               .get(),
-        builder: (context, snapshot) {
+      builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }

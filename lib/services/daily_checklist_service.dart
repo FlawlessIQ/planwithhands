@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'package:hands_app/models/daily_checklist.dart';
 import 'package:hands_app/data/models/shift_data.dart';
+import 'package:hands_app/utils/jobtype_helper.dart';
 import 'package:uuid/uuid.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/data/models/missed_tasks_section.dart';
@@ -1581,7 +1582,26 @@ class DailyChecklistService {
 
         for (final shiftDoc in shiftsQuery.docs) {
           final shiftId = shiftDoc.id;
-          final shiftData = ShiftData.fromJson(shiftDoc.data());
+          // Normalize raw map to guard against legacy field types (e.g., jobType as String)
+          final raw = Map<String, dynamic>.from(shiftDoc.data());
+          try {
+            // coerce job types into canonical List<String>
+            final coerced = coerceToJobTypes(raw['jobTypes'] ?? raw['jobType']);
+            // ShiftData expects the field name 'jobType' (singular) in the JSON
+            raw['jobType'] = coerced;
+            raw['jobTypes'] = coerced; // keep both keys for safety
+          } catch (_) {
+            // ignore coercion failures and let fromJson handle defaults
+          }
+          ShiftData shiftData;
+          try {
+            shiftData = ShiftData.fromJson(raw);
+          } catch (e) {
+            debugPrint('[DailyChecklistService] Failed to parse shift doc $shiftId: $e');
+            debugPrint('[DailyChecklistService] Raw shift data: $raw');
+            // Skip this shift to avoid aborting generation
+            continue;
+          }
 
           // Check if this shift applies to this location (handle legacy single-id or list)
           final shiftLocationIds = coerceToLocationIds(shiftData.locationIds);
@@ -1670,6 +1690,9 @@ class DailyChecklistService {
                 .where('date', isEqualTo: yString)
                 .get();
 
+        debugPrint(
+          '[DailyChecklistService] carryForward: found ${ySnapshots.docs.length} checklist docs for location $locationId on $yString',
+        );
         for (final doc in ySnapshots.docs) {
           final data = doc.data();
           // Start with any tasks stored on the parent doc (legacy/array format)
@@ -1794,7 +1817,7 @@ class DailyChecklistService {
             final tasksColl = todayRef.collection('tasks');
             final batch = _firestore.batch();
             int i = 0;
-              for (final cf in carryForwardTasks) {
+            for (final cf in carryForwardTasks) {
               final originalTaskId = cf['originalTaskId'] as String;
               // Deterministic CF doc id based on original ids + today checklist id
               final digest = sha1.convert(utf8.encode('cf|${doc.id}|$originalTaskId|$todayChecklistId')).toString();
@@ -1827,7 +1850,11 @@ class DailyChecklistService {
               }, SetOptions(merge: true));
               i++;
             }
-            await batch.commit();
+            try {
+              await batch.commit();
+            } catch (e) {
+              debugPrint('[DailyChecklistService] carryForward: failed to commit CF tasks for checklist ${doc.id}: $e');
+            }
             // Intentionally do not modify parent metrics; Missed tasks are shown separately.
           }
         }
@@ -1918,7 +1945,9 @@ class DailyChecklistService {
           checklistName: checklistName,
         );
 
-        final sectionKey = '${shiftId ?? 'unknown'}|${locationId ?? 'unknown'}|${checklistId ?? 'unknown'}';
+        // Group by shift + location so tasks from multiple checklists for the same
+        // shift are shown under a single section card.
+        final sectionKey = '${shiftId ?? 'unknown'}|${locationId ?? 'unknown'}';
         sections.putIfAbsent(
           sectionKey,
           () => MissedTasksSection(
@@ -1928,11 +1957,12 @@ class DailyChecklistService {
             endTime: null,
             tasks: [],
             locationId: locationId,
-            checklistId: checklistId,
-            checklistName: checklistName,
+            checklistId: null,
+            checklistName: null,
             organizationId: orgId,
           ),
         );
+        // Append task to the section's task list
         sections[sectionKey] = sections[sectionKey]!.copyWith(tasks: [...sections[sectionKey]!.tasks, task]);
       } catch (e) {
         debugPrint('[MissedTasks] Error building section from task doc: $e');
