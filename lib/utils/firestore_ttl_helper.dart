@@ -11,14 +11,14 @@ class FirestoreTTLHelper {
     'messages': 30,
     'daily_summary_by_location': 30,
     'daily_summary_by_shift': 30,
-    
+
     // 7-day retention for short-term items
     'invites': 7,
     'debug_logs': 7,
     'debug_checklists': 7,
     'debug_tasks': 7,
     'debug_notifications': 7,
-    
+
     // 90-day retention for important summaries
     'daily_summary_by_organization': 90,
     'daily_summary_by_organization_location': 90,
@@ -32,18 +32,13 @@ class FirestoreTTLHelper {
       // No TTL policy for this collection
       return null;
     }
-    
-    return Timestamp.fromDate(
-      DateTime.now().add(Duration(days: ttlDays)),
-    );
+
+    return Timestamp.fromDate(DateTime.now().add(Duration(days: ttlDays)));
   }
 
   /// Add expiresAt field to document data if the collection requires TTL
   /// Does not overwrite existing expiresAt values
-  static Map<String, dynamic> addExpiresAtToData(
-    String collectionName,
-    Map<String, dynamic> data,
-  ) {
+  static Map<String, dynamic> addExpiresAtToData(String collectionName, Map<String, dynamic> data) {
     // Check if data already has expiresAt to avoid overwriting
     if (data.containsKey('expiresAt')) {
       return data;
@@ -51,10 +46,7 @@ class FirestoreTTLHelper {
 
     final expiresAt = getExpiresAtForCollection(collectionName);
     if (expiresAt != null) {
-      return {
-        ...data,
-        'expiresAt': expiresAt,
-      };
+      return {...data, 'expiresAt': expiresAt};
     }
 
     return data;
@@ -65,12 +57,12 @@ class FirestoreTTLHelper {
   static String? getCollectionNameFromPath(String path) {
     final segments = path.split('/');
     if (segments.length < 2) return null;
-    
+
     // For paths like "organizations/orgId/locations/locId/daily_checklists/checklistId"
     // We want "daily_checklists"
     // For subcollection paths like "organizations/orgId/locations/locId/daily_checklists/checklistId/tasks/taskId"
     // We want "tasks"
-    
+
     // Find the last collection segment (odd indices in path segments)
     for (int i = segments.length - 2; i >= 0; i -= 2) {
       final collectionName = segments[i];
@@ -78,16 +70,12 @@ class FirestoreTTLHelper {
         return collectionName;
       }
     }
-    
+
     return null;
   }
 
   /// Enhanced set method that automatically adds expiresAt for TTL collections
-  static Future<void> setWithTTL(
-    DocumentReference docRef,
-    Map<String, dynamic> data, {
-    SetOptions? options,
-  }) async {
+  static Future<void> setWithTTL(DocumentReference docRef, Map<String, dynamic> data, {SetOptions? options}) async {
     final collectionName = getCollectionNameFromPath(docRef.path);
     if (collectionName != null) {
       final dataWithTTL = addExpiresAtToData(collectionName, data);
@@ -98,10 +86,7 @@ class FirestoreTTLHelper {
   }
 
   /// Enhanced add method that automatically adds expiresAt for TTL collections
-  static Future<DocumentReference> addWithTTL(
-    CollectionReference collectionRef,
-    Map<String, dynamic> data,
-  ) async {
+  static Future<DocumentReference> addWithTTL(CollectionReference collectionRef, Map<String, dynamic> data) async {
     final collectionName = getCollectionNameFromPath(collectionRef.path);
     if (collectionName != null) {
       final dataWithTTL = addExpiresAtToData(collectionName, data);
@@ -128,11 +113,7 @@ class FirestoreTTLHelper {
   }
 
   /// Enhanced transaction set method that automatically adds expiresAt for TTL collections
-  static void transactionSetWithTTL(
-    Transaction transaction,
-    DocumentReference docRef,
-    Map<String, dynamic> data,
-  ) {
+  static void transactionSetWithTTL(Transaction transaction, DocumentReference docRef, Map<String, dynamic> data) {
     final collectionName = getCollectionNameFromPath(docRef.path);
     if (collectionName != null) {
       final dataWithTTL = addExpiresAtToData(collectionName, data);
@@ -159,8 +140,6 @@ class FirestoreTTLHelper {
 
   /// Create a Timestamp for a specific TTL duration
   static Timestamp createTTLTimestamp(int days) {
-    return Timestamp.fromDate(
-      DateTime.now().add(Duration(days: days)),
-    );
+    return Timestamp.fromDate(DateTime.now().add(Duration(days: days)));
   }
 }

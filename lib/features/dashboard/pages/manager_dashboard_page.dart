@@ -8,9 +8,11 @@ import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
 import 'package:intl/intl.dart';
 import 'package:hands_app/services/daily_checklist_service.dart';
+import 'package:hands_app/services/organization_setup_service.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/utils/location_helper.dart';
 import 'package:hands_app/core/logging/logger.dart';
+import 'package:hands_app/widgets/organization_setup_widget.dart';
 
 class ManagerDashboardPage extends StatefulWidget {
   final String organizationId;
@@ -25,6 +27,11 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
   bool _isLoadingUserRole = true; // Add loading state for user role
   final DateFormat _dateFormat = DateFormat('yyyy-MM-dd');
   late final String _todayKey;
+
+  // Organization setup state
+  final OrganizationSetupService _setupService = OrganizationSetupService();
+  bool _metricsEnabled = false;
+  bool _isLoadingSetupStatus = true;
 
   // Location selection at the top level
   String? _selectedLocationId;
@@ -70,9 +77,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
     super.initState();
     _todayKey = _dateFormat.format(DateTime.now());
     _fetchUserRole();
+    _checkSetupStatus(); // Check if metrics are enabled before loading data
     _loadLocations(); // This will call _loadAll() after location is selected
-    // Auto-generate daily checklists when manager dashboard loads
-    _ensureDailyChecklistsExist();
     // Start auto-refresh timer for live shifts
     _startAutoRefresh();
   }
@@ -115,13 +121,58 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
     }
   }
 
+  Future<void> _checkSetupStatus() async {
+    setState(() => _isLoadingSetupStatus = true);
+
+    try {
+      final isEnabled = await _setupService.isMetricsTrackingEnabled(widget.organizationId);
+      setState(() {
+        _metricsEnabled = isEnabled;
+        _isLoadingSetupStatus = false;
+      });
+
+      // Only auto-generate daily checklists and load metrics if enabled
+      if (_metricsEnabled) {
+        await _ensureDailyChecklistsExist();
+      }
+    } catch (e) {
+      logger.e('[ManagerDashboard] Error checking setup status: $e');
+      setState(() {
+        _metricsEnabled = false;
+        _isLoadingSetupStatus = false;
+      });
+    }
+  }
+
   Future<void> _ensureDailyChecklistsExist() async {
+    // Only generate checklists if metrics tracking is enabled
+    if (!_metricsEnabled) {
+      logger.d('[ManagerDashboard] Skipping daily checklist generation - metrics not enabled');
+      return;
+    }
+
     try {
       final service = DailyChecklistService();
       await service.ensureDailyChecklistsExist(widget.organizationId);
       logger.d('Daily checklist generation check completed for organization ${widget.organizationId}');
     } catch (e) {
       logger.e('Error ensuring daily checklists exist: $e');
+    }
+  }
+
+  /// Called when metrics tracking is enabled through the setup widget
+  Future<void> _onMetricsEnabled() async {
+    logger.d('[ManagerDashboard] Metrics enabled, refreshing dashboard');
+
+    // Update metrics enabled state
+    setState(() => _metricsEnabled = true);
+
+    // Generate daily checklists now that metrics are enabled
+    await _ensureDailyChecklistsExist();
+
+    // Load all dashboard data
+    if (_selectedLocationId != null) {
+      await _loadAll();
     }
   }
 
@@ -474,7 +525,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoadingLocations || _isLoadingUserRole) {
+    if (_isLoadingLocations || _isLoadingUserRole || _isLoadingSetupStatus) {
       return Scaffold(
         appBar: AppBar(
           title: const Text('Manager Dashboard'),
@@ -493,97 +544,100 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
         automaticallyImplyLeading: false,
         foregroundColor: Colors.white,
         actions: [
-          // Compact location selector for mobile
-          Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: PopupMenuButton<String>(
-              enabled: _availableLocations.isNotEmpty,
-              onSelected: (value) async {
-                setState(() {
-                  _selectedLocationId = value;
-                  _selectedLocationName =
-                      _availableLocations.firstWhere(
-                        (loc) => loc['id'] == value,
-                        orElse: () => {'name': 'Unknown Location'},
-                      )['name'];
-                });
-                await _loadFilterOptions();
-                await _loadAll(); // Reload all data when location changes
-              },
-              itemBuilder:
-                  (context) =>
-                      _availableLocations.map((location) {
-                        return PopupMenuItem<String>(
-                          value: location['id'],
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.location_on,
-                                color:
-                                    location['id'] == _selectedLocationId
-                                        ? Theme.of(context).primaryColor
-                                        : Colors.grey[600],
-                                size: 16,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  location['name'],
-                                  style: TextStyle(
-                                    fontWeight:
-                                        location['id'] == _selectedLocationId ? FontWeight.bold : FontWeight.normal,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              if (location['id'] == _selectedLocationId)
-                                const Padding(padding: EdgeInsets.only(left: 8), child: Icon(Icons.check, size: 16)),
-                            ],
-                          ),
-                        );
-                      }).toList(),
-              child: Builder(
-                builder: (context) {
-                  final screenWidth = MediaQuery.of(context).size.width;
-                  final isNarrowScreen = screenWidth < 400;
-
-                  if (isNarrowScreen) {
-                    // Compact mobile version - just location icon
-                    return Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Icon(Icons.location_on, color: Colors.white, size: 20),
-                    );
-                  } else {
-                    // Full desktop version
-                    return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.location_on, color: Colors.white, size: 18),
-                          const SizedBox(width: 6),
-                          Text(
-                            _selectedLocationName?.isNotEmpty == true ? _selectedLocationName! : 'Select Location',
-                            style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.arrow_drop_down, color: Colors.white, size: 16),
-                        ],
-                      ),
-                    );
-                  }
+          // Only show location selector if metrics are enabled
+          if (_metricsEnabled) ...[
+            // Compact location selector for mobile
+            Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: PopupMenuButton<String>(
+                enabled: _availableLocations.isNotEmpty,
+                onSelected: (value) async {
+                  setState(() {
+                    _selectedLocationId = value;
+                    _selectedLocationName =
+                        _availableLocations.firstWhere(
+                          (loc) => loc['id'] == value,
+                          orElse: () => {'name': 'Unknown Location'},
+                        )['name'];
+                  });
+                  await _loadFilterOptions();
+                  await _loadAll(); // Reload all data when location changes
                 },
+                itemBuilder:
+                    (context) =>
+                        _availableLocations.map((location) {
+                          return PopupMenuItem<String>(
+                            value: location['id'],
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.location_on,
+                                  color:
+                                      location['id'] == _selectedLocationId
+                                          ? Theme.of(context).primaryColor
+                                          : Colors.grey[600],
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    location['name'],
+                                    style: TextStyle(
+                                      fontWeight:
+                                          location['id'] == _selectedLocationId ? FontWeight.bold : FontWeight.normal,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (location['id'] == _selectedLocationId)
+                                  const Padding(padding: EdgeInsets.only(left: 8), child: Icon(Icons.check, size: 16)),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                child: Builder(
+                  builder: (context) {
+                    final screenWidth = MediaQuery.of(context).size.width;
+                    final isNarrowScreen = screenWidth < 400;
+
+                    if (isNarrowScreen) {
+                      // Compact mobile version - just location icon
+                      return Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Icon(Icons.location_on, color: Colors.white, size: 20),
+                      );
+                    } else {
+                      // Full desktop version
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.location_on, color: Colors.white, size: 18),
+                            const SizedBox(width: 6),
+                            Text(
+                              _selectedLocationName?.isNotEmpty == true ? _selectedLocationName! : 'Select Location',
+                              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.arrow_drop_down, color: Colors.white, size: 16),
+                          ],
+                        ),
+                      );
+                    }
+                  },
+                ),
               ),
             ),
-          ),
+          ],
           // Menu button
           UnifiedMenuButton(userRole: userRole),
         ],
@@ -591,24 +645,34 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
       bottomNavigationBar: BottomNavBar(currentIndex: 1, userRole: userRole),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Today header
-              _buildTodayHeader(),
-              const SizedBox(height: 20),
-              _buildLiveViewSection(),
-              const SizedBox(height: 32),
-              _buildHistoricInsightsSection(),
-              const SizedBox(height: 30),
-              _buildHistoricShiftPerformance(),
-              const SizedBox(height: 30),
-              _buildAuditSection(),
-            ],
-          ),
+          padding: _metricsEnabled ? const EdgeInsets.all(16) : const EdgeInsets.all(0),
+          child: _metricsEnabled ? _buildMetricsDashboard() : _buildSetupView(),
         ),
       ),
+    );
+  }
+
+  /// Build the setup view when metrics are not enabled
+  Widget _buildSetupView() {
+    return OrganizationSetupWidget(organizationId: widget.organizationId, onMetricsEnabled: _onMetricsEnabled);
+  }
+
+  /// Build the metrics dashboard when metrics are enabled
+  Widget _buildMetricsDashboard() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Today header
+        _buildTodayHeader(),
+        const SizedBox(height: 20),
+        _buildLiveViewSection(),
+        const SizedBox(height: 32),
+        _buildHistoricInsightsSection(),
+        const SizedBox(height: 30),
+        _buildHistoricShiftPerformance(),
+        const SizedBox(height: 30),
+        _buildAuditSection(),
+      ],
     );
   }
 

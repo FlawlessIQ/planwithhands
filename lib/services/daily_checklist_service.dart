@@ -140,7 +140,7 @@ class DailyChecklistService {
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         };
-        
+
         await FirestoreTTLHelper.setWithTTL(checklistRef, checklistData, options: SetOptions(merge: true));
 
         // If the tasks subcollection is empty, populate it from the template tasks
