@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:hands_app/services/daily_checklist_service.dart';
-import 'package:hands_app/models/task_data.dart';
+import 'package:hands_app/data/models/task_data.dart';
 
 class NativePhotoService {
   static final ImagePicker _picker = ImagePicker();
@@ -215,29 +215,34 @@ class NativePhotoService {
       final XFile? image = await _picker.pickImage(source: source, maxWidth: 1920, maxHeight: 1080, imageQuality: 85);
 
       if (image == null) {
-        Navigator.pop(context); // Close loading
+        if (Navigator.canPop(context)) {
+          Navigator.pop(context); // Close loading
+        }
         return;
       }
 
       // Upload via service
       final downloadUrl = await _checklistService.uploadTaskPhoto(
-        organizationId: organizationId ?? task.organizationId,
-        locationId: locationId ?? task.locationId,
-        checklistId: checklistId ?? task.checklistId,
+        organizationId: organizationId ?? task.organizationId ?? '',
+        locationId: locationId ?? task.locationId ?? '',
+        checklistId: checklistId ?? task.checklistId ?? '',
         taskId: task.taskId,
         imageFile: image,
       );
 
       // Close loading
-      Navigator.pop(context);
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
 
       // Create updated task
       final updatedTask = task.copyWith(photoUrl: downloadUrl, proofImageUrl: downloadUrl);
 
       // Show success and return updated task
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Photo uploaded successfully!'),
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Photo uploaded successfully!'),
           backgroundColor: Colors.green,
           duration: Duration(seconds: 2),
         ),
@@ -247,6 +252,7 @@ class NativePhotoService {
       if (Navigator.canPop(context)) {
         Navigator.pop(context, updatedTask);
       }
+      }
     } catch (e) {
       // Close loading if still showing
       if (Navigator.canPop(context)) {
@@ -254,13 +260,15 @@ class NativePhotoService {
       }
 
       // Show error
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error uploading photo: $e'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 4),
-        ),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error uploading photo: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     }
   }
 
@@ -301,27 +309,31 @@ class NativePhotoService {
 
       // Update task with empty photo URL
       await _checklistService.updateTaskPhotoInSubcollection(
-        organizationId: organizationId ?? task.organizationId,
-        locationId: locationId ?? task.locationId,
-        checklistId: checklistId ?? task.checklistId,
+        organizationId: organizationId ?? task.organizationId ?? '',
+        locationId: locationId ?? task.locationId ?? '',
+        checklistId: checklistId ?? task.checklistId ?? '',
         taskId: task.taskId,
         proofImageUrl: '',
       );
 
       // Close loading
-      Navigator.pop(context);
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
 
       // Create updated task
       final updatedTask = task.copyWith(photoUrl: '', proofImageUrl: '');
 
       // Show success
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Photo removed successfully!'),
-          backgroundColor: Colors.orange,
-          duration: Duration(seconds: 2),
-        ),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Photo removed successfully!'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
 
       // Return updated task
       if (Navigator.canPop(context)) {
@@ -334,13 +346,15 @@ class NativePhotoService {
       }
 
       // Show error
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error removing photo: $e'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 4),
-        ),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error removing photo: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     }
   }
 
