@@ -1193,6 +1193,7 @@ file:///Users/conorlawless/Development/Hands%20app/.dart_tool/flutter_build/0b42
 file:///Users/conorlawless/Development/Hands%20app/.dart_tool/flutter_build/0b42005b2b21dcf9787a48b6f20a400d/web_plugin_registrant.dart
 file:///Users/conorlawless/Development/Hands%20app/lib/config/feature_flags.dart
 file:///Users/conorlawless/Development/Hands%20app/lib/constants/firestore_names.dart
+file:///Users/conorlawless/Development/Hands%20app/lib/core/logging/logger.dart
 file:///Users/conorlawless/Development/Hands%20app/lib/custom_code/widgets/UserManagementBottomSheet.dart
 file:///Users/conorlawless/Development/Hands%20app/lib/data/models/checklist_data.dart
 file:///Users/conorlawless/Development/Hands%20app/lib/data/models/checklist_data.freezed.dart
@@ -1253,6 +1254,8 @@ file:///Users/conorlawless/Development/Hands%20app/lib/services/auth_service.dar
 file:///Users/conorlawless/Development/Hands%20app/lib/services/daily_background_service.dart
 file:///Users/conorlawless/Development/Hands%20app/lib/services/daily_checklist_service.dart
 file:///Users/conorlawless/Development/Hands%20app/lib/services/daily_summary_service.dart
+file:///Users/conorlawless/Development/Hands%20app/lib/services/native_photo_service.dart
+file:///Users/conorlawless/Development/Hands%20app/lib/services/organization_setup_service.dart
 file:///Users/conorlawless/Development/Hands%20app/lib/services/push_notification_service.dart
 file:///Users/conorlawless/Development/Hands%20app/lib/services/stripe_service.dart
 file:///Users/conorlawless/Development/Hands%20app/lib/services/web_asset_service.dart
@@ -1278,11 +1281,12 @@ file:///Users/conorlawless/Development/Hands%20app/lib/ui/contact_sales_dialog.d
 file:///Users/conorlawless/Development/Hands%20app/lib/ui/location_bottom_sheet_new.dart
 file:///Users/conorlawless/Development/Hands%20app/lib/ui/schedule_page.dart
 file:///Users/conorlawless/Development/Hands%20app/lib/ui/shift_bottom_sheet.dart
-file:///Users/conorlawless/Development/Hands%20app/lib/ui/subscription_management_sheet.dart
 file:///Users/conorlawless/Development/Hands%20app/lib/ui/upgrade_location_sheet.dart
 file:///Users/conorlawless/Development/Hands%20app/lib/utils/firestore_enforcer.dart
+file:///Users/conorlawless/Development/Hands%20app/lib/utils/firestore_ttl_helper.dart
 file:///Users/conorlawless/Development/Hands%20app/lib/utils/jobtype_helper.dart
 file:///Users/conorlawless/Development/Hands%20app/lib/utils/location_helper.dart
+file:///Users/conorlawless/Development/Hands%20app/lib/widgets/organization_setup_widget.dart
 file:///Users/conorlawless/Development/Hands%20app/lib/widgets/professional_message_dialog.dart
 file:///Users/conorlawless/Development/flutter/bin/cache/flutter_web_sdk/kernel/dart2js_platform.dill
 file:///Users/conorlawless/Development/flutter/packages/flutter/lib/animation.dart

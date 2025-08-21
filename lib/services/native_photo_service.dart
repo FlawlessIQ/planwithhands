@@ -243,15 +243,15 @@ class NativePhotoService {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Photo uploaded successfully!'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
-        ),
-      );
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
 
-      // Pop with updated task (this will be handled by caller)
-      if (Navigator.canPop(context)) {
-        Navigator.pop(context, updatedTask);
-      }
+        // Pop with updated task (this will be handled by caller)
+        if (Navigator.canPop(context)) {
+          Navigator.pop(context, updatedTask);
+        }
       }
     } catch (e) {
       // Close loading if still showing

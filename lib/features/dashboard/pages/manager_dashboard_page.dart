@@ -601,7 +601,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
       final Map<String, Map<String, num>> agg = {}; // key: shiftName, values: {'done':x,'total':y}
 
       // Cache to avoid repeated reads for the same shiftId
-      final Map<String, String> _shiftNameCache = {};
+      final Map<String, String> shiftNameCache = {};
 
       for (final d in docs) {
         final dataRaw = d.data();
@@ -612,8 +612,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
         // Resolve shift name from cache or via lookup when not denormalized
         if (shiftName.isEmpty || shiftName.toLowerCase().contains('unknown')) {
           if (shiftId.isNotEmpty) {
-            if (_shiftNameCache.containsKey(shiftId)) {
-              shiftName = _shiftNameCache[shiftId]!;
+            if (shiftNameCache.containsKey(shiftId)) {
+              shiftName = shiftNameCache[shiftId]!;
             } else {
               try {
                 final shiftDoc =
@@ -628,7 +628,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                   final resolved = (sdata?['shiftName'] ?? sdata?['name'] ?? '').toString();
                   if (resolved.isNotEmpty) {
                     shiftName = resolved;
-                    _shiftNameCache[shiftId] = resolved;
+                    shiftNameCache[shiftId] = resolved;
                   }
                 }
               } catch (e) {
@@ -2012,7 +2012,7 @@ class _LiveShiftStrip extends StatelessWidget {
 
     // Mobile layout: Simple horizontal scrollable list
     if (isMobile) {
-      return Container(
+      return SizedBox(
         height: 140, // Increased height to accommodate larger Harvey balls and prevent content cutoff
         child: ListView.builder(
           scrollDirection: Axis.horizontal,
@@ -2030,7 +2030,7 @@ class _LiveShiftStrip extends StatelessWidget {
 
     // Desktop layout: PageView with GridView (original implementation)
     return ClipRect(
-      child: Container(
+      child: SizedBox(
         height: 140, // Increased height to accommodate larger Harvey balls and prevent content cutoff
         child: PageView.builder(
           controller: PageController(viewportFraction: 0.85), // Show slight preview of next card
@@ -2315,7 +2315,7 @@ class _ProfessionalDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Container(
+      child: SizedBox(
         width: width ?? MediaQuery.of(context).size.width * 0.9,
         height: height ?? MediaQuery.of(context).size.height * 0.8,
         child: Column(
