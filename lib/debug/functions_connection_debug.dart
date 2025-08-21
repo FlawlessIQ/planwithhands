@@ -1,4 +1,3 @@
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 
 /// Connects Firebase Functions to the local emulator in debug mode.

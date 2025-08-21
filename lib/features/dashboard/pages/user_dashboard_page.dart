@@ -21,6 +21,7 @@ import 'package:hands_app/config/feature_flags.dart';
 import 'package:hands_app/data/models/missed_tasks_section.dart';
 import 'package:hands_app/data/models/task_data.dart';
 import 'package:hands_app/core/logging/logger.dart';
+import 'package:hands_app/services/native_photo_service.dart';
 
 // --- MAIN DASHBOARD PAGE ---
 
@@ -455,7 +456,7 @@ class UserDashboardPage extends HookConsumerWidget {
                 selectedLocationId.value = value;
                 final selected = availableLocations.value.firstWhere(
                   (loc) => loc['id'] == value,
-                  orElse: () => {'name': 'Unknown Location'},
+                  orElse: () => <String, String>{'name': 'Unknown Location'},
                 );
                 selectedLocationName.value = selected['name'];
                 isLoading.value = true;
@@ -548,7 +549,7 @@ class UserDashboardPage extends HookConsumerWidget {
           isLoading.value
               ? const Center(child: CircularProgressIndicator())
               : Padding(
-                padding: const EdgeInsets.all(16.0),
+                padding: const EdgeInsets.all(8.0),
                 child: SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -567,16 +568,15 @@ class UserDashboardPage extends HookConsumerWidget {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Theme.of(context).primaryColor,
                                 foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 16),
-                                textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                               ),
                               onPressed: () async {
                                 logger.d("[Dashboard] Available Shifts button pressed");
-                                final result = await showModalBottomSheet<Map<String, dynamic>>(
+                                final result = await showDialog<Map<String, dynamic>>(
                                   context: context,
-                                  isScrollControlled: true,
                                   builder:
-                                      (_) => _HelpOutSheet(
+                                      (_) => _HelpOutDialog(
                                         organizationId: organizationId.value ?? '',
                                         todayDayName: todayDayName,
                                         selectedLocationId: selectedLocationId.value,
@@ -640,11 +640,11 @@ class UserDashboardPage extends HookConsumerWidget {
                                 }
                               },
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 8),
 
                             // Instructional text (hide when there is an active assigned shift)
                             if (assignedShifts.value.isEmpty) _InstructionCard(),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 8),
                           ],
                         ),
 
@@ -661,7 +661,7 @@ class UserDashboardPage extends HookConsumerWidget {
                                 context,
                               ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: Colors.blue[800]),
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 6),
                             ListView.builder(
                               shrinkWrap: true,
                               physics: const NeverScrollableScrollPhysics(),
@@ -733,13 +733,13 @@ class UserDashboardPage extends HookConsumerWidget {
                         if (missedTasksLoading.value)
                           const Card(
                             child: Padding(
-                              padding: EdgeInsets.all(16.0),
+                              padding: EdgeInsets.all(12.0),
                               child: Center(
                                 child: Column(
                                   children: [
-                                    CircularProgressIndicator(),
-                                    SizedBox(height: 8),
-                                    Text('Loading missed tasks...'),
+                                    SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                                    SizedBox(height: 6),
+                                    Text('Loading missed tasks...', style: TextStyle(fontSize: 12)),
                                   ],
                                 ),
                               ),
@@ -749,11 +749,11 @@ class UserDashboardPage extends HookConsumerWidget {
                           Card(
                             color: Colors.green[50],
                             child: Padding(
-                              padding: const EdgeInsets.all(16.0),
+                              padding: const EdgeInsets.all(12.0),
                               child: Row(
                                 children: [
-                                  Icon(Icons.check_circle, color: Colors.green[600], size: 32),
-                                  const SizedBox(width: 16),
+                                  Icon(Icons.check_circle, color: Colors.green[600], size: 24),
+                                  const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -761,12 +761,12 @@ class UserDashboardPage extends HookConsumerWidget {
                                         Text(
                                           'All caught up!',
                                           style: TextStyle(
-                                            fontSize: 16,
+                                            fontSize: 13,
                                             fontWeight: FontWeight.bold,
                                             color: Colors.green[800],
                                           ),
                                         ),
-                                        const SizedBox(height: 4),
+                                        const SizedBox(height: 2),
                                         Text(
                                           'No missed tasks from yesterday.',
                                           style: TextStyle(color: Colors.green[700]),
@@ -1305,13 +1305,13 @@ Future<void> _leaveVolunteerShift(
 // STUBS: Add missing widget classes and extensions for missing getters
 
 // Sheet for selecting shifts to help with
-class _HelpOutSheet extends StatelessWidget {
+class _HelpOutDialog extends StatelessWidget {
   final String organizationId;
   final String todayDayName;
   final String? selectedLocationId;
   final String selectedLocationName;
 
-  const _HelpOutSheet({
+  const _HelpOutDialog({
     required this.organizationId,
     required this.todayDayName,
     this.selectedLocationId,
@@ -1320,122 +1320,147 @@ class _HelpOutSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      initialChildSize: 1.0,
-      maxChildSize: 1.0,
-      minChildSize: 0.5,
-      builder: (context, scrollController) {
-        return SafeArea(
-          top: true,
-          child: Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20)),
-            ),
-            child: Column(
-              children: [
-                // Header
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Available Shifts',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Select a shift to begin working at $selectedLocationName',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
-                      ),
-                    ],
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Container(
+        width: MediaQuery.of(context).size.width * 0.9,
+        height: MediaQuery.of(context).size.height * 0.8,
+        child: Column(
+          children: [
+            // Header with title and close button
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Available Shifts',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Select a shift to begin working at $selectedLocationName',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const Divider(height: 1),
-                // Shifts list
-                Expanded(
-                  child: FutureBuilder<List<ShiftData>>(
-                    future: _getAvailableShifts(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                    iconSize: 20,
+                  ),
+                ],
+              ),
+            ),
+            // Content
+            Expanded(
+              child: FutureBuilder<List<ShiftData>>(
+                future: _getAvailableShifts(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
 
-                      if (snapshot.hasError) {
-                        return Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.error_outline, size: 48, color: Colors.grey[400]),
-                              const SizedBox(height: 16),
-                              Text('Error loading shifts', style: TextStyle(color: Colors.grey[600])),
-                            ],
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.error_outline, size: 48, color: Colors.grey[400]),
+                          const SizedBox(height: 16),
+                          Text('Error loading shifts', style: TextStyle(color: Colors.grey[600])),
+                        ],
+                      ),
+                    );
+                  }
+
+                  final shifts = snapshot.data ?? [];
+
+                  if (shifts.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.work_off, size: 40, color: Colors.grey[400]),
+                          const SizedBox(height: 12),
+                          Text(
+                            'No available shifts',
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.grey[600]),
                           ),
-                        );
-                      }
-
-                      final shifts = snapshot.data ?? [];
-
-                      if (shifts.isEmpty) {
-                        return Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.work_off, size: 48, color: Colors.grey[400]),
-                              const SizedBox(height: 16),
-                              Text(
-                                'No available shifts',
-                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: Colors.grey[600]),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'There are no shifts available for you to join today.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(color: Colors.grey[500]),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-
-                      return ListView.builder(
-                        controller: scrollController,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        itemCount: shifts.length,
-                        itemBuilder: (context, index) {
-                          final shift = shifts[index];
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            child: ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: Theme.of(context).primaryColor,
-                                child: const Icon(Icons.work, color: Colors.white, size: 20),
-                              ),
-                              title: Text(shift.shiftName, style: const TextStyle(fontWeight: FontWeight.w500)),
-                              subtitle: Text('${shift.startTime} - ${shift.endTime}'),
-                              trailing: ElevatedButton(
-                                onPressed: () {
-                                  Navigator.of(context).pop({'shift': shift, 'locationId': selectedLocationId});
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Theme.of(context).primaryColor,
-                                  foregroundColor: Colors.white,
+                          const SizedBox(height: 6),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 32),
+                            child: Column(
+                              children: [
+                                Text(
+                                  'There are no shifts available for you to join today.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: Colors.grey[500]),
                                 ),
-                                child: const Text('Join'),
-                              ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Shifts will become available to select 30 minutes before their start time.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: Colors.grey[500]),
+                                ),
+                              ],
                             ),
-                          );
-                        },
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  return ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    itemCount: shifts.length,
+                    itemBuilder: (context, index) {
+                      final shift = shifts[index];
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: Theme.of(context).primaryColor,
+                            child: const Icon(Icons.work, color: Colors.white, size: 20),
+                          ),
+                          title: Text(shift.shiftName, style: const TextStyle(fontWeight: FontWeight.w500)),
+                          subtitle: Text('${shift.startTime} - ${shift.endTime}'),
+                          trailing: ElevatedButton(
+                            onPressed: () {
+                              Navigator.of(context).pop({'shift': shift, 'locationId': selectedLocationId});
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Theme.of(context).primaryColor,
+                              foregroundColor: Colors.white,
+                            ),
+                            child: const Text('Join'),
+                          ),
+                        ),
                       );
                     },
-                  ),
-                ),
-              ],
+                  );
+                },
+              ),
             ),
-          ),
-        );
-      },
+          ],
+        ),
+      ),
     );
   }
 
@@ -1587,407 +1612,6 @@ class _HelpOutSheet extends StatelessWidget {
       logger.e('[HelpOutSheet] Error loading shifts: $e', e);
       return [];
     }
-  }
-}
-
-// Photo upload dialog widget
-class _PhotoDialog extends StatefulWidget {
-  final dynamic task;
-  final dynamic checklist;
-  final VoidCallback onPhotoUpdated;
-
-  const _PhotoDialog({required this.task, this.checklist, required this.onPhotoUpdated});
-
-  @override
-  State<_PhotoDialog> createState() => _PhotoDialogState();
-}
-
-class _PhotoDialogState extends State<_PhotoDialog> {
-  bool _isUploading = false;
-  String? _currentPhotoUrl;
-  final ImagePicker _picker = ImagePicker();
-
-  // Temporary fix for legacy URLs that used the wrong default bucket name
-  String _fixStorageUrl(String url) {
-    // Only adjust known bad bucket pattern
-    if (url.contains('plan-with-hands.firebasestorage.app')) {
-      return url.replaceAll('plan-with-hands.firebasestorage.app', 'plan-with-hands.appspot.com');
-    }
-    return url;
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _currentPhotoUrl = widget.task.photoUrl;
-  }
-
-  Future<void> _pickAndUploadPhoto() async {
-    try {
-      setState(() => _isUploading = true);
-
-      // Pick image from gallery or camera
-      final XFile? image = await _picker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1920,
-        maxHeight: 1080,
-        imageQuality: 80,
-      );
-
-      if (image == null) {
-        setState(() => _isUploading = false);
-        return;
-      }
-
-      // Upload via centralized service
-      final svc = DailyChecklistService();
-      final downloadUrl = await svc.uploadTaskPhoto(
-        organizationId: widget.checklist?.organizationId ?? widget.task.organizationId,
-        locationId: widget.checklist?.locationId ?? widget.task.locationId,
-        checklistId: widget.checklist?.id ?? widget.task.checklistId,
-        taskId: widget.task.taskId,
-        imageFile: image,
-      );
-
-      setState(() {
-        _currentPhotoUrl = downloadUrl;
-        _isUploading = false;
-      });
-
-      widget.onPhotoUpdated();
-
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Photo uploaded successfully!'), backgroundColor: Colors.green));
-        Navigator.of(context).pop(widget.task.copyWith(photoUrl: downloadUrl, proofImageUrl: downloadUrl));
-      }
-    } catch (e) {
-      setState(() => _isUploading = false);
-      logger.e('Error uploading photo: $e', e);
-
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error uploading photo: $e'), backgroundColor: Colors.red));
-      }
-    }
-  }
-
-  Future<void> _takePhoto() async {
-    try {
-      setState(() => _isUploading = true);
-
-      // Take photo with camera
-      final XFile? image = await _picker.pickImage(
-        source: ImageSource.camera,
-        maxWidth: 1920,
-        maxHeight: 1080,
-        imageQuality: 80,
-      );
-
-      if (image == null) {
-        setState(() => _isUploading = false);
-        return;
-      }
-
-      // Upload via centralized service
-      final svc = DailyChecklistService();
-      final downloadUrl = await svc.uploadTaskPhoto(
-        organizationId: widget.checklist?.organizationId ?? widget.task.organizationId,
-        locationId: widget.checklist?.locationId ?? widget.task.locationId,
-        checklistId: widget.checklist?.id ?? widget.task.checklistId,
-        taskId: widget.task.taskId,
-        imageFile: image,
-      );
-
-      setState(() {
-        _currentPhotoUrl = downloadUrl;
-        _isUploading = false;
-      });
-
-      widget.onPhotoUpdated();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Photo captured and uploaded successfully!'), backgroundColor: Colors.green),
-        );
-        Navigator.of(context).pop(widget.task.copyWith(photoUrl: downloadUrl, proofImageUrl: downloadUrl));
-      }
-    } catch (e) {
-      setState(() => _isUploading = false);
-      logger.e('Error taking photo: $e', e);
-
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error taking photo: $e'), backgroundColor: Colors.red));
-      }
-    }
-  }
-
-  Future<void> _updateTaskPhoto(String photoUrl) async {
-    // Prefer subcollection update via service if possible.
-    try {
-      final svc = DailyChecklistService();
-      if (widget.checklist != null) {
-        // Use checklist metadata when provided
-        await svc.updateTaskPhotoInSubcollection(
-          organizationId: widget.checklist.organizationId,
-          locationId: widget.checklist.locationId,
-          checklistId: widget.checklist.id,
-          taskId: widget.task.taskId,
-          proofImageUrl: photoUrl,
-        );
-        return;
-      }
-
-      // Fallback: if task object contains denormalized fields (TaskData), use them
-      if (widget.task != null && (widget.task.organizationId != null)) {
-        await svc.updateTaskPhotoInSubcollection(
-          organizationId: widget.task.organizationId,
-          locationId: widget.task.locationId,
-          checklistId: widget.task.checklistId,
-          taskId: widget.task.taskId,
-          proofImageUrl: photoUrl,
-        );
-      }
-    } catch (e) {
-      logger.e('[PhotoDialog] Error updating task photo via service: $e', e);
-      rethrow;
-    }
-  }
-
-  Future<void> _removePhoto() async {
-    try {
-      setState(() => _isUploading = true);
-
-      // Remove photo URL via service
-      await _updateTaskPhoto('');
-
-      setState(() {
-        _currentPhotoUrl = null;
-        _isUploading = false;
-      });
-
-      widget.onPhotoUpdated();
-
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Photo removed successfully!'), backgroundColor: Colors.green));
-        Navigator.of(context).pop(widget.task.copyWith(photoUrl: '', proofImageUrl: ''));
-      }
-    } catch (e) {
-      setState(() => _isUploading = false);
-      logger.e('Error removing photo: $e', e);
-
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error removing photo: $e'), backgroundColor: Colors.red));
-      }
-    }
-  }
-
-  void _showFullScreenPhoto(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder:
-            (context) => _FullScreenPhotoViewer(
-              imageUrl: _fixStorageUrl(_currentPhotoUrl!),
-              taskName: widget.task.taskName ?? 'Task Photo',
-            ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      titlePadding: EdgeInsets.zero,
-      title: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Theme.of(context).primaryColor, Theme.of(context).primaryColor.withOpacity(0.85)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: const BorderRadius.only(topLeft: Radius.circular(12), topRight: Radius.circular(12)),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          children: [
-            const Icon(Icons.camera_alt, color: Colors.white),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Task Photo',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: Colors.white),
-              ),
-            ),
-          ],
-        ),
-      ),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Task: ${widget.task.taskName ?? 'Unknown Task'}', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 16),
-
-            // Current photo display
-            if (_currentPhotoUrl != null && _currentPhotoUrl!.isNotEmpty) ...[
-              GestureDetector(
-                onTap: () => _showFullScreenPhoto(context),
-                child: Container(
-                  constraints: const BoxConstraints(maxHeight: 300, minHeight: 150),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey[300]!),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      _fixStorageUrl(_currentPhotoUrl!),
-                      fit: BoxFit.contain, // Changed from cover to contain to show full image
-                      width: double.infinity,
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return Container(
-                          height: 200,
-                          child: Center(
-                            child: CircularProgressIndicator(
-                              value:
-                                  loadingProgress.expectedTotalBytes != null
-                                      ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
-                                      : null,
-                            ),
-                          ),
-                        );
-                      },
-                      errorBuilder: (context, error, stackTrace) {
-                        final url = _currentPhotoUrl ?? '';
-                        final isLocalEmulator = url.contains('127.0.0.1') || url.contains('localhost:9199');
-                        return Container(
-                          height: 200,
-                          color: Colors.grey[200],
-                          padding: const EdgeInsets.all(12),
-                          child: Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.error, color: Colors.red, size: 32),
-                                const SizedBox(height: 8),
-                                if (isLocalEmulator) ...[
-                                  const Text(
-                                    'Failed to load image from local Storage emulator',
-                                    textAlign: TextAlign.center,
-                                  ),
-                                  const SizedBox(height: 8),
-                                  SelectableText('URL: '),
-                                  SelectableText(url, style: const TextStyle(fontSize: 12)),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Start the Firebase Storage emulator (127.0.0.1:9199) or re-upload the image to your production bucket.',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(color: Colors.grey[700], fontSize: 12),
-                                  ),
-                                ] else ...[
-                                  const Text('Failed to load image', textAlign: TextAlign.center),
-                                ],
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Tap image to view full screen',
-                style: TextStyle(fontSize: 12, color: Colors.grey[600], fontStyle: FontStyle.italic),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-            ] else ...[
-              Container(
-                height: 150,
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey[300]!),
-                ),
-                child: const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.photo_camera_outlined, size: 48, color: Colors.grey),
-                      SizedBox(height: 8),
-                      Text('No photo uploaded', style: TextStyle(color: Colors.grey)),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-
-            // Upload progress indicator
-            if (_isUploading) ...[
-              const LinearProgressIndicator(),
-              const SizedBox(height: 16),
-              const Center(child: Text('Uploading photo...', style: TextStyle(color: Colors.blue))),
-            ],
-          ],
-        ),
-      ),
-      actions: [
-        // Cancel button
-        TextButton(
-          onPressed: _isUploading ? null : () => Navigator.pop(context),
-          style: TextButton.styleFrom(foregroundColor: Colors.grey[800]),
-          child: const Text('Cancel'),
-        ),
-
-        // Remove photo button (only show if photo exists)
-        if (_currentPhotoUrl != null && _currentPhotoUrl!.isNotEmpty)
-          TextButton(
-            onPressed: _isUploading ? null : _removePhoto,
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Remove'),
-          ),
-
-        // Camera button
-        ElevatedButton.icon(
-          onPressed: _isUploading ? null : _takePhoto,
-          icon: const Icon(Icons.camera_alt),
-          label: const Text('Camera'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Theme.of(context).primaryColor,
-            foregroundColor: Colors.white,
-          ),
-        ),
-
-        // Gallery button
-        ElevatedButton.icon(
-          onPressed: _isUploading ? null : _pickAndUploadPhoto,
-          icon: const Icon(Icons.photo_library),
-          label: const Text('Gallery'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Theme.of(context).primaryColor,
-            foregroundColor: Colors.white,
-          ),
-        ),
-      ],
-      actionsPadding: const EdgeInsets.all(16),
-    );
   }
 }
 
@@ -2227,11 +1851,11 @@ class _FullScreenPhotoViewerState extends State<_FullScreenPhotoViewer> {
                   children: [
                     const Icon(Icons.error, color: Colors.red, size: 64),
                     const SizedBox(height: 16),
-                    const Text('Failed to load image', style: TextStyle(color: Colors.white, fontSize: 18)),
+                    const Text('Failed to load image', style: TextStyle(color: Colors.white, fontSize: 15)),
                     const SizedBox(height: 8),
                     Text(
                       'URL: ${widget.imageUrl}',
-                      style: const TextStyle(color: Colors.grey, fontSize: 12),
+                      style: const TextStyle(color: Colors.grey, fontSize: 10),
                       textAlign: TextAlign.center,
                     ),
                   ],
@@ -2246,7 +1870,7 @@ class _FullScreenPhotoViewerState extends State<_FullScreenPhotoViewer> {
         padding: const EdgeInsets.all(16),
         child: Text(
           'Pinch to zoom • Drag to pan • Tap reset to fit screen',
-          style: TextStyle(color: Colors.grey[300], fontSize: 12),
+          style: TextStyle(color: Colors.grey[300], fontSize: 10),
           textAlign: TextAlign.center,
         ),
       ),
@@ -2518,23 +2142,23 @@ class _InstructionCard extends StatelessWidget {
           ),
         ),
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.all(12.0),
           child: Row(
             children: [
-              Icon(Icons.info_outline, color: Colors.blue[700], size: 32),
-              const SizedBox(width: 16),
+              Icon(Icons.info_outline, color: Colors.blue[700], size: 24),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       "How to Use This Page",
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blue[800]),
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blue[800]),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     Text(
                       "This page lets you complete your assigned tasks for today. Select a shift to begin. You can mark tasks as done, upload photos, add notes, or give reasons if a task can't be completed.",
-                      style: TextStyle(fontSize: 14, color: Colors.blue[700], height: 1.4),
+                      style: TextStyle(fontSize: 12, color: Colors.blue[700], height: 1.3),
                     ),
                   ],
                 ),
@@ -2566,23 +2190,23 @@ class _MissedTasksHeaderCard extends StatelessWidget {
           ),
         ),
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.all(12.0),
           child: Row(
             children: [
-              Icon(Icons.warning_amber, color: Colors.red[700], size: 32),
-              const SizedBox(width: 16),
+              Icon(Icons.warning_amber, color: Colors.red[700], size: 24),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       "Missed Tasks from Yesterday",
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red[800]),
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.red[800]),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Text(
                       "Complete these tasks that were not finished yesterday",
-                      style: TextStyle(fontSize: 14, color: Colors.red[700]),
+                      style: TextStyle(fontSize: 12, color: Colors.red[700]),
                     ),
                   ],
                 ),
@@ -2616,23 +2240,23 @@ class _ShiftStatusCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       color: color.withOpacity(0.1),
-      elevation: 2,
-      margin: const EdgeInsets.only(bottom: 16),
+      elevation: 1,
+      margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(12.0),
         child: Row(
           children: [
-            Icon(icon, color: color, size: 32),
-            const SizedBox(width: 16),
+            Icon(icon, color: color, size: 24),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.w500)),
-                  const SizedBox(height: 4),
-                  Text(shiftName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text(title, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w500)),
                   const SizedBox(height: 2),
-                  Text(timeRange, style: TextStyle(fontSize: 14, color: Colors.grey[600])),
+                  Text(shiftName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 1),
+                  Text(timeRange, style: TextStyle(fontSize: 11, color: Colors.grey[600])),
                 ],
               ),
             ),
@@ -2658,10 +2282,10 @@ class _InfoCard extends StatelessWidget {
     return Card(
       color: color.withOpacity(0.1),
       elevation: 0,
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Text(message, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16)),
+        padding: const EdgeInsets.all(8.0),
+        child: Text(message, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13)),
       ),
     );
   }
@@ -2695,12 +2319,15 @@ class _ChecklistCard extends HookConsumerWidget {
     final statusColor = checklist.isCompleted ? Colors.green : Colors.orange;
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 6),
       child: Column(
         children: [
           // Header uses checklist metadata but task list is streamed from subcollection
           ListTile(
-            title: Text(checklist.templateName ?? 'Checklist', style: const TextStyle(fontWeight: FontWeight.bold)),
+            title: Text(
+              checklist.templateName ?? 'Checklist',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            ),
             subtitle: StreamBuilder<List<TaskData>>(
               stream: DailyChecklistService()
                   .streamChecklistTasks(
@@ -2857,31 +2484,31 @@ class _TaskTileFromData extends HookWidget {
                       ? taskData.completedByUserName
                       : taskData.completedBy;
               if (by == null || by.isEmpty) return null;
-              return Text("Completed by $by", style: TextStyle(fontSize: 12, color: Colors.grey[600]));
+              return Text("Completed by $by", style: TextStyle(fontSize: 10, color: Colors.grey[600]));
             }(),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 // Show a photo icon when a photo URL exists; otherwise show the camera required indicator if the task requires a photo
-                if ((taskData.photoUrl ?? '').isNotEmpty)
+                if ((taskData.photoUrl ?? '').isNotEmpty || (taskData.proofImageUrl ?? '').isNotEmpty)
                   IconButton(
-                    icon: Icon(Icons.photo, size: 20, color: Colors.green),
+                    icon: Icon(Icons.photo, size: 16, color: Colors.green),
                     tooltip: 'View photo',
                     onPressed: () => _showPhotoDialog(context),
                   )
                 else if (taskData.photoRequired)
                   IconButton(
-                    icon: Icon(Icons.camera_alt, size: 20, color: Colors.orange),
+                    icon: Icon(Icons.camera_alt, size: 16, color: Colors.orange),
                     onPressed: () => _showPhotoDialog(context),
                   ),
                 if (taskData.notes != null && taskData.notes!.isNotEmpty)
                   IconButton(
-                    icon: Icon(Icons.note, size: 20, color: Colors.blue[600]),
+                    icon: Icon(Icons.note, size: 16, color: Colors.blue[600]),
                     onPressed: () => _showNotesDialog(context),
                   ),
                 if (taskData.notCompletedReason != null && taskData.notCompletedReason!.isNotEmpty)
                   IconButton(
-                    icon: Icon(Icons.warning, size: 20, color: Colors.orange[700]),
+                    icon: Icon(Icons.warning, size: 16, color: Colors.orange[700]),
                     onPressed: () => _showNotCompletedReasonDialog(context),
                   ),
                 PopupMenuButton<String>(
@@ -2962,19 +2589,18 @@ class _TaskTileFromData extends HookWidget {
   }
 
   void _showPhotoDialog(BuildContext context) async {
-    // Show the comprehensive photo dialog that handles both viewing and uploading
-    showDialog(
+    final updated = await NativePhotoService.showPhotoOptions(
       context: context,
-      builder:
-          (context) => _PhotoDialog(
-            task: taskData,
-            checklist: checklist,
-            onPhotoUpdated: () {
-              // Refresh the task data after photo update
-              // This will trigger a rebuild with the updated photo
-            },
-          ),
+      task: taskData,
+      organizationId: checklist.organizationId,
+      locationId: checklist.locationId,
+      checklistId: checklist.id,
     );
+
+    if (updated != null) {
+      // Refresh the task data after photo update
+      onTaskToggled();
+    }
   }
 
   void _showNotesDialog(BuildContext context) async {
@@ -3016,8 +2642,8 @@ class _MissedTasksShiftCard extends HookWidget {
     final progress = totalTasks > 0 ? completedTasks / totalTasks : 0.0;
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
+      margin: const EdgeInsets.only(bottom: 8),
+      elevation: 1,
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
@@ -3035,7 +2661,7 @@ class _MissedTasksShiftCard extends HookWidget {
               onTap: () => isExpanded.value = !isExpanded.value,
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [Colors.red[600]!, Colors.red[500]!],
@@ -3046,26 +2672,26 @@ class _MissedTasksShiftCard extends HookWidget {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.warning, color: Colors.white, size: 20),
-                    const SizedBox(width: 8),
+                    const Icon(Icons.warning, color: Colors.white, size: 16),
+                    const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         section.shiftName.isNotEmpty ? section.shiftName : 'Unknown Shift',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
                         '$totalTasks task${totalTasks != 1 ? 's' : ''}',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 12),
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 10),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                     Icon(isExpanded.value ? Icons.expand_less : Icons.expand_more, color: Colors.white),
                   ],
                 ),
@@ -3073,7 +2699,7 @@ class _MissedTasksShiftCard extends HookWidget {
             ),
             // Progress and expand content
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               child: Column(
                 children: [
                   Row(
@@ -3161,7 +2787,7 @@ class _MissedTaskInteractionTile extends HookWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (section.checklistName != null && section.checklistName!.isNotEmpty)
-              Text('Checklist: ${section.checklistName}', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+              Text('Checklist: ${section.checklistName}', style: TextStyle(fontSize: 10, color: Colors.grey[600])),
             Text(
               task.completed
                   ? ((task.completedByUserName ?? '').isNotEmpty
@@ -3179,7 +2805,7 @@ class _MissedTaskInteractionTile extends HookWidget {
                       children: [
                         Icon(Icons.note, size: 14, color: Colors.blue[600]),
                         const SizedBox(width: 4),
-                        Text('Note', style: TextStyle(fontSize: 12, color: Colors.blue[700])),
+                        Text('Note', style: TextStyle(fontSize: 10, color: Colors.blue[700])),
                       ],
                     ),
                   ),
@@ -3190,7 +2816,7 @@ class _MissedTaskInteractionTile extends HookWidget {
                       children: [
                         Icon(Icons.warning, size: 14, color: Colors.orange[700]),
                         const SizedBox(width: 4),
-                        Text('Reason', style: TextStyle(fontSize: 12, color: Colors.orange[800])),
+                        Text('Reason', style: TextStyle(fontSize: 10, color: Colors.orange[800])),
                       ],
                     ),
                   ),
@@ -3201,14 +2827,17 @@ class _MissedTaskInteractionTile extends HookWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if ((task.photoUrl ?? '').isNotEmpty)
+            if ((task.photoUrl ?? '').isNotEmpty || (task.proofImageUrl ?? '').isNotEmpty)
               IconButton(
-                icon: Icon(Icons.photo, size: 18, color: Colors.green),
+                icon: Icon(Icons.photo, size: 14, color: Colors.green),
                 tooltip: 'View photo',
                 onPressed: () async {
-                  final updated = await showDialog<TaskData?>(
+                  final updated = await NativePhotoService.showPhotoOptions(
                     context: context,
-                    builder: (_) => _PhotoDialog(task: task, checklist: null, onPhotoUpdated: () {}),
+                    task: task,
+                    organizationId: task.organizationId,
+                    locationId: task.locationId,
+                    checklistId: task.checklistId,
                   );
                   if (updated != null) {
                     onUpdate(
@@ -3228,22 +2857,22 @@ class _MissedTaskInteractionTile extends HookWidget {
                 },
               ),
             PopupMenuButton<String>(
-              icon: Icon(Icons.more_vert, size: 18, color: Colors.grey[600]),
+              icon: Icon(Icons.more_vert, size: 14, color: Colors.grey[600]),
               onSelected: (value) async => _handleMenuAction(context, value),
               itemBuilder:
                   (context) => [
                     const PopupMenuItem(
                       value: 'photo',
-                      child: Row(children: [Icon(Icons.camera_alt, size: 18), SizedBox(width: 8), Text('Photo')]),
+                      child: Row(children: [Icon(Icons.camera_alt, size: 14), SizedBox(width: 6), Text('Photo')]),
                     ),
                     const PopupMenuItem(
                       value: 'notes',
-                      child: Row(children: [Icon(Icons.note, size: 18), SizedBox(width: 8), Text('Notes')]),
+                      child: Row(children: [Icon(Icons.note, size: 14), SizedBox(width: 6), Text('Notes')]),
                     ),
                     const PopupMenuItem(
                       value: 'not_completed',
                       child: Row(
-                        children: [Icon(Icons.warning, size: 18), SizedBox(width: 8), Text('Cannot Complete')],
+                        children: [Icon(Icons.warning, size: 14), SizedBox(width: 6), Text('Cannot Complete')],
                       ),
                     ),
                     if ((task.notes ?? '').isNotEmpty)
@@ -3363,9 +2992,12 @@ class _MissedTaskInteractionTile extends HookWidget {
   Future<void> _handleMenuAction(BuildContext context, String value) async {
     switch (value) {
       case 'photo':
-        final updated = await showDialog<TaskData?>(
+        final updated = await NativePhotoService.showPhotoOptions(
           context: context,
-          builder: (_) => _PhotoDialog(task: task, checklist: null, onPhotoUpdated: () {}),
+          task: task,
+          organizationId: task.organizationId,
+          locationId: task.locationId,
+          checklistId: task.checklistId,
         );
         if (updated != null) {
           onUpdate(section);

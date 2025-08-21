@@ -38,12 +38,12 @@ class BottomNavBar extends ConsumerWidget {
     final List<int> tabMap = [];
 
     // Always add User tab
-    items.add(const BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: "Today's Tasks"));
+    items.add(const BottomNavigationBarItem(icon: Icon(Icons.assignment), label: "Today's Tasks"));
     tabMap.add(0);
 
     // Add Manager tab for role 1 and 2
     if (role >= 1) {
-      items.add(const BottomNavigationBarItem(icon: Icon(Icons.dashboard_customize), label: "Manager Dashboard"));
+      items.add(const BottomNavigationBarItem(icon: Icon(Icons.dashboard_customize), label: "Dashboard"));
       tabMap.add(1);
     }
 

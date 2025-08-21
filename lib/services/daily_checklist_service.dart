@@ -2027,7 +2027,20 @@ class DailyChecklistService {
           final data = doc.data();
           final docDate = data['date'] as String?;
           final shiftId = data['shiftId'] as String?;
-          final tasksList = _extractTasksList(data);
+
+          // Combine tasks from both document array and subcollection
+          final List<Map<String, dynamic>> tasksList = [];
+          tasksList.addAll(_extractTasksList(data));
+          try {
+            final subSnap = await doc.reference.collection('tasks').get();
+            if (subSnap.docs.isNotEmpty) {
+              final subTasks = subSnap.docs.map((d) => d.data()).toList();
+              tasksList.addAll(subTasks);
+            }
+          } catch (e) {
+            debugPrint('[DailyChecklistService] Error reading tasks subcollection for ${doc.id}: $e');
+          }
+
           debugPrint(
             '[DailyChecklistService] Processing checklist ${doc.id} for date $docDate, shift $shiftId with ${tasksList.length} tasks',
           );
@@ -2074,7 +2087,20 @@ class DailyChecklistService {
           final snaps = await query.get();
           for (final doc in snaps.docs) {
             final data = doc.data();
-            final tasksList = _extractTasksList(data);
+
+            // Combine tasks from both document array and subcollection
+            final List<Map<String, dynamic>> tasksList = [];
+            tasksList.addAll(_extractTasksList(data));
+            try {
+              final subSnap = await doc.reference.collection('tasks').get();
+              if (subSnap.docs.isNotEmpty) {
+                final subTasks = subSnap.docs.map((d) => d.data()).toList();
+                tasksList.addAll(subTasks);
+              }
+            } catch (e) {
+              debugPrint('[DailyChecklistService] Error reading tasks subcollection for ${doc.id}: $e');
+            }
+
             for (final taskData in tasksList) {
               try {
                 final completed = taskData['completed'] as bool? ?? taskData['isCompleted'] as bool? ?? false;
@@ -2520,7 +2546,19 @@ class DailyChecklistService {
 
           for (final checklistDoc in checklistsSnap.docs) {
             final checklistData = checklistDoc.data();
-            final tasksList = List<Map<String, dynamic>>.from(checklistData['tasks'] ?? []);
+
+            // Combine tasks from both document array and subcollection
+            final List<Map<String, dynamic>> tasksList = [];
+            tasksList.addAll(List<Map<String, dynamic>>.from(checklistData['tasks'] ?? []));
+            try {
+              final subSnap = await checklistDoc.reference.collection('tasks').get();
+              if (subSnap.docs.isNotEmpty) {
+                final subTasks = subSnap.docs.map((d) => d.data()).toList();
+                tasksList.addAll(subTasks);
+              }
+            } catch (e) {
+              debugPrint('[DailyChecklistService] Error reading tasks subcollection for ${checklistDoc.id}: $e');
+            }
 
             for (final taskData in tasksList) {
               try {
@@ -2560,7 +2598,19 @@ class DailyChecklistService {
 
             for (final checklistDoc in checklistsSnap.docs) {
               final checklistData = checklistDoc.data();
-              final tasksList = List<Map<String, dynamic>>.from(checklistData['tasks'] ?? []);
+
+              // Combine tasks from both document array and subcollection
+              final List<Map<String, dynamic>> tasksList = [];
+              tasksList.addAll(List<Map<String, dynamic>>.from(checklistData['tasks'] ?? []));
+              try {
+                final subSnap = await checklistDoc.reference.collection('tasks').get();
+                if (subSnap.docs.isNotEmpty) {
+                  final subTasks = subSnap.docs.map((d) => d.data()).toList();
+                  tasksList.addAll(subTasks);
+                }
+              } catch (e) {
+                debugPrint('[DailyChecklistService] Error reading tasks subcollection for ${checklistDoc.id}: $e');
+              }
 
               for (final taskData in tasksList) {
                 try {

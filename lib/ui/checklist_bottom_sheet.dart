@@ -458,7 +458,7 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
               });
             },
           );
-        }).toList(),
+        }),
         if (_selectedLocationIds.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 12),
@@ -488,6 +488,9 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
   }
 
   Widget _buildTasksStep() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isNarrowScreen = screenWidth < 600; // Mobile threshold
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -549,74 +552,162 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
                   margin: const EdgeInsets.symmetric(vertical: 6),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(BottomSheetStyles.controlRadius)),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        // Drag handle (left)
-                        ReorderableDragStartListener(
-                          index: index,
-                          child: const Padding(
-                            padding: EdgeInsets.only(right: 12),
-                            child: Icon(Icons.drag_handle, color: Colors.grey),
-                          ),
-                        ),
-                        // Task input
-                        Expanded(
-                          child: TextFormField(
-                            controller: _taskControllers[index],
-                            decoration: BottomSheetStyles.inputDecoration(label: 'Task name', dense: true),
-                            onChanged: (value) => task['name'] = value,
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        // Photo required checkbox with improved label (icon + small text)
-                        Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: Icon(
-                                task['photoRequired'] == true ? Icons.camera_alt : Icons.camera_alt_outlined,
-                                color: task['photoRequired'] == true ? BottomSheetStyles.accentTeal : Colors.grey,
-                              ),
-                              tooltip: 'Photo required',
-                              onPressed: () {
-                                setState(() {
-                                  task['photoRequired'] = !(task['photoRequired'] == true);
-                                });
-                              },
-                            ),
-                            const SizedBox(height: 2),
-                            SizedBox(
-                              width: 64,
-                              child: Text(
-                                'Photo',
-                                style: const TextStyle(fontSize: 10),
-                                textAlign: TextAlign.center,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                        // Delete button (right)
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline, color: Colors.red),
-                          tooltip: 'Delete task',
-                          onPressed: () {
-                            setState(() {
-                              _tasks.removeAt(index);
-                              _syncTaskControllersWithTasks();
-                            });
-                          },
-                        ),
-                      ],
-                    ),
+                    padding: const EdgeInsets.all(12),
+                    child: isNarrowScreen ? _buildMobileTaskLayout(task, index) : _buildDesktopTaskLayout(task, index),
                   ),
                 );
               },
             ),
           ),
+      ],
+    );
+  }
+
+  Widget _buildMobileTaskLayout(Map<String, dynamic> task, int index) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Top row: drag handle and delete button
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            ReorderableDragStartListener(
+              index: index,
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                child: const Icon(Icons.drag_handle, color: Colors.grey, size: 20),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+              tooltip: 'Delete task',
+              onPressed: () {
+                setState(() {
+                  _tasks.removeAt(index);
+                  _syncTaskControllersWithTasks();
+                });
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        // Task input - full width
+        TextFormField(
+          controller: _taskControllers[index],
+          decoration: BottomSheetStyles.inputDecoration(
+            label: 'Task name',
+            dense: false, // Not dense on mobile for better touch targets
+          ),
+          onChanged: (value) => task['name'] = value,
+          style: const TextStyle(fontSize: 16), // Larger font for mobile
+        ),
+        const SizedBox(height: 12),
+        // Photo required - centered with larger touch target
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  task['photoRequired'] = !(task['photoRequired'] == true);
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color:
+                      task['photoRequired'] == true
+                          ? BottomSheetStyles.accentTeal.withOpacity(0.1)
+                          : Colors.grey.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: task['photoRequired'] == true ? BottomSheetStyles.accentTeal : Colors.grey),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      task['photoRequired'] == true ? Icons.camera_alt : Icons.camera_alt_outlined,
+                      color: task['photoRequired'] == true ? BottomSheetStyles.accentTeal : Colors.grey,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Photo Required',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: task['photoRequired'] == true ? BottomSheetStyles.accentTeal : Colors.grey[700],
+                        fontWeight: task['photoRequired'] == true ? FontWeight.w500 : FontWeight.normal,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDesktopTaskLayout(Map<String, dynamic> task, int index) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // Drag handle (left)
+        ReorderableDragStartListener(
+          index: index,
+          child: const Padding(padding: EdgeInsets.only(right: 12), child: Icon(Icons.drag_handle, color: Colors.grey)),
+        ),
+        // Task input - takes most of the available space
+        Expanded(
+          flex: 3,
+          child: TextFormField(
+            controller: _taskControllers[index],
+            decoration: BottomSheetStyles.inputDecoration(label: 'Task name', dense: true),
+            onChanged: (value) => task['name'] = value,
+            style: const TextStyle(fontSize: 14),
+          ),
+        ),
+        const SizedBox(width: 12),
+        // Photo required checkbox with improved label (icon + small text)
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: Icon(
+                task['photoRequired'] == true ? Icons.camera_alt : Icons.camera_alt_outlined,
+                color: task['photoRequired'] == true ? BottomSheetStyles.accentTeal : Colors.grey,
+              ),
+              tooltip: 'Photo required',
+              onPressed: () {
+                setState(() {
+                  task['photoRequired'] = !(task['photoRequired'] == true);
+                });
+              },
+            ),
+            const SizedBox(height: 2),
+            SizedBox(
+              width: 64,
+              child: Text(
+                'Photo',
+                style: const TextStyle(fontSize: 10),
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        // Delete button (right)
+        IconButton(
+          icon: const Icon(Icons.delete_outline, color: Colors.red),
+          tooltip: 'Delete task',
+          onPressed: () {
+            setState(() {
+              _tasks.removeAt(index);
+              _syncTaskControllersWithTasks();
+            });
+          },
+        ),
       ],
     );
   }

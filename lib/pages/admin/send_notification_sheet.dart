@@ -52,12 +52,12 @@ class _SendNotificationSheetState extends ConsumerState<SendNotificationSheet> {
           groupsSnap.docs.map((d) => {'id': d.id, 'name': (d.data()['name'] as String?) ?? 'Unnamed Group'}).toList();
       final locations =
           locSnap.docs
-              .map((d) => {
-                'id': d.id, 
-                'name': (d.data()['locationName'] as String?) ?? 
-                        (d.data()['name'] as String?) ?? 
-                        'Unnamed Location'
-              })
+              .map(
+                (d) => {
+                  'id': d.id,
+                  'name': (d.data()['locationName'] as String?) ?? (d.data()['name'] as String?) ?? 'Unnamed Location',
+                },
+              )
               .where((l) => l['name']! != 'Unnamed Location' && l['name']!.isNotEmpty)
               .toList();
 
@@ -85,7 +85,10 @@ class _SendNotificationSheetState extends ConsumerState<SendNotificationSheet> {
       case 'Group':
         if (_selectedGroup != null) {
           final groupName =
-              _groups.firstWhere((g) => g['id'] == _selectedGroup, orElse: () => {'name': _selectedGroup!})['name'];
+              _groups.firstWhere(
+                (g) => g['id'] == _selectedGroup,
+                orElse: () => <String, String>{'name': _selectedGroup!},
+              )['name'];
           t = "Message for '$groupName'";
         } else {
           t = 'Group Message';

@@ -1,17 +1,18 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
+import 'dart:async';
+import 'dart:math';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
+import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
-import 'package:intl/intl.dart';
 import 'package:hands_app/services/daily_checklist_service.dart';
 import 'package:hands_app/services/organization_setup_service.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
-import 'package:hands_app/utils/location_helper.dart';
-import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/widgets/organization_setup_widget.dart';
 
 class ManagerDashboardPage extends StatefulWidget {
@@ -23,63 +24,55 @@ class ManagerDashboardPage extends StatefulWidget {
 }
 
 class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
-  int? userRole; // Changed from hardcoded 1 to nullable int
-  bool _isLoadingUserRole = true; // Add loading state for user role
-  final DateFormat _dateFormat = DateFormat('yyyy-MM-dd');
-  late final String _todayKey;
-
-  // Organization setup state
+  // User / setup
+  int? userRole;
+  bool _isLoadingUserRole = true;
   final OrganizationSetupService _setupService = OrganizationSetupService();
   bool _metricsEnabled = false;
   bool _isLoadingSetupStatus = true;
 
-  // Location selection at the top level
+  // Date helpers
+  final DateFormat _dateFormat = DateFormat('yyyy-MM-dd');
+  late final String _todayKey;
+
+  // Locations
   String? _selectedLocationId;
   String? _selectedLocationName;
   List<Map<String, dynamic>> _availableLocations = [];
   bool _isLoadingLocations = true;
 
-  // Missed tasks state
+  // Missed yesterday
   List<Map<String, dynamic>> _yesterdayMissed = [];
   bool _loadingYesterday = true;
-  String? _errorYesterday;
 
-  // Live shifts state
+  // 7d trend for missed
+  List<int> _missedTrend7d = List<int>.filled(7, 0, growable: false);
+
+  // Live shifts
   List<Map<String, dynamic>> _liveShifts = [];
   bool _loadingLive = true;
-  String? _selectedRoleFilter = 'all';
-  List<String> _availableRoles = ['all'];
+  String? _selectedStatusFilter = 'live'; // Changed from role to status filter
+  Timer? _refreshTimer;
 
-  // Frequent missed tasks state
+  // Historic insights
   List<Map<String, dynamic>> _frequentMisses30d = [];
   bool _loadingFrequent = true;
+  List<Map<String, dynamic>> _poorShifts30d = [];
+  bool _loadingPoorShifts = true;
 
-  // Audit filters (removed location filter)
-  String _searchTerm = '';
-  String _selectedShift = 'all';
-  // Checklist template filter
-  String _selectedChecklist = 'all';
-  String _selectedCompletion = 'all'; // all, completed, incomplete
+  // History filters
   DateTimeRange? _selectedDateRange;
 
   List<Map<String, String>> _shifts = [];
   List<Map<String, String>> _checklists = [];
-
-  // Pagination for audit results
-  int _auditItemsToShow = 10;
-  static const int _auditItemsPerPage = 10;
-
-  // Auto-refresh timer for live shifts
-  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _todayKey = _dateFormat.format(DateTime.now());
     _fetchUserRole();
-    _checkSetupStatus(); // Check if metrics are enabled before loading data
-    _loadLocations(); // This will call _loadAll() after location is selected
-    // Start auto-refresh timer for live shifts
+    _checkSetupStatus();
+    _loadLocations();
     _startAutoRefresh();
   }
 
@@ -89,54 +82,37 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
     super.dispose();
   }
 
-  void _startAutoRefresh() {
-    // Refresh live shifts every 2 minutes
-    _refreshTimer = Timer.periodic(const Duration(minutes: 2), (timer) async {
-      if (mounted && _selectedLocationId != null) {
-        logger.d('[ManagerDashboard] Auto-refreshing live shifts...');
-        await _loadLiveShifts();
-      }
-    });
-  }
+  // ===== Data Loading =====
 
   Future<void> _fetchUserRole() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      setState(() {
-        _isLoadingUserRole = false;
-      });
+      setState(() => _isLoadingUserRole = false);
       return;
     }
     final userDoc = await FirestoreEnforcer.instance.collection('users').doc(user.uid).get();
-    if (userDoc.exists) {
-      final data = userDoc.data()!;
-      setState(() {
-        userRole = data['userRole'] ?? 1;
-        _isLoadingUserRole = false;
-      });
-    } else {
-      setState(() {
-        _isLoadingUserRole = false;
-      });
-    }
+    if (!mounted) return;
+    setState(() {
+      userRole = userDoc.data()?['userRole'] ?? 1;
+      _isLoadingUserRole = false;
+    });
   }
 
   Future<void> _checkSetupStatus() async {
     setState(() => _isLoadingSetupStatus = true);
-
     try {
       final isEnabled = await _setupService.isMetricsTrackingEnabled(widget.organizationId);
+      if (!mounted) return;
       setState(() {
         _metricsEnabled = isEnabled;
         _isLoadingSetupStatus = false;
       });
-
-      // Only auto-generate daily checklists and load metrics if enabled
       if (_metricsEnabled) {
         await _ensureDailyChecklistsExist();
       }
     } catch (e) {
       logger.e('[ManagerDashboard] Error checking setup status: $e');
+      if (!mounted) return;
       setState(() {
         _metricsEnabled = false;
         _isLoadingSetupStatus = false;
@@ -145,44 +121,18 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
   }
 
   Future<void> _ensureDailyChecklistsExist() async {
-    // Only generate checklists if metrics tracking is enabled
-    if (!_metricsEnabled) {
-      logger.d('[ManagerDashboard] Skipping daily checklist generation - metrics not enabled');
-      return;
-    }
-
     try {
       final service = DailyChecklistService();
-      await service.ensureDailyChecklistsExist(widget.organizationId);
-      logger.d('Daily checklist generation check completed for organization ${widget.organizationId}');
+      await service.generateAllDailyChecklistsForDate(organizationId: widget.organizationId, date: _todayKey);
     } catch (e) {
-      logger.e('Error ensuring daily checklists exist: $e');
-    }
-  }
-
-  /// Called when metrics tracking is enabled through the setup widget
-  Future<void> _onMetricsEnabled() async {
-    logger.d('[ManagerDashboard] Metrics enabled, refreshing dashboard');
-
-    // Update metrics enabled state
-    setState(() => _metricsEnabled = true);
-
-    // Generate daily checklists now that metrics are enabled
-    await _ensureDailyChecklistsExist();
-
-    // Load all dashboard data
-    if (_selectedLocationId != null) {
-      await _loadAll();
+      logger.w('[ManagerDashboard] generateAllDailyChecklistsForDate failed: $e');
     }
   }
 
   Future<void> _loadLocations() async {
-    setState(() {
-      _isLoadingLocations = true;
-    });
-
     try {
-      final locationsSnap =
+      // Get locations directly from Firestore
+      final locationsQuery =
           await FirestoreEnforcer.instance
               .collection('organizations')
               .doc(widget.organizationId)
@@ -190,56 +140,45 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
               .get();
 
       final locations =
-          locationsSnap.docs.map((doc) {
+          locationsQuery.docs.map((doc) {
             final data = doc.data();
             return {
               'id': doc.id,
-              'name': data['locationName'] ?? 'Unnamed Location',
-              'isPrimary': data['isPrimary'] ?? false,
+              'name': data['locationName'] as String? ?? 'Unknown Location',
+              'isPrimary': data['isPrimary'] as bool? ?? false,
             };
           }).toList();
 
-      // Sort so primary location comes first
-      locations.sort((a, b) {
-        if (a['isPrimary'] == true && b['isPrimary'] != true) return -1;
-        if (b['isPrimary'] == true && a['isPrimary'] != true) return 1;
-        return (a['name'] as String).compareTo(b['name'] as String);
-      });
-
+      if (!mounted) return;
       setState(() {
         _availableLocations = locations;
-
-        // Auto-select primary location or first location if available
         if (locations.isNotEmpty) {
-          final primaryLocation = locations.firstWhere(
-            (loc) => loc['isPrimary'] == true,
-            orElse: () => locations.first,
-          );
-          _selectedLocationId = primaryLocation['id'];
-          _selectedLocationName = primaryLocation['name'];
+          final primary = locations.firstWhere((l) => l['isPrimary'] == true, orElse: () => locations.first);
+          // Only auto-select the primary location if there is no current valid selection
+          final currentIsValid = _selectedLocationId != null && locations.any((l) => l['id'] == _selectedLocationId);
+          if (!currentIsValid) {
+            _selectedLocationId = primary['id'] as String?;
+            _selectedLocationName = primary['name'] as String?;
+          }
         }
       });
-
-      // Load filter options after location is selected
       if (_selectedLocationId != null) {
         await _loadFilterOptions();
-        // Load all dashboard data after location and filters are ready
         await _loadAll();
       }
     } catch (e) {
       logger.e('Error loading locations: $e', e);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load locations: $e')));
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load locations: $e')));
     } finally {
-      setState(() {
-        _isLoadingLocations = false;
-      });
+      if (mounted) {
+        setState(() => _isLoadingLocations = false);
+      }
     }
   }
 
   Future<void> _loadFilterOptions() async {
-    // Load shifts for the selected location
+    // Shifts (for filters)
     final shiftsSnap =
         await FirestoreEnforcer.instance
             .collection('organizations')
@@ -248,7 +187,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
             .where('locationIds', arrayContains: _selectedLocationId)
             .get();
 
-    // Load checklist templates
+    // Checklist templates (for filters)
     final templatesSnap =
         await FirestoreEnforcer.instance
             .collection('organizations')
@@ -256,178 +195,259 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
             .collection('checklist_templates')
             .get();
 
+    if (!mounted) return;
     setState(() {
       _shifts =
           shiftsSnap.docs
-              .map((d) => {'id': d.id, 'name': d.data()['shiftName']?.toString() ?? 'Unnamed Shift'})
+              .map((d) => {'id': d.id, 'name': (d.data()['shiftName'] ?? 'Unnamed Shift').toString()})
               .toList();
-
       _checklists =
           templatesSnap.docs
-              .map((d) => {'id': d.id, 'name': d.data()['name']?.toString() ?? 'Unnamed Checklist'})
+              .map((d) => {'id': d.id, 'name': (d.data()['name'] ?? 'Unnamed Checklist').toString()})
               .toList();
     });
   }
 
-  // Data loading methods for missed tasks insights
   Future<void> _loadAll() async {
-    await Future.wait([_loadYesterdayMissed(), _loadLiveShifts(), _loadFrequentMisses30d()]);
+    await Future.wait([
+      _loadYesterdayMissed(),
+      _loadMissedTrend7d(),
+      _loadLiveShifts(),
+      _loadFrequentMisses30d(),
+      _loadPoorShifts30d(),
+    ]);
   }
 
   Future<void> _loadYesterdayMissed() async {
     setState(() {
       _loadingYesterday = true;
-      _errorYesterday = null;
     });
-
     try {
       final service = DailyChecklistService();
       final today = DateTime.now();
-      // Ensure TODAY's checklists exist so that carry-forward from yesterday -> today has run
-      await service.generateAllDailyChecklistsForDate(
-        organizationId: widget.organizationId,
-        date: _dateFormat.format(today),
+
+      logger.d(
+        '[ManagerDashboard] Starting loadYesterdayMissed - today: $today, selectedLocation: $_selectedLocationId',
       );
-      // Read "missed yesterday" from today's carry-forward tasks that originated yesterday
-      _yesterdayMissed = await service.getYesterdayMissedFromTodayCarryForward(
+
+      // Use the same method as user dashboard to get real-time data from subcollections
+      final sections = await service.loadMissedTasksForToday(
         organizationId: widget.organizationId,
-        today: today,
+        targetDate: today,
         locationId: _selectedLocationId,
       );
-      logger.d('[ManagerDashboard] Loaded ${_yesterdayMissed.length} carry-forward groups from yesterday');
-    } catch (e, st) {
-      logger.e('[ManagerDashboard] getMissedTasksForDate error: $e\n$st');
-      _errorYesterday = e.toString();
-    } finally {
-      if (mounted) {
-        setState(() => _loadingYesterday = false);
+
+      logger.d('[ManagerDashboard] loadMissedTasksForToday returned ${sections.length} sections');
+
+      // Convert sections to the format expected by the manager dashboard
+      final Map<String, Map<String, dynamic>> groupedTasks = {};
+      for (final section in sections) {
+        logger.d('[ManagerDashboard] Processing section: ${section.shiftName} with ${section.tasks.length} tasks');
+        for (final task in section.tasks) {
+          final taskName = task.taskName;
+          final shiftName = section.shiftName;
+          final key = '${taskName}_${section.shiftId}';
+
+          logger.d('[ManagerDashboard] Processing task: $taskName, completed: ${task.completed}');
+
+          final group = groupedTasks.putIfAbsent(
+            key,
+            () => {
+              'taskName': taskName,
+              'shiftId': section.shiftId,
+              'shiftName': shiftName,
+              'locationId': section.locationId,
+              'count': 0,
+              'completedToday': false,
+            },
+          );
+
+          group['count'] = (group['count'] as int) + 1;
+          if (task.completed) {
+            group['completedToday'] = true;
+          }
+        }
       }
+
+      _yesterdayMissed = groupedTasks.values.toList();
+      logger.d(
+        '[ManagerDashboard] Final result: ${_yesterdayMissed.length} carry-forward groups from yesterday (via subcollections)',
+      );
+      logger.d(
+        '[ManagerDashboard] Groups: ${_yesterdayMissed.map((g) => '${g['taskName']} (${g['shiftName']}): ${g['count']}').join(', ')}',
+      );
+    } catch (e, st) {
+      logger.e('[ManagerDashboard] loadMissedTasksForToday error: $e\n$st');
+    } finally {
+      if (!mounted) return;
+      setState(() => _loadingYesterday = false);
+    }
+  }
+
+  Future<void> _loadMissedTrend7d() async {
+    try {
+      logger.d('[ManagerDashboard] Loading 7-day missed tasks trend...');
+      final now = DateTime.now();
+      final futures = <Future<int>>[];
+      for (int i = 6; i >= 0; i--) {
+        final day = now.subtract(Duration(days: i));
+        futures.add(_countMissedForDate(day));
+      }
+      final results = await Future.wait(futures);
+      if (!mounted) return;
+      setState(() => _missedTrend7d = results);
+      logger.d(
+        '[ManagerDashboard] 7-day trend loaded: $results (total: ${results.fold(0, (sum, val) => sum + val)} missed tasks)',
+      );
+    } catch (e) {
+      logger.w('[ManagerDashboard] _loadMissedTrend7d failed: $e');
+    }
+  }
+
+  Future<int> _countMissedForDate(DateTime day) async {
+    try {
+      final service = DailyChecklistService();
+
+      // Use the same subcollection method for consistency
+      final sections = await service.loadMissedTasksForToday(
+        organizationId: widget.organizationId,
+        targetDate: day,
+        locationId: _selectedLocationId,
+      );
+
+      // Count total missed tasks across all sections
+      int totalMissed = 0;
+      for (final section in sections) {
+        totalMissed += section.tasks.length;
+      }
+
+      logger.d('[ManagerDashboard] Counted $totalMissed missed tasks for ${_dateFormat.format(day)}');
+      return totalMissed;
+    } catch (e) {
+      logger.w('[ManagerDashboard] _countMissedForDate failed for ${_dateFormat.format(day)}: $e');
+      return 0;
     }
   }
 
   Future<void> _loadLiveShifts() async {
     setState(() => _loadingLive = true);
-
     try {
-      logger.d('[ManagerDashboard] Starting _loadLiveShifts for location: $_selectedLocationId');
-
-      if (_selectedLocationId == null) {
-        logger.d('[ManagerDashboard] No location selected, clearing shifts');
-        setState(() {
-          _liveShifts = [];
-          _availableRoles = ['all'];
-        });
-        return;
-      }
-
-      final today = DateTime.now();
-      final todayStr = DateFormat('yyyy-MM-dd').format(today);
-      logger.d('[ManagerDashboard] Loading shifts for date: $todayStr');
-
-      // Get all shifts for the selected location
-      logger.d('[ManagerDashboard] Querying shifts with locationIds containing: $_selectedLocationId');
-      var shiftsQuery =
+      logger.i('[ManagerDashboard][DEBUG] Entering _loadLiveShifts');
+      final todayStr = _todayKey;
+      logger.i('[ManagerDashboard][DEBUG] Today string: $todayStr, Selected Location: $_selectedLocationId');
+      final shiftsSnap =
           await FirestoreEnforcer.instance
               .collection('organizations')
               .doc(widget.organizationId)
               .collection('shifts')
               .where('locationIds', arrayContains: _selectedLocationId)
               .get();
+      logger.i('[ManagerDashboard][DEBUG] Found ${shiftsSnap.docs.length} shifts for location');
 
-      logger.d('[ManagerDashboard] Found ${shiftsQuery.docs.length} shifts for location $_selectedLocationId');
+      final List<Map<String, dynamic>> todaysShifts = [];
 
-      List<QueryDocumentSnapshot> shiftDocs = shiftsQuery.docs;
+      for (final shiftDoc in shiftsSnap.docs) {
+        final shiftData = shiftDoc.data();
+        final shiftName = (shiftData['shiftName'] ?? 'Unnamed Shift').toString();
+        final startTime = (shiftData['startTime'] ?? '').toString();
+        final endTime = (shiftData['endTime'] ?? '').toString();
+        final role = (shiftData['jobType'] ?? shiftData['role'] ?? '').toString();
+        logger.i(
+          '[ManagerDashboard][DEBUG] Processing shift: $shiftName ($role) $startTime-$endTime, id=${shiftDoc.id}',
+        );
 
-      // If no shifts found with locationIds, try alternative query
-      if (shiftDocs.isEmpty) {
-        logger.d('[ManagerDashboard] No shifts found with locationIds, trying alternative query...');
-        final alternativeQuery =
+        // Compute completion for today
+        int totalTasks = 0;
+        int completedTasks = 0;
+        double completionPct = 0;
+
+        // If no location selected, skip loading checklists for this shift
+        if (_selectedLocationId == null || _selectedLocationId!.isEmpty) {
+          logger.i(
+            '[ManagerDashboard][DEBUG] _loadLiveShifts skipping shift ${shiftDoc.id} because no location selected',
+          );
+          continue;
+        }
+
+        // Query daily_checklists under the selected location (new schema)
+        var checklistsSnap =
             await FirestoreEnforcer.instance
                 .collection('organizations')
                 .doc(widget.organizationId)
-                .collection('shifts')
+                .collection('locations')
+                .doc(_selectedLocationId)
+                .collection('daily_checklists')
+                .where('date', isEqualTo: todayStr)
+                .where('shiftId', isEqualTo: shiftDoc.id)
+                .limit(50)
                 .get();
+        logger.i(
+          '[ManagerDashboard][DEBUG] Found ${checklistsSnap.docs.length} daily_checklists (location-scoped) for shift $shiftName',
+        );
 
-        logger.d('[ManagerDashboard] Alternative query found ${alternativeQuery.docs.length} total shifts');
-
-        // Filter shifts that match the location (handle legacy single-id or list)
-        shiftDocs =
-            alternativeQuery.docs.where((doc) {
-              final data = doc.data();
-              final docLocationIds = coerceToLocationIds(data['locationIds'] ?? data['locationId']);
-              return docLocationIds.contains(_selectedLocationId);
-            }).toList();
-
-        logger.d('[ManagerDashboard] Filtered to ${shiftDocs.length} shifts for location $_selectedLocationId');
-      }
-
-      List<Map<String, dynamic>> todaysShifts = [];
-
-      for (final shiftDoc in shiftDocs) {
-        final shiftData = shiftDoc.data() as Map<String, dynamic>;
-        final shiftName = shiftData['shiftName'] ?? 'Unknown Shift';
-        final startTime = shiftData['startTime'] ?? '';
-        final endTime = shiftData['endTime'] ?? '';
-        final role = shiftData['role'] ?? '';
-
-        logger.d('[ManagerDashboard] Processing shift: $shiftName (${shiftDoc.id}) - $startTime to $endTime');
-
-        // Query per-task documents for this shift/date/location (subcollection model)
-        double completionPct = 0.0;
-        int totalTasks = 0;
-        int completedTasks = 0;
-
-        try {
-          final tasksQuery = FirestoreEnforcer.instance
-              .collectionGroup('tasks')
-              .where('organizationId', isEqualTo: widget.organizationId)
-              .where('locationId', isEqualTo: _selectedLocationId)
-              .where('dateString', isEqualTo: todayStr)
-              .where('shiftId', isEqualTo: shiftDoc.id)
-              .limit(2000);
-
-          final snap = await tasksQuery.get();
-          final taskDocs = snap.docs;
-          totalTasks = taskDocs.length;
-          for (final d in taskDocs) {
-            final data = d.data();
-            final completed = data['completed'] == true || data['isCompleted'] == true || data['status'] == 'completed';
-            if (completed) completedTasks += 1;
-          }
-          if (totalTasks == 0) {
-            // Fallback: compute from checklist embedded arrays
-            final checklistsSnap =
+        // If no checklists found under the location-scoped path, try legacy org-root collection
+        if (checklistsSnap.docs.isEmpty) {
+          logger.i(
+            '[ManagerDashboard][DEBUG] No location-scoped daily_checklists found for shift $shiftName; trying org-scoped fallback',
+          );
+          try {
+            final legacySnap =
                 await FirestoreEnforcer.instance
                     .collection('organizations')
                     .doc(widget.organizationId)
-                    .collection('locations')
-                    .doc(_selectedLocationId!)
                     .collection('daily_checklists')
                     .where('date', isEqualTo: todayStr)
                     .where('shiftId', isEqualTo: shiftDoc.id)
+                    .where('locationId', isEqualTo: _selectedLocationId)
                     .limit(50)
                     .get();
-            for (final cl in checklistsSnap.docs) {
-              final data = cl.data();
-              final tasks = List<Map<String, dynamic>>.from(data['tasks'] ?? const []);
-              totalTasks += tasks.length;
-              for (final t in tasks) {
-                final completed = t['completed'] == true || t['isCompleted'] == true || t['status'] == 'completed';
-                if (completed) completedTasks += 1;
-              }
+            logger.i(
+              '[ManagerDashboard][DEBUG] Org-scoped fallback returned ${legacySnap.docs.length} docs for shift $shiftName',
+            );
+            if (legacySnap.docs.isNotEmpty) {
+              checklistsSnap = legacySnap; // replace local variable with fallback
             }
+          } catch (e) {
+            logger.w('[ManagerDashboard][DEBUG] Org-scoped fallback failed for shift $shiftName: $e');
           }
-          if (totalTasks > 0) completionPct = completedTasks / totalTasks;
-          logger.d(
-            '[ManagerDashboard] Shift $shiftName: $completedTasks/$totalTasks tasks (${(completionPct * 100).round()}%)',
-          );
-        } catch (e) {
-          logger.e('[ManagerDashboard] Error computing task stats for shift ${shiftDoc.id}: $e', e);
         }
 
-        // Calculate time status
-        String timeStatus = _calculateTimeStatus(startTime, endTime);
-        logger.d('[ManagerDashboard] Time status for $shiftName: $timeStatus');
+        for (final cl in checklistsSnap.docs) {
+          final data = cl.data() as Map<String, dynamic>? ?? {};
+          List<Map<String, dynamic>> tasks = [];
+          logger.i(
+            '[ManagerDashboard][DEBUG] Checklist docId: ${cl.id}, has tasks array: "+${data.containsKey('tasks') && data['tasks'] != null}"',
+          );
+
+          if (data.containsKey('tasks') && data['tasks'] != null) {
+            // Old way: tasks in document
+            tasks = List<Map<String, dynamic>>.from(data['tasks'] ?? const []);
+            logger.i(
+              '[ManagerDashboard][DEBUG] Found ${tasks.length} tasks in document for shift: $shiftName, checklist: ${cl.id}',
+            );
+          } else {
+            // New way: tasks in subcollection
+            try {
+              final tasksSnap = await cl.reference.collection('tasks').get();
+              tasks = tasksSnap.docs.map((taskDoc) => taskDoc.data()).toList();
+              logger.i(
+                '[ManagerDashboard][DEBUG] Found ${tasks.length} tasks in subcollection for shift: $shiftName, checklist: ${cl.id}',
+              );
+            } catch (e) {
+              logger.e('[ManagerDashboard][DEBUG] Failed to load tasks subcollection for doc ${cl.id}: $e');
+            }
+          }
+
+          totalTasks += tasks.length;
+          for (final t in tasks) {
+            final completed = t['completed'] == true || t['isCompleted'] == true || t['status'] == 'completed';
+            if (completed) completedTasks += 1;
+          }
+        }
+        logger.i('[ManagerDashboard][DEBUG] Shift $shiftName: $completedTasks/$totalTasks completed');
+        if (totalTasks > 0) completionPct = completedTasks / totalTasks;
+
+        final timeStatus = _calculateTimeStatus(startTime, endTime);
 
         todaysShifts.add({
           'shiftId': shiftDoc.id,
@@ -442,86 +462,265 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
         });
       }
 
-      // Extract available roles
-      final roles =
-          todaysShifts.map((shift) => shift['role'] as String? ?? '').where((role) => role.isNotEmpty).toSet().toList();
-
-      logger.d('[ManagerDashboard] Available roles: $roles');
-      logger.d('[ManagerDashboard] Final shifts count: ${todaysShifts.length}');
-
+      logger.i('[ManagerDashboard][DEBUG] Final live shifts list: $todaysShifts');
+      if (!mounted) return;
       setState(() {
         _liveShifts = todaysShifts;
-        _availableRoles = ['all', ...roles];
       });
-
-      logger.d('[ManagerDashboard] Successfully loaded ${_liveShifts.length} today\'s shifts');
     } catch (e, st) {
-      logger.e('[ManagerDashboard] _loadLiveShifts error: $e\n$st', e);
+      logger.e('[ManagerDashboard][DEBUG] _loadLiveShifts error: $e\n$st', e);
     } finally {
-      if (mounted) {
-        setState(() => _loadingLive = false);
-      }
-    }
-  }
-
-  String _calculateTimeStatus(String startTime, String endTime) {
-    if (startTime.isEmpty || endTime.isEmpty) {
-      return 'No schedule';
-    }
-
-    try {
-      final now = DateTime.now();
-      final today = DateFormat('yyyy-MM-dd').format(now);
-      final start = DateFormat('yyyy-MM-dd HH:mm').parse('$today $startTime');
-      final end = DateFormat('yyyy-MM-dd HH:mm').parse('$today $endTime');
-
-      if (now.isBefore(start)) {
-        final timeToStart = start.difference(now);
-        return 'Starts in ${_formatDuration(timeToStart)}';
-      } else if (now.isAfter(end)) {
-        return 'Finished';
-      } else {
-        final timeRemaining = end.difference(now);
-        return '${_formatDuration(timeRemaining)} remaining';
-      }
-    } catch (e) {
-      return 'Invalid schedule';
+      if (!mounted) return;
+      setState(() => _loadingLive = false);
     }
   }
 
   Future<void> _loadFrequentMisses30d() async {
     setState(() => _loadingFrequent = true);
-
     try {
-      logger.d('[ManagerDashboard] Starting _loadFrequentMisses30d for location: $_selectedLocationId');
       final service = DailyChecklistService();
-      _frequentMisses30d = await service.getFrequentlyMissedTasks(
+      final list = await service.getFrequentlyMissedTasks(
         organizationId: widget.organizationId,
         days: 30,
         limit: 10,
         locationId: _selectedLocationId,
       );
-      logger.d('[ManagerDashboard] Loaded ${_frequentMisses30d.length} frequently missed tasks');
-      if (_frequentMisses30d.isNotEmpty) {
-        logger.d('[ManagerDashboard] First 3 frequent misses:');
-        for (int i = 0; i < _frequentMisses30d.length && i < 3; i++) {
-          final task = _frequentMisses30d[i];
-          logger.d('[ManagerDashboard]   ${i + 1}. ${task['taskName']} (${task['missedCount']} times)');
-        }
-      } else {
-        logger.d('[ManagerDashboard] No frequently missed tasks found - this could mean:');
-        logger.d('[ManagerDashboard]   1. No daily checklists exist for the last 30 days');
-        logger.d('[ManagerDashboard]   2. All tasks have been completed');
-        logger.d('[ManagerDashboard]   3. There are only carry-forward tasks (which are excluded)');
-      }
+      if (!mounted) return;
+      setState(() => _frequentMisses30d = list);
     } catch (e, st) {
       logger.e('[ManagerDashboard] getFrequentlyMissedTasks error: $e', e, st);
     } finally {
-      if (mounted) {
-        setState(() => _loadingFrequent = false);
-      }
+      if (!mounted) return;
+      setState(() => _loadingFrequent = false);
     }
   }
+
+  Future<void> _loadPoorShifts30d() async {
+    logger.i('[ManagerDashboard][DEBUG] ALWAYSLOG: Entering _loadPoorShifts30d');
+    setState(() => _loadingPoorShifts = true);
+    try {
+      logger.i('[ManagerDashboard][DEBUG] ===== POOR SHIFTS ANALYSIS STARTING =====');
+      logger.i('[ManagerDashboard][DEBUG] _selectedLocationId: $_selectedLocationId');
+      logger.i('[ManagerDashboard][DEBUG] organizationId: ${widget.organizationId}');
+      logger.i('[ManagerDashboard][DEBUG] Loading poor performing shifts data...');
+      final now = DateTime.now();
+      final start = _dateFormat.format(now.subtract(const Duration(days: 30)));
+      final end = _dateFormat.format(now);
+
+      logger.i('[ManagerDashboard][DEBUG] Querying poor shifts from $start to $end for location: $_selectedLocationId');
+
+      // Determine which location(s) to query. Prefer the selected location but
+      // fallback to other available locations if it returns no data.
+      final preferredLocation = _selectedLocationId;
+
+      final List<QueryDocumentSnapshot> docs = [];
+
+      Future<List<QueryDocumentSnapshot>> queryForLocation(String locId) async {
+        try {
+          // Prefer location-scoped daily_checklists (locations/{locId}/daily_checklists)
+          final s =
+              await FirestoreEnforcer.instance
+                  .collection('organizations')
+                  .doc(widget.organizationId)
+                  .collection('locations')
+                  .doc(locId)
+                  .collection('daily_checklists')
+                  .where('date', isGreaterThanOrEqualTo: start)
+                  .where('date', isLessThanOrEqualTo: end)
+                  .get();
+          logger.i(
+            '[ManagerDashboard][DEBUG] queryForLocation($locId) (location-scoped) returned ${s.docs.length} docs',
+          );
+          return s.docs;
+        } catch (e) {
+          logger.w(
+            '[ManagerDashboard][DEBUG] queryForLocation($locId) failed (location-scoped), falling back to org-scoped query: $e',
+          );
+          // Fallback to org-root daily_checklists where we store a locationId field (legacy)
+          final s =
+              await FirestoreEnforcer.instance
+                  .collection('organizations')
+                  .doc(widget.organizationId)
+                  .collection('daily_checklists')
+                  .where('date', isGreaterThanOrEqualTo: start)
+                  .where('date', isLessThanOrEqualTo: end)
+                  .where('locationId', isEqualTo: locId)
+                  .get();
+          logger.i(
+            '[ManagerDashboard][DEBUG] queryForLocation($locId) (org-scoped fallback) returned ${s.docs.length} docs',
+          );
+          return s.docs;
+        }
+      }
+
+      // Try preferred location first (if any)
+      if (preferredLocation != null && preferredLocation.isNotEmpty) {
+        logger.i('[ManagerDashboard][DEBUG] Trying selected location for poor shifts: $preferredLocation');
+        final r = await queryForLocation(preferredLocation);
+        docs.addAll(r);
+        logger.i('[ManagerDashboard][DEBUG] Selected location returned ${r.length} docs');
+      }
+
+      // If no docs found for preferred location, try other available locations
+      if (docs.isEmpty && _availableLocations.isNotEmpty) {
+        logger.i(
+          '[ManagerDashboard][DEBUG] No checklists found for selected location; trying other available locations',
+        );
+        for (final loc in _availableLocations) {
+          final id = loc['id'] as String?;
+          if (id == null) continue;
+          if (id == preferredLocation) continue; // already tried
+          final r = await queryForLocation(id);
+          if (r.isNotEmpty) {
+            docs.addAll(r);
+            logger.i('[ManagerDashboard][DEBUG] Found ${r.length} docs for fallback location $id');
+            // don't break; we may want to aggregate across locations
+          }
+        }
+      }
+
+      // Last resort: if still empty, try querying without a location filter for the date range
+      if (docs.isEmpty) {
+        logger.i(
+          '[ManagerDashboard][DEBUG] No daily_checklists found scoped to locations, falling back to global date-range query',
+        );
+        final s =
+            await FirestoreEnforcer.instance
+                .collection('organizations')
+                .doc(widget.organizationId)
+                .collection('daily_checklists')
+                .where('date', isGreaterThanOrEqualTo: start)
+                .where('date', isLessThanOrEqualTo: end)
+                .get();
+        docs.addAll(s.docs);
+        logger.i('[ManagerDashboard][DEBUG] Global date-range query returned ${s.docs.length} docs');
+      }
+
+      logger.i('[ManagerDashboard][DEBUG] Total daily_checklist docs to process: ${docs.length}');
+
+      final Map<String, Map<String, num>> agg = {}; // key: shiftName, values: {'done':x,'total':y}
+
+      // Cache to avoid repeated reads for the same shiftId
+      final Map<String, String> _shiftNameCache = {};
+
+      for (final d in docs) {
+        final dataRaw = d.data();
+        final data = (dataRaw is Map<String, dynamic>) ? dataRaw : <String, dynamic>{};
+        final shiftId = (data['shiftId'] ?? '').toString();
+        String shiftName = (data['shiftName'] ?? '').toString();
+
+        // Resolve shift name from cache or via lookup when not denormalized
+        if (shiftName.isEmpty || shiftName.toLowerCase().contains('unknown')) {
+          if (shiftId.isNotEmpty) {
+            if (_shiftNameCache.containsKey(shiftId)) {
+              shiftName = _shiftNameCache[shiftId]!;
+            } else {
+              try {
+                final shiftDoc =
+                    await FirestoreEnforcer.instance
+                        .collection('organizations')
+                        .doc(widget.organizationId)
+                        .collection('shifts')
+                        .doc(shiftId)
+                        .get();
+                if (shiftDoc.exists) {
+                  final sdata = shiftDoc.data();
+                  final resolved = (sdata?['shiftName'] ?? sdata?['name'] ?? '').toString();
+                  if (resolved.isNotEmpty) {
+                    shiftName = resolved;
+                    _shiftNameCache[shiftId] = resolved;
+                  }
+                }
+              } catch (e) {
+                logger.w('[ManagerDashboard][DEBUG] Failed to resolve shiftName for shiftId=$shiftId: $e');
+              }
+            }
+          }
+        }
+
+        if (shiftName.isEmpty) shiftName = 'Unknown Shift';
+        logger.i('[ManagerDashboard][DEBUG] Processing checklist docId: ${d.id}, shiftName: $shiftName');
+
+        // Check if tasks are in subcollection (new way) or in document (old way)
+        List<Map<String, dynamic>> tasks = [];
+
+        if (data.containsKey('tasks') && data['tasks'] != null) {
+          // Old way: tasks in document
+          tasks = List<Map<String, dynamic>>.from(data['tasks'] ?? const []);
+          logger.i(
+            '[ManagerDashboard][DEBUG] Found ${tasks.length} tasks in document for shift: $shiftName, checklist: ${d.id}',
+          );
+        } else {
+          // New way: tasks in subcollection - need to fetch them
+          try {
+            final tasksSnap = await d.reference.collection('tasks').get();
+            tasks = tasksSnap.docs.map((taskDoc) => taskDoc.data()).toList();
+            logger.i(
+              '[ManagerDashboard][DEBUG] Found ${tasks.length} tasks in subcollection for shift: $shiftName, checklist: ${d.id}',
+            );
+          } catch (e) {
+            logger.e('[ManagerDashboard][DEBUG] Failed to load tasks subcollection for doc ${d.id}: $e');
+          }
+        }
+
+        final total = tasks.length;
+        final done =
+            tasks.where((t) {
+              final completed = t['completed'] == true || t['isCompleted'] == true || t['status'] == 'completed';
+              return completed;
+            }).length;
+
+        logger.i('[ManagerDashboard][DEBUG] Shift $shiftName: $done/$total completed');
+
+        final entry = agg.putIfAbsent(shiftName, () => {'done': 0, 'total': 0});
+        entry['done'] = (entry['done'] ?? 0) + done;
+        entry['total'] = (entry['total'] ?? 0) + total;
+      }
+
+      final list =
+          agg.entries
+              .map((e) {
+                final done = (e.value['done'] ?? 0).toInt();
+                final total = max((e.value['total'] ?? 0).toInt(), 1);
+                final pct = done / total;
+                return {'shiftName': e.key, 'avgCompletion': pct, 'done': done, 'total': total};
+              })
+              .where((m) => (m['total'] as int) > 0)
+              .toList()
+            ..sort((a, b) => (a['avgCompletion'] as double).compareTo(b['avgCompletion'] as double));
+
+      logger.i('[ManagerDashboard][DEBUG] Poor performing shifts analysis complete: ${list.length} shifts found');
+      for (final shift in list) {
+        final pct = ((shift['avgCompletion'] as double) * 100).toStringAsFixed(1);
+        logger.i(
+          '[ManagerDashboard][DEBUG] - ${shift['shiftName']}: $pct% completion (${shift['done']}/${shift['total']})',
+        );
+      }
+
+      // Show shifts with completion rate below 85% as "poor performing"
+      final poorShifts = list.where((shift) => (shift['avgCompletion'] as double) < 0.85).toList();
+      logger.i('[ManagerDashboard][DEBUG] Found ${poorShifts.length} shifts with completion < 85%');
+
+      logger.i('[ManagerDashboard][DEBUG] Final poorShifts30d: $poorShifts');
+      if (!mounted) return;
+      setState(() => _poorShifts30d = poorShifts.take(5).toList());
+    } catch (e, st) {
+      logger.e('[ManagerDashboard][DEBUG] _loadPoorShifts30d failed: $e', e, st);
+    } finally {
+      if (!mounted) return;
+      setState(() => _loadingPoorShifts = false);
+      logger.i('[ManagerDashboard][DEBUG] ALWAYSLOG: Exiting _loadPoorShifts30d');
+    }
+  }
+
+  void _startAutoRefresh() {
+    _refreshTimer = Timer.periodic(const Duration(minutes: 2), (timer) async {
+      if (!mounted || _selectedLocationId == null) return;
+      await _loadLiveShifts();
+    });
+  }
+
+  // ===== UI =====
 
   @override
   Widget build(BuildContext context) {
@@ -540,56 +739,51 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).primaryColor,
-        title: GenericAppBarContent(appBarTitle: 'Manager Dashboard', userRole: userRole),
         automaticallyImplyLeading: false,
         foregroundColor: Colors.white,
+        title: GenericAppBarContent(appBarTitle: 'Manager Dashboard', userRole: userRole),
         actions: [
-          // Only show location selector if metrics are enabled
-          if (_metricsEnabled) ...[
-            // Compact location selector for mobile
+          if (_metricsEnabled)
             Padding(
-              padding: const EdgeInsets.only(right: 8.0),
+              padding: const EdgeInsets.only(right: 8),
               child: PopupMenuButton<String>(
                 enabled: _availableLocations.isNotEmpty,
                 onSelected: (value) async {
+                  logger.i('[ManagerDashboard][DEBUG] Location selected from header: $value');
                   setState(() {
                     _selectedLocationId = value;
+                    final matches = _availableLocations.where((loc) => loc['id'] == value).toList();
                     _selectedLocationName =
-                        _availableLocations.firstWhere(
-                          (loc) => loc['id'] == value,
-                          orElse: () => {'name': 'Unknown Location'},
-                        )['name'];
+                        matches.isNotEmpty ? (matches.first['name'] as String?) : 'Unknown Location';
                   });
+                  logger.i(
+                    '[ManagerDashboard][DEBUG] Updated _selectedLocationId: $_selectedLocationId, name: $_selectedLocationName',
+                  );
                   await _loadFilterOptions();
-                  await _loadAll(); // Reload all data when location changes
+                  await _loadAll();
                 },
                 itemBuilder:
                     (context) =>
-                        _availableLocations.map((location) {
+                        _availableLocations.map((loc) {
+                          final selected = loc['id'] == _selectedLocationId;
                           return PopupMenuItem<String>(
-                            value: location['id'],
+                            value: loc['id'],
                             child: Row(
                               children: [
                                 Icon(
                                   Icons.location_on,
-                                  color:
-                                      location['id'] == _selectedLocationId
-                                          ? Theme.of(context).primaryColor
-                                          : Colors.grey[600],
                                   size: 16,
+                                  color: selected ? Theme.of(context).primaryColor : Colors.grey,
                                 ),
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    location['name'],
-                                    style: TextStyle(
-                                      fontWeight:
-                                          location['id'] == _selectedLocationId ? FontWeight.bold : FontWeight.normal,
-                                    ),
+                                    '${loc['name']}',
                                     overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(fontWeight: selected ? FontWeight.bold : FontWeight.normal),
                                   ),
                                 ),
-                                if (location['id'] == _selectedLocationId)
+                                if (selected)
                                   const Padding(padding: EdgeInsets.only(left: 8), child: Icon(Icons.check, size: 16)),
                               ],
                             ),
@@ -637,2868 +831,2259 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                 ),
               ),
             ),
-          ],
-          // Menu button
           UnifiedMenuButton(userRole: userRole),
         ],
       ),
       bottomNavigationBar: BottomNavBar(currentIndex: 1, userRole: userRole),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: _metricsEnabled ? const EdgeInsets.all(16) : const EdgeInsets.all(0),
-          child: _metricsEnabled ? _buildMetricsDashboard() : _buildSetupView(),
-        ),
-      ),
+      body: _metricsEnabled ? _buildDashboardGrid() : _buildSetupView(),
     );
   }
 
-  /// Build the setup view when metrics are not enabled
-  Widget _buildSetupView() {
-    return OrganizationSetupWidget(organizationId: widget.organizationId, onMetricsEnabled: _onMetricsEnabled);
+  Widget _buildSetupView() =>
+      OrganizationSetupWidget(organizationId: widget.organizationId, onMetricsEnabled: _onMetricsEnabled);
+
+  void _onMetricsEnabled() async {
+    setState(() => _metricsEnabled = true);
+    await _ensureDailyChecklistsExist();
+    await _loadAll();
   }
 
-  /// Build the metrics dashboard when metrics are enabled
-  Widget _buildMetricsDashboard() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Today header
-        _buildTodayHeader(),
-        const SizedBox(height: 20),
-        _buildLiveViewSection(),
-        const SizedBox(height: 32),
-        _buildHistoricInsightsSection(),
-        const SizedBox(height: 30),
-        _buildHistoricShiftPerformance(),
-        const SizedBox(height: 30),
-        _buildAuditSection(),
-      ],
-    );
-  }
+  Widget _buildDashboardGrid() {
+    final width = MediaQuery.of(context).size.width;
+    // Responsive breakpoints: mobile < 600, tablet/condensed 600-900, desktop > 900
+    final isMobile = width < 600;
+    final isCondensed = width >= 600 && width < 900;
 
-  Widget _buildTodayHeader() {
-    final today = DateTime.now();
-    final formattedDate = DateFormat('EEEE, MMMM d, yyyy').format(today);
+    // Use the available viewport height to layout cards so the dashboard fits
+    // on a single screen without scrolling. LayoutBuilder gives us the max
+    // height available inside the scaffold body (after AppBar). We then split
+    // the area into two main rows: top (Missed Yesterday + Today's Shifts)
+    // and bottom (Frequent Misses + Poor Shifts + action). Heights use flex
+    // so the UI adapts between phone and browser sizes.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Compact mode when the available body height is small (phones/short view)
+        final compact = constraints.maxHeight < 700;
 
-    return Card(
-      elevation: 4,
-      child: Container(
-        width: double.infinity,
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width - 32, // Account for padding
-        ),
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Theme.of(context).primaryColor, Theme.of(context).primaryColor.withValues(alpha: 0.8)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.dashboard, color: Colors.white, size: 28),
-                const SizedBox(width: 12),
-                Text(
-                  'Manager Dashboard',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.headlineSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              formattedDate,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white.withValues(alpha: 0.9)),
-            ),
-            if (_selectedLocationName != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Location: $_selectedLocationName',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white.withValues(alpha: 0.8)),
-              ),
-            ],
-            const SizedBox(height: 16),
-            // Missed Yesterday insights instead of live organization stats
-            _buildMissedYesterdayCard(),
-          ],
-        ),
-      ),
-    );
-  }
+        // Responsive gap and column width
+        final gap = compact ? 8.0 : 12.0;
+        final colW = (width - gap * 3) / 2;
 
-  Widget _buildMissedYesterdayCard() {
-    if (_loadingYesterday) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.history, color: Colors.white, size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  'Missed Yesterday',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            const Center(child: CircularProgressIndicator(color: Colors.white)),
-          ],
-        ),
-      );
-    }
-
-    if (_errorYesterday != null) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.error_outline, color: Colors.white, size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  'Missed Yesterday',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text('Could not load missed tasks.', style: TextStyle(color: Colors.white.withValues(alpha: 0.9))),
-          ],
-        ),
-      );
-    }
-
-    if (_yesterdayMissed.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white, size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  'Missed Yesterday',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text('Great! No missed tasks yesterday.', style: TextStyle(color: Colors.white.withValues(alpha: 0.9))),
-          ],
-        ),
-      );
-    }
-
-    final showScroll = _yesterdayMissed.length > 4;
-    final visibleTasks = showScroll ? _yesterdayMissed : _yesterdayMissed.take(4).toList();
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        // Top row: larger, show missed + live shifts
+        // Bottom row: smaller, show frequent misses + poor shifts + button
+        return Padding(
+          padding: EdgeInsets.all(compact ? gap * 0.5 : gap * 0.75),
+          child: Column(
             children: [
-              Row(
-                children: [
-                  const Icon(Icons.warning, color: Colors.white, size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Missed Yesterday',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.titleMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-              if (_yesterdayMissed.length > 4)
-                TextButton(
-                  onPressed: _openAllMissedYesterday,
-                  child: Text('View all', style: TextStyle(color: Colors.white.withValues(alpha: 0.9))),
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (showScroll)
-            SizedBox(
-              height: 220, // Adjust height as needed for 4 items
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: _yesterdayMissed.length,
-                itemBuilder: (context, idx) {
-                  final missed = _yesterdayMissed[idx];
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                missed['taskName'] ?? 'Unknown Task',
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+              // Top area - stack in mobile/condensed mode so live view remains visible
+              Expanded(
+                flex:
+                    isMobile
+                        ? 7
+                        : isCondensed
+                        ? 6
+                        : 6, // Increased flex to give more space to Today's Shifts
+                child:
+                    (isMobile || isCondensed)
+                        ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Missed Yesterday (full width) - allow to size naturally but keep flexible
+                            Flexible(
+                              flex: 2,
+                              child: _SummaryCard(
+                                title: 'Missed Yesterday',
+                                icon: Icons.report_gmailerrorred,
+                                accentColor: Colors.orange,
+                                valueBuilder: () {
+                                  final count = _yesterdayMissed.fold<int>(
+                                    0,
+                                    (sum, e) => sum + (e['count'] as int? ?? 1),
+                                  );
+                                  // Count unique shifts, not task entries
+                                  final uniqueShifts =
+                                      _yesterdayMissed.map((e) => e['shiftId'] ?? e['shiftName'] ?? '').toSet().length;
+                                  return Text(
+                                    '$count missed tasks across $uniqueShifts shifts',
+                                    style: _kMetricTextStyle(context).copyWith(fontSize: 12),
+                                    textAlign: TextAlign.center,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  );
+                                },
+                                trailing: MiniSparkBars(values: _missedTrend7d, height: 40),
+                                loading: _loadingYesterday,
+                                onTap: _openAllMissedYesterday,
+                                footer:
+                                    _selectedLocationName == null
+                                        ? null
+                                        : Text('📍 $_selectedLocationName', style: const TextStyle(fontSize: 11)),
                               ),
+                            ),
+                            SizedBox(height: compact ? 3 : 4),
+                            // Today's Shifts (full width) - constrain height to prevent overflow
+                            Flexible(
+                              flex: 3, // Give it reasonable space but not unlimited
+                              child: _SummaryCard(
+                                title: "Today's Shifts",
+                                icon: Icons.live_tv,
+                                accentColor: Theme.of(context).primaryColor,
+                                valueBuilder: null,
+                                titleSuffix: () {
+                                  if (_selectedStatusFilter == 'live') {
+                                    final inProgress = _filteredLiveShifts.where(
+                                      (s) => s['timeStatus'].toString().contains('remaining'),
+                                    );
+                                    return Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context).primaryColor.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: Theme.of(context).primaryColor.withOpacity(0.3),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        '${inProgress.length} live',
+                                        style: TextStyle(
+                                          color: Theme.of(context).primaryColor,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    );
+                                  } else {
+                                    return Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey[100],
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: Colors.grey[300]!, width: 1),
+                                      ),
+                                      child: Text(
+                                        '${_filteredLiveShifts.length} done',
+                                        style: TextStyle(
+                                          color: Colors.grey[700],
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                },
+                                loading: _loadingLive,
+                                onTap: _openTodayShifts,
+                                actions: [
+                                  Container(
+                                    height: 28,
+                                    decoration: BoxDecoration(
+                                      border: Border.all(color: Colors.grey[300]!),
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        _StatusToggleButton(
+                                          label: 'Live',
+                                          selected: _selectedStatusFilter == 'live',
+                                          onTap: () async {
+                                            setState(() => _selectedStatusFilter = 'live');
+                                            await _loadLiveShifts();
+                                          },
+                                        ),
+                                        _StatusToggleButton(
+                                          label: 'Done',
+                                          selected: _selectedStatusFilter == 'finished',
+                                          onTap: () async {
+                                            setState(() => _selectedStatusFilter = 'finished');
+                                            await _loadLiveShifts();
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  IconButton(
+                                    onPressed: () async {
+                                      setState(() => _loadingLive = true);
+                                      await _loadLiveShifts();
+                                    },
+                                    icon: const Icon(Icons.refresh),
+                                    tooltip: 'Refresh',
+                                  ),
+                                ],
+                                child: _LiveShiftStrip(shifts: _filteredLiveShifts, onOpen: _openTodayShifts),
+                              ),
+                            ),
+                          ],
+                        )
+                        : Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Missed Yesterday (left)
+                            SizedBox(
+                              width: colW,
+                              child: _SummaryCard(
+                                title: 'Missed Yesterday',
+                                icon: Icons.report_gmailerrorred,
+                                accentColor: Colors.orange,
+                                valueBuilder: () {
+                                  final count = _yesterdayMissed.fold<int>(
+                                    0,
+                                    (sum, e) => sum + (e['count'] as int? ?? 1),
+                                  );
+                                  // Count unique shifts, not task entries
+                                  final uniqueShifts =
+                                      _yesterdayMissed.map((e) => e['shiftId'] ?? e['shiftName'] ?? '').toSet().length;
+                                  return Text(
+                                    '$count missed tasks across $uniqueShifts shifts',
+                                    style: _kMetricTextStyle(context).copyWith(fontSize: 12),
+                                    textAlign: TextAlign.center,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  );
+                                },
+                                trailing: MiniSparkBars(values: _missedTrend7d, height: 40),
+                                loading: _loadingYesterday,
+                                onTap: _openAllMissedYesterday,
+                                footer:
+                                    _selectedLocationName == null
+                                        ? null
+                                        : Text('📍 $_selectedLocationName', style: const TextStyle(fontSize: 11)),
+                              ),
+                            ),
+                            SizedBox(width: gap),
+                            // Today's Shifts (right, expanding)
+                            Expanded(
+                              child: _SummaryCard(
+                                title: "Today's Shifts",
+                                icon: Icons.live_tv,
+                                accentColor: Theme.of(context).primaryColor,
+                                valueBuilder: null,
+                                titleSuffix: () {
+                                  if (_selectedStatusFilter == 'live') {
+                                    final inProgress = _filteredLiveShifts.where(
+                                      (s) => s['timeStatus'].toString().contains('remaining'),
+                                    );
+                                    return Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context).primaryColor.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: Theme.of(context).primaryColor.withOpacity(0.3),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        '${inProgress.length} live',
+                                        style: TextStyle(
+                                          color: Theme.of(context).primaryColor,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    );
+                                  } else {
+                                    return Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey[100],
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: Colors.grey[300]!, width: 1),
+                                      ),
+                                      child: Text(
+                                        '${_filteredLiveShifts.length} done',
+                                        style: TextStyle(
+                                          color: Colors.grey[700],
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                },
+                                loading: _loadingLive,
+                                onTap: _openTodayShifts,
+                                actions: [
+                                  Container(
+                                    height: 28,
+                                    decoration: BoxDecoration(
+                                      border: Border.all(color: Colors.grey[300]!),
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        _StatusToggleButton(
+                                          label: 'Live',
+                                          selected: _selectedStatusFilter == 'live',
+                                          onTap: () async {
+                                            setState(() => _selectedStatusFilter = 'live');
+                                            await _loadLiveShifts();
+                                          },
+                                        ),
+                                        _StatusToggleButton(
+                                          label: 'Done',
+                                          selected: _selectedStatusFilter == 'finished',
+                                          onTap: () async {
+                                            setState(() => _selectedStatusFilter = 'finished');
+                                            await _loadLiveShifts();
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  IconButton(
+                                    onPressed: () async {
+                                      setState(() => _loadingLive = true);
+                                      await _loadLiveShifts();
+                                    },
+                                    icon: const Icon(Icons.refresh),
+                                    tooltip: 'Refresh',
+                                  ),
+                                ],
+                                child: _LiveShiftStrip(shifts: _filteredLiveShifts, onOpen: _openTodayShifts),
+                              ),
+                            ),
+                          ],
+                        ),
+              ),
+
+              SizedBox(height: compact ? 3 : 4),
+
+              // Bottom area
+              Expanded(
+                flex:
+                    isMobile
+                        ? 3
+                        : isCondensed
+                        ? 4
+                        : 4, // Reduced flex to give more space to top
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Frequent Misses
+                    Expanded(
+                      child: _SummaryCard(
+                        title: isMobile ? 'Frequent Misses' : 'Frequent Misses (30d)',
+                        icon: Icons.trending_down,
+                        accentColor: Colors.red,
+                        loading: _loadingFrequent,
+                        valueBuilder:
+                            () => Text(
+                              _frequentMisses30d.isEmpty ? '0 hot spots' : '${_frequentMisses30d.length} hot spots',
+                              style: _kMetricTextStyle(context),
+                            ),
+                        onTap: _openAllFrequentMisses,
+                        child: _TopListPreview(
+                          items:
+                              _frequentMisses30d.take(3).map((t) {
+                                final name = (t['taskName'] ?? 'Unknown Task').toString();
+                                final shift = (t['shiftName'] ?? '').toString();
+                                final shiftNames = (t['shiftNames'] ?? []).cast<String>();
+                                final count = (t['count'] ?? t['missedCount'] ?? 0).toString();
+
+                                // Create display string for shifts
+                                String shiftDisplay = '';
+                                if (shiftNames.isNotEmpty) {
+                                  if (shiftNames.length == 1) {
+                                    shiftDisplay = ' • ${shiftNames.first}';
+                                  } else if (shiftNames.length <= 2) {
+                                    shiftDisplay = ' • ${shiftNames.join(', ')}';
+                                  } else {
+                                    shiftDisplay = ' • ${shiftNames.take(2).join(', ')} +${shiftNames.length - 2} more';
+                                  }
+                                } else if (shift.isNotEmpty) {
+                                  shiftDisplay = ' • $shift';
+                                }
+
+                                return '$name$shiftDisplay  ×$count';
+                              }).toList(),
+                          emptyLabel: 'No frequent misses',
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: gap),
+                    // Poor Performing Shifts
+                    Expanded(
+                      child: _SummaryCard(
+                        title: isMobile ? 'Poor Performing' : 'Poor Performing Shifts (30d)',
+                        icon: Icons.speed,
+                        accentColor: Colors.amber,
+                        loading: _loadingPoorShifts,
+                        valueBuilder:
+                            () => Text(
+                              _poorShifts30d.isEmpty ? 'All OK' : '${_poorShifts30d.length} flagged',
+                              style: _kMetricTextStyle(context),
+                            ),
+                        onTap: _openPoorShiftDetails,
+                        child: _TopListPreview(
+                          items:
+                              _poorShifts30d.take(3).map((m) {
+                                final pct = ((m['avgCompletion'] as double?) ?? 0) * 100;
+                                return '${m['shiftName']}  ${pct.toStringAsFixed(0)}%';
+                              }).toList(),
+                          emptyLabel: 'No issues found',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              SizedBox(height: compact ? 2 : 3),
+
+              // Footer button
+              SizedBox(
+                height: compact ? 36 : 42,
+                child: Center(
+                  child: SizedBox(
+                    width: colW * (compact ? 0.6 : 0.5),
+                    child: Material(
+                      elevation: 1,
+                      borderRadius: BorderRadius.circular(8),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: _openTaskHistorySheet,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.fact_check, size: 16, color: Theme.of(context).primaryColor),
+                              const SizedBox(width: 4),
                               Text(
-                                missed['shiftName'] ?? 'Unknown Shift',
-                                style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 12),
+                                'Previous Tasks',
+                                style: TextStyle(
+                                  color: Theme.of(context).primaryColor,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ],
                           ),
                         ),
-                        if ((missed['count'] as int? ?? 1) > 1)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              '×${missed['count']}',
-                              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            )
-          else
-            ...visibleTasks.map(
-              (missed) => Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            missed['taskName'] ?? 'Unknown Task',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
-                          ),
-                          Text(
-                            missed['shiftName'] ?? 'Unknown Shift',
-                            style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 12),
-                          ),
-                        ],
                       ),
                     ),
-                    if ((missed['count'] as int? ?? 1) > 1)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          '×${missed['count']}',
-                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLiveViewSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.live_tv, color: Theme.of(context).primaryColor),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Live view of today\'s shifts',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-              ),
-            ),
-            IconButton(
-              icon: Icon(Icons.refresh, color: Theme.of(context).primaryColor),
-              tooltip: 'Refresh live progress',
-              onPressed: () async {
-                setState(() => _loadingLive = true);
-                await _loadLiveShifts();
-              },
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        // Role filter chips
-        if (_availableRoles.length > 1) ...[
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children:
-                  _availableRoles.map((role) {
-                    final isSelected = _selectedRoleFilter == role;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: FilterChip(
-                        label: Text(
-                          role == 'all' ? 'All' : role,
-                          style: TextStyle(color: isSelected ? Colors.white : Theme.of(context).primaryColor),
-                        ),
-                        selected: isSelected,
-                        onSelected: (selected) {
-                          if (selected) {
-                            setState(() => _selectedRoleFilter = role);
-                            _loadLiveShifts(); // Reload with new filter
-                          }
-                        },
-                        backgroundColor: Colors.grey[100],
-                        selectedColor: Theme.of(context).primaryColor,
-                      ),
-                    );
-                  }).toList(),
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
-
-        // Live shifts container with gradient background
-        Container(
-          width: double.infinity,
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width - 32, // Account for padding
-          ),
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                Theme.of(context).primaryColor.withValues(alpha: 0.1),
-                Theme.of(context).primaryColor.withValues(alpha: 0.05),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Theme.of(context).primaryColor.withValues(alpha: 0.2)),
-          ),
-          child:
-              _loadingLive
-                  ? const Center(child: CircularProgressIndicator())
-                  : _filteredLiveShifts.isEmpty
-                  ? const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(32),
-                      child: Column(
-                        children: [
-                          Icon(Icons.schedule, size: 48, color: Colors.grey),
-                          SizedBox(height: 8),
-                          Text('No shifts scheduled for today.', style: TextStyle(color: Colors.grey)),
-                        ],
-                      ),
-                    ),
-                  )
-                  : Column(
-                    children: [
-                      // Debug info (remove this in production)
-                      if (kDebugMode)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 16),
-                          child: Text(
-                            'Debug: ${_liveShifts.length} total shifts, ${_filteredLiveShifts.length} filtered',
-                            style: const TextStyle(fontSize: 12, color: Colors.grey),
-                          ),
-                        ),
-                      Wrap(
-                        spacing: 16,
-                        runSpacing: 16,
-                        children: _filteredLiveShifts.map((shift) => _buildLiveShiftCard(shift)).toList(),
-                      ),
-                    ],
                   ),
-        ),
-      ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
   List<Map<String, dynamic>> get _filteredLiveShifts {
-    if (_selectedRoleFilter == 'all') return _liveShifts;
-    return _liveShifts.where((shift) => shift['role'] == _selectedRoleFilter).toList();
-  }
+    if (_selectedStatusFilter == null) return _liveShifts;
 
-  Widget _buildLiveShiftCard(Map<String, dynamic> shift) {
-    final completionPct = (shift['completionPct'] as double? ?? 0.0);
-    final completedTasks = shift['completedTasks'] as int? ?? 0;
-    final totalTasks = shift['totalTasks'] as int? ?? 0;
-    final shiftName = shift['shiftName'] as String? ?? 'Unknown Shift';
-    final role = shift['role'] as String? ?? '';
-    final startTime = shift['startTime'] as String? ?? '';
-    final endTime = shift['endTime'] as String? ?? '';
-    final timeStatus = shift['timeStatus'] as String? ?? 'Unknown status';
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // Calculate responsive width
-        double cardWidth;
-        final screenWidth = MediaQuery.of(context).size.width;
-        final availableWidth = screenWidth - 64; // Account for padding and margins
-
-        if (availableWidth < 320) {
-          cardWidth = availableWidth; // Single card on very small screens
-        } else if (availableWidth < 600) {
-          cardWidth = availableWidth; // Single card on small screens
-        } else if (availableWidth < 900) {
-          cardWidth = (availableWidth - 16) / 2; // Two cards on medium screens
-        } else {
-          cardWidth = (availableWidth - 32) / 3; // Three cards on large screens
-        }
-
-        return Container(
-          width: cardWidth,
-          constraints: const BoxConstraints(minWidth: 280, maxWidth: 400),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey[200]!),
-            boxShadow: [
-              BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2)),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Shift name and time status
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          shiftName,
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 2,
-                        ),
-                        if (role.isNotEmpty) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            role,
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                          ),
-                        ],
-                        if (startTime.isNotEmpty && endTime.isNotEmpty) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            '$startTime - $endTime',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // Time status chip
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _getTimeStatusColor(timeStatus),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      timeStatus,
-                      style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              // Progress section
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Task Progress',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w500),
-                      ),
-                      Text(
-                        '$completedTasks/$totalTasks tasks',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  // Progress bar
-                  LinearProgressIndicator(
-                    value: completionPct,
-                    backgroundColor: Colors.grey[300],
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      completionPct >= 0.8
-                          ? Colors.green
-                          : completionPct >= 0.5
-                          ? Colors.orange
-                          : Colors.red,
-                    ),
-                    minHeight: 8,
-                  ),
-                  const SizedBox(height: 4),
-                  // Percentage
-                  Text(
-                    '${(completionPct * 100).round()}% complete',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color:
-                          completionPct >= 0.8
-                              ? Colors.green
-                              : completionPct >= 0.5
-                              ? Colors.orange
-                              : Colors.red,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Color _getTimeStatusColor(String timeStatus) {
-    if (timeStatus.contains('Finished')) {
-      return Colors.grey;
-    } else if (timeStatus.contains('Starts in')) {
-      return Colors.blue;
-    } else if (timeStatus.contains('remaining')) {
-      return Colors.green;
-    } else {
-      return Colors.orange;
+    if (_selectedStatusFilter == 'live') {
+      // Show shifts that are in progress or starting soon
+      return _liveShifts.where((s) {
+        final timeStatus = s['timeStatus'].toString();
+        return timeStatus.contains('remaining') || timeStatus.contains('Starts in');
+      }).toList();
+    } else if (_selectedStatusFilter == 'finished') {
+      // Show finished shifts
+      return _liveShifts.where((s) {
+        final timeStatus = s['timeStatus'].toString();
+        return timeStatus.contains('Finished');
+      }).toList();
     }
+
+    return _liveShifts;
   }
+
+  // ====== Modals / Sheets ======
 
   void _openAllMissedYesterday() {
-    showModalBottomSheet(
+    showDialog(
       context: context,
-      isScrollControlled: true,
       builder:
-          (context) => DraggableScrollableSheet(
-            initialChildSize: 0.7,
-            maxChildSize: 0.9,
-            minChildSize: 0.5,
-            builder:
-                (context, scrollController) => Container(
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-                  ),
-                  child: Column(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey[200]!))),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'All Missed Tasks Yesterday',
-                              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-                            ),
-                            IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close)),
-                          ],
-                        ),
-                      ),
-                      Expanded(
-                        child: ListView.builder(
-                          controller: scrollController,
-                          padding: const EdgeInsets.all(16),
-                          itemCount: _yesterdayMissed.length,
-                          itemBuilder: (context, index) {
-                            final missed = _yesterdayMissed[index];
-                            return Card(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              child: ListTile(
-                                title: Text(missed['taskName'] ?? 'Unknown Task'),
-                                subtitle: Text(missed['shiftName'] ?? 'Unknown Shift'),
-                                trailing:
-                                    missed['count'] > 1
-                                        ? Chip(label: Text('×${missed['count']}'), backgroundColor: Colors.orange[100])
-                                        : null,
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-          ),
-    );
-  }
+          (context) => _ProfessionalDialog(
+            title: 'All Missed Tasks Yesterday',
+            child:
+                _loadingYesterday
+                    ? const Center(child: CircularProgressIndicator())
+                    : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _yesterdayMissed.length,
+                      itemBuilder: (context, i) {
+                        final m = _yesterdayMissed[i];
+                        final name = (m['taskName'] ?? 'Unknown Task').toString();
+                        final shift = (m['shiftName'] ?? 'Unknown Shift').toString();
+                        final count = (m['count'] ?? 1) as int;
+                        final completedToday = m['completedToday'] == true;
 
-  // ignore: unused_element
-  Widget _buildShiftProgressCard(QueryDocumentSnapshot shiftDoc) {
-    final shiftData = shiftDoc.data() as Map<String, dynamic>;
-    final shiftName = shiftData['shiftName'] ?? 'Unnamed Shift';
-    final startTime = shiftData['startTime'] ?? '';
-    final endTime = shiftData['endTime'] ?? '';
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        shiftName,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                      ),
-                      if (startTime.isNotEmpty && endTime.isNotEmpty)
-                        Text(
-                          '$startTime - $endTime',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
-                        ),
-                    ],
-                  ),
-                ),
-                _buildTimeRemaining(startTime, endTime),
-              ],
-            ),
-            const SizedBox(height: 16),
-            StreamBuilder<QuerySnapshot>(
-              stream:
-                  _selectedLocationId != null
-                      ? FirestoreEnforcer.instance
-                          .collectionGroup('tasks')
-                          .where('organizationId', isEqualTo: widget.organizationId)
-                          .where('locationId', isEqualTo: _selectedLocationId)
-                          .where('dateString', isEqualTo: _todayKey)
-                          .where('shiftId', isEqualTo: shiftDoc.id)
-                          .snapshots()
-                      : const Stream.empty(),
-              builder: (context, tasksSnapshot) {
-                if (!tasksSnapshot.hasData) return const LinearProgressIndicator(value: 0);
-
-                final tasksSnapshotData = tasksSnapshot.data;
-                if (tasksSnapshotData == null) return const LinearProgressIndicator(value: 0);
-
-                final taskDocs = tasksSnapshotData.docs;
-                if (taskDocs.isEmpty) {
-                  return Column(
-                    children: [
-                      const LinearProgressIndicator(value: 0),
-                      const SizedBox(height: 8),
-                      Text(
-                        'No tasks for today - Staff need to select this shift',
-                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                      ),
-                    ],
-                  );
-                }
-
-                final totalTasks = taskDocs.length;
-                final totalCompleted =
-                    taskDocs.where((d) {
-                      final Map<String, dynamic>? data = d.data() as Map<String, dynamic>?;
-                      return (data?['completed'] == true) ||
-                          (data?['isCompleted'] == true) ||
-                          (data?['status'] == 'completed');
-                    }).length;
-
-                final progress = totalTasks > 0 ? totalCompleted / totalTasks : 0.0;
-
-                return Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('Task Progress'),
-                        Text(
-                          '$totalCompleted/$totalTasks tasks (${(progress * 100).round()}%)',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    LinearProgressIndicator(
-                      value: progress,
-                      backgroundColor: Colors.grey[300],
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        progress >= 1.0 ? Colors.green : Theme.of(context).primaryColor,
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTimeRemaining(String startTime, String endTime) {
-    if (startTime.isEmpty || endTime.isEmpty) {
-      return Chip(label: const Text('No schedule'), backgroundColor: Colors.grey[200]);
-    }
-
-    try {
-      final now = DateTime.now();
-      final today = DateFormat('yyyy-MM-dd').format(now);
-      final start = DateFormat('yyyy-MM-dd HH:mm').parse('$today $startTime');
-      final end = DateFormat('yyyy-MM-dd HH:mm').parse('$today $endTime');
-
-      if (now.isBefore(start)) {
-        final timeToStart = start.difference(now);
-        return Chip(label: Text('Starts in ${_formatDuration(timeToStart)}'), backgroundColor: Colors.blue[100]);
-      } else if (now.isAfter(end)) {
-        return Chip(label: const Text('Shift ended'), backgroundColor: Colors.grey[300]);
-      } else {
-        final timeRemaining = end.difference(now);
-        return Chip(label: Text('${_formatDuration(timeRemaining)} left'), backgroundColor: Colors.green[100]);
-      }
-    } catch (e) {
-      return Chip(label: const Text('Invalid time'), backgroundColor: Colors.red[100]);
-    }
-  }
-
-  String _formatDuration(Duration duration) {
-    final hours = duration.inHours;
-    final minutes = duration.inMinutes % 60;
-    if (hours > 0) {
-      return '${hours}h ${minutes}m';
-    } else {
-      return '${minutes}m';
-    }
-  }
-
-  Widget _buildHistoricShiftPerformance() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.history, color: Theme.of(context).primaryColor),
-            const SizedBox(width: 8),
-            Text(
-              'Historic Shift Performance',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Swipe to explore performance insights',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600], fontStyle: FontStyle.italic),
-        ),
-        const SizedBox(height: 16),
-        FutureBuilder<Map<String, dynamic>>(
-          key: ValueKey(_selectedLocationId), // Force rebuild when location changes
-          future: _calculateShiftPerformanceAnalytics(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return Container(
-                height: 200,
-                decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), color: Colors.grey[100]),
-                child: const Center(child: CircularProgressIndicator()),
-              );
-            }
-
-            if (!snapshot.hasData) {
-              return Container(
-                height: 200,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  color: Colors.grey[50],
-                  border: Border.all(color: Colors.grey[200]!),
-                ),
-                child: const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.analytics_outlined, size: 48, color: Colors.grey),
-                      SizedBox(height: 8),
-                      Text('No historical data available yet', style: TextStyle(color: Colors.grey)),
-                    ],
-                  ),
-                ),
-              );
-            }
-            final snapshotData = snapshot.data;
-            if (snapshotData == null || snapshotData.isEmpty) {
-              return Container(
-                height: 200,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  color: Colors.grey[50],
-                  border: Border.all(color: Colors.grey[200]!),
-                ),
-                child: const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.analytics_outlined, size: 48, color: Colors.grey),
-                      SizedBox(height: 8),
-                      Text('No historical data available yet', style: TextStyle(color: Colors.grey)),
-                    ],
-                  ),
-                ),
-              );
-            }
-
-            final analytics = snapshotData;
-            final topPerformers = analytics['topPerformers'] as List<Map<String, dynamic>>;
-            final poorPerformers = analytics['poorPerformers'] as List<Map<String, dynamic>>;
-            final dayAnalysis = analytics['dayAnalysis'] as List<Map<String, dynamic>>;
-
-            // Create list of cards to display
-            List<Widget> performanceCards = [];
-
-            // Top Performers Card
-            if (topPerformers.isNotEmpty) {
-              performanceCards.add(_buildSwipeableTopPerformersCard(topPerformers));
-            }
-
-            // Poor Performers Card
-            if (poorPerformers.isNotEmpty) {
-              performanceCards.add(_buildSwipeablePoorPerformersCard(poorPerformers));
-            }
-
-            // Day Analysis Cards (one for each problematic shift)
-            for (final analysis in dayAnalysis) {
-              performanceCards.add(_buildSwipeableDayAnalysisCard(analysis));
-            }
-
-            // If no issues found, show a positive summary card
-            if (performanceCards.isEmpty) {
-              performanceCards.add(_buildSwipeableNoIssuesCard());
-            }
-
-            return SizedBox(
-              height: 220,
-              child: PageView.builder(
-                itemCount: performanceCards.length,
-                padEnds: false,
-                controller: PageController(viewportFraction: 0.9),
-                itemBuilder: (context, index) {
-                  return Padding(
-                    padding: EdgeInsets.only(right: index < performanceCards.length - 1 ? 12.0 : 0),
-                    child: performanceCards[index],
-                  );
-                },
-              ),
-            );
-          },
-        ),
-        const SizedBox(height: 8),
-        // Page indicator dots
-        FutureBuilder<Map<String, dynamic>>(
-          key: ValueKey('${_selectedLocationId}_dots'), // Force rebuild when location changes
-          future: _calculateShiftPerformanceAnalytics(),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) {
-              return const SizedBox.shrink();
-            }
-
-            final snapshotData = snapshot.data;
-            if (snapshotData == null || snapshotData.isEmpty) {
-              return const SizedBox.shrink();
-            }
-
-            final analytics = snapshotData;
-            final topPerformers = analytics['topPerformers'] as List<Map<String, dynamic>>;
-            final poorPerformers = analytics['poorPerformers'] as List<Map<String, dynamic>>;
-            final dayAnalysis = analytics['dayAnalysis'] as List<Map<String, dynamic>>;
-
-            int cardCount = 0;
-            if (topPerformers.isNotEmpty) cardCount++;
-            if (poorPerformers.isNotEmpty) cardCount++;
-            cardCount += dayAnalysis.length;
-            if (cardCount == 0) cardCount = 1; // No issues card
-
-            if (cardCount <= 1) return const SizedBox.shrink();
-
-            return Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: List.generate(
-                  cardCount,
-                  (index) => Container(
-                    width: 8,
-                    height: 8,
-                    margin: const EdgeInsets.symmetric(horizontal: 2),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Theme.of(context).primaryColor.withOpacity(0.3),
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSwipeableTopPerformersCard(List<Map<String, dynamic>> topPerformers) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.green.shade50, Colors.green.shade100],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.green.shade200),
-        boxShadow: [BoxShadow(color: Colors.green.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 2))],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.green.shade600, borderRadius: BorderRadius.circular(12)),
-                  child: const Icon(Icons.star, color: Colors.white, size: 24),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Top Performers',
-                        style: Theme.of(
-                          context,
-                        ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.green.shade800),
-                      ),
-                      Text(
-                        'Best completion rates',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.green.shade700),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: ListView.separated(
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: topPerformers.take(3).length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (context, index) {
-                  final shift = topPerformers[index];
-                  return Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.green.shade100),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 32,
-                          height: 32,
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Colors.green.shade600,
-                            borderRadius: BorderRadius.circular(16),
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey[200]!),
                           ),
-                          child: Center(
-                            child: Text(
-                              '${index + 1}',
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          child: Row(
                             children: [
-                              Text(
-                                shift['shiftName'],
-                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              Text(
-                                '${shift['totalSessions']} sessions',
-                                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.green.shade600,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            '${(shift['avgCompletionRate'] * 100).round()}%',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSwipeablePoorPerformersCard(List<Map<String, dynamic>> poorPerformers) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.orange.shade50, Colors.orange.shade100],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.orange.shade200),
-        boxShadow: [BoxShadow(color: Colors.orange.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 2))],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.orange.shade600, borderRadius: BorderRadius.circular(12)),
-                  child: const Icon(Icons.warning, color: Colors.white, size: 24),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Needs Improvement',
-                        style: Theme.of(
-                          context,
-                        ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.orange.shade800),
-                      ),
-                      Text(
-                        'Focus areas for training',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.orange.shade700),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: ListView.separated(
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: poorPerformers.take(3).length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (context, index) {
-                  final shift = poorPerformers[index];
-                  return Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.orange.shade100),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            color: Colors.orange.shade600,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: const Center(child: Icon(Icons.trending_down, color: Colors.white, size: 18)),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                shift['shiftName'],
-                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              Text(
-                                '${shift['totalSessions']} sessions',
-                                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.shade600,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            '${(shift['avgCompletionRate'] * 100).round()}%',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSwipeableDayAnalysisCard(Map<String, dynamic> analysis) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.red.shade50, Colors.red.shade100],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.red.shade200),
-        boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 2))],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(color: Colors.red.shade600, borderRadius: BorderRadius.circular(12)),
-                    child: const Icon(Icons.calendar_today, color: Colors.white, size: 24),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Weekly Pattern Issue',
-                          style: Theme.of(
-                            context,
-                          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.red.shade800),
-                        ),
-                        Text(
-                          '${analysis['shiftName']}',
-                          style: Theme.of(
-                            context,
-                          ).textTheme.bodySmall?.copyWith(color: Colors.red.shade700, fontWeight: FontWeight.w500),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.red.shade100),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.warning_amber_rounded, color: Colors.red.shade700, size: 18),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '${analysis['worstDay']}s are problematic',
-                            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red.shade800),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Only ${(analysis['worstDayRate'] * 100).toStringAsFixed(0)}% completion rate on ${analysis['worstDay']}s',
-                      style: TextStyle(fontSize: 13, color: Colors.red.shade700),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Based on ${analysis['worstDaySessionCount']} sessions',
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextButton.icon(
-                onPressed: () => _showDayAnalysisDetails(analysis),
-                icon: const Icon(Icons.analytics, size: 16),
-                label: const Text('View Details'),
-                style: TextButton.styleFrom(
-                  foregroundColor: Colors.red.shade700,
-                  backgroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSwipeableNoIssuesCard() {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.blue.shade50, Colors.blue.shade100],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.blue.shade200),
-        boxShadow: [BoxShadow(color: Colors.blue.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 2))],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: Colors.blue.shade600, borderRadius: BorderRadius.circular(32)),
-              child: const Icon(Icons.thumb_up, color: Colors.white, size: 32),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'All Systems Green!',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.blue.shade800),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'No performance issues detected. All shifts are performing consistently across all days of the week.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.blue.shade700, fontSize: 14),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAuditSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.search, color: Theme.of(context).primaryColor),
-            const SizedBox(width: 8),
-            Text(
-              'View Previous Checklists & Tasks',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        _buildAuditFilters(),
-        const SizedBox(height: 16),
-        _buildAuditResults(),
-      ],
-    );
-  }
-
-  Widget _buildAuditFilters() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            // Search bar
-            TextField(
-              decoration: const InputDecoration(
-                labelText: 'Search tasks, checklists, or users',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(),
-              ),
-              onChanged:
-                  (value) => setState(() {
-                    _searchTerm = value.toLowerCase();
-                    _auditItemsToShow = _auditItemsPerPage; // Reset pagination
-                  }),
-            ),
-            const SizedBox(height: 16),
-
-            // Filter row 1
-            Row(
-              children: [
-                // Shift filter or loading
-                Expanded(
-                  child:
-                      _shifts.isEmpty
-                          ? const Center(child: CircularProgressIndicator())
-                          : DropdownButtonFormField<String>(
-                            value: _selectedShift,
-                            decoration: const InputDecoration(labelText: 'Shift', border: OutlineInputBorder()),
-                            style: const TextStyle(fontSize: 14),
-                            isExpanded: true, // Prevent overflow
-                            items: [
-                              const DropdownMenuItem(
-                                value: 'all',
-                                child: Text(
-                                  'All Shifts',
-                                  style: TextStyle(fontSize: 14),
-                                  overflow: TextOverflow.ellipsis,
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(name, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14)),
+                                    const SizedBox(height: 2),
+                                    Text(shift, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                                  ],
                                 ),
                               ),
-                              ..._shifts.map(
-                                (shift) => DropdownMenuItem(
-                                  value: shift['id'],
+                              const SizedBox(width: 8),
+                              if (completedToday)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  margin: const EdgeInsets.only(right: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.shade50,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: Colors.green.shade200),
+                                  ),
+                                  child: const Text(
+                                    'Done today',
+                                    style: TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.w500),
+                                  ),
+                                ),
+                              if (count > 1)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.orange.shade50,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: Colors.orange.shade200),
+                                  ),
                                   child: Text(
-                                    shift['name']!,
-                                    style: const TextStyle(fontSize: 14),
-                                    overflow: TextOverflow.ellipsis,
-                                    maxLines: 1,
+                                    '×$count',
+                                    style: TextStyle(
+                                      color: Colors.orange.shade700,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+          ),
+    );
+  }
+
+  void _openTodayShifts() {
+    showDialog(
+      context: context,
+      builder:
+          (context) => _ProfessionalDialog(
+            title: "Today's Shifts (all)",
+            child:
+                _loadingLive
+                    ? const Center(child: CircularProgressIndicator())
+                    : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _liveShifts.length,
+                      itemBuilder: (context, i) {
+                        final s = _liveShifts[i];
+                        final pct = ((s['completionPct'] ?? 0.0) as double).clamp(0.0, 1.0);
+                        final status = (s['timeStatus'] ?? '').toString();
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey[200]!),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          s['shiftName'] ?? 'Unnamed Shift',
+                                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          '${s['startTime']} - ${s['endTime']}',
+                                          style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  _TimeChip(status),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: LinearProgressIndicator(
+                                      value: pct,
+                                      minHeight: 6,
+                                      backgroundColor: Colors.grey[200],
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        pct >= 0.8
+                                            ? Colors.green
+                                            : pct >= 0.5
+                                            ? Colors.orange
+                                            : Colors.red,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '${(pct * 100).round()}%',
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${s['completedTasks']}/${s['totalTasks']} tasks complete',
+                                style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+          ),
+    );
+  }
+
+  void _openAllFrequentMisses() {
+    showDialog(
+      context: context,
+      builder:
+          (context) => _ProfessionalDialog(
+            title: 'Frequently Missed Tasks (30 days)',
+            child:
+                _loadingFrequent
+                    ? const Center(child: CircularProgressIndicator())
+                    : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _frequentMisses30d.length,
+                      itemBuilder: (context, i) {
+                        final t = _frequentMisses30d[i];
+                        final name = (t['taskName'] ?? 'Unknown Task').toString();
+                        final shift = (t['shiftName'] ?? '').toString();
+                        final shiftNames =
+                            (t['shiftNames'] ?? []).cast<String>(); // Handle multiple shift names if available
+                        final count = (t['count'] ?? t['missedCount'] ?? 0).toString();
+
+                        // Create display string for shifts - improved logic
+                        String shiftDisplay = '';
+                        if (shiftNames.isNotEmpty) {
+                          // Use multiple shift names if available
+                          if (shiftNames.length == 1) {
+                            shiftDisplay = shiftNames.first;
+                          } else if (shiftNames.length <= 3) {
+                            shiftDisplay = shiftNames.join(', ');
+                          } else {
+                            shiftDisplay = '${shiftNames.take(2).join(', ')} +${shiftNames.length - 2} more';
+                          }
+                        } else if (shift.isNotEmpty) {
+                          // Fallback to single shift name
+                          shiftDisplay = shift;
+                        } else {
+                          // Try other possible field names
+                          final alternativeShift = (t['shift'] ?? t['shiftType'] ?? t['location'] ?? '').toString();
+                          if (alternativeShift.isNotEmpty) {
+                            shiftDisplay = alternativeShift;
+                          }
+                        }
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey[200]!),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 24,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  color:
+                                      i == 0
+                                          ? Colors.red
+                                          : i == 1
+                                          ? Colors.orange
+                                          : i == 2
+                                          ? Colors.amber
+                                          : Colors.grey,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    '${i + 1}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ],
-                            onChanged:
-                                (value) => setState(() {
-                                  _selectedShift = value!;
-                                  _auditItemsToShow = _auditItemsPerPage; // Reset pagination
-                                }),
-                          ),
-                ),
-                const SizedBox(width: 12),
-
-                // Checklist filter
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: _selectedChecklist,
-                    decoration: const InputDecoration(labelText: 'Checklists', border: OutlineInputBorder()),
-                    style: const TextStyle(fontSize: 14),
-                    isExpanded: true, // Prevent overflow
-                    items: [
-                      const DropdownMenuItem(
-                        value: 'all',
-                        child: Text('All Checklists', style: TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis),
-                      ),
-                      ..._checklists.map(
-                        (c) => DropdownMenuItem(
-                          value: c['id'],
-                          child: Text(
-                            c['name']!,
-                            style: const TextStyle(fontSize: 14),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                          ),
-                        ),
-                      ),
-                    ],
-                    onChanged:
-                        (value) => setState(() {
-                          _selectedChecklist = value!;
-                          _auditItemsToShow = _auditItemsPerPage; // Reset pagination
-                        }),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Filter row 2
-            Row(
-              children: [
-                // Completion filter
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: _selectedCompletion,
-                    decoration: const InputDecoration(labelText: 'Completion Status', border: OutlineInputBorder()),
-                    style: const TextStyle(fontSize: 14),
-                    isExpanded: true, // Prevent overflow
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'all',
-                        child: Text('All Tasks', style: TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis),
-                      ),
-                      DropdownMenuItem(
-                        value: 'completed',
-                        child: Text('Completed Only', style: TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis),
-                      ),
-                      DropdownMenuItem(
-                        value: 'incomplete',
-                        child: Text('Incomplete Only', style: TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis),
-                      ),
-                      DropdownMenuItem(
-                        value: 'incomplete_with_reason',
-                        child: Text(
-                          'Incomplete (with Reason)',
-                          style: TextStyle(fontSize: 14),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                    onChanged:
-                        (value) => setState(() {
-                          _selectedCompletion = value!;
-                          _auditItemsToShow = _auditItemsPerPage; // Reset pagination
-                        }),
-                  ),
-                ),
-                const SizedBox(width: 12),
-
-                // Date range filter
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _selectDateRange,
-                    icon: const Icon(Icons.date_range),
-                    label: Text(
-                      _selectedDateRange == null
-                          ? 'Select Date Range'
-                          : '${DateFormat('M/d').format(_selectedDateRange!.start)} - ${DateFormat('M/d').format(_selectedDateRange!.end)}',
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Clear filters button
-            if (_searchTerm.isNotEmpty ||
-                _selectedShift != 'all' ||
-                _selectedChecklist != 'all' ||
-                _selectedCompletion != 'all' ||
-                _selectedDateRange != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: TextButton.icon(
-                  onPressed: _clearFilters,
-                  icon: const Icon(Icons.clear),
-                  label: const Text('Clear All Filters'),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _selectDateRange() async {
-    final picked = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime.now().subtract(const Duration(days: 90)),
-      lastDate: DateTime.now().add(const Duration(days: 30)),
-      initialDateRange: _selectedDateRange,
-    );
-    if (picked != null) {
-      setState(() {
-        _selectedDateRange = picked;
-        _auditItemsToShow = _auditItemsPerPage; // Reset pagination
-      });
-    }
-  }
-
-  void _clearFilters() {
-    setState(() {
-      _searchTerm = '';
-      _selectedShift = 'all';
-      _selectedChecklist = 'all';
-      _selectedCompletion = 'all';
-      _selectedDateRange = null;
-      _auditItemsToShow = _auditItemsPerPage; // Reset pagination
-    });
-  }
-
-  void _loadMoreAuditItems() {
-    setState(() {
-      _auditItemsToShow += _auditItemsPerPage;
-    });
-  }
-
-  Widget _buildAuditResults() {
-    // Prefer collectionGroup('tasks') when a location is selected to read per-task docs
-    final Stream<QuerySnapshot> primaryStream =
-        _selectedLocationId != null
-            ? FirestoreEnforcer.instance
-                .collectionGroup('tasks')
-                .where('organizationId', isEqualTo: widget.organizationId)
-                .where('locationId', isEqualTo: _selectedLocationId)
-                .where(
-                  'dateString',
-                  isGreaterThanOrEqualTo: DateFormat(
-                    'yyyy-MM-dd',
-                  ).format(_selectedDateRange?.start ?? DateTime.now().subtract(const Duration(days: 30))),
-                )
-                .where(
-                  'dateString',
-                  isLessThanOrEqualTo: DateFormat('yyyy-MM-dd').format(_selectedDateRange?.end ?? DateTime.now()),
-                )
-                .limit(1000)
-                .snapshots()
-            : _buildAuditQuery();
-
-    return StreamBuilder<QuerySnapshot>(
-      stream: primaryStream,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (snapshot.hasError) {
-          logger.e('Error in audit query: ${snapshot.error}', snapshot.error);
-          // Try a simpler query without ordering if the main query fails
-          return StreamBuilder<QuerySnapshot>(
-            stream: _buildSimpleAuditQuery(),
-            builder: (context, fallbackSnapshot) {
-              if (!fallbackSnapshot.hasData) {
-                return Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      children: [
-                        Icon(Icons.error_outline, size: 48, color: Colors.red[400]),
-                        const SizedBox(height: 8),
-                        const Text('Error loading audit data'),
-                        const SizedBox(height: 8),
-                        Text('Error: ${snapshot.error}', style: TextStyle(color: Colors.red, fontSize: 12)),
-                      ],
-                    ),
-                  ),
-                );
-              }
-
-              final fallbackSnapshotData = fallbackSnapshot.data;
-              if (fallbackSnapshotData == null) {
-                return Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      children: [
-                        Icon(Icons.error_outline, size: 48, color: Colors.red[400]),
-                        const SizedBox(height: 8),
-                        const Text('Error loading audit data'),
-                        const SizedBox(height: 8),
-                        Text('Error: ${snapshot.error}', style: TextStyle(color: Colors.red, fontSize: 12)),
-                      ],
-                    ),
-                  ),
-                );
-              }
-
-              final docs = fallbackSnapshotData.docs;
-              // If fallback is checklist docs, use existing filter; if task docs, map via new helper
-              final filteredResults =
-                  docs.isNotEmpty && ((docs.first.data() as Map<String, dynamic>?)?.containsKey('tasks') ?? false)
-                      ? _filterAuditResults(docs)
-                      : _filterAuditFromTaskDocs(docs);
-
-              if (filteredResults.isEmpty) {
-                return Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      children: [
-                        Icon(Icons.search_off, size: 48, color: Colors.grey[400]),
-                        const SizedBox(height: 8),
-                        const Text('No results found with current filters'),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Found ${docs.length} checklists but no matching tasks',
-                          style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                        ),
-                        const SizedBox(height: 8),
-                        TextButton(onPressed: _clearFilters, child: const Text('Clear Filters')),
-                      ],
-                    ),
-                  ),
-                );
-              }
-
-              return Column(
-                children: [
-                  Text(
-                    'Found ${filteredResults.length} tasks from ${docs.length} checklists',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
-                  ),
-                  const SizedBox(height: 12),
-                  ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: filteredResults.length > _auditItemsToShow ? _auditItemsToShow : filteredResults.length,
-                    separatorBuilder: (context, index) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final taskData = filteredResults[index];
-                      return _buildAuditResultItem(taskData);
-                    },
-                  ),
-                  if (filteredResults.length > _auditItemsToShow) ...[
-                    const SizedBox(height: 16),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: OutlinedButton.icon(
-                        onPressed: _loadMoreAuditItems,
-                        icon: const Icon(Icons.expand_more),
-                        label: Text(
-                          'Load ${(filteredResults.length - _auditItemsToShow) >= _auditItemsPerPage ? _auditItemsPerPage : (filteredResults.length - _auditItemsToShow)} More Tasks',
-                        ),
-                        style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Showing $_auditItemsToShow of ${filteredResults.length} tasks',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ],
-              );
-            },
-          );
-        }
-
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        final snapshotData = snapshot.data;
-        if (snapshotData == null) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        final docs = snapshotData.docs;
-        logger.d('Audit query returned ${docs.length} documents');
-
-        final filteredResults =
-            docs.isNotEmpty && ((docs.first.data() as Map<String, dynamic>?)?.containsKey('tasks') ?? false)
-                ? _filterAuditResults(docs)
-                : _filterAuditFromTaskDocs(docs);
-
-        if (filteredResults.isEmpty) {
-          return Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                children: [
-                  Icon(Icons.search_off, size: 48, color: Colors.grey[400]),
-                  const SizedBox(height: 8),
-                  const Text('No results found with current filters'),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Found ${docs.length} checklists but no matching tasks',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                  ),
-                  const SizedBox(height: 8),
-                  TextButton(onPressed: _clearFilters, child: const Text('Clear Filters')),
-                ],
-              ),
-            ),
-          );
-        }
-
-        return Column(
-          children: [
-            Text(
-              'Found ${filteredResults.length} tasks from ${docs.length} checklists',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 12),
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: filteredResults.length > _auditItemsToShow ? _auditItemsToShow : filteredResults.length,
-              separatorBuilder: (context, index) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final taskData = filteredResults[index];
-                return _buildAuditResultItem(taskData);
-              },
-            ),
-            if (filteredResults.length > _auditItemsToShow) ...[
-              const SizedBox(height: 16),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: OutlinedButton.icon(
-                  onPressed: _loadMoreAuditItems,
-                  icon: const Icon(Icons.expand_more),
-                  label: Text(
-                    'Load ${(filteredResults.length - _auditItemsToShow) >= _auditItemsPerPage ? _auditItemsPerPage : (filteredResults.length - _auditItemsToShow)} More Tasks',
-                  ),
-                  style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Showing $_auditItemsToShow of ${filteredResults.length} tasks',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ],
-        );
-      },
-    );
-  }
-
-  Stream<QuerySnapshot> _buildAuditQuery() {
-    // For the new nested structure, audit queries across all locations are complex
-    // For now, we'll implement a simplified approach that requires location selection
-    if (_selectedLocationId == null) {
-      return const Stream.empty();
-    }
-
-    final endDate = DateTime.now();
-    final startDate = _selectedDateRange?.start ?? endDate.subtract(const Duration(days: 30));
-    final endDateForQuery = _selectedDateRange?.end ?? endDate;
-
-    final startDateStr = DateFormat('yyyy-MM-dd').format(startDate);
-    final endDateStr = DateFormat('yyyy-MM-dd').format(endDateForQuery);
-
-    var query = FirestoreEnforcer.instance
-        .collection('organizations')
-        .doc(widget.organizationId)
-        .collection('locations')
-        .doc(_selectedLocationId!)
-        .collection('daily_checklists')
-        .where('date', isGreaterThanOrEqualTo: startDateStr)
-        .where('date', isLessThanOrEqualTo: endDateStr)
-        .limit(500);
-
-    return query.snapshots();
-  }
-
-  // Enhanced simple query for fallback with in-memory filtering
-  Stream<QuerySnapshot> _buildSimpleAuditQuery() {
-    // For the new nested structure, require location selection
-    if (_selectedLocationId == null) {
-      return const Stream.empty();
-    }
-
-    // Use the simplest possible query - just get recent checklists by date
-    final endDate = DateTime.now();
-    final startDate = endDate.subtract(const Duration(days: 30));
-    final startDateStr = DateFormat('yyyy-MM-dd').format(startDate);
-
-    var query = FirestoreEnforcer.instance
-        .collection('organizations')
-        .doc(widget.organizationId)
-        .collection('locations')
-        .doc(_selectedLocationId!)
-        .collection('daily_checklists')
-        .where('date', isGreaterThanOrEqualTo: startDateStr)
-        .limit(200);
-
-    return query.snapshots();
-  }
-
-  List<Map<String, dynamic>> _filterAuditResults(List<QueryDocumentSnapshot> checklists) {
-    List<Map<String, dynamic>> allTasks = [];
-    for (final doc in checklists) {
-      final data = doc.data() as Map<String, dynamic>;
-      final checklistName = data['templateName'] ?? data['checklistName'] ?? data['name'] ?? 'Unnamed Checklist';
-      final startedByUserId = data['startedByUserId'] ?? data['userId'] ?? '';
-      final date = data['date'] ?? '';
-      final shiftId = data['shiftId'] ?? '';
-      final docLocationIds = coerceToLocationIds(data['locationIds'] ?? data['locationId']);
-      final locationId = docLocationIds.isNotEmpty ? docLocationIds.first : '';
-      final checklistTemplateId = data['checklistTemplateId'] ?? data['templateId'] ?? '';
-
-      // Apply Firestore-level filters first (in memory)
-
-      // Location filter
-      if (_selectedLocationId != null && !docLocationIds.contains(_selectedLocationId)) {
-        continue;
-      }
-
-      // Shift filter
-      if (_selectedShift != 'all' && shiftId != _selectedShift) {
-        logger.d('Filtering out checklist ${doc.id} - shift $shiftId does not match selected shift $_selectedShift');
-        continue;
-      }
-
-      // Checklist template filter
-      if (_selectedChecklist != 'all' && checklistTemplateId != _selectedChecklist) {
-        continue;
-      }
-
-      final shiftName =
-          _shifts.firstWhere((s) => s['id'] == shiftId, orElse: () => {'name': 'Unknown Shift'})['name'] ??
-          'Unknown Shift';
-
-      // Get tasks from this checklist
-      final tasks = List<Map<String, dynamic>>.from(data['tasks'] ?? []);
-
-      logger.d('Processing checklist ${doc.id} (shift: $shiftName): ${tasks.length} tasks found');
-
-      for (int i = 0; i < tasks.length; i++) {
-        final task = tasks[i];
-
-        // Try multiple possible field names for task description/name
-        final taskName =
-            task['description'] ??
-            task['title'] ??
-            task['name'] ??
-            task['taskName'] ??
-            task['taskTitle'] ??
-            'Unnamed Task';
-
-        // Check multiple possible completion fields
-        final completed =
-            task['isCompleted'] == true ||
-            task['completed'] == true ||
-            task['status'] == 'completed' ||
-            task['done'] == true;
-        final reason = task['reason'] ?? task['incompleteReason'] ?? '';
-
-        // Get completed by information with fallback logic
-        final completedBy =
-            task['completedByUserName'] ?? task['completedBy'] ?? task['userName'] ?? task['completedByUserId'] ?? '';
-
-        // Get completion timestamp
-        final completedAt = task['completedAt'] ?? task['timestamp'];
-
-        // Handle different timestamp formats
-        DateTime? completedDateTime;
-        if (completedAt != null) {
-          try {
-            if (completedAt is Timestamp) {
-              completedDateTime = completedAt.toDate();
-            } else if (completedAt is String) {
-              completedDateTime = DateTime.parse(completedAt);
-            }
-          } catch (e) {
-            logger.e('Error parsing completion timestamp: $e', e);
-          }
-        }
-
-        // Use createdAt/updatedAt as fallback timestamp
-        final fallbackTimestamp = data['createdAt'] ?? data['updatedAt'];
-        DateTime? fallbackDateTime;
-        if (fallbackTimestamp != null && completedDateTime == null) {
-          try {
-            if (fallbackTimestamp is Timestamp) {
-              fallbackDateTime = fallbackTimestamp.toDate();
-            } else if (fallbackTimestamp is String) {
-              fallbackDateTime = DateTime.parse(fallbackTimestamp);
-            }
-          } catch (e) {
-            logger.e('Error parsing fallback timestamp: $e', e);
-          }
-        }
-
-        final finalTimestamp = completedDateTime ?? fallbackDateTime;
-
-        // Extract photo URL from task data
-        final photoUrl =
-            task['photoUrl'] ?? task['proofImageUrl'] ?? task['imageUrl'] ?? task['photo'] ?? task['image'];
-
-        // Apply completion filter
-        if (_selectedCompletion == 'completed' && !completed) continue;
-        if (_selectedCompletion == 'incomplete' && completed) continue;
-        if (_selectedCompletion == 'incomplete_with_reason' && (completed || reason.toString().trim().isEmpty)) {
-          continue;
-        }
-
-        // Apply search filter
-        if (_searchTerm.isNotEmpty) {
-          final searchMatch =
-              taskName.toLowerCase().contains(_searchTerm) ||
-              checklistName.toLowerCase().contains(_searchTerm) ||
-              completedBy.toLowerCase().contains(_searchTerm) ||
-              shiftName.toLowerCase().contains(_searchTerm);
-          if (!searchMatch) continue;
-        }
-
-        // Create display name for user
-        String displayUserName = completedBy;
-        if (displayUserName.isEmpty) {
-          if (startedByUserId.isNotEmpty) {
-            displayUserName = 'User $startedByUserId';
-          } else {
-            displayUserName = 'Unknown User';
-          }
-        }
-
-        allTasks.add({
-          'taskName': taskName,
-          'checklistName': checklistName,
-          'userName': displayUserName,
-          'userId': completedBy.isNotEmpty ? completedBy : startedByUserId,
-          'shiftName': shiftName,
-          'shiftId': shiftId,
-          'completed': completed,
-          'timestamp': finalTimestamp,
-          'date': date,
-          'taskIndex': i,
-          'checklistId': doc.id,
-          'locationId': locationId,
-          'taskId': task['id'] ?? task['taskId'] ?? 'task_$i',
-          'reason': reason,
-          'photoUrl': photoUrl, // Add photo URL to task data
-        });
-      }
-    }
-
-    logger.d('Total tasks after filtering: ${allTasks.length}');
-    logger.d('Selected shift: $_selectedShift');
-    if (_selectedShift != 'all') {
-      final shiftTasks = allTasks.where((task) => task['shiftId'] == _selectedShift).length;
-      logger.d('Tasks matching selected shift: $shiftTasks');
-    }
-
-    // Sort by timestamp (most recent first)
-    allTasks.sort((a, b) {
-      final aTime = a['timestamp'];
-      final bTime = b['timestamp'];
-
-      if (aTime == null && bTime == null) return 0;
-      if (aTime == null) return 1;
-      if (bTime == null) return -1;
-
-      if (aTime is DateTime && bTime is DateTime) {
-        return bTime.compareTo(aTime);
-      }
-
-      return 0;
-    });
-
-    return allTasks;
-  }
-
-  /// Convert task document snapshots (from collectionGroup('tasks')) into the
-  /// same display shape used by [_filterAuditResults]. This allows the audit
-  /// UI to consume either legacy checklist docs with embedded `tasks` arrays
-  /// or the new per-task subcollection documents.
-  List<Map<String, dynamic>> _filterAuditFromTaskDocs(List<QueryDocumentSnapshot> taskDocs) {
-    List<Map<String, dynamic>> results = [];
-
-    for (final d in taskDocs) {
-      final data = d.data() as Map<String, dynamic>?;
-      if (data == null) continue;
-
-      // Defensive defaults and mapping - task docs are denormalized but may
-      // contain slightly different field names depending on migration timing.
-      final taskName = data['taskName'] ?? data['title'] ?? data['description'] ?? data['name'] ?? 'Unnamed Task';
-      final checklistName = data['checklistName'] ?? data['templateName'] ?? data['checklistId'] ?? 'Unknown Checklist';
-      final completed = data['completed'] == true || data['isCompleted'] == true || data['status'] == 'completed';
-      final completedBy = data['completedBy'] ?? data['completedByUserName'] ?? data['completedByUserId'] ?? '';
-      final timestampRaw = data['completedAt'] ?? data['timestamp'] ?? data['createdAt'] ?? data['updatedAt'];
-
-      DateTime? timestamp;
-      if (timestampRaw != null) {
-        try {
-          if (timestampRaw is Timestamp) {
-            timestamp = timestampRaw.toDate();
-          } else if (timestampRaw is String) {
-            timestamp = DateTime.tryParse(timestampRaw);
-          } else if (timestampRaw is DateTime) {
-            timestamp = timestampRaw;
-          }
-        } catch (e) {
-          logger.e('Error parsing task timestamp: $e', e);
-        }
-      }
-
-      final shiftId = data['shiftId'] ?? '';
-      final shiftName =
-          _shifts.firstWhere((s) => s['id'] == shiftId, orElse: () => {'name': 'Unknown Shift'})['name'] ??
-          'Unknown Shift';
-      final locationId = data['locationId'] ?? '';
-      final date = data['date'] ?? data['dateString'] ?? '';
-      final photoUrl = data['photoUrl'] ?? data['proofImageUrl'] ?? data['imageUrl'] ?? data['photo'];
-      final reason = data['reason'] ?? data['incompleteReason'] ?? '';
-
-      // Apply filters that the UI expects
-      if (_selectedLocationId != null && locationId != _selectedLocationId) continue;
-      if (_selectedShift != 'all' && shiftId != _selectedShift) continue;
-      if (_selectedChecklist != 'all' &&
-          (data['checklistTemplateId'] ?? data['checklistId'] ?? data['templateId'] ?? '') != _selectedChecklist) {
-        continue;
-      }
-
-      if (_selectedCompletion == 'completed' && !completed) continue;
-      if (_selectedCompletion == 'incomplete' && completed) continue;
-      if (_selectedCompletion == 'incomplete_with_reason' && (completed || reason.toString().trim().isEmpty)) continue;
-
-      if (_searchTerm.isNotEmpty) {
-        final searchMatch =
-            taskName.toLowerCase().contains(_searchTerm) ||
-            checklistName.toLowerCase().contains(_searchTerm) ||
-            completedBy.toLowerCase().contains(_searchTerm) ||
-            shiftName.toLowerCase().contains(_searchTerm);
-        if (!searchMatch) continue;
-      }
-
-      String displayUserName = (completedBy ?? '').toString();
-      if (displayUserName.isEmpty) {
-        displayUserName = data['startedByUserId'] != null ? 'User ${data['startedByUserId']}' : 'Unknown User';
-      }
-
-      results.add({
-        'taskName': taskName,
-        'checklistName': checklistName,
-        'userName': displayUserName,
-        'userId': completedBy ?? '',
-        'shiftName': shiftName,
-        'shiftId': shiftId,
-        'completed': completed,
-        'timestamp': timestamp,
-        'date': date,
-        'taskIndex': data['taskIndex'] ?? 0,
-        'checklistId': data['checklistId'] ?? data['dailyChecklistId'] ?? d.reference.parent.parent?.id ?? '',
-        'locationId': locationId,
-        'taskId': data['taskId'] ?? d.id,
-        'reason': reason,
-        'photoUrl': photoUrl,
-      });
-    }
-
-    // Sort newest first
-    results.sort((a, b) {
-      final aTime = a['timestamp'];
-      final bTime = b['timestamp'];
-      if (aTime == null && bTime == null) return 0;
-      if (aTime == null) return 1;
-      if (bTime == null) return -1;
-      if (aTime is DateTime && bTime is DateTime) return bTime.compareTo(aTime);
-      return 0;
-    });
-
-    return results;
-  }
-
-  Widget _buildAuditResultItem(Map<String, dynamic> data) {
-    final userName = data['userName'] ?? 'Unknown User';
-    final taskName = data['taskName'] ?? 'Unnamed Task';
-    final checklistName = data['checklistName'] ?? 'Unnamed Checklist';
-    final shiftName = data['shiftName'] ?? 'Unknown Shift';
-    final completed = data['completed'] == true;
-    final timestamp = data['timestamp']; // This is already a DateTime object
-    final date = data['date'] ?? 'Unknown Date';
-    final photoUrl = data['photoUrl'];
-    final reason = data['reason'] ?? '';
-
-    // Handle timestamp properly - it's already a DateTime object from _filterAuditResults
-    String time = 'Unknown Time';
-    String displayDate = date;
-
-    if (timestamp != null && timestamp is DateTime) {
-      time = DateFormat('HH:mm').format(timestamp);
-      displayDate = DateFormat('MMM d').format(timestamp);
-    }
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                // User avatar or initials
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(color: Colors.blue.shade50, shape: BoxShape.circle),
-                  child: Center(
-                    child: Text(
-                      userName.isNotEmpty ? userName[0].toUpperCase() : '?',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                // Task info
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(taskName, style: const TextStyle(fontWeight: FontWeight.w600)),
-                      Text('Checklist: $checklistName', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                      Text('Shift: $shiftName', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                      Text('By: $userName', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                      Text('Date: $displayDate $time', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                      // Show reason if task is incomplete and has a reason
-                      if (!completed && reason.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.shade50,
-                            border: Border.all(color: Colors.orange.shade200),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.info_outline, size: 14, color: Colors.orange.shade700),
-                              const SizedBox(width: 4),
-                              Flexible(
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(name, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14)),
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        Icon(Icons.schedule, size: 12, color: Colors.grey[600]),
+                                        const SizedBox(width: 4),
+                                        Expanded(
+                                          child: Text(
+                                            shiftDisplay.isNotEmpty ? shiftDisplay : 'Multiple shifts',
+                                            style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    if (shiftNames.length > 1) ...[
+                                      const SizedBox(height: 2),
+                                      Row(
+                                        children: [
+                                          Icon(Icons.info_outline, size: 10, color: Colors.blue[600]),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            'Affects ${shiftNames.length} shifts',
+                                            style: TextStyle(
+                                              color: Colors.blue[600],
+                                              fontSize: 10,
+                                              fontStyle: FontStyle.italic,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.shade50,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: Colors.red.shade200),
+                                ),
                                 child: Text(
-                                  'Reason: $reason',
+                                  '×$count',
                                   style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.orange.shade700,
+                                    color: Colors.red.shade700,
+                                    fontSize: 10,
                                     fontWeight: FontWeight.w500,
                                   ),
                                 ),
                               ),
                             ],
                           ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                // Action buttons row
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Completion status
-                    Container(
-                      margin: const EdgeInsets.only(right: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: completed ? Colors.green.shade50 : Colors.red.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        completed ? 'Completed' : 'Incomplete',
-                        style: TextStyle(
-                          color: completed ? Colors.green : Colors.red,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
+                        );
+                      },
                     ),
-                    // Photo viewing button - only show if photo exists and task is completed
-                    if (photoUrl != null && photoUrl.toString().isNotEmpty && completed)
-                      Container(
-                        decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
-                        child: IconButton(
-                          icon: Icon(Icons.photo_camera, color: Colors.blue.shade700),
-                          tooltip: 'View Task Photo',
-                          onPressed: () => _showTaskPhotoDialog(photoUrl, taskName),
-                          constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+          ),
+    );
+  }
+
+  void _openPoorShiftDetails() {
+    showDialog(
+      context: context,
+      builder:
+          (context) => _ProfessionalDialog(
+            title: 'Poor Performing Shifts (30 days)',
+            child:
+                _loadingPoorShifts
+                    ? const Center(child: CircularProgressIndicator())
+                    : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _poorShifts30d.length,
+                      itemBuilder: (context, i) {
+                        final m = _poorShifts30d[i];
+                        final pct = ((m['avgCompletion'] as double?) ?? 0) * 100;
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey[200]!),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      m['shiftName'] ?? 'Unknown Shift',
+                                      style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Avg completion last 30 days',
+                                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color:
+                                      pct < 50
+                                          ? Colors.red.shade50
+                                          : pct < 80
+                                          ? Colors.orange.shade50
+                                          : Colors.green.shade50,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color:
+                                        pct < 50
+                                            ? Colors.red.shade200
+                                            : pct < 80
+                                            ? Colors.orange.shade200
+                                            : Colors.green.shade200,
+                                  ),
+                                ),
+                                child: Text(
+                                  '${pct.toStringAsFixed(0)}%',
+                                  style: TextStyle(
+                                    color:
+                                        pct < 50
+                                            ? Colors.red.shade700
+                                            : pct < 80
+                                            ? Colors.orange.shade700
+                                            : Colors.green.shade700,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+          ),
+    );
+  }
+
+  Future<void> _openTaskHistorySheet() async {
+    // Default date range: last 14 days
+    _selectedDateRange ??= DateTimeRange(start: DateTime.now().subtract(const Duration(days: 14)), end: DateTime.now());
+    showDialog(
+      context: context,
+      builder:
+          (context) => _ProfessionalDialog(
+            title: 'Previous Tasks',
+            width: MediaQuery.of(context).size.width * 0.95,
+            height: MediaQuery.of(context).size.height * 0.85,
+            child: _TaskHistoryDialog(
+              organizationId: widget.organizationId,
+              selectedLocationId: _selectedLocationId,
+              shifts: _shifts,
+              checklists: _checklists,
+              initialDateRange: _selectedDateRange!,
+            ),
+          ),
+    );
+  }
+
+  // ===== Helpers =====
+
+  String _calculateTimeStatus(String startTime, String endTime) {
+    if (startTime.isEmpty || endTime.isEmpty) return 'No schedule';
+    try {
+      final now = DateTime.now();
+      final dateStr = DateFormat('yyyy-MM-dd').format(now);
+      final start = DateFormat('yyyy-MM-dd HH:mm').parse('$dateStr $startTime');
+      final end = DateFormat('yyyy-MM-dd HH:mm').parse('$dateStr $endTime');
+      if (now.isBefore(start)) {
+        final d = start.difference(now);
+        return 'Starts in ${_formatDuration(d)}';
+      } else if (now.isAfter(end)) {
+        return 'Finished';
+      } else {
+        final d = end.difference(now);
+        return '${_formatDuration(d)} remaining';
+      }
+    } catch (_) {
+      return 'Invalid schedule';
+    }
+  }
+
+  String _formatDuration(Duration d) {
+    if (d.inHours >= 1) {
+      final h = d.inHours;
+      final m = d.inMinutes.remainder(60);
+      return '${h}h ${m}m';
+    }
+    return '${d.inMinutes}m';
+  }
+}
+
+// ===== Reusable Widgets =====
+
+class _SummaryCard extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Color accentColor;
+  final Widget Function()? valueBuilder;
+  final Widget Function()? titleSuffix; // Add titleSuffix parameter
+  final Widget? trailing;
+  final Widget? child;
+  final List<Widget>? actions;
+  final bool loading;
+  final VoidCallback? onTap;
+  final Widget? footer;
+
+  const _SummaryCard({
+    required this.title,
+    required this.icon,
+    required this.accentColor,
+    this.valueBuilder,
+    this.titleSuffix,
+    this.trailing,
+    this.child,
+    this.actions,
+    this.loading = false,
+    this.onTap,
+    this.footer,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final card = Card(
+      elevation: 1, // Reduced from 2
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), // Reduced from 14
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(8), // Reduced from 10
+          child: Column(
+            mainAxisSize: MainAxisSize.min, // Added to minimize height
+            children: [
+              Row(
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      color: accentColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(6), // Reduced from 10
+                    ),
+                    padding: const EdgeInsets.all(4), // Reduced from 6
+                    child: Icon(icon, color: accentColor, size: 16), // Reduced icon size
+                  ),
+                  const SizedBox(width: 6), // Reduced from 8
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                      ),
+                        if (titleSuffix != null) ...[const SizedBox(width: 12), titleSuffix!()],
+                      ],
+                    ),
+                  ),
+                  if (actions != null) ...actions!,
+                ],
+              ),
+              const SizedBox(height: 6), // Reduced from 8
+              if (loading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 4),
+                  child: LinearProgressIndicator(minHeight: 3),
+                ) // Reduced padding and height
+              else
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    if (valueBuilder != null) valueBuilder!(),
+                    const Spacer(),
+                    if (trailing != null) trailing!,
                   ],
                 ),
+              if (child != null) ...[
+                const SizedBox(height: 6), // Reduced from 8
+                Flexible(child: child!), // Make child flexible to prevent overflow
               ],
-            ),
-          ],
+              if (footer != null) ...[
+                const SizedBox(height: 6), // Reduced from 8
+                Align(alignment: Alignment.centerLeft, child: footer!),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+    return card;
+  }
+}
+
+TextStyle _kMetricTextStyle(BuildContext context) =>
+    Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold) ??
+    const TextStyle(fontSize: 16, fontWeight: FontWeight.bold); // Reduced from headlineSmall (22) to 16
+
+class MiniSparkBars extends StatelessWidget {
+  final List<int> values;
+  final double height;
+  const MiniSparkBars({super.key, required this.values, this.height = 40}); // Increased from 28 to 40
+
+  @override
+  Widget build(BuildContext context) {
+    if (values.isEmpty) return SizedBox(height: height, child: const SizedBox.shrink());
+
+    // Use LayoutBuilder so the sparkline fills available width instead of
+    // forcing a fixed width that can cause overflow on small screens.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth.isFinite && constraints.maxWidth > 0 ? constraints.maxWidth : 120.0;
+        return SizedBox(
+          height: height,
+          width: w,
+          child: CustomPaint(size: Size(w, height), painter: _TrendLineChartPainter(values: values)),
+        );
+      },
+    );
+  }
+}
+
+class _TrendLineChartPainter extends CustomPainter {
+  final List<int> values;
+
+  _TrendLineChartPainter({required this.values});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (values.isEmpty || values.length < 2) return;
+
+    // Calculate trend direction (comparing first and last values)
+    final firstValue = values.first;
+    final lastValue = values.last;
+    final isUpwardTrend = lastValue > firstValue;
+
+    // Choose color based on trend (red for upward = bad, green for downward = good)
+    final color = isUpwardTrend ? Colors.red : Colors.green;
+
+    // Find min and max for normalization
+    final minVal = values.reduce(min).toDouble();
+    final maxVal = values.reduce(max).toDouble();
+    final range = max(1.0, maxVal - minVal);
+
+    // Create points for the line
+    final points = <Offset>[];
+    final width = size.width;
+    final height = size.height;
+    final step = width / (values.length - 1);
+
+    for (int i = 0; i < values.length; i++) {
+      final x = i * step;
+      final normalizedValue = (values[i] - minVal) / range;
+      final y = height - (normalizedValue * height * 0.85) - (height * 0.05); // More space usage, less padding
+      points.add(Offset(x, y));
+    }
+
+    // Create path for the line
+    final linePath = Path();
+    linePath.moveTo(points[0].dx, points[0].dy);
+
+    for (int i = 1; i < points.length; i++) {
+      linePath.lineTo(points[i].dx, points[i].dy);
+    }
+
+    // Create path for the filled area
+    final fillPath = Path();
+    fillPath.moveTo(points[0].dx, height);
+    fillPath.lineTo(points[0].dx, points[0].dy);
+
+    for (int i = 1; i < points.length; i++) {
+      fillPath.lineTo(points[i].dx, points[i].dy);
+    }
+    fillPath.lineTo(points.last.dx, height);
+    fillPath.close();
+
+    // Paint the filled area with higher opacity
+    final fillPaint =
+        Paint()
+          ..color = color.withOpacity(0.4)
+          ..style = PaintingStyle.fill;
+    canvas.drawPath(fillPath, fillPaint);
+
+    // Paint the line
+    final linePaint =
+        Paint()
+          ..color = color
+          ..strokeWidth = 2.0
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(linePath, linePaint);
+
+    // Paint dots at data points
+    final dotPaint =
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.fill;
+
+    for (final point in points) {
+      canvas.drawCircle(point, 2.0, dotPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
+
+class _LiveShiftStrip extends StatelessWidget {
+  final List<Map<String, dynamic>> shifts;
+  final VoidCallback onOpen;
+  const _LiveShiftStrip({required this.shifts, required this.onOpen});
+
+  @override
+  Widget build(BuildContext context) {
+    if (shifts.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Theme.of(context).primaryColor.withOpacity(0.06),
+              Theme.of(context).primaryColor.withOpacity(0.02),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Theme.of(context).primaryColor.withOpacity(0.2)),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.schedule, size: 32, color: Colors.grey),
+              SizedBox(height: 8),
+              Text('No shifts scheduled for today.', style: TextStyle(color: Colors.grey, fontSize: 14)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final inProgress = shifts.where((s) => s['timeStatus'].toString().contains('remaining')).toList();
+    final toShow = inProgress.isNotEmpty ? inProgress : shifts;
+
+    // Check if we're on mobile for different layout
+    final isMobile = MediaQuery.of(context).size.width < 600;
+
+    // Mobile layout: Simple horizontal scrollable list
+    if (isMobile) {
+      return Container(
+        height: 140, // Increased height to accommodate larger Harvey balls and prevent content cutoff
+        child: ListView.builder(
+          scrollDirection: Axis.horizontal,
+          itemCount: toShow.length,
+          itemBuilder: (context, index) {
+            return Container(
+              width: 160, // Fixed width for each card
+              margin: EdgeInsets.only(right: index < toShow.length - 1 ? 8 : 0),
+              child: _SwipeShiftCard(shift: toShow[index], onTap: onOpen),
+            );
+          },
+        ),
+      );
+    }
+
+    // Desktop layout: PageView with GridView (original implementation)
+    return ClipRect(
+      child: Container(
+        height: 140, // Increased height to accommodate larger Harvey balls and prevent content cutoff
+        child: PageView.builder(
+          controller: PageController(viewportFraction: 0.85), // Show slight preview of next card
+          itemCount: (toShow.length / 6).ceil(), // Pages needed for all shifts
+          itemBuilder: (context, pageIndex) {
+            final startIndex = pageIndex * 6;
+            final endIndex = (startIndex + 6).clamp(0, toShow.length);
+            final pageShifts = toShow.sublist(startIndex, endIndex);
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: GridView.builder(
+                physics: NeverScrollableScrollPhysics(), // Disable grid scrolling since we're using PageView
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3, // 3 columns
+                  childAspectRatio: 1.1, // Slightly wider than tall
+                  crossAxisSpacing: 6,
+                  mainAxisSpacing: 6,
+                ),
+                itemCount: pageShifts.length,
+                itemBuilder: (context, index) {
+                  return _SwipeShiftCard(shift: pageShifts[index], onTap: onOpen);
+                },
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+// New swipeable shift card widget
+class _SwipeShiftCard extends StatelessWidget {
+  final Map<String, dynamic> shift;
+  final VoidCallback onTap;
+
+  const _SwipeShiftCard({required this.shift, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = ((shift['completionPct'] ?? 0.0) as double).clamp(0.0, 1.0);
+    final status = (shift['timeStatus'] ?? '').toString();
+    final completedTasks = shift['completedTasks'] ?? 0;
+    final totalTasks = shift['totalTasks'] ?? 1;
+    final shiftName = shift['shiftName'] ?? 'Unnamed';
+
+    // Determine if shift is finished
+    final isFinished = status.contains('Finished') || status.contains('Complete');
+
+    // Make Harvey ball larger on mobile for better visibility
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 600;
+    final harveyBallSize = isMobile ? 32.0 : 28.0;
+
+    return Material(
+      color: Colors.white,
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Top row: Shift name and Harvey ball
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(
+                      shiftName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 11, color: Colors.black87),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  // Harvey ball in top right - enhanced for mobile compatibility
+                  Container(
+                    width: harveyBallSize,
+                    height: harveyBallSize,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: pct > 0 ? Colors.green[700]! : Colors.grey[500]!, width: 2.5),
+                    ),
+                    child: Stack(
+                      children: [
+                        // Custom paint Harvey ball
+                        Positioned.fill(child: CustomPaint(painter: _HarveyBallPainter(pct, isFinished))),
+                        // Fallback indicator for mobile if CustomPaint fails
+                        if (isMobile)
+                          Center(
+                            child: Container(
+                              width: harveyBallSize * 0.6,
+                              height: harveyBallSize * 0.6,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color:
+                                    pct > 0
+                                        ? Colors.green[600]!.withOpacity(pct.clamp(0.3, 1.0))
+                                        : (isFinished ? Colors.red.withOpacity(0.3) : Colors.grey[300]),
+                              ),
+                            ),
+                          ),
+                        // Debug percentage text
+                        if (isMobile)
+                          Center(
+                            child: Text(
+                              '${(pct * 100).toInt()}',
+                              style: TextStyle(
+                                fontSize: 8, // Increased from 6 to accommodate larger Harvey ball
+                                fontWeight: FontWeight.bold,
+                                color: pct > 0.5 ? Colors.white : Colors.black87,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // Tasks completed (center)
+              Text(
+                '$completedTasks/$totalTasks tasks',
+                style: TextStyle(fontSize: 10, color: Colors.grey[600], fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 4),
+
+              // Time remaining (center)
+              Text(
+                status,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 9, color: _getTimeStatusColor(status), fontWeight: FontWeight.w500),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  // Add this new method to show photo in a dialog
-  String _fixStorageUrl(String url) {
-    // Some stored URLs may still reference firebasestorage.app which fails on web.
-    // Rewrite to the canonical appspot.com domain without changing the rest of the path.
-    try {
-      if (url.contains('firebasestorage.app')) {
-        return url.replaceFirst('firebasestorage.app', 'appspot.com');
-      }
-    } catch (_) {}
-    return url;
+  Color _getTimeStatusColor(String status) {
+    if (status.contains('Finished')) {
+      return Colors.grey;
+    } else if (status.contains('Starts in')) {
+      return Colors.blue;
+    } else if (status.contains('remaining')) {
+      return Colors.green;
+    } else {
+      return Colors.orange;
+    }
+  }
+}
+
+// Custom painter for harvey ball completion indicator
+class _HarveyBallPainter extends CustomPainter {
+  final double percentage;
+  final bool isFinished;
+
+  _HarveyBallPainter(this.percentage, this.isFinished);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.width / 2) - 1; // Slightly smaller to ensure border visibility
+
+    // Determine background color for incomplete portion
+    final incompleteColor = isFinished ? Colors.red : Colors.grey[300]!;
+
+    // Draw outer circle (background - grey or red if finished)
+    final backgroundPaint =
+        Paint()
+          ..color = incompleteColor
+          ..style = PaintingStyle.fill
+          ..isAntiAlias = true; // Better rendering on mobile
+    canvas.drawCircle(center, radius, backgroundPaint);
+
+    // Draw filled portion based on percentage (always green)
+    if (percentage > 0) {
+      final fillPaint =
+          Paint()
+            ..color =
+                Colors.green[600]! // Slightly darker green for better visibility
+            ..style = PaintingStyle.fill
+            ..isAntiAlias = true; // Better rendering on mobile
+
+      // Draw pie slice from top (90 degrees) clockwise
+      final sweepAngle = 2 * 3.14159 * percentage;
+      final rect = Rect.fromCircle(center: center, radius: radius);
+      canvas.drawArc(
+        rect,
+        -3.14159 / 2, // Start from top (-90 degrees)
+        sweepAngle,
+        true,
+        fillPaint,
+      );
+    }
+
+    // Note: Border is handled by Container decoration for better mobile compatibility
   }
 
-  void _showTaskPhotoDialog(String photoUrl, String taskName) {
-    showDialog(
-      context: context,
-      builder:
-          (context) => Dialog(
-            backgroundColor: Colors.transparent,
-            child: Container(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(context).size.height * 0.8,
-                maxWidth: MediaQuery.of(context).size.width * 0.9,
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _TimeChip extends StatelessWidget {
+  final String status;
+  const _TimeChip(this.status);
+
+  @override
+  Widget build(BuildContext context) {
+    Color color;
+    if (status.contains('Finished')) {
+      color = Colors.grey;
+    } else if (status.contains('Starts in')) {
+      color = Colors.blue;
+    } else if (status.contains('remaining')) {
+      color = Colors.green;
+    } else {
+      color = Colors.orange;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1), // Further reduced padding
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(6)), // Reduced radius
+      child: Text(
+        status,
+        style: const TextStyle(color: Colors.white, fontSize: 9), // Even smaller font
+      ),
+    );
+  }
+}
+
+class _TopListPreview extends StatelessWidget {
+  final List<String> items;
+  final String emptyLabel;
+  const _TopListPreview({required this.items, required this.emptyLabel});
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(12), // Reduced from 16
+        alignment: Alignment.centerLeft,
+        child: Text(emptyLabel, style: TextStyle(color: Colors.grey[600], fontSize: 12)), // Smaller font
+      );
+    }
+    return Column(
+      children:
+          items
+              .map(
+                (s) => Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 4), // Reduced from 8
+                    child: Text('• $s', style: const TextStyle(fontSize: 12)), // Smaller font
+                  ),
+                ),
+              )
+              .toList(),
+    );
+  }
+}
+
+// ===== Professional Dialog Widget =====
+
+class _ProfessionalDialog extends StatelessWidget {
+  final String title;
+  final Widget child;
+  final double? width;
+  final double? height;
+
+  const _ProfessionalDialog({required this.title, required this.child, this.width, this.height});
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Container(
+        width: width ?? MediaQuery.of(context).size.width * 0.9,
+        height: height ?? MediaQuery.of(context).size.height * 0.8,
+        child: Column(
+          children: [
+            // Header with title and X button
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+              child: Row(
                 children: [
-                  // Header
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).primaryColor,
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(12),
-                        topRight: Radius.circular(12),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.photo_camera, color: Colors.white),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'Task Photo: $taskName',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close, color: Colors.white),
-                          onPressed: () => Navigator.of(context).pop(),
-                        ),
-                      ],
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  // Photo content
-                  Flexible(
-                    child: Container(
-                      width: double.infinity,
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.only(
-                          bottomLeft: Radius.circular(12),
-                          bottomRight: Radius.circular(12),
-                        ),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: const BorderRadius.only(
-                          bottomLeft: Radius.circular(12),
-                          bottomRight: Radius.circular(12),
-                        ),
-                        child: InteractiveViewer(
-                          minScale: 0.5,
-                          maxScale: 3.0,
-                          child: Image.network(
-                            _fixStorageUrl(photoUrl),
-                            fit: BoxFit.contain,
-                            loadingBuilder: (context, child, loadingProgress) {
-                              if (loadingProgress == null) return child;
-                              return SizedBox(
-                                height: 300,
-                                child: Center(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      CircularProgressIndicator(
-                                        value:
-                                            loadingProgress.expectedTotalBytes != null
-                                                ? loadingProgress.cumulativeBytesLoaded /
-                                                    loadingProgress.expectedTotalBytes!
-                                                : null,
-                                      ),
-                                      const SizedBox(height: 16),
-                                      const Text('Loading photo...'),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                            errorBuilder: (context, error, stackTrace) {
-                              return SizedBox(
-                                height: 300,
-                                child: Center(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.error_outline, size: 48, color: Colors.red[400]),
-                                      const SizedBox(height: 16),
-                                      const Text('Error loading image', style: TextStyle(fontSize: 16)),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        'Please check your internet connection',
-                                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                    ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                    iconSize: 20,
                   ),
                 ],
               ),
             ),
-          ),
+            // Content
+            Expanded(child: child),
+          ],
+        ),
+      ),
     );
   }
+}
 
-  Future<Map<String, dynamic>> _calculateShiftPerformanceAnalytics() async {
+// ===== Task History Dialog (filters + list) =====
+
+class _TaskHistoryDialog extends StatefulWidget {
+  final String organizationId;
+  final String? selectedLocationId;
+  final List<Map<String, String>> shifts;
+  final List<Map<String, String>> checklists;
+  final DateTimeRange initialDateRange;
+
+  const _TaskHistoryDialog({
+    required this.organizationId,
+    required this.selectedLocationId,
+    required this.shifts,
+    required this.checklists,
+    required this.initialDateRange,
+  });
+
+  @override
+  State<_TaskHistoryDialog> createState() => _TaskHistoryDialogState();
+}
+
+class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
+  final _searchCtrl = TextEditingController();
+  String _selectedShift = 'all';
+  String _selectedChecklist = 'all';
+  String _selectedCompletion = 'all';
+  DateTimeRange? _dateRange;
+  bool _loading = false;
+  List<_TaskRow> _rows = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _dateRange = widget.initialDateRange;
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
     try {
-      logger.d('Starting shift performance analytics calculation for location: $_selectedLocationId');
+      final startStr = DateFormat('yyyy-MM-dd').format(_dateRange!.start);
+      final endStr = DateFormat('yyyy-MM-dd').format(_dateRange!.end);
 
-      // Early return if no location selected
-      if (_selectedLocationId == null) {
-        logger.d('No location selected, returning empty analytics');
-        return {
-          'topPerformers': <Map<String, dynamic>>[],
-          'poorPerformers': <Map<String, dynamic>>[],
-          'dayAnalysis': <Map<String, dynamic>>[],
-        };
+      print('[TaskHistory] Loading tasks from $startStr to $endStr for location: ${widget.selectedLocationId}');
+
+      List<QueryDocumentSnapshot> docs = [];
+
+      // Try location-scoped daily_checklists first (new schema)
+      if (widget.selectedLocationId != null) {
+        try {
+          Query locationQuery = FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(widget.organizationId)
+              .collection('locations')
+              .doc(widget.selectedLocationId)
+              .collection('daily_checklists')
+              .where('date', isGreaterThanOrEqualTo: startStr)
+              .where('date', isLessThanOrEqualTo: endStr);
+
+          if (_selectedShift != 'all') {
+            locationQuery = locationQuery.where('shiftId', isEqualTo: _selectedShift);
+          }
+
+          final locationSnap = await locationQuery.get();
+          print('[TaskHistory] Location-scoped query returned ${locationSnap.docs.length} docs');
+          docs.addAll(locationSnap.docs);
+        } catch (e) {
+          print('[TaskHistory] Location-scoped query failed: $e');
+        }
       }
 
-      // Get data from the last 30 days using the new nested structure
-      final endDate = DateTime.now();
-      final startDate = endDate.subtract(const Duration(days: 30));
+      // If no docs found or no location selected, try org-scoped daily_checklists (fallback)
+      if (docs.isEmpty) {
+        try {
+          Query orgQuery = FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(widget.organizationId)
+              .collection('daily_checklists')
+              .where('date', isGreaterThanOrEqualTo: startStr)
+              .where('date', isLessThanOrEqualTo: endStr);
 
-      List<QueryDocumentSnapshot> allChecklists = [];
+          if (widget.selectedLocationId != null) {
+            orgQuery = orgQuery.where('locationId', isEqualTo: widget.selectedLocationId);
+          }
+          if (_selectedShift != 'all') {
+            orgQuery = orgQuery.where('shiftId', isEqualTo: _selectedShift);
+          }
 
-      // Query specific location only (since we always have a location selected)
-      var checklistsQuery = FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(widget.organizationId)
-          .collection('locations')
-          .doc(_selectedLocationId!)
-          .collection('daily_checklists')
-          .where('date', isGreaterThanOrEqualTo: DateFormat('yyyy-MM-dd').format(startDate))
-          .where('date', isLessThanOrEqualTo: DateFormat('yyyy-MM-dd').format(endDate))
-          .limit(500);
-
-      final checklistsQueryResult = await checklistsQuery.get();
-      allChecklists = checklistsQueryResult.docs;
-
-      final checklists = allChecklists;
-
-      logger.d('Found ${checklists.length} checklists for analytics');
-      logger.d('Available shifts: ${_shifts.length} (${_shifts.map((s) => s['name']).join(', ')})');
-
-      if (checklists.isEmpty) {
-        logger.d('No checklists found for performance analytics');
-        return {
-          'topPerformers': <Map<String, dynamic>>[],
-          'poorPerformers': <Map<String, dynamic>>[],
-          'dayAnalysis': <Map<String, dynamic>>[],
-        };
+          final orgSnap = await orgQuery.get();
+          print('[TaskHistory] Org-scoped query returned ${orgSnap.docs.length} docs');
+          docs.addAll(orgSnap.docs);
+        } catch (e) {
+          print('[TaskHistory] Org-scoped query failed: $e');
+        }
       }
 
-      // Group data by shift
-      Map<String, List<Map<String, dynamic>>> shiftData = {};
-      Map<String, Map<String, List<double>>> dayOfWeekData = {}; // shiftId -> dayOfWeek -> completion rates
+      print('[TaskHistory] Total documents to process: ${docs.length}');
 
-      for (final doc in checklists) {
-        final data = doc.data() as Map<String, dynamic>?;
+      final List<_TaskRow> rows = [];
+      for (final d in docs) {
+        final data = d.data() as Map<String, dynamic>?;
         if (data == null) continue;
 
-        final shiftId = data['shiftId'] as String?;
-        final dateStr = data['date'] as String?;
+        final date = (data['date'] ?? '').toString();
+        final shiftName = (data['shiftName'] ?? '').toString();
+        final checklistName = (data['checklistName'] ?? '').toString();
 
-        if (shiftId == null || dateStr == null) continue;
+        // Handle both old format (tasks in document) and new format (tasks in subcollection)
+        List<Map<String, dynamic>> tasks = [];
 
-        // Calculate completion rate - handle multiple possible task completion fields
-        final tasks = List<Map<String, dynamic>>.from(data['tasks'] ?? []);
-        final totalTasks = tasks.length;
-
-        if (totalTasks == 0) continue; // Skip checklists with no tasks
-
-        if (totalTasks == 0) continue; // Skip checklists with no tasks
-
-        final completedTasks =
-            tasks.where((t) => t['completed'] == true || t['isCompleted'] == true || t['status'] == 'completed').length;
-
-        final completionRate = completedTasks / totalTasks;
-
-        logger.d(
-          'Checklist ${doc.id}: $completedTasks/$totalTasks tasks completed (${(completionRate * 100).round()}%)',
-        );
-
-        // Group by shift
-        shiftData.putIfAbsent(shiftId, () => []);
-        shiftData[shiftId]!.add({'date': dateStr, 'completionRate': completionRate});
-
-        // Group by day of week
-        try {
-          final date = DateFormat('yyyy-MM-dd').parse(dateStr);
-          final dayOfWeek = DateFormat('EEEE').format(date);
-
-          dayOfWeekData.putIfAbsent(shiftId, () => {});
-          dayOfWeekData[shiftId]!.putIfAbsent(dayOfWeek, () => []);
-          dayOfWeekData[shiftId]![dayOfWeek]!.add(completionRate);
-        } catch (e) {
-          logger.e('Error parsing date $dateStr: $e', e);
-        }
-      }
-
-      logger.d('Grouped data by ${shiftData.length} shifts');
-
-      // Calculate average performance for each shift
-      List<Map<String, dynamic>> shiftPerformances = [];
-      for (final shiftId in shiftData.keys) {
-        final performances = shiftData[shiftId]!;
-        if (performances.isEmpty) continue;
-
-        final avgCompletionRate =
-            performances.map((p) => p['completionRate'] as double).reduce((a, b) => a + b) / performances.length;
-
-        final totalSessions = performances.length;
-        final shiftName =
-            _shifts.isNotEmpty
-                ? _shifts.firstWhere(
-                  (s) => s['id'] == shiftId,
-                  orElse: () => {'name': 'Unknown Shift ($shiftId)'},
-                )['name']
-                : 'Unknown Shift ($shiftId)';
-
-        logger.d('Shift $shiftName: ${(avgCompletionRate * 100).round()}% avg completion ($totalSessions sessions)');
-
-        shiftPerformances.add({
-          'shiftId': shiftId,
-          'shiftName': shiftName,
-          'avgCompletionRate': avgCompletionRate,
-          'totalSessions': totalSessions,
-          'performances': performances,
-        });
-      }
-
-      // Sort by performance
-      shiftPerformances.sort((a, b) => (b['avgCompletionRate'] as double).compareTo(a['avgCompletionRate'] as double));
-
-      // Get top and poor performers
-      final topPerformers = shiftPerformances.take(3).toList();
-      final poorPerformers = shiftPerformances.reversed.take(3).toList().reversed.toList();
-
-      logger.d('Top performers: ${topPerformers.length}, Poor performers: ${poorPerformers.length}');
-
-      // Calculate day-of-week analysis
-      List<Map<String, dynamic>> dayAnalysis = [];
-      for (final shiftId in dayOfWeekData.keys) {
-        final shiftName =
-            _shifts.isNotEmpty
-                ? _shifts.firstWhere(
-                  (s) => s['id'] == shiftId,
-                  orElse: () => {'name': 'Unknown Shift ($shiftId)'},
-                )['name']
-                : 'Unknown Shift ($shiftId)';
-
-        final dayData = dayOfWeekData[shiftId]!;
-        List<Map<String, dynamic>> dayPerformances = [];
-
-        for (final day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']) {
-          if (dayData.containsKey(day) && dayData[day]!.isNotEmpty) {
-            final rates = dayData[day]!;
-            final avgRate = rates.reduce((a, b) => a + b) / rates.length;
-            dayPerformances.add({'day': day, 'avgCompletionRate': avgRate, 'sessionCount': rates.length});
+        if (data.containsKey('tasks') && data['tasks'] != null) {
+          // Old format: tasks in document
+          tasks = List<Map<String, dynamic>>.from(data['tasks'] ?? const []);
+          print('[TaskHistory] Found ${tasks.length} tasks in document for ${d.id}');
+        } else {
+          // New format: tasks in subcollection
+          try {
+            final tasksSnap = await d.reference.collection('tasks').get();
+            tasks = tasksSnap.docs.map((taskDoc) => taskDoc.data()).toList();
+            print('[TaskHistory] Found ${tasks.length} tasks in subcollection for ${d.id}');
+          } catch (e) {
+            print('[TaskHistory] Failed to load tasks subcollection for ${d.id}: $e');
           }
         }
 
-        // Find the worst performing day for this shift
-        if (dayPerformances.isNotEmpty) {
-          dayPerformances.sort(
-            (a, b) => (a['avgCompletionRate'] as double).compareTo(b['avgCompletionRate'] as double),
+        for (final t in tasks) {
+          final name = (t['taskName'] ?? t['name'] ?? 'Unnamed Task').toString();
+          final completed = t['completed'] == true || t['isCompleted'] == true || t['status'] == 'completed';
+          final reason = (t['reason'] ?? t['reasonNotCompleted'] ?? '').toString();
+          final note = (t['note'] ?? t['notes'] ?? '').toString();
+          final photos = List<String>.from(t['photoUrls'] ?? const []);
+
+          // Checklist filter (best-effort, some data models store checklistId on parent)
+          if (_selectedChecklist != 'all' && (data['templateId'] ?? data['checklistId']) != _selectedChecklist) {
+            continue;
+          }
+
+          // Completion filter
+          if (_selectedCompletion == 'completed' && !completed) continue;
+          if (_selectedCompletion == 'incomplete' && completed) continue;
+          if (_selectedCompletion == 'incomplete_with_reason' && (completed || reason.isEmpty)) continue;
+
+          // Search filter
+          final q = _searchCtrl.text.trim().toLowerCase();
+          if (q.isNotEmpty &&
+              !(name.toLowerCase().contains(q) || note.toLowerCase().contains(q) || reason.toLowerCase().contains(q))) {
+            continue;
+          }
+
+          rows.add(
+            _TaskRow(
+              date: date,
+              shiftName: shiftName,
+              checklistName: checklistName,
+              taskName: name,
+              completed: completed,
+              reason: reason,
+              note: note,
+              photoCount: photos.length,
+              photoUrls: photos,
+            ),
           );
-
-          final worstDay = dayPerformances.first;
-          if ((worstDay['avgCompletionRate'] as double) < 0.8) {
-            // Less than 80%
-            dayAnalysis.add({
-              'shiftId': shiftId,
-              'shiftName': shiftName,
-              'worstDay': worstDay['day'],
-              'worstDayRate': worstDay['avgCompletionRate'],
-              'worstDaySessionCount': worstDay['sessionCount'],
-              'allDayPerformances': dayPerformances,
-            });
-          }
         }
       }
 
-      logger.d(
-        'Analytics complete: ${topPerformers.length} top, ${poorPerformers.length} poor, ${dayAnalysis.length} day issues',
-      );
-
-      return {'topPerformers': topPerformers, 'poorPerformers': poorPerformers, 'dayAnalysis': dayAnalysis};
-    } catch (e, stackTrace) {
-      logger.e('Error in _calculateShiftPerformanceAnalytics: $e', e, stackTrace);
-      return {
-        'topPerformers': <Map<String, dynamic>>[],
-        'poorPerformers': <Map<String, dynamic>>[],
-        'dayAnalysis': <Map<String, dynamic>>[],
-      };
+      print('[TaskHistory] Final result: ${rows.length} tasks found');
+      if (!mounted) return;
+      setState(() => _rows = rows..sort((a, b) => b.date.compareTo(a.date)));
+    } catch (e) {
+      print('[TaskHistory] Error loading tasks: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load tasks: $e')));
+    } finally {
+      if (!mounted) return;
+      setState(() => _loading = false);
     }
   }
 
-  void _showDayAnalysisDetails(Map<String, dynamic> analysis) {
-    final allDayPerformances = analysis['allDayPerformances'] as List<Map<String, dynamic>>;
-
-    showDialog(
+  Future<void> _pickRange() async {
+    final picked = await showDateRangePicker(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text('${analysis['shiftName']} - Weekly Performance'),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Performance by Day of Week',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 16),
-                  ...allDayPerformances.map(
-                    (dayPerf) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(flex: 2, child: Text(dayPerf['day'])),
-                          Expanded(
-                            flex: 3,
-                            child: LinearProgressIndicator(
-                              value: dayPerf['avgCompletionRate'],
-                              backgroundColor: Colors.grey.shade300,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                dayPerf['avgCompletionRate'] < 0.8
-                                    ? Colors.red
-                                    : dayPerf['avgCompletionRate'] < 0.9
-                                    ? Colors.orange
-                                    : Colors.green,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            '${(dayPerf['avgCompletionRate'] * 100).round()}%',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close'))],
-          ),
+      firstDate: DateTime.now().subtract(const Duration(days: 180)),
+      lastDate: DateTime.now().add(const Duration(days: 30)),
+      initialDateRange: _dateRange,
     );
+    if (picked == null) return;
+    setState(() => _dateRange = picked);
+    await _load();
   }
 
-  Widget _buildHistoricInsightsSection() {
+  @override
+  Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Icon(Icons.analytics, color: Theme.of(context).primaryColor),
-            const SizedBox(width: 8),
-            Text(
-              'Historic missed task insights (30 days)',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
+        // Compact filter controls
         Container(
-          width: double.infinity,
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width - 32, // Account for padding
-          ),
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Colors.purple.withValues(alpha: 0.1), Colors.purple.withValues(alpha: 0.05)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.purple.withValues(alpha: 0.2)),
-          ),
+          padding: const EdgeInsets.all(12),
+          color: Colors.grey[50],
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  const Icon(Icons.trending_up, color: Colors.purple, size: 20),
+                  Expanded(
+                    child: SizedBox(
+                      height: 36,
+                      child: TextField(
+                        controller: _searchCtrl,
+                        style: const TextStyle(fontSize: 13),
+                        decoration: const InputDecoration(
+                          prefixIcon: Icon(Icons.search, size: 18),
+                          labelText: 'Search tasks',
+                          labelStyle: TextStyle(fontSize: 12),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                        onSubmitted: (_) => _load(),
+                      ),
+                    ),
+                  ),
                   const SizedBox(width: 8),
-                  Text(
-                    'Top 3 Frequently Missed Tasks',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.purple[700]),
+                  SizedBox(
+                    height: 36,
+                    child: OutlinedButton.icon(
+                      onPressed: _pickRange,
+                      icon: const Icon(Icons.date_range, size: 16),
+                      label: Text(
+                        _dateRange == null
+                            ? 'Date Range'
+                            : '${DateFormat('M/d').format(_dateRange!.start)} - ${DateFormat('M/d').format(_dateRange!.end)}',
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                      style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              if (_loadingFrequent)
-                const Center(child: CircularProgressIndicator())
-              else if (_frequentMisses30d.isEmpty)
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Column(
-                      children: [
-                        Icon(Icons.check_circle_outline, size: 48, color: Colors.green[300]),
-                        const SizedBox(height: 8),
-                        Text('Excellent! No frequently missed tasks.', style: TextStyle(color: Colors.grey[600])),
-                      ],
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 36,
+                      child: DropdownButtonFormField<String>(
+                        value: _selectedShift,
+                        style: const TextStyle(fontSize: 12),
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          labelText: 'Shift',
+                          labelStyle: TextStyle(fontSize: 11),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          isDense: true,
+                        ),
+                        items: [
+                          const DropdownMenuItem(
+                            value: 'all',
+                            child: Text('All shifts', style: TextStyle(fontSize: 12)),
+                          ),
+                          ...widget.shifts.map(
+                            (s) => DropdownMenuItem(
+                              value: s['id'],
+                              child: Text(s['name'] ?? 'Shift', style: const TextStyle(fontSize: 12)),
+                            ),
+                          ),
+                        ],
+                        onChanged: (v) => setState(() => _selectedShift = v ?? 'all'),
+                      ),
                     ),
                   ),
-                )
-              else
-                ...(_frequentMisses30d.take(3).toList().asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final task = entry.value;
-                  final position = index + 1;
-
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.purple.withValues(alpha: 0.2)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.purple.withValues(alpha: 0.05),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: SizedBox(
+                      height: 36,
+                      child: DropdownButtonFormField<String>(
+                        value: _selectedCompletion,
+                        style: const TextStyle(fontSize: 12),
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          labelText: 'Status',
+                          labelStyle: TextStyle(fontSize: 11),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          isDense: true,
                         ),
-                      ],
+                        items: const [
+                          DropdownMenuItem(value: 'all', child: Text('All', style: TextStyle(fontSize: 12))),
+                          DropdownMenuItem(value: 'completed', child: Text('Done', style: TextStyle(fontSize: 12))),
+                          DropdownMenuItem(value: 'incomplete', child: Text('Missed', style: TextStyle(fontSize: 12))),
+                          DropdownMenuItem(
+                            value: 'incomplete_with_reason',
+                            child: Text('Missed w/ reason', style: TextStyle(fontSize: 12)),
+                          ),
+                        ],
+                        onChanged: (v) => setState(() => _selectedCompletion = v ?? 'all'),
+                      ),
                     ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(color: _getPositionColor(position), shape: BoxShape.circle),
-                          child: Center(
-                            child: Text(
-                              '$position',
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                task['taskName'] ?? 'Unknown Task',
-                                style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-                              ),
-                              if (task['shiftName'] != null)
-                                Text(
-                                  task['shiftName'],
-                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
-                                ),
-                            ],
-                          ),
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.red[50],
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Colors.red[200]!),
-                              ),
-                              child: Text(
-                                '${task['count']} times',
-                                style: TextStyle(color: Colors.red[700], fontSize: 12, fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '${_calculateMissRate(task)}% miss rate',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+                  ),
+                  const SizedBox(width: 6),
+                  SizedBox(
+                    height: 36,
+                    child: ElevatedButton(
+                      onPressed: _load,
+                      style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12)),
+                      child: const Text('Apply', style: TextStyle(fontSize: 11)),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  SizedBox(
+                    height: 36,
+                    child: TextButton(
+                      onPressed: () async {
+                        setState(() {
+                          _searchCtrl.clear();
+                          _selectedShift = 'all';
+                          _selectedChecklist = 'all';
+                          _selectedCompletion = 'all';
+                        });
+                        await _load();
+                      },
+                      style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+                      child: const Text('Clear', style: TextStyle(fontSize: 11)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        // Results
+        Expanded(
+          child:
+              _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _rows.isEmpty
+                  ? const Center(
+                    child: Text('No tasks found for selected filters.', style: TextStyle(color: Colors.grey)),
+                  )
+                  : ListView.builder(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: _rows.length,
+                    itemBuilder: (context, i) {
+                      final r = _rows[i];
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey[200]!),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.grey.withOpacity(0.1),
+                              spreadRadius: 1,
+                              blurRadius: 2,
+                              offset: const Offset(0, 1),
                             ),
                           ],
                         ),
-                      ],
-                    ),
-                  );
-                })),
-              if (_frequentMisses30d.length > 3) ...[
-                const SizedBox(height: 12),
-                Center(
-                  child: TextButton.icon(
-                    onPressed: _openAllFrequentMisses,
-                    icon: const Icon(Icons.analytics_outlined),
-                    label: const Text('View detailed analytics'),
+                        child: ExpansionTile(
+                          tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                          expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                          title: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(r.taskName, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '${r.date} • ${r.shiftName}${r.checklistName.isNotEmpty ? ' • ${r.checklistName}' : ''}',
+                                      style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Status badge
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: r.completed ? Colors.green.shade50 : Colors.red.shade50,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: r.completed ? Colors.green.shade200 : Colors.red.shade200,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      r.completed ? 'Done' : 'Missed',
+                                      style: TextStyle(
+                                        color: r.completed ? Colors.green.shade700 : Colors.red.shade700,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                  // Indicators for additional content
+                                  if (r.photoCount > 0 || r.reason.isNotEmpty || r.note.isNotEmpty) ...[
+                                    const SizedBox(width: 4),
+                                    Container(
+                                      width: 16,
+                                      height: 16,
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context).primaryColor.withOpacity(0.1),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Icon(Icons.info_outline, size: 12, color: Theme.of(context).primaryColor),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ],
+                          ),
+                          children: [
+                            // Show additional details when expanded
+                            if (r.reason.isNotEmpty) ...[
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(12),
+                                margin: const EdgeInsets.only(bottom: 8),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.shade50,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.orange.shade200),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(Icons.warning_amber, size: 16, color: Colors.orange.shade700),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Reason for not completing:',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 12,
+                                            color: Colors.orange.shade700,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(r.reason, style: TextStyle(fontSize: 11, color: Colors.orange.shade800)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                            if (r.note.isNotEmpty) ...[
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(12),
+                                margin: const EdgeInsets.only(bottom: 8),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.shade50,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.blue.shade200),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(Icons.note, size: 16, color: Colors.blue.shade700),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Note:',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 12,
+                                            color: Colors.blue.shade700,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(r.note, style: TextStyle(fontSize: 11, color: Colors.blue.shade800)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                            if (r.photoUrls.isNotEmpty) ...[
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.shade50,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.green.shade200),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(Icons.photo_library, size: 16, color: Colors.green.shade700),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Photos (${r.photoCount}):',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 12,
+                                            color: Colors.green.shade700,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children:
+                                          r.photoUrls.take(6).map((photoUrl) {
+                                            return GestureDetector(
+                                              onTap: () => _showFullScreenImage(context, photoUrl, r.taskName),
+                                              child: Container(
+                                                width: 60,
+                                                height: 60,
+                                                decoration: BoxDecoration(
+                                                  borderRadius: BorderRadius.circular(8),
+                                                  border: Border.all(color: Colors.grey[300]!),
+                                                ),
+                                                child: ClipRRect(
+                                                  borderRadius: BorderRadius.circular(7),
+                                                  child: Image.network(
+                                                    photoUrl,
+                                                    fit: BoxFit.cover,
+                                                    loadingBuilder: (context, child, loadingProgress) {
+                                                      if (loadingProgress == null) return child;
+                                                      return Container(
+                                                        color: Colors.grey[200],
+                                                        child: Center(
+                                                          child: SizedBox(
+                                                            width: 20,
+                                                            height: 20,
+                                                            child: CircularProgressIndicator(strokeWidth: 2),
+                                                          ),
+                                                        ),
+                                                      );
+                                                    },
+                                                    errorBuilder: (context, error, stackTrace) {
+                                                      return Container(
+                                                        color: Colors.grey[200],
+                                                        child: Icon(
+                                                          Icons.broken_image,
+                                                          color: Colors.grey[400],
+                                                          size: 24,
+                                                        ),
+                                                      );
+                                                    },
+                                                  ),
+                                                ),
+                                              ),
+                                            );
+                                          }).toList(),
+                                    ),
+                                    if (r.photoUrls.length > 6) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '+${r.photoUrls.length - 6} more photos',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: Colors.green.shade600,
+                                          fontStyle: FontStyle.italic,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      );
+                    },
                   ),
-                ),
-              ],
-            ],
-          ),
         ),
       ],
     );
   }
 
-  Color _getPositionColor(int position) {
-    switch (position) {
-      case 1:
-        return Colors.red;
-      case 2:
-        return Colors.orange;
-      case 3:
-        return Colors.amber;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  int _calculateMissRate(Map<String, dynamic> task) {
-    final missCount = task['count'] as int? ?? 0;
-    final totalOccurrences = task['totalOccurrences'] as int? ?? missCount;
-    if (totalOccurrences == 0) return 0;
-    return ((missCount / totalOccurrences) * 100).round();
-  }
-
-  void _openAllFrequentMisses() {
-    showModalBottomSheet(
+  void _showFullScreenImage(BuildContext context, String imageUrl, String taskName) {
+    showDialog(
       context: context,
-      isScrollControlled: true,
+      barrierColor: Colors.black87,
       builder:
-          (context) => DraggableScrollableSheet(
-            initialChildSize: 0.8,
-            maxChildSize: 0.95,
-            minChildSize: 0.6,
-            builder:
-                (context, scrollController) => Container(
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-                  ),
-                  child: Column(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey[200]!))),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Frequently Missed Tasks (30 days)',
-                              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-                            ),
-                            IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close)),
-                          ],
-                        ),
-                      ),
-                      Expanded(
-                        child: ListView.builder(
-                          controller: scrollController,
-                          padding: const EdgeInsets.all(16),
-                          itemCount: _frequentMisses30d.length,
-                          itemBuilder: (context, index) {
-                            final task = _frequentMisses30d[index];
-                            return Card(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              child: ListTile(
-                                leading: CircleAvatar(
-                                  backgroundColor: _getPositionColor(index + 1),
-                                  child: Text(
-                                    '${index + 1}',
-                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                                title: Text(task['taskName'] ?? 'Unknown Task'),
-                                subtitle: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    if (task['shiftName'] != null) Text(task['shiftName']),
-                                    Text('${_calculateMissRate(task)}% miss rate'),
-                                  ],
-                                ),
-                                trailing: Chip(label: Text('${task['count']} times'), backgroundColor: Colors.red[100]),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
+          (context) => Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.all(20),
+            child: Stack(
+              children: [
+                // Full screen image
+                Center(
+                  child: InteractiveViewer(
+                    child: Image.network(
+                      imageUrl,
+                      fit: BoxFit.contain,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Container(
+                          width: 200,
+                          height: 200,
+                          color: Colors.grey[900],
+                          child: const Center(child: CircularProgressIndicator(color: Colors.white)),
+                        );
+                      },
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          width: 200,
+                          height: 200,
+                          color: Colors.grey[900],
+                          child: const Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.broken_image, color: Colors.white, size: 48),
+                              SizedBox(height: 8),
+                              Text('Failed to load image', style: TextStyle(color: Colors.white)),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
                   ),
                 ),
+                // Header with task name and close button
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.black54, Colors.transparent],
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            taskName,
+                            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        IconButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(Icons.close, color: Colors.white, size: 28),
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.black26,
+                            padding: const EdgeInsets.all(8),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
+    );
+  }
+}
+
+class _TaskRow {
+  final String date;
+  final String shiftName;
+  final String checklistName;
+  final String taskName;
+  final bool completed;
+  final String reason;
+  final String note;
+  final int photoCount;
+  final List<String> photoUrls;
+
+  _TaskRow({
+    required this.date,
+    required this.shiftName,
+    required this.checklistName,
+    required this.taskName,
+    required this.completed,
+    required this.reason,
+    required this.note,
+    required this.photoCount,
+    required this.photoUrls,
+  });
+}
+
+class _StatusToggleButton extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _StatusToggleButton({required this.label, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), // More compact padding
+        decoration: BoxDecoration(
+          color: selected ? Theme.of(context).primaryColor : null,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? Colors.white : Colors.grey[600],
+            fontSize: 11, // Smaller font
+            fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+      ),
     );
   }
 }

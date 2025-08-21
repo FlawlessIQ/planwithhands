@@ -6,7 +6,6 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:uuid/uuid.dart';
-import 'package:flutter/foundation.dart';
 import 'package:hands_app/main.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/utils/firestore_ttl_helper.dart';
@@ -958,8 +957,9 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     try {
       final organizationId = await _getOrganizationId();
       if (organizationId == null || organizationId.isEmpty) {
-        if (context.mounted)
+        if (context.mounted) {
           _showSnackBar(context, 'Organization ID is missing. Please check your admin account.', isError: true);
+        }
         isLoading.value = false;
         return;
       }

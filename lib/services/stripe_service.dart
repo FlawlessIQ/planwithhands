@@ -36,11 +36,50 @@ class StripeService {
 
   static Future<void> _openUrlExternal(String url) async {
     final uri = Uri.parse(url);
-    // On web, explicitly open a new tab/window to avoid popup blockers
+
+    // On web, try multiple approaches to handle popup blockers
     if (kIsWeb) {
-      await launchUrl(uri, webOnlyWindowName: '_blank');
+      try {
+        // First try: Standard approach with _blank
+        final success = await launchUrl(uri, webOnlyWindowName: '_blank');
+        if (success) return;
+      } catch (e) {
+        debugPrint('[StripeService] Standard launch failed, trying fallback methods: $e');
+      }
+
+      try {
+        // Second try: External application mode
+        final success = await launchUrl(uri, mode: LaunchMode.externalApplication);
+        if (success) return;
+      } catch (e) {
+        // Continue to next method
+      }
+
+      try {
+        // Third try: Platform default
+        final success = await launchUrl(uri, mode: LaunchMode.platformDefault);
+        if (success) return;
+      } catch (e) {
+        // Continue to final attempt
+      }
+
+      // Final attempt with canLaunchUrl check
+      try {
+        final canLaunch = await canLaunchUrl(uri);
+        if (canLaunch) {
+          await launchUrl(uri);
+        } else {
+          throw Exception('URL cannot be launched on this platform');
+        }
+      } catch (e) {
+        debugPrint('[StripeService] All URL launch methods failed: $e');
+        throw Exception('Failed to open billing portal. Please check your browser popup settings.');
+      }
+
       return;
     }
+
+    // Mobile platforms
     final launcher = _launch ?? launchUrl;
     await launcher(uri, mode: LaunchMode.externalApplication);
   }
@@ -85,16 +124,21 @@ class StripeService {
 
   /// Open Stripe Billing Portal for the organization
   static Future<void> openBillingPortal(String orgId) async {
+    debugPrint('[StripeService] Opening billing portal for organization: $orgId');
+
     try {
       final response = await _call('createBillingPortalSession', {'orgId': orgId});
       final portalUrl = response['url'];
+
       if (portalUrl != null) {
+        debugPrint('[StripeService] Opening billing portal URL');
         await _openUrlExternal(portalUrl);
       } else {
+        debugPrint('[StripeService] ERROR: No portal URL returned from backend');
         throw Exception('No portal URL returned from backend');
       }
     } catch (e) {
-      debugPrint('Error opening billing portal: $e');
+      debugPrint('[StripeService] Error opening billing portal: $e');
       rethrow;
     }
   }

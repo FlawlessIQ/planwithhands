@@ -8,7 +8,6 @@ import 'package:hands_app/services/auth_service.dart';
 import 'package:hands_app/services/stripe_service.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
-import 'package:hands_app/ui/subscription_management_sheet.dart';
 import 'package:hands_app/ui/contact_sales_dialog.dart';
 import 'package:hands_app/ui/location_bottom_sheet_new.dart';
 
@@ -382,6 +381,11 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
     final user = FirebaseAuth.instance.currentUser;
     final authEmail = user?.email?.trim() ?? '';
 
+    debugPrint('[SettingsPage] Password reset requested');
+    debugPrint('[SettingsPage] Controller email: "$controllerEmail"');
+    debugPrint('[SettingsPage] Auth email: "$authEmail"');
+    debugPrint('[SettingsPage] User UID: ${user?.uid}');
+
     if (controllerEmail.isEmpty || !RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(controllerEmail)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter a valid email address'), backgroundColor: Colors.orange),
@@ -398,10 +402,26 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
       targetEmail = authEmail; // Fallback to verified email for reset
     }
 
+    debugPrint('[SettingsPage] Target email for reset: "$targetEmail"');
+    debugPrint('[SettingsPage] Pending verification: $pendingVerification');
+
     try {
       // Verify target email actually has sign-in methods
-      List<String> methods = await FirebaseAuth.instance.fetchSignInMethodsForEmail(targetEmail);
-      if (methods.isEmpty) {
+      debugPrint('[SettingsPage] Checking sign-in methods for: "$targetEmail"');
+      List<String> methods = [];
+      bool methodsCheckFailed = false;
+
+      try {
+        methods = await FirebaseAuth.instance.fetchSignInMethodsForEmail(targetEmail);
+        debugPrint('[SettingsPage] Sign-in methods found: $methods');
+      } catch (methodsError) {
+        debugPrint('[SettingsPage] Failed to fetch sign-in methods: $methodsError');
+        methodsCheckFailed = true;
+        // Continue anyway - the fetchSignInMethodsForEmail check might be overly restrictive
+      }
+
+      if (methods.isEmpty && !methodsCheckFailed) {
+        debugPrint('[SettingsPage] No sign-in methods found for email: "$targetEmail"');
         if (mounted) {
           final msg =
               pendingVerification
@@ -412,6 +432,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
         return;
       }
 
+      debugPrint('[SettingsPage] Proceeding with password reset for: "$targetEmail"');
       bool sent = false;
       try {
         final actionCodeSettings = ActionCodeSettings(
@@ -439,10 +460,13 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(successMsg), backgroundColor: Colors.green));
       }
     } catch (e, st) {
+      debugPrint('[SettingsPage] Error in password reset: $e');
+      debugPrint('[SettingsPage] Stack trace: $st');
       FirebaseCrashlytics.instance.recordError(e, st);
       if (mounted) {
         String errorMessage = 'Failed to send reset email';
         if (e is FirebaseAuthException) {
+          debugPrint('[SettingsPage] Firebase Auth Exception - Code: ${e.code}, Message: ${e.message}');
           switch (e.code) {
             case 'user-not-found':
               errorMessage = 'No account found with this email address';
@@ -845,37 +869,27 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
         return FutureBuilder<DocumentSnapshot>(
           future: FirestoreEnforcer.instance.collection('organizations').doc(_organizationId).get(),
           builder: (context, orgSnapshot) {
-            final orgData = (orgSnapshot.data?.data() as Map<String, dynamic>?) ?? {};
-            int currentUsage = (orgData['locationCount'] as int?) ?? 0;
+            // Always fetch actual location count to ensure accuracy
+            return FutureBuilder<QuerySnapshot>(
+              future:
+                  FirestoreEnforcer.instance
+                      .collection('organizations')
+                      .doc(_organizationId)
+                      .collection('locations')
+                      .get(),
+              builder: (context, locationsSnapshot) {
+                // Use actual count from subcollection
+                final actualUsage = locationsSnapshot.data?.size ?? 0;
+                debugPrint('[SettingsPage] Actual location count from subcollection: $actualUsage');
 
-            // Fallback: if count missing, fetch actual location count
-            if (currentUsage == 0) {
-              return FutureBuilder<QuerySnapshot>(
-                future:
-                    FirestoreEnforcer.instance
-                        .collection('organizations')
-                        .doc(_organizationId)
-                        .collection('locations')
-                        .get(),
-                builder: (context, locationsSnapshot) {
-                  final actualUsage = locationsSnapshot.data?.size ?? 0;
-                  return _buildSubscriptionCard(
-                    subscriptionId: subscriptionId,
-                    quantity: quantity,
-                    currentUsage: actualUsage,
-                    status: status,
-                    isLoading: snapshot.connectionState == ConnectionState.waiting,
-                  );
-                },
-              );
-            }
-
-            return _buildSubscriptionCard(
-              subscriptionId: subscriptionId,
-              quantity: quantity,
-              currentUsage: currentUsage,
-              status: status,
-              isLoading: snapshot.connectionState == ConnectionState.waiting,
+                return _buildSubscriptionCard(
+                  subscriptionId: subscriptionId,
+                  quantity: quantity,
+                  currentUsage: actualUsage,
+                  status: status,
+                  isLoading: snapshot.connectionState == ConnectionState.waiting,
+                );
+              },
             );
           },
         );
@@ -1019,22 +1033,14 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () async {
-                      final result = await showModalBottomSheet<int>(
+                      final result = await showDialog<int>(
                         context: context,
-                        isScrollControlled: true,
-                        backgroundColor: Colors.transparent,
                         builder:
-                            (context) => Container(
-                              decoration: const BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                              ),
-                              child: SubscriptionManagementSheet(
-                                orgId: _organizationId,
-                                subscriptionId: subscriptionId,
-                                currentQuantity: quantity,
-                                currentUsage: currentUsage,
-                              ),
+                            (context) => _SubscriptionManagementDialog(
+                              orgId: _organizationId,
+                              subscriptionId: subscriptionId,
+                              currentQuantity: quantity,
+                              currentUsage: currentUsage,
                             ),
                       );
 
@@ -1056,6 +1062,19 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () async {
+                      // First check if organization ID is valid
+                      if (_organizationId.isEmpty) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('No organization found. Please contact support.'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                        return;
+                      }
+
                       try {
                         await StripeService.openBillingPortal(_organizationId);
                       } catch (e) {
@@ -1100,13 +1119,18 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
 
   Future<void> _onAddLocation() async {
     if (!_isAdmin || _organizationId.isEmpty) return;
-    // Read latest org and billing
-    final orgDoc = await FirestoreEnforcer.instance.collection('organizations').doc(_organizationId).get();
-    final orgData = orgDoc.data() ?? {};
-    final orgCount = (orgData['locationCount'] as int?) ?? 0;
+
+    // Always fetch actual location count for accuracy
+    debugPrint('[SettingsPage] _onAddLocation: Fetching actual location count...');
+    final locationsQuery =
+        await FirestoreEnforcer.instance.collection('organizations').doc(_organizationId).collection('locations').get();
+    final orgCount = locationsQuery.size;
+    debugPrint('[SettingsPage] _onAddLocation: Actual location count: $orgCount');
+
     final sub = await StripeService.getSubscriptionData(_organizationId);
     final quantity = (sub?['quantity'] as int?) ?? 1;
     final subscriptionId = (sub?['subscriptionId'] as String?) ?? '';
+    debugPrint('[SettingsPage] _onAddLocation: Subscription quantity: $quantity');
 
     if (orgCount < quantity) {
       // Open the Add Locations wizard directly
@@ -1119,24 +1143,16 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
         setState(() {});
       }
     } else if (quantity < 5) {
-      // Show subscription management sheet for upgrade
+      // Show subscription management dialog for upgrade
       if (!mounted) return;
-      final newQty = await showModalBottomSheet<int>(
+      final newQty = await showDialog<int>(
         context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
         builder:
-            (context) => Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              child: SubscriptionManagementSheet(
-                orgId: _organizationId,
-                subscriptionId: subscriptionId,
-                currentQuantity: quantity,
-                currentUsage: orgCount,
-              ),
+            (context) => _SubscriptionManagementDialog(
+              orgId: _organizationId,
+              subscriptionId: subscriptionId,
+              currentQuantity: quantity,
+              currentUsage: orgCount,
             ),
       );
       if (newQty != null) {
@@ -1389,6 +1405,364 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                   ),
                 ),
               ),
+    );
+  }
+}
+
+class _SubscriptionManagementDialog extends StatefulWidget {
+  final String orgId;
+  final String subscriptionId;
+  final int currentQuantity;
+  final int currentUsage;
+
+  const _SubscriptionManagementDialog({
+    required this.orgId,
+    required this.subscriptionId,
+    required this.currentQuantity,
+    required this.currentUsage,
+  });
+
+  @override
+  State<_SubscriptionManagementDialog> createState() => _SubscriptionManagementDialogState();
+}
+
+class _SubscriptionManagementDialogState extends State<_SubscriptionManagementDialog> {
+  late int _newQuantity;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _newQuantity = widget.currentQuantity;
+  }
+
+  int get _delta => _newQuantity - widget.currentQuantity;
+  double get _monthlyChange => _delta * 49.99; // kLocationPrice equivalent
+  bool get _canDecrease => _newQuantity > widget.currentUsage && _newQuantity > 1;
+  bool get _canIncrease => _newQuantity < 100;
+
+  void _increment() {
+    if (_canIncrease) {
+      setState(() => _newQuantity++);
+    }
+  }
+
+  void _decrement() {
+    if (_canDecrease) {
+      setState(() => _newQuantity--);
+    }
+  }
+
+  Future<void> _updateSubscription() async {
+    if (_delta == 0) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    final confirmed = await _showConfirmationDialog();
+    if (!confirmed) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      await StripeService.updateSubscriptionQuantity(
+        orgId: widget.orgId,
+        subscriptionId: widget.subscriptionId,
+        newQuantity: _newQuantity,
+      );
+
+      await StripeService.openBillingPortal(widget.orgId);
+
+      if (mounted) {
+        Navigator.of(context).pop(_newQuantity);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_delta > 0 ? 'Subscription upgraded!' : 'Subscription updated!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to update: $e'), backgroundColor: Colors.red));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<bool> _showConfirmationDialog() async {
+    final isIncrease = _delta > 0;
+    final changeText = isIncrease ? 'increase' : 'decrease';
+    final monthlyChangeText =
+        _monthlyChange >= 0
+            ? '+\$${_monthlyChange.abs().toStringAsFixed(2)}'
+            : '-\$${_monthlyChange.abs().toStringAsFixed(2)}';
+
+    return await showDialog<bool>(
+          context: context,
+          builder:
+              (context) => AlertDialog(
+                title: Text('${isIncrease ? 'Upgrade' : 'Downgrade'} Subscription'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('You\'re about to $changeText your location subscription:'),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [const Text('From:'), Text('${widget.currentQuantity} locations')],
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [const Text('To:'), Text('$_newQuantity locations')],
+                    ),
+                    const Divider(),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Monthly change:'),
+                        Text(
+                          '$monthlyChangeText/month',
+                          style: TextStyle(fontWeight: FontWeight.bold, color: isIncrease ? Colors.red : Colors.green),
+                        ),
+                      ],
+                    ),
+                    if (!isIncrease) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.orange[50],
+                          border: Border.all(color: Colors.orange[200]!),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          'New billing amount takes effect on your next billing cycle.',
+                          style: TextStyle(color: Colors.orange[700], fontSize: 11),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                actions: [
+                  TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+                  ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isIncrease ? Colors.blue : Colors.orange,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: Text(isIncrease ? 'Upgrade' : 'Downgrade'),
+                  ),
+                ],
+              ),
+        ) ??
+        false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 400, maxHeight: 500),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              children: [
+                const Icon(Icons.tune, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  'Manage Subscription',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                const Spacer(),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close, size: 20),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Current status - more compact
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: Colors.grey[50], borderRadius: BorderRadius.circular(8)),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Current:', style: TextStyle(fontSize: 13)),
+                      Text(
+                        '${widget.currentQuantity} locations',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('In use:', style: TextStyle(fontSize: 13)),
+                      Text(
+                        '${widget.currentUsage}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: widget.currentUsage <= widget.currentQuantity ? Colors.green : Colors.red,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Quantity selector - more compact
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  onPressed: _canDecrease ? _decrement : null,
+                  icon: Icon(Icons.remove_circle, size: 28, color: _canDecrease ? Colors.red : Colors.grey[300]),
+                  padding: EdgeInsets.zero,
+                ),
+                const SizedBox(width: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey[300]!),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '$_newQuantity',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                IconButton(
+                  onPressed: _canIncrease ? _increment : null,
+                  icon: Icon(Icons.add_circle, size: 28, color: _canIncrease ? Colors.green : Colors.grey[300]),
+                  padding: EdgeInsets.zero,
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            // Warning when can't decrease
+            if (!_canDecrease && _newQuantity > 1) ...[
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.amber[50],
+                  border: Border.all(color: Colors.amber[200]!),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning_amber, color: Colors.amber[700], size: 16),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Cannot reduce below ${widget.currentUsage} (current usage). Delete locations first.',
+                        style: TextStyle(color: Colors.amber[700], fontSize: 11),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+
+            // Change summary - more compact
+            if (_delta != 0) ...[
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: _delta > 0 ? Colors.blue[50] : Colors.orange[50],
+                  border: Border.all(color: _delta > 0 ? Colors.blue[200]! : Colors.orange[200]!),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Monthly change:',
+                      style: TextStyle(fontSize: 12, color: _delta > 0 ? Colors.blue[700] : Colors.orange[700]),
+                    ),
+                    Text(
+                      '${_monthlyChange >= 0 ? '+' : ''}\$${_monthlyChange.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: _delta > 0 ? Colors.red : Colors.green,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+
+            // Action buttons
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
+                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 10)),
+                    child: const Text('Cancel', style: TextStyle(fontSize: 13)),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton(
+                    onPressed: _isLoading || _delta == 0 ? null : _updateSubscription,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor:
+                          _delta > 0
+                              ? Colors.blue
+                              : _delta < 0
+                              ? Colors.orange
+                              : Colors.grey,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                    child:
+                        _isLoading
+                            ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                            : Text(
+                              _delta == 0
+                                  ? 'No Changes'
+                                  : _delta > 0
+                                  ? 'Upgrade'
+                                  : 'Downgrade',
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

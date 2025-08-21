@@ -260,7 +260,7 @@ class _OrganizationSetupWidgetState extends State<OrganizationSetupWidget> {
                     ],
                   ),
                 );
-              }).toList(),
+              }),
 
               const SizedBox(height: 24),
 
