@@ -2005,8 +2005,8 @@ class DailyChecklistService {
     );
 
     try {
-      // Helper to aggregate missed and total occurrences
-      Map<String, Map<String, int>> taskStats = {};
+      // Helper to aggregate missed and total occurrences with shift tracking
+      Map<String, Map<String, dynamic>> taskStats = {};
       if (locationId != null) {
         // Query specific location - only look at past dates (not today)
         final query = _firestore
@@ -2055,14 +2055,33 @@ class DailyChecklistService {
                   taskData['name'] as String? ??
                   taskData['taskName'] as String? ??
                   'Unknown Task';
-              // Count total occurrences
-              taskStats[taskName] ??= {'missedCount': 0, 'totalOccurrences': 0};
+              
+              // Get shift information
+              final shiftId = taskData['shiftId'] as String? ?? data['shiftId'] as String? ?? '';
+              final shiftName = taskData['shiftName'] as String? ?? data['shiftName'] as String? ?? '';
+              
+              // Count total occurrences and track shifts
+              taskStats[taskName] ??= {
+                'missedCount': 0, 
+                'totalOccurrences': 0,
+                'shifts': <String>{}, // Set of shift IDs
+                'shiftNames': <String>{}, // Set of shift names
+              };
               taskStats[taskName]!['totalOccurrences'] = (taskStats[taskName]!['totalOccurrences'] ?? 0) + 1;
+              
+              // Add shift information
+              if (shiftId.isNotEmpty) {
+                (taskStats[taskName]!['shifts'] as Set<String>).add(shiftId);
+              }
+              if (shiftName.isNotEmpty) {
+                (taskStats[taskName]!['shiftNames'] as Set<String>).add(shiftName);
+              }
+              
               // Count missed
               if (!completed && !isCarryForward) {
                 taskStats[taskName]!['missedCount'] = (taskStats[taskName]!['missedCount'] ?? 0) + 1;
                 debugPrint(
-                  '[DailyChecklistService] Found missed task: "$taskName" on $docDate (missedCount now: ${taskStats[taskName]!['missedCount']})',
+                  '[DailyChecklistService] Found missed task: "$taskName" on $docDate in shift: $shiftName (missedCount now: ${taskStats[taskName]!['missedCount']})',
                 );
               }
             } catch (e) {
@@ -2111,9 +2130,28 @@ class DailyChecklistService {
                     taskData['name'] as String? ??
                     taskData['taskName'] as String? ??
                     'Unknown Task';
-                // Count total occurrences
-                taskStats[taskName] ??= {'missedCount': 0, 'totalOccurrences': 0};
+                
+                // Get shift information
+                final shiftId = taskData['shiftId'] as String? ?? data['shiftId'] as String? ?? '';
+                final shiftName = taskData['shiftName'] as String? ?? data['shiftName'] as String? ?? '';
+                
+                // Count total occurrences and track shifts
+                taskStats[taskName] ??= {
+                  'missedCount': 0, 
+                  'totalOccurrences': 0,
+                  'shifts': <String>{}, // Set of shift IDs
+                  'shiftNames': <String>{}, // Set of shift names
+                };
                 taskStats[taskName]!['totalOccurrences'] = (taskStats[taskName]!['totalOccurrences'] ?? 0) + 1;
+                
+                // Add shift information
+                if (shiftId.isNotEmpty) {
+                  (taskStats[taskName]!['shifts'] as Set<String>).add(shiftId);
+                }
+                if (shiftName.isNotEmpty) {
+                  (taskStats[taskName]!['shiftNames'] as Set<String>).add(shiftName);
+                }
+                
                 // Count missed
                 if (!completed && !isCarryForward) {
                   taskStats[taskName]!['missedCount'] = (taskStats[taskName]!['missedCount'] ?? 0) + 1;
@@ -2126,6 +2164,31 @@ class DailyChecklistService {
           }
         }
       }
+      
+      // Resolve missing shift names from shift IDs
+      for (final entry in taskStats.entries) {
+        final taskName = entry.key;
+        final stats = entry.value;
+        final shiftIds = stats['shifts'] as Set<String>;
+        final shiftNames = stats['shiftNames'] as Set<String>;
+        
+        // If we have shift IDs but missing shift names, resolve them
+        for (final shiftId in shiftIds) {
+          if (shiftId.isNotEmpty && !shiftNames.any((name) => name.isNotEmpty)) {
+            try {
+              final shiftName = await _getShiftName(organizationId, shiftId);
+              if (shiftName.isNotEmpty && shiftName != 'Unknown Shift') {
+                shiftNames.add(shiftName);
+              }
+            } catch (e) {
+              debugPrint('[DailyChecklistService] Failed to resolve shift name for shiftId $shiftId: $e');
+            }
+          }
+        }
+        
+        debugPrint('[DailyChecklistService] Task "$taskName" appears in shifts: ${shiftNames.join(', ')}');
+      }
+      
       // Convert to sorted list
       final sorted =
           taskStats.entries
@@ -2134,11 +2197,16 @@ class DailyChecklistService {
                   'taskName': e.key,
                   'count': e.value['missedCount'] ?? 0,
                   'totalOccurrences': e.value['totalOccurrences'] ?? 0,
+                  'shiftNames': (e.value['shiftNames'] as Set<String>).toList(),
+                  'shifts': (e.value['shifts'] as Set<String>).toList(),
                 },
               )
               .toList()
             ..sort((a, b) => (b['count'] as int).compareTo(a['count'] as int));
       debugPrint('[DailyChecklistService] Returning ${sorted.length} frequently missed tasks (limited to $limit)');
+      for (final task in sorted.take(limit)) {
+        debugPrint('[DailyChecklistService] Task: ${task['taskName']}, Shifts: ${task['shiftNames']}');
+      }
       return sorted.take(limit).toList();
     } catch (e, st) {
       debugPrint('[DailyChecklistService] getFrequentlyMissedTasks error: $e\n$st');
