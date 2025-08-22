@@ -6,6 +6,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/widgets/professional_message_dialog.dart';
 import 'package:hands_app/utils/location_helper.dart';
+import 'package:hands_app/theme/theme.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class NotificationListSheet extends ConsumerStatefulWidget {
   final void Function(String title, String details)? onMessageTap;
@@ -176,7 +178,6 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     // filter notifications by view
     final filtered =
         _notifications.where((n) {
@@ -196,10 +197,7 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
 
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+      decoration: HandsDecorations.primaryBoxDecoration,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -208,8 +206,19 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Messages', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-              IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.of(context).pop()),
+              Text(
+                'MESSAGES',
+                style: GoogleFonts.comfortaa(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: HandsColors.white,
+                  letterSpacing: 1.5,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, color: HandsColors.white),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
             ],
           ),
           // View filter chips
@@ -222,22 +231,35 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
                         label: Text(f),
                         selected: _viewFilter == f,
                         onSelected: (_) => setState(() => _viewFilter = f),
+                        backgroundColor: HandsColors.secondaryContainer,
+                        selectedColor: HandsColors.handsOrange,
+                        labelStyle: GoogleFonts.comfortaa(
+                          color: _viewFilter == f ? HandsColors.white : HandsColors.white70,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     )
                     .toList(),
           ),
-          const Divider(),
+          Divider(color: HandsColors.white12, thickness: 1),
 
           // Body
           if (_isLoading)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 32),
-              child: Center(child: CircularProgressIndicator()),
+              child: Center(
+                child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(HandsColors.handsOrange)),
+              ),
             )
           else if (filtered.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
-              child: Center(child: Text('No messages', style: TextStyle(fontStyle: FontStyle.italic))),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: Text(
+                  'No messages',
+                  style: GoogleFonts.comfortaa(fontStyle: FontStyle.italic, color: HandsColors.white70),
+                ),
+              ),
             )
           else
             Flexible(
@@ -251,17 +273,30 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
                   final title = n['title'] as String? ?? 'New Message';
                   final details = n['message'] as String? ?? 'No content';
 
-                  return Card(
-                    elevation: 2,
+                  return Container(
                     margin: const EdgeInsets.symmetric(vertical: 6),
+                    decoration: HandsDecorations.tertiaryBoxDecoration,
                     child: ListTile(
                       leading: Icon(
                         isRead ? Icons.mark_email_read_outlined : Icons.mark_email_unread,
-                        color: isRead ? Colors.grey : theme.primaryColor,
+                        color: isRead ? HandsColors.white70 : HandsColors.handsOrange,
                       ),
-                      title: Text(title, style: TextStyle(fontWeight: isRead ? FontWeight.normal : FontWeight.bold)),
-                      subtitle: Text(details, maxLines: 2, overflow: TextOverflow.ellipsis),
+                      title: Text(
+                        title,
+                        style: GoogleFonts.comfortaa(
+                          fontWeight: isRead ? FontWeight.w400 : FontWeight.bold,
+                          color: HandsColors.white,
+                        ),
+                      ),
+                      subtitle: Text(
+                        details,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 13),
+                      ),
                       trailing: PopupMenuButton<String>(
+                        iconColor: HandsColors.white70,
+                        color: HandsColors.secondaryContainer,
                         onSelected: (value) {
                           if (value == 'archive') {
                             _archiveNotification(n['id']);
@@ -273,7 +308,10 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
                             (context) => [
                               PopupMenuItem(
                                 value: isArchived ? 'unarchive' : 'archive',
-                                child: Text(isArchived ? 'Unarchive' : 'Archive'),
+                                child: Text(
+                                  isArchived ? 'Unarchive' : 'Archive',
+                                  style: GoogleFonts.comfortaa(color: HandsColors.white),
+                                ),
                               ),
                             ],
                       ),
@@ -303,7 +341,21 @@ class NotificationsPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Messages')),
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        title: Text(
+          'MESSAGES',
+          style: GoogleFonts.comfortaa(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.2,
+            color: HandsColors.white,
+          ),
+        ),
+        backgroundColor: HandsColors.scaffoldBackground,
+        foregroundColor: HandsColors.white,
+        elevation: 0,
+      ),
       body: NotificationListSheet(
         onMessageTap: (title, details) {
           ProfessionalMessageDialog.show(

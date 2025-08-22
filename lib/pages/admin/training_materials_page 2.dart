@@ -38,56 +38,41 @@ class ViewDocumentsPage extends HookConsumerWidget {
       return Scaffold(
         appBar: AppBar(
           backgroundColor: Theme.of(context).primaryColor,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => context.pop(),
-          ),
+          leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.pop()),
           iconTheme: const IconThemeData(color: Colors.white),
           title: Row(
             children: [
               CircleAvatar(
                 radius: 18,
                 backgroundColor: Colors.white,
-                backgroundImage: AssetImage('assets/images/Hands Logo V2.png'),
+                backgroundImage: AssetImage('assets/images/hands_icon.png'),
               ),
               const SizedBox(width: 12),
-              Text(
-                'TRAINING MATERIALS',
-                style: Theme.of(context).appBarTheme.titleTextStyle,
-              ),
+              Text('TRAINING MATERIALS', style: Theme.of(context).appBarTheme.titleTextStyle),
             ],
           ),
           centerTitle: false,
           elevation: 0,
         ),
         body: const Center(child: Text('No documents uploaded.')),
-        bottomNavigationBar: BottomNavBar(
-          currentIndex: 4,
-          userRole: userState.userData?.userRole,
-        ),
+        bottomNavigationBar: BottomNavBar(currentIndex: 4, userRole: userState.userData?.userRole),
       );
     }
 
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).primaryColor,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
-        ),
+        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.pop()),
         iconTheme: const IconThemeData(color: Colors.white),
         title: Row(
           children: [
             CircleAvatar(
               radius: 18,
               backgroundColor: Colors.white,
-              backgroundImage: AssetImage('assets/images/Hands Logo V2.png'),
+              backgroundImage: AssetImage('assets/images/hands_icon.png'),
             ),
             const SizedBox(width: 12),
-            Text(
-              'TRAINING MATERIALS',
-              style: Theme.of(context).appBarTheme.titleTextStyle,
-            ),
+            Text('TRAINING MATERIALS', style: Theme.of(context).appBarTheme.titleTextStyle),
           ],
         ),
         centerTitle: false,
@@ -96,11 +81,7 @@ class ViewDocumentsPage extends HookConsumerWidget {
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const HandsSettingsPage(),
-                ),
-              );
+              Navigator.of(context).push(MaterialPageRoute(builder: (context) => const HandsSettingsPage()));
             },
             tooltip: 'Settings',
           ),
@@ -132,19 +113,14 @@ class ViewDocumentsPage extends HookConsumerWidget {
           // Documents List
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: _getDocumentsStream(
-                userState.userData!.organizationId,
-                selectedCategory.value,
-              ),
+              stream: _getDocumentsStream(userState.userData!.organizationId, selectedCategory.value),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
 
                 if (snapshot.hasError) {
-                  return Center(
-                    child: Text('Error loading documents: ${snapshot.error}'),
-                  );
+                  return Center(child: Text('Error loading documents: ${snapshot.error}'));
                 }
 
                 if (!snapshot.hasData) {
@@ -190,27 +166,14 @@ class ViewDocumentsPage extends HookConsumerWidget {
 
                     return Card(
                       child: ListTile(
-                        leading: Icon(
-                          icon,
-                          size: 36,
-                          color: Theme.of(context).primaryColor,
-                        ),
-                        title: Text(
-                          title,
-                          style: const TextStyle(fontWeight: FontWeight.w500),
-                        ),
+                        leading: Icon(icon, size: 36, color: Theme.of(context).primaryColor),
+                        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(subtitle),
                             if (fileName.isNotEmpty)
-                              Text(
-                                fileName,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade600,
-                                ),
-                              ),
+                              Text(fileName, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                           ],
                         ),
                         trailing: const Icon(Icons.arrow_forward),
@@ -220,12 +183,7 @@ class ViewDocumentsPage extends HookConsumerWidget {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder:
-                                          (_) => DocumentViewerPage(
-                                            url: url,
-                                            title: title,
-                                            fileType: type,
-                                          ),
+                                      builder: (_) => DocumentViewerPage(url: url, title: title, fileType: type),
                                     ),
                                   );
                                 }
@@ -239,17 +197,11 @@ class ViewDocumentsPage extends HookConsumerWidget {
           ),
         ],
       ),
-      bottomNavigationBar: BottomNavBar(
-        currentIndex: 4,
-        userRole: userState.userData?.userRole,
-      ),
+      bottomNavigationBar: BottomNavBar(currentIndex: 4, userRole: userState.userData?.userRole),
     );
   }
 
-  Stream<QuerySnapshot> _getDocumentsStream(
-    String organizationId,
-    String category,
-  ) {
+  Stream<QuerySnapshot> _getDocumentsStream(String organizationId, String category) {
     // Updated path to match admin dashboard's nested path structure
     Query query = FirestoreEnforcer.instance
         .collection('organizations')
@@ -270,12 +222,7 @@ class DocumentViewerPage extends HookWidget {
   final String title;
   final String fileType;
 
-  const DocumentViewerPage({
-    super.key,
-    required this.url,
-    required this.title,
-    required this.fileType,
-  });
+  const DocumentViewerPage({super.key, required this.url, required this.title, required this.fileType});
 
   @override
   Widget build(BuildContext context) {
@@ -352,11 +299,7 @@ class DocumentViewerPage extends HookWidget {
               ? const Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 16),
-                    Text('Loading document...'),
-                  ],
+                  children: [CircularProgressIndicator(), SizedBox(height: 16), Text('Loading document...')],
                 ),
               )
               : errorMessage.value != null
@@ -364,23 +307,14 @@ class DocumentViewerPage extends HookWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(
-                      Icons.error_outline,
-                      size: 64,
-                      color: Colors.red,
-                    ),
+                    const Icon(Icons.error_outline, size: 64, color: Colors.red),
                     const SizedBox(height: 16),
-                    Text(
-                      'Error loading document',
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    ),
+                    Text('Error loading document', style: Theme.of(context).textTheme.headlineSmall),
                     const SizedBox(height: 8),
                     Text(
                       errorMessage.value!,
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.grey.shade600,
-                      ),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
                     ),
                     const SizedBox(height: 24),
                     ElevatedButton.icon(
@@ -422,16 +356,11 @@ class DocumentViewerPage extends HookWidget {
           children: [
             const Icon(Icons.picture_as_pdf, size: 64, color: Colors.blue),
             const SizedBox(height: 16),
-            Text(
-              'PDF Preview',
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
+            Text('PDF Preview', style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 8),
             Text(
               'Click below to open the PDF in a new tab',
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
@@ -488,8 +417,7 @@ class DocumentViewerPage extends HookWidget {
               child: CircularProgressIndicator(
                 value:
                     loadingProgress.expectedTotalBytes != null
-                        ? loadingProgress.cumulativeBytesLoaded /
-                            loadingProgress.expectedTotalBytes!
+                        ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
                         : null,
               ),
             );
@@ -524,10 +452,7 @@ class DocumentViewerPage extends HookWidget {
                 child: AspectRatio(
                   aspectRatio: 16 / 9, // Default aspect ratio
                   child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.black,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                    decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(8)),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(8),
                       child: HtmlElementView(
@@ -549,10 +474,7 @@ class DocumentViewerPage extends HookWidget {
                   onPressed: () async {
                     final uri = Uri.parse(url);
                     if (await canLaunchUrl(uri)) {
-                      await launchUrl(
-                        uri,
-                        mode: LaunchMode.externalApplication,
-                      );
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
                     }
                   },
                   icon: const Icon(Icons.open_in_new),
@@ -563,11 +485,9 @@ class DocumentViewerPage extends HookWidget {
                   onPressed: () async {
                     await Clipboard.setData(ClipboardData(text: url));
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Video URL copied to clipboard'),
-                        ),
-                      );
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(const SnackBar(content: Text('Video URL copied to clipboard')));
                     }
                   },
                   icon: const Icon(Icons.copy),
@@ -591,32 +511,20 @@ class DocumentViewerPage extends HookWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(
-                  Icons.insert_drive_file,
-                  size: 64,
-                  color: Colors.grey,
-                ),
+                const Icon(Icons.insert_drive_file, size: 64, color: Colors.grey),
                 const SizedBox(height: 16),
-                Text(
-                  'Preview not available',
-                  style: Theme.of(context).textTheme.headlineSmall,
-                ),
+                Text('Preview not available', style: Theme.of(context).textTheme.headlineSmall),
                 const SizedBox(height: 8),
                 Text(
                   'This file type is not supported for preview',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
                 ),
                 const SizedBox(height: 24),
                 ElevatedButton.icon(
                   onPressed: () async {
                     final uri = Uri.parse(url);
                     if (await canLaunchUrl(uri)) {
-                      await launchUrl(
-                        uri,
-                        mode: LaunchMode.externalApplication,
-                      );
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
                     }
                   },
                   icon: const Icon(Icons.open_in_browser),
@@ -692,11 +600,7 @@ class VideoPlayerWidget extends HookWidget {
       return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('Loading video...'),
-          ],
+          children: [CircularProgressIndicator(), SizedBox(height: 16), Text('Loading video...')],
         ),
       );
     }
@@ -724,10 +628,7 @@ class VideoPlayerWidget extends HookWidget {
                     videoController.value!.play();
                   }
                 },
-                icon: Icon(
-                  isPlaying.value ? Icons.pause : Icons.play_arrow,
-                  size: 32,
-                ),
+                icon: Icon(isPlaying.value ? Icons.pause : Icons.play_arrow, size: 32),
               ),
               const SizedBox(width: 16),
               Expanded(

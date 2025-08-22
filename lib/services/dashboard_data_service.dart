@@ -31,10 +31,7 @@ class DashboardDataService {
     final stopwatch = Stopwatch()..start();
 
     // Parallel fetch user data and organization data
-    final futures = await Future.wait([
-      _fetchUserDocument(user.uid),
-      _fetchUserLocations(user.uid),
-    ]);
+    final futures = await Future.wait([_fetchUserDocument(user.uid), _fetchUserLocations(user.uid)]);
 
     final userData = futures[0] as Map<String, dynamic>;
     final locations = futures[1] as List<Map<String, dynamic>>;
@@ -57,10 +54,7 @@ class DashboardDataService {
   }
 
   /// Load dashboard data with parallel processing and caching
-  Future<DashboardSnapshot> loadDashboardData({
-    String? selectedLocationId,
-    bool forceRefresh = false,
-  }) async {
+  Future<DashboardSnapshot> loadDashboardData({String? selectedLocationId, bool forceRefresh = false}) async {
     logger.d('[DashboardData] Loading dashboard data');
     final stopwatch = Stopwatch()..start();
 
@@ -71,7 +65,7 @@ class DashboardDataService {
 
     // Create cache key
     final cacheKey = 'dashboard_${session.userId}_${selectedLocationId ?? 'all'}_$todayString';
-    
+
     // Check cache
     if (!forceRefresh && _cache.containsKey(cacheKey)) {
       final cached = _cache[cacheKey]!;
@@ -83,13 +77,13 @@ class DashboardDataService {
 
     // Parallel loading of independent data
     final futures = <Future>[];
-    
+
     // 1. Load shifts for today
     futures.add(_loadShiftsOptimized(session, todayDayName, todayString, selectedLocationId));
-    
+
     // 2. Load missed tasks (if needed)
     futures.add(_loadMissedTasksOptimized(session.organizationId!, selectedLocationId));
-    
+
     // 3. Ensure daily checklists exist (background)
     futures.add(_ensureDailyChecklistsBackground(session.organizationId!));
 
@@ -99,9 +93,17 @@ class DashboardDataService {
     // results[2] is background operation
 
     // Load checklists for shifts in parallel
-    final checklistFutures = shifts.map((shift) => 
-      _loadChecklistsOptimized(session.organizationId!, selectedLocationId ?? shift.locationIds.first, shift, todayString)
-    ).toList();
+    final checklistFutures =
+        shifts
+            .map(
+              (shift) => _loadChecklistsOptimized(
+                session.organizationId!,
+                selectedLocationId ?? shift.locationIds.first,
+                shift,
+                todayString,
+              ),
+            )
+            .toList();
 
     final allChecklists = await Future.wait(checklistFutures);
 
@@ -160,21 +162,22 @@ class DashboardDataService {
     }
 
     final snapshot = await finalQuery.get();
-    final shifts = snapshot.docs
-        .map((doc) {
-          final data = doc.data() as Map<String, dynamic>? ?? {};
-          final shiftData = Map<String, dynamic>.from(data);
-          shiftData['shiftId'] = doc.id;
-          if (shiftData['createdAt'] == null) {
-            shiftData['createdAt'] = DateTime.now().toIso8601String();
-          }
-          return ShiftData.fromJson(shiftData);
-        })
-        .where((shift) => _isShiftRelevantForUser(shift, session))
-        .toList();
+    final shifts =
+        snapshot.docs
+            .map((doc) {
+              final data = doc.data() as Map<String, dynamic>? ?? {};
+              final shiftData = Map<String, dynamic>.from(data);
+              shiftData['shiftId'] = doc.id;
+              if (shiftData['createdAt'] == null) {
+                shiftData['createdAt'] = DateTime.now().toIso8601String();
+              }
+              return ShiftData.fromJson(shiftData);
+            })
+            .where((shift) => _isShiftRelevantForUser(shift, session))
+            .toList();
 
     shifts.sort((a, b) => a.startTime.compareTo(b.startTime));
-    
+
     logger.d('[DashboardData] Loaded ${shifts.length} shifts optimized');
     return shifts;
   }
@@ -187,20 +190,19 @@ class DashboardDataService {
     String dateString,
   ) async {
     // Try to load existing checklists first
-    final existing = await FirestoreEnforcer.instance
-        .collection('organizations')
-        .doc(organizationId)
-        .collection('locations')
-        .doc(locationId)
-        .collection('daily_checklists')
-        .where('shiftId', isEqualTo: shift.shiftId)
-        .where('date', isEqualTo: dateString)
-        .get();
+    final existing =
+        await FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(organizationId)
+            .collection('locations')
+            .doc(locationId)
+            .collection('daily_checklists')
+            .where('shiftId', isEqualTo: shift.shiftId)
+            .where('date', isEqualTo: dateString)
+            .get();
 
     if (existing.docs.isNotEmpty) {
-      return existing.docs
-          .map((doc) => DailyChecklist.fromMap(doc.data(), doc.id))
-          .toList();
+      return existing.docs.map((doc) => DailyChecklist.fromMap(doc.data(), doc.id)).toList();
     }
 
     // Generate if needed (fallback)

@@ -13,7 +13,7 @@ class DashboardLoadingHook {
   final String loadingStage;
   final VoidCallback refresh;
   final VoidCallback clearCache;
-  
+
   const DashboardLoadingHook({
     this.snapshot,
     this.isLoading = false,
@@ -36,33 +36,30 @@ DashboardLoadingHook useDashboardData({
   final error = useState<String?>(null);
   final loadingProgress = useState(0.0);
   final loadingStage = useState('');
-  
+
   final dashboardService = useMemoized(() => DashboardDataService());
 
   Future<void> loadDashboardData() async {
     if (isLoading.value) return;
-    
+
     isLoading.value = true;
     error.value = null;
     loadingProgress.value = 0.0;
     loadingStage.value = 'Initializing...';
-    
+
     try {
       // Stage 1: Load user session (20%)
       loadingStage.value = 'Loading user session...';
       await dashboardService.getUserSession();
       loadingProgress.value = 0.2;
-      
+
       // Stage 2: Load dashboard data (80%)
       loadingStage.value = 'Loading dashboard data...';
-      final dashboardSnapshot = await dashboardService.loadDashboardData(
-        selectedLocationId: selectedLocationId,
-      );
+      final dashboardSnapshot = await dashboardService.loadDashboardData(selectedLocationId: selectedLocationId);
       loadingProgress.value = 1.0;
       loadingStage.value = 'Complete';
-      
+
       snapshot.value = dashboardSnapshot;
-      
     } catch (e) {
       logger.e('[DashboardHook] Load failed: $e');
       error.value = e.toString();
@@ -74,13 +71,13 @@ DashboardLoadingHook useDashboardData({
   // Auto-refresh timer
   useEffect(() {
     if (!autoRefresh) return null;
-    
+
     final timer = Stream.periodic(refreshInterval).listen((_) async {
       if (!isLoading.value) {
         await loadDashboardData();
       }
     });
-    
+
     return timer.cancel;
   }, [autoRefresh, refreshInterval]);
 

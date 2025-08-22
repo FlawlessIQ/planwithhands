@@ -4,9 +4,12 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import 'package:hands_app/core/logging/logger.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
+import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
@@ -438,13 +441,17 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
             }
           }
 
-          totalTasks += tasks.length;
-          for (final t in tasks) {
+          // Filter out carry-forward tasks to avoid contaminating today's shift completion rates
+          final todayOnlyTasks = tasks.where((t) => t['isCarryForward'] != true).toList();
+          totalTasks += todayOnlyTasks.length;
+          for (final t in todayOnlyTasks) {
             final completed = t['completed'] == true || t['isCompleted'] == true || t['status'] == 'completed';
             if (completed) completedTasks += 1;
           }
         }
-        logger.i('[ManagerDashboard][DEBUG] Shift $shiftName: $completedTasks/$totalTasks completed');
+        logger.i(
+          '[ManagerDashboard][DEBUG] Shift $shiftName: $completedTasks/$totalTasks completed (excluding carry-forward)',
+        );
         if (totalTasks > 0) completionPct = completedTasks / totalTasks;
 
         final timeStatus = _calculateTimeStatus(startTime, endTime);
@@ -726,22 +733,28 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
   Widget build(BuildContext context) {
     if (_isLoadingLocations || _isLoadingUserRole || _isLoadingSetupStatus) {
       return Scaffold(
+        backgroundColor: HandsColors.scaffoldBackground,
         appBar: AppBar(
-          title: const Text('Manager Dashboard'),
-          backgroundColor: Theme.of(context).primaryColor,
-          foregroundColor: Colors.white,
+          title: Text(
+            'MANAGER DASHBOARD',
+            style: GoogleFonts.comfortaa(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+          ),
+          backgroundColor: HandsColors.primaryContainer,
+          foregroundColor: HandsColors.white,
         ),
         bottomNavigationBar: BottomNavBar(currentIndex: 1, userRole: userRole),
-        body: const Center(child: CircularProgressIndicator()),
+        body: const Center(child: CircularProgressIndicator(color: HandsColors.handsOrange)),
       );
     }
 
     return Scaffold(
+      backgroundColor: HandsColors.scaffoldBackground,
       appBar: AppBar(
-        backgroundColor: Theme.of(context).primaryColor,
-        automaticallyImplyLeading: false,
-        foregroundColor: Colors.white,
+        backgroundColor: HandsColors.cardPrimary,
+        elevation: 0,
+        toolbarHeight: kToolbarHeight,
         title: GenericAppBarContent(appBarTitle: 'Manager Dashboard', userRole: userRole),
+        automaticallyImplyLeading: false,
         actions: [
           if (_metricsEnabled)
             Padding(
@@ -773,18 +786,24 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                                 Icon(
                                   Icons.location_on,
                                   size: 16,
-                                  color: selected ? Theme.of(context).primaryColor : Colors.grey,
+                                  color: selected ? HandsColors.handsOrange : HandsColors.white70,
                                 ),
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
                                     '${loc['name']}',
                                     overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(fontWeight: selected ? FontWeight.bold : FontWeight.normal),
+                                    style: GoogleFonts.comfortaa(
+                                      fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                                      color: selected ? HandsColors.handsOrange : HandsColors.white,
+                                    ),
                                   ),
                                 ),
                                 if (selected)
-                                  const Padding(padding: EdgeInsets.only(left: 8), child: Icon(Icons.check, size: 16)),
+                                  const Padding(
+                                    padding: EdgeInsets.only(left: 8),
+                                    child: Icon(Icons.check, size: 16, color: HandsColors.handsOrange),
+                                  ),
                               ],
                             ),
                           );
@@ -799,30 +818,34 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                       return Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(6),
+                          color: HandsColors.handsOrange.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Icon(Icons.location_on, color: Colors.white, size: 20),
+                        child: const Icon(Icons.location_on, color: HandsColors.white, size: 20),
                       );
                     } else {
                       // Full desktop version
                       return Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
+                          color: HandsColors.handsOrange.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.location_on, color: Colors.white, size: 18),
+                            const Icon(Icons.location_on, color: HandsColors.white, size: 18),
                             const SizedBox(width: 6),
                             Text(
                               _selectedLocationName?.isNotEmpty == true ? _selectedLocationName! : 'Select Location',
-                              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+                              style: GoogleFonts.comfortaa(
+                                color: HandsColors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                             const SizedBox(width: 4),
-                            const Icon(Icons.arrow_drop_down, color: Colors.white, size: 16),
+                            const Icon(Icons.arrow_drop_down, color: HandsColors.white, size: 16),
                           ],
                         ),
                       );
@@ -894,7 +917,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                               child: _SummaryCard(
                                 title: 'Missed Yesterday',
                                 icon: Icons.report_gmailerrorred,
-                                accentColor: Colors.orange,
+                                accentColor: HandsColors.error, // Red for missed tasks
                                 valueBuilder: () {
                                   final count = _yesterdayMissed.fold<int>(
                                     0,
@@ -905,19 +928,26 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                                       _yesterdayMissed.map((e) => e['shiftId'] ?? e['shiftName'] ?? '').toSet().length;
                                   return Text(
                                     '$count missed tasks across $uniqueShifts shifts',
-                                    style: _kMetricTextStyle(context).copyWith(fontSize: 12),
+                                    style: GoogleFonts.comfortaa(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: HandsColors.white,
+                                    ),
                                     textAlign: TextAlign.center,
-                                    maxLines: 1,
+                                    maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
                                   );
                                 },
-                                trailing: MiniSparkBars(values: _missedTrend7d, height: 40),
+                                trailing: MiniSparkBars(values: _missedTrend7d, height: 60),
                                 loading: _loadingYesterday,
                                 onTap: _openAllMissedYesterday,
                                 footer:
                                     _selectedLocationName == null
                                         ? null
-                                        : Text('📍 $_selectedLocationName', style: const TextStyle(fontSize: 11)),
+                                        : Text(
+                                          '📍 $_selectedLocationName',
+                                          style: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white70),
+                                        ),
                               ),
                             ),
                             SizedBox(height: compact ? 3 : 4),
@@ -927,7 +957,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                               child: _SummaryCard(
                                 title: "Today's Shifts",
                                 icon: Icons.live_tv,
-                                accentColor: Theme.of(context).primaryColor,
+                                accentColor: HandsColors.handsOrange, // Orange for live shifts
                                 valueBuilder: null,
                                 titleSuffix: () {
                                   if (_selectedStatusFilter == 'live') {
@@ -937,19 +967,17 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                                     return Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                       decoration: BoxDecoration(
-                                        color: Theme.of(context).primaryColor.withOpacity(0.1),
+                                        color: HandsColors.sageGreen.withOpacity(0.2),
                                         borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(
-                                          color: Theme.of(context).primaryColor.withOpacity(0.3),
-                                          width: 1,
-                                        ),
+                                        border: Border.all(color: HandsColors.sageGreen, width: 1),
                                       ),
                                       child: Text(
-                                        '${inProgress.length} live',
-                                        style: TextStyle(
-                                          color: Theme.of(context).primaryColor,
+                                        '${inProgress.length} LIVE',
+                                        style: GoogleFonts.comfortaa(
+                                          color: HandsColors.sageGreen,
                                           fontSize: 12,
-                                          fontWeight: FontWeight.w700,
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 0.8,
                                         ),
                                       ),
                                     );
@@ -957,16 +985,17 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                                     return Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                       decoration: BoxDecoration(
-                                        color: Colors.grey[100],
+                                        color: HandsColors.white12,
                                         borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(color: Colors.grey[300]!, width: 1),
+                                        border: Border.all(color: HandsColors.white30, width: 1),
                                       ),
                                       child: Text(
-                                        '${_filteredLiveShifts.length} done',
-                                        style: TextStyle(
-                                          color: Colors.grey[700],
+                                        '${_filteredLiveShifts.length} DONE',
+                                        style: GoogleFonts.comfortaa(
+                                          color: HandsColors.white70,
                                           fontSize: 12,
-                                          fontWeight: FontWeight.w700,
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 0.8,
                                         ),
                                       ),
                                     );
@@ -1037,13 +1066,13 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                                       _yesterdayMissed.map((e) => e['shiftId'] ?? e['shiftName'] ?? '').toSet().length;
                                   return Text(
                                     '$count missed tasks across $uniqueShifts shifts',
-                                    style: _kMetricTextStyle(context).copyWith(fontSize: 12),
+                                    style: _kMetricTextStyle(context).copyWith(fontSize: 12, color: HandsColors.white),
                                     textAlign: TextAlign.center,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   );
                                 },
-                                trailing: MiniSparkBars(values: _missedTrend7d, height: 40),
+                                trailing: MiniSparkBars(values: _missedTrend7d, height: 60),
                                 loading: _loadingYesterday,
                                 onTap: _openAllMissedYesterday,
                                 footer:
@@ -1160,75 +1189,91 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                         : isCondensed
                         ? 4
                         : 4, // Reduced flex to give more space to top
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Frequent Misses
-                    Expanded(
-                      child: _SummaryCard(
-                        title: isMobile ? 'Frequent Misses' : 'Frequent Misses (30d)',
-                        icon: Icons.trending_down,
-                        accentColor: Colors.red,
-                        loading: _loadingFrequent,
-                        valueBuilder:
-                            () => Text(
-                              _frequentMisses30d.isEmpty ? '0 hot spots' : '${_frequentMisses30d.length} hot spots',
-                              style: _kMetricTextStyle(context),
-                            ),
-                        onTap: _openAllFrequentMisses,
-                        child: _TopListPreview(
-                          items:
-                              _frequentMisses30d.take(3).map((t) {
-                                final name = (t['taskName'] ?? 'Unknown Task').toString();
-                                final shift = (t['shiftName'] ?? '').toString();
-                                final shiftNames = (t['shiftNames'] ?? []).cast<String>();
-                                final count = (t['count'] ?? t['missedCount'] ?? 0).toString();
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Frequent Misses
+                      Expanded(
+                        flex: 1,
+                        child: _SummaryCard(
+                          title: isMobile ? 'Frequent Misses' : 'Frequent Misses (30d)',
+                          icon: Icons.trending_down,
+                          accentColor: HandsColors.error, // Red for frequent misses
+                          loading: _loadingFrequent,
+                          valueBuilder:
+                              () => Text(
+                                _frequentMisses30d.isEmpty ? '0 HOT SPOTS' : '${_frequentMisses30d.length} HOT SPOTS',
+                                style: GoogleFonts.comfortaa(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: HandsColors.error,
+                                ),
+                              ),
+                          onTap: _openAllFrequentMisses,
+                          child: _TopListPreview(
+                            items:
+                                _frequentMisses30d.take(3).map((t) {
+                                  final name = (t['taskName'] ?? 'Unknown Task').toString();
+                                  final shift = (t['shiftName'] ?? '').toString();
+                                  final shiftNames = (t['shiftNames'] ?? []).cast<String>();
+                                  final count = (t['count'] ?? t['missedCount'] ?? 0).toString();
 
-                                // Create display string for shifts
-                                String shiftDisplay = '';
-                                if (shiftNames.isNotEmpty) {
-                                  if (shiftNames.length == 1) {
-                                    shiftDisplay = ' • ${shiftNames.first}';
-                                  } else if (shiftNames.length <= 2) {
-                                    shiftDisplay = ' • ${shiftNames.join(', ')}';
-                                  } else {
-                                    shiftDisplay = ' • ${shiftNames.take(2).join(', ')} +${shiftNames.length - 2} more';
+                                  // Create display string for shifts - make it more concise
+                                  String shiftDisplay = '';
+                                  if (shiftNames.isNotEmpty) {
+                                    if (shiftNames.length == 1) {
+                                      shiftDisplay = ' • ${shiftNames.first}';
+                                    } else {
+                                      shiftDisplay = ' • +${shiftNames.length} shifts';
+                                    }
+                                  } else if (shift.isNotEmpty) {
+                                    shiftDisplay = ' • $shift';
                                   }
-                                } else if (shift.isNotEmpty) {
-                                  shiftDisplay = ' • $shift';
-                                }
 
-                                return '$name$shiftDisplay  ×$count';
-                              }).toList(),
-                          emptyLabel: 'No frequent misses',
+                                  // Keep it concise to prevent overflow
+                                  final displayName = name.length > 15 ? '${name.substring(0, 15)}...' : name;
+                                  return '$displayName$shiftDisplay ×$count';
+                                }).toList(),
+                            emptyLabel: 'No frequent misses',
+                          ),
                         ),
                       ),
-                    ),
-                    SizedBox(width: gap),
-                    // Poor Performing Shifts
-                    Expanded(
-                      child: _SummaryCard(
-                        title: isMobile ? 'Poor Performing' : 'Poor Performing Shifts (30d)',
-                        icon: Icons.speed,
-                        accentColor: Colors.amber,
-                        loading: _loadingPoorShifts,
-                        valueBuilder:
-                            () => Text(
-                              _poorShifts30d.isEmpty ? 'All OK' : '${_poorShifts30d.length} flagged',
-                              style: _kMetricTextStyle(context),
-                            ),
-                        onTap: _openPoorShiftDetails,
-                        child: _TopListPreview(
-                          items:
-                              _poorShifts30d.take(3).map((m) {
-                                final pct = ((m['avgCompletion'] as double?) ?? 0) * 100;
-                                return '${m['shiftName']}  ${pct.toStringAsFixed(0)}%';
-                              }).toList(),
-                          emptyLabel: 'No issues found',
+                      SizedBox(width: gap),
+                      // Poor Performing Shifts
+                      Expanded(
+                        flex: 1,
+                        child: _SummaryCard(
+                          title: isMobile ? 'Poor Performing' : 'Poor Performing Shifts (30d)',
+                          icon: Icons.speed,
+                          accentColor: HandsColors.handsOrange, // Orange for poor performance
+                          loading: _loadingPoorShifts,
+                          valueBuilder:
+                              () => Text(
+                                _poorShifts30d.isEmpty ? 'ALL OK' : '${_poorShifts30d.length} FLAGGED',
+                                style: GoogleFonts.comfortaa(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: _poorShifts30d.isEmpty ? HandsColors.sageGreen : HandsColors.handsOrange,
+                                ),
+                              ),
+                          onTap: _openPoorShiftDetails,
+                          child: _TopListPreview(
+                            items:
+                                _poorShifts30d.take(3).map((m) {
+                                  final pct = ((m['avgCompletion'] as double?) ?? 0) * 100;
+                                  final shiftName = (m['shiftName'] ?? 'Unknown').toString();
+                                  final displayName =
+                                      shiftName.length > 18 ? '${shiftName.substring(0, 18)}...' : shiftName;
+                                  return '$displayName ${pct.toStringAsFixed(0)}%';
+                                }).toList(),
+                            emptyLabel: 'No issues found',
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
 
@@ -1236,40 +1281,14 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
               // Footer button
               SizedBox(
-                height: compact ? 36 : 42,
-                child: Center(
-                  child: SizedBox(
-                    width: colW * (compact ? 0.6 : 0.5),
-                    child: Material(
-                      elevation: 1,
-                      borderRadius: BorderRadius.circular(8),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(8),
-                        onTap: _openTaskHistorySheet,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.fact_check, size: 16, color: Theme.of(context).primaryColor),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Previous Tasks',
-                                style: TextStyle(
-                                  color: Theme.of(context).primaryColor,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                textAlign: TextAlign.center,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
+                height: compact ? 44 : 48,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: HandsPrimaryButton(
+                    text: 'Task History',
+                    onPressed: _openTaskHistorySheet,
+                    icon: Icons.analytics,
+                    width: double.infinity,
                   ),
                 ),
               ),
@@ -1324,20 +1343,23 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                         return Container(
                           margin: const EdgeInsets.only(bottom: 8),
                           padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.grey[200]!),
-                          ),
+                          decoration: HandsDecorations.secondaryBoxDecoration,
                           child: Row(
                             children: [
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(name, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14)),
+                                    Text(
+                                      name,
+                                      style: GoogleFonts.comfortaa(
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 14,
+                                        color: HandsColors.white,
+                                      ),
+                                    ),
                                     const SizedBox(height: 2),
-                                    Text(shift, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                                    Text(shift, style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 12)),
                                   ],
                                 ),
                               ),
@@ -1347,27 +1369,31 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                   margin: const EdgeInsets.only(right: 4),
                                   decoration: BoxDecoration(
-                                    color: Colors.green.shade50,
+                                    color: HandsColors.sageGreen.withOpacity(0.2),
                                     borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: Colors.green.shade200),
+                                    border: Border.all(color: HandsColors.sageGreen),
                                   ),
-                                  child: const Text(
+                                  child: Text(
                                     'Done today',
-                                    style: TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.w500),
+                                    style: GoogleFonts.comfortaa(
+                                      color: HandsColors.sageGreen,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w500,
+                                    ),
                                   ),
                                 ),
                               if (count > 1)
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                   decoration: BoxDecoration(
-                                    color: Colors.orange.shade50,
+                                    color: HandsColors.handsOrange.withOpacity(0.2),
                                     borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: Colors.orange.shade200),
+                                    border: Border.all(color: HandsColors.handsOrange),
                                   ),
                                   child: Text(
                                     '×$count',
-                                    style: TextStyle(
-                                      color: Colors.orange.shade700,
+                                    style: GoogleFonts.comfortaa(
+                                      color: HandsColors.handsOrange,
                                       fontSize: 10,
                                       fontWeight: FontWeight.w500,
                                     ),
@@ -1402,11 +1428,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                         return Container(
                           margin: const EdgeInsets.only(bottom: 12),
                           padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.grey[200]!),
-                          ),
+                          decoration: HandsDecorations.secondaryBoxDecoration,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -1418,12 +1440,16 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                                       children: [
                                         Text(
                                           s['shiftName'] ?? 'Unnamed Shift',
-                                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                                          style: GoogleFonts.comfortaa(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 14,
+                                            color: HandsColors.white,
+                                          ),
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
                                           '${s['startTime']} - ${s['endTime']}',
-                                          style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                                          style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 12),
                                         ),
                                       ],
                                     ),
@@ -1438,13 +1464,13 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                                     child: LinearProgressIndicator(
                                       value: pct,
                                       minHeight: 6,
-                                      backgroundColor: Colors.grey[200],
+                                      backgroundColor: HandsColors.white12,
                                       valueColor: AlwaysStoppedAnimation<Color>(
                                         pct >= 0.8
-                                            ? Colors.green
+                                            ? HandsColors.sageGreen
                                             : pct >= 0.5
-                                            ? Colors.orange
-                                            : Colors.red,
+                                            ? HandsColors.handsOrange
+                                            : HandsColors.error,
                                       ),
                                     ),
                                   ),
@@ -1458,7 +1484,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                               const SizedBox(height: 4),
                               Text(
                                 '${s['completedTasks']}/${s['totalTasks']} tasks complete',
-                                style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                                style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11),
                               ),
                             ],
                           ),
@@ -1514,11 +1540,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                         return Container(
                           margin: const EdgeInsets.only(bottom: 8),
                           padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.grey[200]!),
-                          ),
+                          decoration: HandsDecorations.tertiaryBoxDecoration,
                           child: Row(
                             children: [
                               Container(
@@ -1551,16 +1573,23 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(name, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14)),
+                                    Text(
+                                      name,
+                                      style: GoogleFonts.comfortaa(
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 14,
+                                        color: HandsColors.white,
+                                      ),
+                                    ),
                                     const SizedBox(height: 4),
                                     Row(
                                       children: [
-                                        Icon(Icons.schedule, size: 12, color: Colors.grey[600]),
+                                        Icon(Icons.schedule, size: 12, color: HandsColors.white70),
                                         const SizedBox(width: 4),
                                         Expanded(
                                           child: Text(
                                             shiftDisplay.isNotEmpty ? shiftDisplay : 'Multiple shifts',
-                                            style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                                            style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 12),
                                             maxLines: 2,
                                             overflow: TextOverflow.ellipsis,
                                           ),
@@ -1571,7 +1600,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                                       const SizedBox(height: 2),
                                       Row(
                                         children: [
-                                          Icon(Icons.info_outline, size: 10, color: Colors.blue[600]),
+                                          Icon(Icons.info_outline, size: 10, color: HandsColors.handsOrange),
                                           const SizedBox(width: 4),
                                           Text(
                                             'Affects ${shiftNames.length} shifts',
@@ -1632,11 +1661,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                         return Container(
                           margin: const EdgeInsets.only(bottom: 8),
                           padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.grey[200]!),
-                          ),
+                          decoration: HandsDecorations.tertiaryBoxDecoration,
                           child: Row(
                             children: [
                               Expanded(
@@ -1645,12 +1670,16 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                                   children: [
                                     Text(
                                       m['shiftName'] ?? 'Unknown Shift',
-                                      style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
+                                      style: GoogleFonts.comfortaa(
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 14,
+                                        color: HandsColors.white,
+                                      ),
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
                                       'Avg completion last 30 days',
-                                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                                      style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 12),
                                     ),
                                   ],
                                 ),
@@ -1783,52 +1812,65 @@ class _SummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final card = Card(
-      elevation: 1, // Reduced from 2
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), // Reduced from 14
+    final card = Container(
+      decoration: HandsDecorations.primaryBoxDecoration,
       child: InkWell(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(16),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(8), // Reduced from 10
+          padding: const EdgeInsets.all(16),
           child: Column(
-            mainAxisSize: MainAxisSize.min, // Added to minimize height
+            mainAxisSize: MainAxisSize.min,
             children: [
               Row(
                 children: [
                   Container(
                     decoration: BoxDecoration(
-                      color: accentColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(6), // Reduced from 10
+                      color: accentColor.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    padding: const EdgeInsets.all(4), // Reduced from 6
-                    child: Icon(icon, color: accentColor, size: 16), // Reduced icon size
+                    padding: const EdgeInsets.all(8),
+                    child: Icon(icon, color: accentColor, size: 20),
                   ),
-                  const SizedBox(width: 6), // Reduced from 8
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Expanded(
                           child: Text(
-                            title,
-                            style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                            title.toUpperCase(),
+                            style: GoogleFonts.comfortaa(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: HandsColors.white,
+                              letterSpacing: 0.5,
+                            ),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        if (titleSuffix != null) ...[const SizedBox(width: 12), titleSuffix!()],
+                        if (titleSuffix != null) ...[
+                          const SizedBox(width: 8),
+                          titleSuffix!(),
+                          const SizedBox(width: 8),
+                        ],
                       ],
                     ),
                   ),
                   if (actions != null) ...actions!,
                 ],
               ),
-              const SizedBox(height: 6), // Reduced from 8
+              const SizedBox(height: 16),
               if (loading)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 4),
-                  child: LinearProgressIndicator(minHeight: 3),
-                ) // Reduced padding and height
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: LinearProgressIndicator(
+                    minHeight: 4,
+                    backgroundColor: HandsColors.white12,
+                    valueColor: AlwaysStoppedAnimation<Color>(accentColor),
+                  ),
+                )
               else
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
@@ -1838,12 +1880,9 @@ class _SummaryCard extends StatelessWidget {
                     if (trailing != null) trailing!,
                   ],
                 ),
-              if (child != null) ...[
-                const SizedBox(height: 6), // Reduced from 8
-                Flexible(child: child!), // Make child flexible to prevent overflow
-              ],
+              if (child != null) ...[const SizedBox(height: 16), Flexible(child: child!)],
               if (footer != null) ...[
-                const SizedBox(height: 6), // Reduced from 8
+                const SizedBox(height: 16),
                 Align(alignment: Alignment.centerLeft, child: footer!),
               ],
             ],
@@ -1856,13 +1895,12 @@ class _SummaryCard extends StatelessWidget {
 }
 
 TextStyle _kMetricTextStyle(BuildContext context) =>
-    Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold) ??
-    const TextStyle(fontSize: 16, fontWeight: FontWeight.bold); // Reduced from headlineSmall (22) to 16
+    GoogleFonts.comfortaa(fontSize: 24, fontWeight: FontWeight.bold, color: HandsColors.white);
 
 class MiniSparkBars extends StatelessWidget {
   final List<int> values;
   final double height;
-  const MiniSparkBars({super.key, required this.values, this.height = 40}); // Increased from 28 to 40
+  const MiniSparkBars({super.key, required this.values, this.height = 60}); // Increased from 40 to 60
 
   @override
   Widget build(BuildContext context) {
@@ -1898,7 +1936,7 @@ class _TrendLineChartPainter extends CustomPainter {
     final isUpwardTrend = lastValue > firstValue;
 
     // Choose color based on trend (red for upward = bad, green for downward = good)
-    final color = isUpwardTrend ? Colors.red : Colors.green;
+    final color = isUpwardTrend ? HandsColors.error : HandsColors.sageGreen;
 
     // Find min and max for normalization
     final minVal = values.reduce(min).toDouble();
@@ -2084,10 +2122,10 @@ class _SwipeShiftCard extends StatelessWidget {
     // Make Harvey ball larger on mobile for better visibility
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = screenWidth < 600;
-    final harveyBallSize = isMobile ? 32.0 : 28.0;
+    final harveyBallSize = isMobile ? 48.0 : 42.0;
 
     return Material(
-      color: Colors.white,
+      color: HandsColors.cardTertiary,
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       child: InkWell(
@@ -2108,7 +2146,7 @@ class _SwipeShiftCard extends StatelessWidget {
                       shiftName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 11, color: Colors.black87),
+                      style: GoogleFonts.comfortaa(fontWeight: FontWeight.w600, fontSize: 11, color: HandsColors.white),
                     ),
                   ),
                   const SizedBox(width: 4),
@@ -2144,10 +2182,10 @@ class _SwipeShiftCard extends StatelessWidget {
                           Center(
                             child: Text(
                               '${(pct * 100).toInt()}',
-                              style: TextStyle(
+                              style: GoogleFonts.comfortaa(
                                 fontSize: 8, // Increased from 6 to accommodate larger Harvey ball
                                 fontWeight: FontWeight.bold,
-                                color: pct > 0.5 ? Colors.white : Colors.black87,
+                                color: pct > 0.5 ? HandsColors.white : HandsColors.white,
                               ),
                             ),
                           ),
@@ -2161,7 +2199,7 @@ class _SwipeShiftCard extends StatelessWidget {
               // Tasks completed (center)
               Text(
                 '$completedTasks/$totalTasks tasks',
-                style: TextStyle(fontSize: 10, color: Colors.grey[600], fontWeight: FontWeight.w500),
+                style: GoogleFonts.comfortaa(fontSize: 10, color: HandsColors.white70, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 4),
 
@@ -2170,7 +2208,11 @@ class _SwipeShiftCard extends StatelessWidget {
                 status,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 9, color: _getTimeStatusColor(status), fontWeight: FontWeight.w500),
+                style: GoogleFonts.comfortaa(
+                  fontSize: 9,
+                  color: _getTimeStatusColor(status),
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ],
           ),
@@ -2181,13 +2223,13 @@ class _SwipeShiftCard extends StatelessWidget {
 
   Color _getTimeStatusColor(String status) {
     if (status.contains('Finished')) {
-      return Colors.grey;
+      return HandsColors.white70;
     } else if (status.contains('Starts in')) {
-      return Colors.blue;
+      return HandsColors.handsOrange;
     } else if (status.contains('remaining')) {
-      return Colors.green;
+      return HandsColors.sageGreen;
     } else {
-      return Colors.orange;
+      return HandsColors.amber;
     }
   }
 }
@@ -2264,7 +2306,7 @@ class _TimeChip extends StatelessWidget {
       decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(6)), // Reduced radius
       child: Text(
         status,
-        style: const TextStyle(color: Colors.white, fontSize: 9), // Even smaller font
+        style: GoogleFonts.comfortaa(color: HandsColors.white, fontSize: 9), // Even smaller font
       ),
     );
   }
@@ -2279,24 +2321,38 @@ class _TopListPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     if (items.isEmpty) {
       return Container(
-        padding: const EdgeInsets.all(12), // Reduced from 16
+        padding: const EdgeInsets.all(12),
         alignment: Alignment.centerLeft,
-        child: Text(emptyLabel, style: TextStyle(color: Colors.grey[600], fontSize: 12)), // Smaller font
+        child: Text(
+          emptyLabel,
+          style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 10, fontStyle: FontStyle.italic),
+        ),
       );
     }
-    return Column(
-      children:
-          items
-              .map(
-                (s) => Align(
-                  alignment: Alignment.centerLeft,
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 4), // Reduced from 8
-                    child: Text('• $s', style: const TextStyle(fontSize: 12)), // Smaller font
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Column(
+        children:
+            items
+                .map(
+                  (s) => Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text(
+                      '• $s',
+                      style: GoogleFonts.comfortaa(
+                        fontSize: 9,
+                        color: HandsColors.white,
+                        fontWeight: FontWeight.normal,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: false,
+                    ),
                   ),
-                ),
-              )
-              .toList(),
+                )
+                .toList(),
+      ),
     );
   }
 }
@@ -2314,6 +2370,7 @@ class _ProfessionalDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Dialog(
+      backgroundColor: HandsColors.primaryContainer,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: SizedBox(
         width: width ?? MediaQuery.of(context).size.width * 0.9,
@@ -2324,16 +2381,21 @@ class _ProfessionalDialog extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               decoration: BoxDecoration(
-                color: Colors.grey[50],
+                color: HandsColors.primaryContainer,
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
+                border: Border(bottom: BorderSide(color: HandsColors.white12)),
               ),
               child: Row(
                 children: [
                   Expanded(
                     child: Text(
-                      title,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+                      title.toUpperCase(),
+                      style: GoogleFonts.comfortaa(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: HandsColors.white,
+                        letterSpacing: 0.5,
+                      ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -2341,7 +2403,7 @@ class _ProfessionalDialog extends StatelessWidget {
                   const SizedBox(width: 8),
                   IconButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close),
+                    icon: const Icon(Icons.close, color: HandsColors.white),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                     iconSize: 20,
@@ -2561,7 +2623,7 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
         // Compact filter controls
         Container(
           padding: const EdgeInsets.all(12),
-          color: Colors.grey[50],
+          color: HandsColors.secondaryContainer,
           child: Column(
             children: [
               Row(
@@ -2571,14 +2633,27 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                       height: 36,
                       child: TextField(
                         controller: _searchCtrl,
-                        style: const TextStyle(fontSize: 13),
-                        decoration: const InputDecoration(
-                          prefixIcon: Icon(Icons.search, size: 18),
+                        style: const TextStyle(fontSize: 13, color: HandsColors.white),
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(Icons.search, size: 18, color: HandsColors.white70),
                           labelText: 'Search tasks',
-                          labelStyle: TextStyle(fontSize: 12),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          border: OutlineInputBorder(),
+                          labelStyle: const TextStyle(fontSize: 12, color: HandsColors.white70),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          border: OutlineInputBorder(
+                            borderSide: const BorderSide(color: HandsColors.white30),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderSide: const BorderSide(color: HandsColors.white30),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderSide: const BorderSide(color: HandsColors.handsOrange),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                           isDense: true,
+                          filled: true,
+                          fillColor: HandsColors.cardTertiary,
                         ),
                         onSubmitted: (_) => _load(),
                       ),
@@ -2587,16 +2662,14 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                   const SizedBox(width: 8),
                   SizedBox(
                     height: 36,
-                    child: OutlinedButton.icon(
+                    child: HandsSecondaryButton(
+                      text:
+                          _dateRange == null
+                              ? 'Date Range'
+                              : '${DateFormat('M/d').format(_dateRange!.start)} - ${DateFormat('M/d').format(_dateRange!.end)}',
                       onPressed: _pickRange,
-                      icon: const Icon(Icons.date_range, size: 16),
-                      label: Text(
-                        _dateRange == null
-                            ? 'Date Range'
-                            : '${DateFormat('M/d').format(_dateRange!.start)} - ${DateFormat('M/d').format(_dateRange!.end)}',
-                        style: const TextStyle(fontSize: 11),
-                      ),
-                      style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+                      icon: Icons.date_range,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     ),
                   ),
                 ],
@@ -2663,16 +2736,17 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                   const SizedBox(width: 6),
                   SizedBox(
                     height: 36,
-                    child: ElevatedButton(
+                    child: HandsPrimaryButton(
+                      text: 'Apply',
                       onPressed: _load,
-                      style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12)),
-                      child: const Text('Apply', style: TextStyle(fontSize: 11)),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     ),
                   ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 8),
                   SizedBox(
                     height: 36,
-                    child: TextButton(
+                    child: HandsTextButton(
+                      text: 'Clear',
                       onPressed: () async {
                         setState(() {
                           _searchCtrl.clear();
@@ -2682,8 +2756,6 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                         });
                         await _load();
                       },
-                      style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
-                      child: const Text('Clear', style: TextStyle(fontSize: 11)),
                     ),
                   ),
                 ],
@@ -2707,19 +2779,7 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                       final r = _rows[i];
                       return Container(
                         margin: const EdgeInsets.only(bottom: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey[200]!),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withOpacity(0.1),
-                              spreadRadius: 1,
-                              blurRadius: 2,
-                              offset: const Offset(0, 1),
-                            ),
-                          ],
-                        ),
+                        decoration: HandsDecorations.tertiaryBoxDecoration,
                         child: ExpansionTile(
                           tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                           childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -2969,7 +3029,7 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                           width: 200,
                           height: 200,
                           color: Colors.grey[900],
-                          child: const Center(child: CircularProgressIndicator(color: Colors.white)),
+                          child: const Center(child: CircularProgressIndicator(color: HandsColors.white)),
                         );
                       },
                       errorBuilder: (context, error, stackTrace) {
@@ -2980,7 +3040,7 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                           child: const Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.broken_image, color: Colors.white, size: 48),
+                              Icon(Icons.broken_image, color: HandsColors.white, size: 48),
                               SizedBox(height: 8),
                               Text('Failed to load image', style: TextStyle(color: Colors.white)),
                             ],
@@ -3070,17 +3130,18 @@ class _StatusToggleButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), // More compact padding
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: selected ? Theme.of(context).primaryColor : null,
-          borderRadius: BorderRadius.circular(14),
+          color: selected ? HandsColors.handsOrange : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
         ),
         child: Text(
-          label,
-          style: TextStyle(
-            color: selected ? Colors.white : Colors.grey[600],
-            fontSize: 11, // Smaller font
-            fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+          label.toUpperCase(),
+          style: GoogleFonts.comfortaa(
+            color: selected ? HandsColors.white : HandsColors.white70,
+            fontSize: 12,
+            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+            letterSpacing: 0.5,
           ),
         ),
       ),

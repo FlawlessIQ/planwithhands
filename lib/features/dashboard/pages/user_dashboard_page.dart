@@ -19,6 +19,7 @@ import 'package:hands_app/state/operational_state.dart';
 import 'package:hands_app/config/feature_flags.dart';
 import 'package:hands_app/data/models/missed_tasks_section.dart';
 import 'package:hands_app/data/models/task_data.dart';
+import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/services/native_photo_service.dart';
 
@@ -442,7 +443,9 @@ class UserDashboardPage extends HookConsumerWidget {
     // --- UI BUILD METHOD ---
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme.of(context).primaryColor,
+        backgroundColor: HandsColors.cardPrimary,
+        elevation: 0,
+        toolbarHeight: kToolbarHeight,
         title: GenericAppBarContent(appBarTitle: 'Plan with Hands', userRole: userRole.value),
         automaticallyImplyLeading: false,
         actions: [
@@ -639,11 +642,11 @@ class UserDashboardPage extends HookConsumerWidget {
                                 }
                               },
                             ),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 24),
 
                             // Instructional text (hide when there is an active assigned shift)
                             if (assignedShifts.value.isEmpty) _InstructionCard(),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 24),
                           ],
                         ),
 
@@ -727,77 +730,26 @@ class UserDashboardPage extends HookConsumerWidget {
 
                       // Missed tasks section (placed after Today's Assigned Work)
                       if (missedTasksLoading.value || missedTasksSections.value.isNotEmpty) ...[
-                        _MissedTasksHeaderCard(),
-                        const SizedBox(height: 8),
-                        if (missedTasksLoading.value)
-                          const Card(
-                            child: Padding(
-                              padding: EdgeInsets.all(12.0),
-                              child: Center(
-                                child: Column(
-                                  children: [
-                                    SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-                                    SizedBox(height: 6),
-                                    Text('Loading missed tasks...', style: TextStyle(fontSize: 12)),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          )
-                        else if (missedTasksSections.value.isEmpty)
-                          Card(
-                            color: Colors.green[50],
-                            child: Padding(
-                              padding: const EdgeInsets.all(12.0),
-                              child: Row(
-                                children: [
-                                  Icon(Icons.check_circle, color: Colors.green[600], size: 24),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'All caught up!',
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.green[800],
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          'No missed tasks from yesterday.',
-                                          style: TextStyle(color: Colors.green[700]),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          )
-                        else
-                          ...missedTasksSections.value.map(
-                            (section) => _MissedTasksShiftCard(
-                              section: section,
-                              onUpdate: (updatedSection) {
-                                // Update local missedTasksSections in-place so completed missed tasks remain visible
-                                final updated =
-                                    missedTasksSections.value
-                                        .map((s) {
-                                          if (s.shiftId == updatedSection.shiftId &&
-                                              s.locationId == updatedSection.locationId) {
-                                            return updatedSection;
-                                          }
-                                          return s;
-                                        })
-                                        .toList()
-                                        .cast<MissedTasksSection>();
-                                missedTasksSections.value = updated;
-                              },
-                            ),
-                          ),
+                        const SizedBox(height: 40),
+                        _ConsolidatedMissedTasksCard(
+                          sections: missedTasksSections.value,
+                          isLoading: missedTasksLoading.value,
+                          onUpdate: (updatedSection) {
+                            // Update local missedTasksSections in-place so completed missed tasks remain visible
+                            final updated =
+                                missedTasksSections.value
+                                    .map((s) {
+                                      if (s.shiftId == updatedSection.shiftId &&
+                                          s.locationId == updatedSection.locationId) {
+                                        return updatedSection;
+                                      }
+                                      return s;
+                                    })
+                                    .toList()
+                                    .cast<MissedTasksSection>();
+                            missedTasksSections.value = updated;
+                          },
+                        ),
                         const SizedBox(height: 24),
                       ],
                     ],
@@ -2170,13 +2122,91 @@ class _InstructionCard extends StatelessWidget {
   }
 }
 
-class _MissedTasksHeaderCard extends StatelessWidget {
-  const _MissedTasksHeaderCard();
+// --- CONSOLIDATED MISSED TASKS WIDGET ---
+
+class _ConsolidatedMissedTasksCard extends HookWidget {
+  final List<MissedTasksSection> sections;
+  final bool isLoading;
+  final void Function(MissedTasksSection updatedSection) onUpdate;
+
+  const _ConsolidatedMissedTasksCard({required this.sections, required this.isLoading, required this.onUpdate});
 
   @override
   Widget build(BuildContext context) {
+    final isExpanded = useState(false);
+
+    if (isLoading) {
+      return Card(
+        elevation: 2,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.red[300]!),
+            gradient: LinearGradient(
+              colors: [Colors.red[50]!, Colors.red[100]!],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: const Padding(
+            padding: EdgeInsets.all(16.0),
+            child: Center(
+              child: Column(
+                children: [
+                  SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                  SizedBox(height: 8),
+                  Text('Loading missed tasks...', style: TextStyle(fontSize: 12)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (sections.isEmpty) {
+      return Card(
+        elevation: 2,
+        color: Colors.green[50],
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.green[300]!),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green[600], size: 24),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'All caught up!',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.green[800]),
+                      ),
+                      const SizedBox(height: 2),
+                      Text('No missed tasks from yesterday.', style: TextStyle(color: Colors.green[700], fontSize: 12)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final totalTasks = sections.fold<int>(0, (sum, section) => sum + section.tasks.length);
+    final completedTasks = sections.fold<int>(
+      0,
+      (sum, section) => sum + section.tasks.where((task) => task.completed).length,
+    );
+    final progress = totalTasks > 0 ? completedTasks / totalTasks : 0.0;
+
     return Card(
-      color: Colors.red[50],
       elevation: 2,
       child: Container(
         decoration: BoxDecoration(
@@ -2188,31 +2218,180 @@ class _MissedTasksHeaderCard extends StatelessWidget {
             end: Alignment.bottomRight,
           ),
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Row(
-            children: [
-              Icon(Icons.warning_amber, color: Colors.red[700], size: 24),
-              const SizedBox(width: 12),
-              Expanded(
+        child: Column(
+          children: [
+            // Single red header for all missed tasks
+            InkWell(
+              onTap: () => isExpanded.value = !isExpanded.value,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.red[600]!, Colors.red[500]!],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: const BorderRadius.only(topLeft: Radius.circular(12), topRight: Radius.circular(12)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.warning_amber, color: Colors.white, size: 24),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            "Missed Tasks from Yesterday",
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            "${sections.length} shift${sections.length != 1 ? 's' : ''} • $totalTasks task${totalTasks != 1 ? 's' : ''}",
+                            style: const TextStyle(fontSize: 12, color: Colors.white70),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '$completedTasks/$totalTasks',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(isExpanded.value ? Icons.expand_less : Icons.expand_more, color: Colors.white, size: 24),
+                  ],
+                ),
+              ),
+            ),
+            // Progress bar
+            if (isExpanded.value || progress > 0)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      "Missed Tasks from Yesterday",
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.red[800]),
+                      "$completedTasks of $totalTasks tasks completed",
+                      style: TextStyle(color: Colors.red[800], fontWeight: FontWeight.w500, fontSize: 13),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      "Complete these tasks that were not finished yesterday",
-                      style: TextStyle(fontSize: 12, color: Colors.red[700]),
+                    const SizedBox(height: 8),
+                    LinearProgressIndicator(
+                      value: progress,
+                      backgroundColor: Colors.grey[300],
+                      valueColor: AlwaysStoppedAnimation<Color>(progress == 1.0 ? Colors.green : Colors.red[600]!),
+                      minHeight: 6,
                     ),
                   ],
                 ),
               ),
+            // Expandable shift sections
+            if (isExpanded.value) ...[
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children:
+                      sections
+                          .map((section) => _CollapsibleShiftSection(section: section, onUpdate: onUpdate))
+                          .toList(),
+                ),
+              ),
+              const SizedBox(height: 16),
             ],
-          ),
+          ],
         ),
+      ),
+    );
+  }
+}
+
+class _CollapsibleShiftSection extends HookWidget {
+  final MissedTasksSection section;
+  final void Function(MissedTasksSection updatedSection) onUpdate;
+
+  const _CollapsibleShiftSection({required this.section, required this.onUpdate});
+
+  @override
+  Widget build(BuildContext context) {
+    final isExpanded = useState(false);
+    final totalTasks = section.tasks.length;
+    final completedTasks = section.tasks.where((task) => task.completed).length;
+    final progress = totalTasks > 0 ? completedTasks / totalTasks : 0.0;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey[300]!),
+        borderRadius: BorderRadius.circular(8),
+        color: Colors.white.withOpacity(0.7),
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () => isExpanded.value = !isExpanded.value,
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Icon(Icons.schedule, color: Colors.grey[600], size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          section.shiftName.isNotEmpty ? section.shiftName : 'Unknown Shift',
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '$completedTasks of $totalTasks tasks completed',
+                          style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: progress == 1.0 ? Colors.green[50] : Colors.red[50],
+                    ),
+                    child: Icon(
+                      progress == 1.0 ? Icons.check_circle : Icons.warning,
+                      color: progress == 1.0 ? Colors.green[600] : Colors.red[600],
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(isExpanded.value ? Icons.expand_less : Icons.expand_more, color: Colors.grey[600], size: 20),
+                ],
+              ),
+            ),
+          ),
+          if (isExpanded.value) ...[
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                children:
+                    section.tasks
+                        .map((task) => _MissedTaskInteractionTile(task: task, section: section, onUpdate: onUpdate))
+                        .toList(),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -2626,131 +2805,6 @@ class _TaskTileFromData extends HookWidget {
 // Legacy _TaskTile removed - replaced by _TaskTileFromData which operates on TaskData
 
 // --- MISSED TASKS WIDGET ---
-
-class _MissedTasksShiftCard extends HookWidget {
-  final MissedTasksSection section;
-  final void Function(MissedTasksSection updatedSection) onUpdate;
-
-  const _MissedTasksShiftCard({required this.section, required this.onUpdate});
-
-  @override
-  Widget build(BuildContext context) {
-    final isExpanded = useState(false);
-    final totalTasks = section.tasks.length;
-    final completedTasks = section.tasks.where((task) => task.completed).length;
-    final progress = totalTasks > 0 ? completedTasks / totalTasks : 0.0;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      elevation: 1,
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.red[300]!),
-          gradient: LinearGradient(
-            colors: [Colors.red[50]!, Colors.red[100]!],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: Column(
-          children: [
-            // Red gradient header for missed tasks
-            InkWell(
-              onTap: () => isExpanded.value = !isExpanded.value,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.red[600]!, Colors.red[500]!],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: const BorderRadius.only(topLeft: Radius.circular(12), topRight: Radius.circular(12)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.warning, color: Colors.white, size: 16),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        section.shiftName.isNotEmpty ? section.shiftName : 'Unknown Shift',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        '$totalTasks task${totalTasks != 1 ? 's' : ''}',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 10),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Icon(isExpanded.value ? Icons.expand_less : Icons.expand_more, color: Colors.white),
-                  ],
-                ),
-              ),
-            ),
-            // Progress and expand content
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "$completedTasks of $totalTasks missed tasks completed",
-                              style: TextStyle(color: Colors.red[800], fontWeight: FontWeight.w500),
-                            ),
-                            const SizedBox(height: 4),
-                            LinearProgressIndicator(
-                              value: progress,
-                              backgroundColor: Colors.grey[300],
-                              valueColor: AlwaysStoppedAnimation<Color>(progress == 1.0 ? Colors.green : Colors.red),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      GestureDetector(
-                        onTap: () => isExpanded.value = !isExpanded.value,
-                        child: Icon(
-                          progress == 1.0 ? Icons.check_circle : Icons.warning,
-                          color: progress == 1.0 ? Colors.green : Colors.red,
-                          size: 28,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (isExpanded.value) ...[
-                    const SizedBox(height: 16),
-                    Column(
-                      children:
-                          section.tasks
-                              .map(
-                                (task) => _MissedTaskInteractionTile(task: task, section: section, onUpdate: onUpdate),
-                              )
-                              .toList(),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _MissedTaskInteractionTile extends HookWidget {
   final TaskData task;

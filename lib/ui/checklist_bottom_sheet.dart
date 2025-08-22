@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/ui/bottom_sheet_styles.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
+import 'package:hands_app/theme/theme.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class ChecklistBottomSheet extends StatefulWidget {
   final String organizationId;
@@ -135,7 +138,7 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
           child: Material(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
             elevation: 8,
-            color: BottomSheetStyles.panel,
+            color: HandsColors.cardPrimary,
             child: Column(
               children: [
                 // Handle bar
@@ -143,18 +146,22 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
                   width: 40,
                   height: 4,
                   margin: const EdgeInsets.symmetric(vertical: 8),
-                  decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(2)),
+                  decoration: BoxDecoration(color: HandsColors.white, borderRadius: BorderRadius.circular(2)),
                 ),
                 // App bar
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding, vertical: 16),
-                  decoration: BoxDecoration(border: Border(bottom: BorderSide(color: BottomSheetStyles.divider))),
+                  decoration: BoxDecoration(border: Border(bottom: BorderSide(color: HandsColors.secondaryContainer))),
                   child: Row(
                     children: [
                       Expanded(
                         child: Text(
                           widget.checklistId == null ? 'Create checklist' : 'Edit checklist',
-                          style: Theme.of(context).textTheme.titleLarge,
+                          style: GoogleFonts.comfortaa(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: HandsColors.white,
+                          ),
                           textScaler: textScaler,
                         ),
                       ),
@@ -168,114 +175,135 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
                 ),
                 // Stepper content
                 Expanded(
-                  child: Stepper(
-                    currentStep: _currentStep,
-                    onStepTapped: (index) {
-                      // Allow jumping to any step when editing (checklistId != null),
-                      // but only allow backward/previous steps when creating.
-                      if (widget.checklistId != null) {
-                        // When editing, allow jumping to any step, but handle location step auto-skip
-                        final otherLocations =
-                            widget.availableLocations.where((location) => location['id'] != widget.locationId).toList();
+                  child: Theme(
+                    data: Theme.of(
+                      context,
+                    ).copyWith(colorScheme: Theme.of(context).colorScheme.copyWith(primary: HandsColors.handsOrange)),
+                    child: Stepper(
+                      currentStep: _currentStep,
+                      onStepTapped: (index) {
+                        // Allow jumping to any step when editing (checklistId != null),
+                        // but only allow backward/previous steps when creating.
+                        if (widget.checklistId != null) {
+                          // When editing, allow jumping to any step, but handle location step auto-skip
+                          final otherLocations =
+                              widget.availableLocations
+                                  .where((location) => location['id'] != widget.locationId)
+                                  .toList();
 
-                        // If trying to go to location step but no other locations available, skip to tasks
-                        if (index == 2 && otherLocations.isEmpty) {
-                          setState(() => _currentStep = 3);
-                        } else {
+                          // If trying to go to location step but no other locations available, skip to tasks
+                          if (index == 2 && otherLocations.isEmpty) {
+                            setState(() => _currentStep = 3);
+                          } else {
+                            setState(() => _currentStep = index);
+                          }
+                        } else if (index <= _currentStep) {
                           setState(() => _currentStep = index);
                         }
-                      } else if (index <= _currentStep) {
-                        setState(() => _currentStep = index);
-                      }
-                    },
-                    onStepContinue: _nextStep,
-                    onStepCancel: _prevStep,
-                    controlsBuilder: (context, details) {
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: BottomSheetStyles.horizontalPadding,
-                          vertical: 12,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            if (details.stepIndex > 0)
-                              TextButton(
-                                onPressed: details.onStepCancel,
-                                style: BottomSheetStyles.secondaryTextButtonStyle(context),
-                                child: const Text('Back'),
+                      },
+                      onStepContinue: _nextStep,
+                      onStepCancel: _prevStep,
+                      controlsBuilder: (context, details) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              if (details.stepIndex > 0)
+                                HandsSecondaryButton(text: 'Back', onPressed: details.onStepCancel),
+                              const SizedBox(width: 12),
+                              HandsPrimaryButton(
+                                text: details.stepIndex < 3 ? 'Continue' : 'Save checklist',
+                                onPressed: _loading ? null : details.onStepContinue,
+                                isLoading: _loading,
                               ),
-                            const SizedBox(width: 12),
-                            ElevatedButton(
-                              onPressed: _loading ? null : details.onStepContinue,
-                              style: BottomSheetStyles.primaryButtonStyle(),
-                              child:
-                                  _loading
-                                      ? const SizedBox(
-                                        height: 16,
-                                        width: 16,
-                                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                      )
-                                      : Text(details.stepIndex < 3 ? 'Continue' : 'Save checklist'),
+                            ],
+                          ),
+                        );
+                      },
+                      steps: [
+                        Step(
+                          title: Text(
+                            'Name & description',
+                            style: GoogleFonts.comfortaa(
+                              fontWeight: FontWeight.bold,
+                              color: HandsColors.white,
+                              fontSize: 14,
                             ),
-                          ],
+                          ),
+                          content: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
+                            child: _buildInfoStep(),
+                          ),
+                          isActive: _currentStep >= 0,
+                          state:
+                              widget.checklistId != null
+                                  ? (_currentStep == 0 ? StepState.indexed : StepState.complete)
+                                  : (_currentStep > 0 ? StepState.complete : StepState.indexed),
                         ),
-                      );
-                    },
-                    steps: [
-                      Step(
-                        title: BottomSheetStyles.stepTitle('Name & description'),
-                        content: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
-                          child: _buildInfoStep(),
+                        Step(
+                          title: Text(
+                            'Assign to shifts',
+                            style: GoogleFonts.comfortaa(
+                              fontWeight: FontWeight.bold,
+                              color: HandsColors.white,
+                              fontSize: 14,
+                            ),
+                          ),
+                          content: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
+                            child: _buildShiftAssignmentStep(),
+                          ),
+                          isActive: _currentStep >= 1,
+                          state:
+                              widget.checklistId != null
+                                  ? (_currentStep == 1 ? StepState.indexed : StepState.complete)
+                                  : (_currentStep > 1
+                                      ? StepState.complete
+                                      : (_currentStep == 1 ? StepState.indexed : StepState.disabled)),
                         ),
-                        isActive: _currentStep >= 0,
-                        state:
-                            widget.checklistId != null
-                                ? (_currentStep == 0 ? StepState.indexed : StepState.complete)
-                                : (_currentStep > 0 ? StepState.complete : StepState.indexed),
-                      ),
-                      Step(
-                        title: BottomSheetStyles.stepTitle('Assign to shifts'),
-                        content: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
-                          child: _buildShiftAssignmentStep(),
+                        Step(
+                          title: Text(
+                            'Locations',
+                            style: GoogleFonts.comfortaa(
+                              fontWeight: FontWeight.bold,
+                              color: HandsColors.white,
+                              fontSize: 14,
+                            ),
+                          ),
+                          content: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
+                            child: _buildLocationStep(),
+                          ),
+                          isActive: _currentStep >= 2,
+                          state:
+                              widget.checklistId != null
+                                  ? (_currentStep == 2 ? StepState.indexed : StepState.complete)
+                                  : (_currentStep > 2
+                                      ? StepState.complete
+                                      : (_currentStep == 2 ? StepState.indexed : StepState.disabled)),
                         ),
-                        isActive: _currentStep >= 1,
-                        state:
-                            widget.checklistId != null
-                                ? (_currentStep == 1 ? StepState.indexed : StepState.complete)
-                                : (_currentStep > 1
-                                    ? StepState.complete
-                                    : (_currentStep == 1 ? StepState.indexed : StepState.disabled)),
-                      ),
-                      Step(
-                        title: BottomSheetStyles.stepTitle('Locations'),
-                        content: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
-                          child: _buildLocationStep(),
+                        Step(
+                          title: Text(
+                            'Tasks',
+                            style: GoogleFonts.comfortaa(
+                              fontWeight: FontWeight.bold,
+                              color: HandsColors.white,
+                              fontSize: 14,
+                            ),
+                          ),
+                          content: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
+                            child: _buildTasksStep(),
+                          ),
+                          isActive: _currentStep >= 3,
+                          state:
+                              widget.checklistId != null
+                                  ? (_currentStep == 3 ? StepState.indexed : StepState.complete)
+                                  : (_currentStep == 3 ? StepState.indexed : StepState.disabled),
                         ),
-                        isActive: _currentStep >= 2,
-                        state:
-                            widget.checklistId != null
-                                ? (_currentStep == 2 ? StepState.indexed : StepState.complete)
-                                : (_currentStep > 2
-                                    ? StepState.complete
-                                    : (_currentStep == 2 ? StepState.indexed : StepState.disabled)),
-                      ),
-                      Step(
-                        title: BottomSheetStyles.stepTitle('Tasks'),
-                        content: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
-                          child: _buildTasksStep(),
-                        ),
-                        isActive: _currentStep >= 3,
-                        state:
-                            widget.checklistId != null
-                                ? (_currentStep == 3 ? StepState.indexed : StepState.complete)
-                                : (_currentStep == 3 ? StepState.indexed : StepState.disabled),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ],

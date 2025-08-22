@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
-import 'package:hands_app/routing/routes.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:hands_app/services/auth_service.dart';
 import 'package:hands_app/services/stripe_service.dart';
+import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/ui/contact_sales_dialog.dart';
 import 'package:hands_app/ui/location_bottom_sheet_new.dart';
+import 'package:hands_app/theme/theme.dart';
 
 class HandsSettingsPage extends StatefulWidget {
   const HandsSettingsPage({super.key});
@@ -134,7 +134,8 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
         return StatefulBuilder(
           builder:
               (ctx, setState) => AlertDialog(
-                title: const Text('Edit Profile'),
+                backgroundColor: HandsColors.cardPrimary,
+                title: Text('Edit Profile', style: TextStyle(color: HandsColors.white)),
                 content: Form(
                   key: formKey,
                   child: SingleChildScrollView(
@@ -143,22 +144,46 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                       children: [
                         TextFormField(
                           controller: firstNameCtrl,
-                          decoration: const InputDecoration(labelText: 'First Name', prefixIcon: Icon(Icons.person)),
+                          style: TextStyle(color: HandsColors.white),
+                          decoration: InputDecoration(
+                            labelText: 'First Name',
+                            labelStyle: TextStyle(color: HandsColors.white.withValues(alpha: 0.7)),
+                            prefixIcon: Icon(Icons.person, color: HandsColors.white.withValues(alpha: 0.7)),
+                            enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: HandsColors.white.withValues(alpha: 0.3)),
+                            ),
+                            focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: HandsColors.white)),
+                          ),
                           validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
                         ),
                         const SizedBox(height: 12),
                         TextFormField(
                           controller: lastNameCtrl,
-                          decoration: const InputDecoration(
+                          style: TextStyle(color: HandsColors.white),
+                          decoration: InputDecoration(
                             labelText: 'Last Name',
-                            prefixIcon: Icon(Icons.person_outline),
+                            labelStyle: TextStyle(color: HandsColors.white.withValues(alpha: 0.7)),
+                            prefixIcon: Icon(Icons.person_outline, color: HandsColors.white.withValues(alpha: 0.7)),
+                            enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: HandsColors.white.withValues(alpha: 0.3)),
+                            ),
+                            focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: HandsColors.white)),
                           ),
                           validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
                         ),
                         const SizedBox(height: 12),
                         TextFormField(
                           controller: emailCtrl,
-                          decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email)),
+                          style: TextStyle(color: HandsColors.white),
+                          decoration: InputDecoration(
+                            labelText: 'Email',
+                            labelStyle: TextStyle(color: HandsColors.white.withValues(alpha: 0.7)),
+                            prefixIcon: Icon(Icons.email, color: HandsColors.white.withValues(alpha: 0.7)),
+                            enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: HandsColors.white.withValues(alpha: 0.3)),
+                            ),
+                            focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: HandsColors.white)),
+                          ),
                           keyboardType: TextInputType.emailAddress,
                           validator: (v) {
                             if (v == null || v.trim().isEmpty) return 'Required';
@@ -172,8 +197,12 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                   ),
                 ),
                 actions: [
-                  TextButton(onPressed: saving ? null : () => Navigator.pop(ctx), child: const Text('Cancel')),
+                  TextButton(
+                    onPressed: saving ? null : () => Navigator.pop(ctx),
+                    child: Text('Cancel', style: TextStyle(color: HandsColors.white.withValues(alpha: 0.7))),
+                  ),
                   FilledButton(
+                    style: FilledButton.styleFrom(backgroundColor: HandsColors.primary),
                     onPressed:
                         saving
                             ? null
@@ -268,7 +297,8 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
           (ctx) => StatefulBuilder(
             builder:
                 (ctx, setState) => AlertDialog(
-                  title: const Text('Edit Business'),
+                  backgroundColor: HandsColors.cardPrimary,
+                  title: Text('Edit Business', style: TextStyle(color: HandsColors.white)),
                   content: Form(
                     key: formKey,
                     child: SingleChildScrollView(
@@ -406,32 +436,6 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
     debugPrint('[SettingsPage] Pending verification: $pendingVerification');
 
     try {
-      // Verify target email actually has sign-in methods
-      debugPrint('[SettingsPage] Checking sign-in methods for: "$targetEmail"');
-      List<String> methods = [];
-      bool methodsCheckFailed = false;
-
-      try {
-        methods = await FirebaseAuth.instance.fetchSignInMethodsForEmail(targetEmail);
-        debugPrint('[SettingsPage] Sign-in methods found: $methods');
-      } catch (methodsError) {
-        debugPrint('[SettingsPage] Failed to fetch sign-in methods: $methodsError');
-        methodsCheckFailed = true;
-        // Continue anyway - the fetchSignInMethodsForEmail check might be overly restrictive
-      }
-
-      if (methods.isEmpty && !methodsCheckFailed) {
-        debugPrint('[SettingsPage] No sign-in methods found for email: "$targetEmail"');
-        if (mounted) {
-          final msg =
-              pendingVerification
-                  ? 'Email change pending verification. Reset available only for verified address ($authEmail). Please verify the new email first.'
-                  : 'No account found with this email address';
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
-        }
-        return;
-      }
-
       debugPrint('[SettingsPage] Proceeding with password reset for: "$targetEmail"');
       bool sent = false;
       try {
@@ -462,7 +466,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
     } catch (e, st) {
       debugPrint('[SettingsPage] Error in password reset: $e');
       debugPrint('[SettingsPage] Stack trace: $st');
-      FirebaseCrashlytics.instance.recordError(e, st);
+      if (mounted) FirebaseCrashlytics.instance.recordError(e, st);
       if (mounted) {
         String errorMessage = 'Failed to send reset email';
         if (e is FirebaseAuthException) {
@@ -475,14 +479,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
               errorMessage = 'Too many requests. Please try again later';
               break;
             case 'invalid-email':
-              errorMessage = 'Email format is invalid';
-              break;
-            case 'network-request-failed':
-              errorMessage = 'Network error. Check your connection';
-              break;
-            case 'invalid-continue-uri':
-            case 'missing-continue-uri':
-              errorMessage = 'Reset link configuration invalid (continue URL). Contact support';
+              errorMessage = 'Invalid email address';
               break;
             default:
               errorMessage = e.message ?? errorMessage;
@@ -498,10 +495,17 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
       context: context,
       builder:
           (context) => AlertDialog(
-            title: const Text('Sign Out'),
-            content: const Text('Are you sure you want to sign out?'),
+            backgroundColor: HandsColors.cardPrimary,
+            title: Text('Sign Out', style: TextStyle(color: HandsColors.white)),
+            content: Text(
+              'Are you sure you want to sign out?',
+              style: TextStyle(color: HandsColors.white.withValues(alpha: 0.8)),
+            ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text('Cancel', style: TextStyle(color: HandsColors.white.withValues(alpha: 0.7))),
+              ),
               TextButton(
                 onPressed: () => Navigator.pop(context, true),
                 style: TextButton.styleFrom(foregroundColor: Colors.red),
@@ -547,31 +551,39 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
       context: context,
       builder:
           (ctx) => AlertDialog(
+            backgroundColor: HandsColors.cardPrimary,
             title: Row(
-              children: const [
-                Icon(Icons.delete_forever, color: Colors.red),
-                SizedBox(width: 8),
-                Text('Delete Account?'),
+              children: [
+                const Icon(Icons.delete_forever, color: Colors.red),
+                const SizedBox(width: 8),
+                Text('Delete Account?', style: TextStyle(color: HandsColors.white)),
               ],
             ),
-            content: const Column(
+            content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'This will permanently delete your account and all associated personal data. This action CANNOT be undone.',
-                  style: TextStyle(fontWeight: FontWeight.w600),
+                  style: TextStyle(fontWeight: FontWeight.w600, color: HandsColors.white),
                 ),
-                SizedBox(height: 12),
+                const SizedBox(height: 12),
                 Text(
                   'If you proceed and later want to use Hands again, you will need to receive a NEW INVITE from your administrator to re‑sign up.',
+                  style: TextStyle(color: HandsColors.white.withValues(alpha: 0.8)),
                 ),
-                SizedBox(height: 12),
-                Text('Do you still want to continue?'),
+                const SizedBox(height: 12),
+                Text(
+                  'Do you still want to continue?',
+                  style: TextStyle(color: HandsColors.white.withValues(alpha: 0.8)),
+                ),
               ],
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text('Cancel', style: TextStyle(color: HandsColors.white.withValues(alpha: 0.7))),
+              ),
               FilledButton(
                 style: FilledButton.styleFrom(backgroundColor: Colors.red),
                 onPressed: () => Navigator.pop(ctx, true),
@@ -589,27 +601,49 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
       context: context,
       builder:
           (context) => AlertDialog(
-            title: Row(children: [Icon(Icons.warning, color: Colors.red), SizedBox(width: 8), Text('Delete Account')]),
+            backgroundColor: HandsColors.cardPrimary,
+            title: Row(
+              children: [
+                Icon(Icons.warning, color: Colors.red),
+                SizedBox(width: 8),
+                Text('Delete Account', style: TextStyle(color: HandsColors.white)),
+              ],
+            ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'This will permanently delete your account and all your data. This action cannot be undone.',
-                  style: TextStyle(fontWeight: FontWeight.w500),
+                  style: TextStyle(fontWeight: FontWeight.w500, color: HandsColors.white),
                 ),
                 SizedBox(height: 16),
-                Text('Please enter your password to confirm:'),
+                Text(
+                  'Please enter your password to confirm:',
+                  style: TextStyle(color: HandsColors.white.withValues(alpha: 0.8)),
+                ),
                 SizedBox(height: 8),
                 TextField(
                   controller: passwordController,
                   obscureText: true,
-                  decoration: InputDecoration(hintText: 'Password', border: OutlineInputBorder()),
+                  style: TextStyle(color: HandsColors.white),
+                  decoration: InputDecoration(
+                    hintText: 'Password',
+                    hintStyle: TextStyle(color: HandsColors.white.withValues(alpha: 0.5)),
+                    border: OutlineInputBorder(borderSide: BorderSide(color: HandsColors.white.withValues(alpha: 0.3))),
+                    enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: HandsColors.white.withValues(alpha: 0.3)),
+                    ),
+                    focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: HandsColors.white)),
+                  ),
                 ),
               ],
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text('Cancel', style: TextStyle(color: HandsColors.white.withValues(alpha: 0.7))),
+              ),
               TextButton(
                 onPressed: () => Navigator.pop(context, true),
                 style: TextButton.styleFrom(foregroundColor: Colors.red),
@@ -923,6 +957,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
     final isOverUsage = currentUsage > quantity;
 
     return Card(
+      color: HandsColors.cardPrimary,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -934,7 +969,9 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                 const SizedBox(width: 8),
                 Text(
                   'Subscription Management',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.white),
                 ),
               ],
             ),
@@ -944,8 +981,8 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.grey[50],
-                border: Border.all(color: Colors.grey[200]!),
+                color: HandsColors.cardPrimary,
+                border: Border.all(color: Colors.white24),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Column(
@@ -953,15 +990,15 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Subscribed Locations:'),
-                      Text('$quantity', style: const TextStyle(fontWeight: FontWeight.w600)),
+                      const Text('Subscribed Locations:', style: TextStyle(color: Colors.white)),
+                      Text('$quantity', style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white)),
                     ],
                   ),
                   const SizedBox(height: 4),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Locations in Use:'),
+                      const Text('Locations in Use:', style: TextStyle(color: Colors.white)),
                       Text(
                         '$currentUsage',
                         style: TextStyle(fontWeight: FontWeight.w600, color: isOverUsage ? Colors.red : Colors.green),
@@ -972,8 +1009,11 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Monthly Cost:'),
-                      Text('\$${monthlyTotal.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                      const Text('Monthly Cost:', style: TextStyle(color: Colors.white)),
+                      Text(
+                        '\$${monthlyTotal.toStringAsFixed(2)}',
+                        style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
+                      ),
                     ],
                   ),
                   if (status != null) ...[
@@ -981,11 +1021,11 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Status:'),
+                        const Text('Status:', style: TextStyle(color: Colors.white)),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
-                            color: _getStatusColor(status).withValues(alpha: 0.1),
+                            color: _getStatusColor(status).withOpacity(0.15),
                             border: Border.all(color: _getStatusColor(status)),
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -1133,7 +1173,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
     debugPrint('[SettingsPage] _onAddLocation: Subscription quantity: $quantity');
 
     if (orgCount < quantity) {
-      // Open the Add Locations wizard directly
+      // Open the location wizard directly
       if (!mounted) return;
       final created = await Navigator.of(
         context,
@@ -1181,46 +1221,11 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme.of(context).primaryColor,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go(AppRoutes.userDashboardPage.path);
-            }
-          },
-        ),
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: Row(
-          children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: Colors.white,
-              child: ClipOval(
-                child: Image.asset(
-                  'assets/images/hands_logo_v2.png',
-                  width: 36,
-                  height: 36,
-                  fit: BoxFit.cover,
-                  errorBuilder:
-                      (context, error, stackTrace) => Icon(Icons.business, color: Theme.of(context).primaryColor),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              'SETTINGS',
-              style: Theme.of(
-                context,
-              ).appBarTheme.titleTextStyle?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-        actions: [UnifiedMenuButton(userRole: _userRole)],
-        centerTitle: false,
+        backgroundColor: HandsColors.cardPrimary,
         elevation: 0,
+        toolbarHeight: kToolbarHeight,
+        title: GenericAppBarContent(appBarTitle: 'Settings', userRole: _userRole),
+        actions: [UnifiedMenuButton(userRole: _userRole)],
       ),
       body:
           _isLoading
@@ -1505,26 +1510,39 @@ class _SubscriptionManagementDialogState extends State<_SubscriptionManagementDi
           context: context,
           builder:
               (context) => AlertDialog(
-                title: Text('${isIncrease ? 'Upgrade' : 'Downgrade'} Subscription'),
+                backgroundColor: HandsColors.cardPrimary,
+                title: Text(
+                  '${isIncrease ? 'Upgrade' : 'Downgrade'} Subscription',
+                  style: TextStyle(color: HandsColors.white),
+                ),
                 content: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('You\'re about to $changeText your location subscription:'),
+                    Text(
+                      'You\'re about to $changeText your location subscription:',
+                      style: TextStyle(color: HandsColors.white.withValues(alpha: 0.8)),
+                    ),
                     const SizedBox(height: 12),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [const Text('From:'), Text('${widget.currentQuantity} locations')],
+                      children: [
+                        Text('From:', style: TextStyle(color: HandsColors.white.withValues(alpha: 0.8))),
+                        Text('${widget.currentQuantity} locations', style: TextStyle(color: HandsColors.white)),
+                      ],
                     ),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [const Text('To:'), Text('$_newQuantity locations')],
+                      children: [
+                        Text('To:', style: TextStyle(color: HandsColors.white.withValues(alpha: 0.8))),
+                        Text('$_newQuantity locations', style: TextStyle(color: HandsColors.white)),
+                      ],
                     ),
                     const Divider(),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Monthly change:'),
+                        Text('Monthly change:', style: TextStyle(color: HandsColors.white.withValues(alpha: 0.8))),
                         Text(
                           '$monthlyChangeText/month',
                           style: TextStyle(fontWeight: FontWeight.bold, color: isIncrease ? Colors.red : Colors.green),
@@ -1549,7 +1567,10 @@ class _SubscriptionManagementDialogState extends State<_SubscriptionManagementDi
                   ],
                 ),
                 actions: [
-                  TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: Text('Cancel', style: TextStyle(color: HandsColors.white.withValues(alpha: 0.7))),
+                  ),
                   ElevatedButton(
                     onPressed: () => Navigator.of(context).pop(true),
                     style: ElevatedButton.styleFrom(
@@ -1567,9 +1588,11 @@ class _SubscriptionManagementDialogState extends State<_SubscriptionManagementDi
   @override
   Widget build(BuildContext context) {
     return Dialog(
+      backgroundColor: HandsColors.cardPrimary,
       child: Container(
         constraints: const BoxConstraints(maxWidth: 400, maxHeight: 500),
         padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(color: HandsColors.cardPrimary, borderRadius: BorderRadius.circular(12)),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1577,16 +1600,18 @@ class _SubscriptionManagementDialogState extends State<_SubscriptionManagementDi
             // Header
             Row(
               children: [
-                const Icon(Icons.tune, size: 20),
+                Icon(Icons.tune, size: 20, color: HandsColors.white.withValues(alpha: 0.8)),
                 const SizedBox(width: 8),
                 Text(
                   'Manage Subscription',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: HandsColors.white),
                 ),
                 const Spacer(),
                 IconButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close, size: 20),
+                  icon: Icon(Icons.close, size: 20, color: HandsColors.white.withValues(alpha: 0.8)),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                 ),
@@ -1597,16 +1622,19 @@ class _SubscriptionManagementDialogState extends State<_SubscriptionManagementDi
             // Current status - more compact
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: Colors.grey[50], borderRadius: BorderRadius.circular(8)),
+              decoration: BoxDecoration(
+                color: HandsColors.cardPrimary.withValues(alpha: 0.8),
+                borderRadius: BorderRadius.circular(8),
+              ),
               child: Column(
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Current:', style: TextStyle(fontSize: 13)),
+                      Text('Current:', style: TextStyle(fontSize: 13, color: HandsColors.white.withValues(alpha: 0.8))),
                       Text(
                         '${widget.currentQuantity} locations',
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: HandsColors.white),
                       ),
                     ],
                   ),

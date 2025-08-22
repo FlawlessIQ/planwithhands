@@ -10,138 +10,92 @@ class HandsIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final iconSize = size ?? 128;
+    final iconWidth = iconSize * 1.4; // Make it wider to prevent horizontal compression
 
     return Container(
       height: iconSize,
-      width: iconSize,
+      width: iconWidth,
       decoration: BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(iconSize / 2),
         boxShadow:
             enableShadow
                 ? [
                   BoxShadow(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.onSurface.withValues(alpha: .25),
+                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .25),
                     offset: const Offset(0, 4),
                     blurRadius: 2,
                   ),
                 ]
                 : null,
       ),
-      child: ClipOval(
-        child:
-            kIsWeb
-                ?
-                // Web-optimized image loading with smaller cache size
-                Image.asset(
-                  'assets/images/hands_logo_v2.png',
-                  width: iconSize,
-                  height: iconSize,
-                  fit: BoxFit.cover,
-                  // Cache at a higher resolution for better quality on high-DPI screens
-                  cacheWidth: (iconSize * 1.5).round(),
-                  cacheHeight: (iconSize * 1.5).round(),
-                  // Web-specific optimizations
-                  filterQuality: FilterQuality.high, // Prioritize quality
-                  isAntiAlias: true,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      width: iconSize,
-                      height: iconSize,
-                      decoration: const BoxDecoration(
-                        color: Colors.grey,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.business,
-                        size: iconSize * 0.6,
-                        color: Colors.white,
-                      ),
-                    );
-                  },
-                  // Faster loading placeholder for web
-                  frameBuilder: (
-                    context,
-                    child,
-                    frame,
-                    wasSynchronouslyLoaded,
-                  ) {
-                    if (wasSynchronouslyLoaded || frame != null) {
-                      return child;
-                    }
+      child:
+          kIsWeb
+              ?
+              // Web-optimized image loading
+              Image.asset(
+                'assets/images/hands_icon.png',
+                width: iconWidth,
+                height: iconSize,
+                fit: BoxFit.contain,
+                cacheWidth: (iconWidth * 1.5).round(),
+                cacheHeight: (iconSize * 1.5).round(),
+                filterQuality: FilterQuality.high,
+                isAntiAlias: true,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    width: iconWidth,
+                    height: iconSize,
+                    decoration: const BoxDecoration(color: Colors.grey),
+                    child: Icon(Icons.business, size: iconSize * 0.6, color: Colors.white),
+                  );
+                },
+                frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                  if (wasSynchronouslyLoaded || frame != null) {
+                    return child;
+                  }
+                  return Container(
+                    width: iconWidth,
+                    height: iconSize,
+                    decoration: BoxDecoration(color: Colors.grey[200]),
+                    child: Icon(Icons.business, size: iconSize * 0.6, color: Colors.grey[400]),
+                  );
+                },
+              )
+              :
+              // Mobile/desktop optimized version
+              Image.asset(
+                'assets/images/hands_icon.png',
+                width: iconWidth,
+                height: iconSize,
+                fit: BoxFit.contain,
+                cacheWidth: iconWidth.round(),
+                cacheHeight: iconSize.round(),
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    width: iconWidth,
+                    height: iconSize,
+                    decoration: const BoxDecoration(color: Colors.grey),
+                    child: Icon(Icons.business, size: iconSize * 0.6, color: Colors.white),
+                  );
+                },
+                frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                  if (wasSynchronouslyLoaded) return child;
 
-                    // Simplified loading state for web
-                    return Container(
-                      width: iconSize,
-                      height: iconSize,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[200],
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.business,
-                        size: iconSize * 0.6,
-                        color: Colors.grey[400],
-                      ),
-                    );
-                  },
-                )
-                :
-                // Mobile/desktop optimized version (original)
-                Image.asset(
-                  'assets/images/hands_logo_v2.png',
-                  width: iconSize,
-                  height: iconSize,
-                  fit: BoxFit.cover,
-                  cacheWidth: iconSize.round(),
-                  cacheHeight: iconSize.round(),
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      width: iconSize,
-                      height: iconSize,
-                      decoration: const BoxDecoration(
-                        color: Colors.grey,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.business,
-                        size: iconSize * 0.6,
-                        color: Colors.white,
-                      ),
-                    );
-                  },
-                  frameBuilder: (
-                    context,
-                    child,
-                    frame,
-                    wasSynchronouslyLoaded,
-                  ) {
-                    if (wasSynchronouslyLoaded) return child;
-
-                    return AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 200),
-                      child:
-                          frame != null
-                              ? child
-                              : Container(
-                                width: iconSize,
-                                height: iconSize,
-                                decoration: BoxDecoration(
-                                  color: Colors.grey[300],
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  Icons.business,
-                                  size: iconSize * 0.6,
-                                  color: Colors.grey[400],
-                                ),
-                              ),
-                    );
-                  },
-                ),
-      ),
+                  return AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    child:
+                        frame != null
+                            ? child
+                            : Container(
+                              width: iconWidth,
+                              height: iconSize,
+                              decoration: BoxDecoration(color: Colors.grey[300]),
+                              child: Icon(Icons.business, size: iconSize * 0.6, color: Colors.grey[400]),
+                            ),
+                  );
+                },
+              ),
     );
   }
 }

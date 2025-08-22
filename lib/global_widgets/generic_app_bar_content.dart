@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:hands_app/global_widgets/hands_icon.dart';
+import 'package:hands_app/theme/theme.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class GenericAppBarContent extends StatelessWidget {
   final String appBarTitle;
@@ -13,67 +14,41 @@ class GenericAppBarContent extends StatelessWidget {
     final screenWidth = MediaQuery.of(context).size.width;
     final isNarrowScreen = screenWidth < 400; // Mobile breakpoint
 
-    return SizedBox(
+    return Container(
       width: double.infinity,
-      child: Row(
-        children: [
-          // Left: Back arrow (only show if we can pop), logo, and title
-          if (Navigator.canPop(context))
-            IconButton(
-              onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
-            ),
-
-          // Logo - smaller on narrow screens
-          HandsIcon(size: isNarrowScreen ? 24 : 32, enableShadow: false),
-
-          SizedBox(width: isNarrowScreen ? 6 : 8),
-
-          // Title - responsive sizing
-          Expanded(
-            child: Text(
-              _getResponsiveTitle(appBarTitle, isNarrowScreen),
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                color: Colors.white,
-                fontSize: isNarrowScreen ? 16 : 20,
-                fontWeight: FontWeight.w600,
+      height: kToolbarHeight,
+      decoration: BoxDecoration(
+        color: HandsColors.cardPrimary,
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 4, offset: const Offset(0, 2))],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Logo always on the far left
+            Image.asset('assets/images/hands_icon.png', height: isNarrowScreen ? 36 : 44, fit: BoxFit.contain),
+            const SizedBox(width: 12),
+            // Title - fully responsive, wraps if needed
+            Expanded(
+              child: Text(
+                appBarTitle,
+                style: GoogleFonts.comfortaa(
+                  color: HandsColors.white,
+                  fontSize: isNarrowScreen ? 18 : 22,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.0,
+                ),
+                textAlign: TextAlign.left,
+                softWrap: true,
+                overflow: TextOverflow.visible,
+                maxLines: 3,
               ),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
             ),
-          ),
-        ],
+            // Optionally, add userRole or actions here if needed
+          ],
+        ),
       ),
     );
-  }
-
-  String _getResponsiveTitle(String originalTitle, bool isNarrowScreen) {
-    if (!isNarrowScreen || showCompactTitle == false) {
-      return originalTitle;
-    }
-
-    // Mobile-friendly shortened titles
-    switch (originalTitle.toLowerCase()) {
-      case 'task workflow':
-        return 'Tasks';
-      case 'plan with hands':
-        return 'Hands';
-      case 'manager dashboard':
-        return 'Manager';
-      case 'admin dashboard':
-        return 'Admin';
-      case 'training materials':
-        return 'Training';
-      default:
-        // If title is too long for mobile, truncate intelligently
-        if (originalTitle.length > 12) {
-          final words = originalTitle.split(' ');
-          if (words.length > 1) {
-            return words.first; // Return first word
-          }
-          return '${originalTitle.substring(0, 10)}...';
-        }
-        return originalTitle;
-    }
   }
 }

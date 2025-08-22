@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hands_app/routing/routes.dart';
+import 'package:hands_app/theme/theme.dart';
 // import 'package:hands_app/state/user_state.dart';
 
 class BottomNavBar extends ConsumerWidget {
@@ -62,6 +63,7 @@ class BottomNavBar extends ConsumerWidget {
     if (navIndex == -1) navIndex = 0;
 
     return BottomNavigationBar(
+      backgroundColor: Colors.black, // Dark background
       currentIndex: navIndex,
       onTap: (index) {
         _onItemTapped(context, tabMap[index]);
@@ -92,6 +94,7 @@ class BottomNavBar extends ConsumerWidget {
               if (w < 420) return 11.0;
               return 12.0;
             })(),
+        color: Colors.white, // Selected label white
       ),
       unselectedLabelStyle: TextStyle(
         fontSize:
@@ -101,6 +104,7 @@ class BottomNavBar extends ConsumerWidget {
               if (w < 420) return 10.0;
               return 11.0;
             })(),
+        color: Colors.white70, // Unselected label white70
       ),
       selectedIconTheme: IconThemeData(
         size:
@@ -110,6 +114,7 @@ class BottomNavBar extends ConsumerWidget {
               if (w < 420) return 20.0;
               return 22.0;
             })(),
+        color: HandsColors.handsOrange, // Selected icon orange
       ),
       unselectedIconTheme: IconThemeData(
         size:
@@ -119,6 +124,7 @@ class BottomNavBar extends ConsumerWidget {
               if (w < 420) return 18.0;
               return 20.0;
             })(),
+        color: HandsColors.handsOrange.withOpacity(0.6), // Unselected icon orange 60%
       ),
       showUnselectedLabels: true,
     );

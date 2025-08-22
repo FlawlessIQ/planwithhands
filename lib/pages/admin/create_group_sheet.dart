@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/theme/theme.dart';
+import 'package:hands_app/shared/components/hands_buttons.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class CreateGroupSheet extends ConsumerStatefulWidget {
   const CreateGroupSheet({super.key});
@@ -132,24 +135,52 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: const Text('Edit Group'),
+              backgroundColor: HandsColors.primaryContainer,
+              title: Text(
+                'Edit Group',
+                style: GoogleFonts.comfortaa(color: HandsColors.white, fontWeight: FontWeight.bold),
+              ),
               content: SizedBox(
                 width: 350,
                 child: SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      TextField(
+                      TextFormField(
                         controller: editController,
-                        decoration: const InputDecoration(labelText: 'Group Name'),
+                        decoration: InputDecoration(
+                          labelText: 'Group Name',
+                          labelStyle: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 14),
+                          filled: true,
+                          fillColor: HandsColors.secondaryContainer,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12.0),
+                            borderSide: const BorderSide(color: HandsColors.white12),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12.0),
+                            borderSide: const BorderSide(color: HandsColors.white12),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12.0),
+                            borderSide: const BorderSide(color: HandsColors.handsOrange, width: 2),
+                          ),
+                        ),
+                        style: GoogleFonts.comfortaa(color: HandsColors.white, fontSize: 14),
                         autofocus: true,
                       ),
                       const SizedBox(height: 16),
-                      const Text('Edit Members:', style: TextStyle(fontWeight: FontWeight.bold)),
+                      Text(
+                        'Edit Members:',
+                        style: GoogleFonts.comfortaa(fontWeight: FontWeight.bold, color: HandsColors.white),
+                      ),
                       ..._users.map(
                         (user) => CheckboxListTile(
                           value: selectedUserIds.contains(user['id']),
-                          title: Text(user['name']),
+                          title: Text(
+                            user['name'],
+                            style: GoogleFonts.comfortaa(color: HandsColors.white, fontSize: 14),
+                          ),
                           onChanged: (checked) {
                             setState(() {
                               if (checked == true) {
@@ -159,6 +190,8 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
                               }
                             });
                           },
+                          activeColor: HandsColors.handsOrange,
+                          checkColor: HandsColors.white,
                         ),
                       ),
                     ],
@@ -166,15 +199,15 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-                TextButton(
+                HandsSecondaryButton(text: 'Cancel', onPressed: () => Navigator.of(context).pop()),
+                HandsPrimaryButton(
+                  text: 'Save',
                   onPressed: () {
                     final name = editController.text.trim();
                     if (name.isNotEmpty && selectedUserIds.isNotEmpty) {
                       Navigator.of(context).pop({'name': name, 'memberIds': selectedUserIds.toList()});
                     }
                   },
-                  child: const Text('Save'),
                 ),
               ],
             );
@@ -207,15 +240,18 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
       context: context,
       builder:
           (context) => AlertDialog(
-            title: const Text('Delete Group'),
-            content: Text('Are you sure you want to delete the group "$groupName"? This action cannot be undone.'),
+            backgroundColor: HandsColors.primaryContainer,
+            title: Text(
+              'Delete Group',
+              style: GoogleFonts.comfortaa(color: HandsColors.white, fontWeight: FontWeight.bold),
+            ),
+            content: Text(
+              'Are you sure you want to delete the group "$groupName"? This action cannot be undone.',
+              style: GoogleFonts.comfortaa(color: HandsColors.white, fontSize: 14),
+            ),
             actions: [
-              TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                style: TextButton.styleFrom(foregroundColor: Colors.red),
-                child: const Text('Delete'),
-              ),
+              HandsSecondaryButton(text: 'Cancel', onPressed: () => Navigator.of(context).pop(false)),
+              HandsPrimaryButton(text: 'Delete', onPressed: () => Navigator.of(context).pop(true)),
             ],
           ),
     );
@@ -236,10 +272,13 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
+    return Container(
+      decoration: BoxDecoration(
+        color: HandsColors.cardPrimary,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       child: Padding(
-        padding: MediaQuery.of(context).viewInsets.add(const EdgeInsets.all(16)),
+        padding: MediaQuery.of(context).viewInsets.add(const EdgeInsets.all(20)),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -249,11 +288,22 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Manage Groups', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text(
+                    'MANAGE GROUPS',
+                    style: GoogleFonts.comfortaa(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: HandsColors.white,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
                   Container(
-                    decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(20)),
+                    decoration: BoxDecoration(
+                      color: HandsColors.secondaryContainer,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
                     child: IconButton(
-                      icon: const Icon(Icons.close, size: 20),
+                      icon: const Icon(Icons.close, size: 20, color: HandsColors.white70),
                       onPressed: () => Navigator.of(context).pop(),
                       tooltip: 'Close',
                       splashRadius: 20,
@@ -262,32 +312,52 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
                 ],
               ),
               const SizedBox(height: 16),
-              const Text('Existing Groups:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              Text(
+                'EXISTING GROUPS',
+                style: GoogleFonts.comfortaa(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: HandsColors.white,
+                  letterSpacing: 1.0,
+                ),
+              ),
               const SizedBox(height: 8),
               _isGroupsLoading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(HandsColors.handsOrange),
+                    ),
+                  )
                   : _groups.isEmpty
-                  ? const Text('No groups created yet.')
+                  ? Text('No groups created yet.', style: GoogleFonts.comfortaa(color: HandsColors.white70))
                   : SizedBox(
                     height: 200,
                     child: ListView.builder(
                       itemCount: _groups.length,
                       itemBuilder: (context, index) {
                         final group = _groups[index];
-                        return Card(
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          decoration: HandsDecorations.tertiaryBoxDecoration,
                           child: ListTile(
-                            title: Text(group['name']),
-                            subtitle: Text('${group['memberIds'].length} members'),
+                            title: Text(
+                              group['name'],
+                              style: GoogleFonts.comfortaa(color: HandsColors.white, fontWeight: FontWeight.w500),
+                            ),
+                            subtitle: Text(
+                              '${group['memberIds'].length} members',
+                              style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 12),
+                            ),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
-                                  icon: const Icon(Icons.edit, color: Colors.blue),
+                                  icon: const Icon(Icons.edit, color: HandsColors.handsOrange),
                                   onPressed: () => _editGroup(group['id'], group['name']),
                                   tooltip: 'Edit group',
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.delete, color: Colors.red),
+                                  icon: const Icon(Icons.delete, color: HandsColors.error),
                                   onPressed: () => _deleteGroup(group['id'], group['name']),
                                   tooltip: 'Delete group',
                                 ),
@@ -299,15 +369,63 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
                     ),
                   ),
               const SizedBox(height: 24),
-              const Divider(),
+              Divider(color: HandsColors.white12, thickness: 1),
               const SizedBox(height: 16),
-              const Text('Create New Group:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              Text(
+                'CREATE NEW GROUP',
+                style: GoogleFonts.comfortaa(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: HandsColors.white,
+                  letterSpacing: 1.0,
+                ),
+              ),
               const SizedBox(height: 8),
-              TextField(controller: _groupNameController, decoration: const InputDecoration(labelText: 'Group Name')),
+              TextFormField(
+                controller: _groupNameController,
+                decoration: InputDecoration(
+                  labelText: 'Group Name',
+                  labelStyle: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 14),
+                  filled: true,
+                  fillColor: HandsColors.secondaryContainer,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.0),
+                    borderSide: const BorderSide(color: HandsColors.white12),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.0),
+                    borderSide: const BorderSide(color: HandsColors.white12),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.0),
+                    borderSide: const BorderSide(color: HandsColors.handsOrange, width: 2),
+                  ),
+                ),
+                style: GoogleFonts.comfortaa(color: HandsColors.white, fontSize: 14),
+              ),
               const SizedBox(height: 16),
-              TextField(
+              TextFormField(
                 controller: _searchController,
-                decoration: const InputDecoration(labelText: 'Search users', prefixIcon: Icon(Icons.search)),
+                decoration: InputDecoration(
+                  labelText: 'Search users',
+                  prefixIcon: const Icon(Icons.search, color: HandsColors.white70),
+                  labelStyle: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 14),
+                  filled: true,
+                  fillColor: HandsColors.secondaryContainer,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.0),
+                    borderSide: const BorderSide(color: HandsColors.white12),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.0),
+                    borderSide: const BorderSide(color: HandsColors.white12),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.0),
+                    borderSide: const BorderSide(color: HandsColors.handsOrange, width: 2),
+                  ),
+                ),
+                style: GoogleFonts.comfortaa(color: HandsColors.white, fontSize: 14),
                 onChanged: (value) {
                   setState(() {
                     _searchQuery = value.trim().toLowerCase();
@@ -316,11 +434,23 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
               ),
               const SizedBox(height: 8),
               _isLoading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(HandsColors.handsOrange),
+                    ),
+                  )
                   : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Select Users:'),
+                      Text(
+                        'SELECT USERS',
+                        style: GoogleFonts.comfortaa(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: HandsColors.white,
+                          letterSpacing: 1.0,
+                        ),
+                      ),
                       ..._users
                           .where(
                             (user) =>
@@ -331,7 +461,10 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
                           .map(
                             (user) => CheckboxListTile(
                               value: _selectedUserIds.contains(user['id']),
-                              title: Text(user['name']),
+                              title: Text(
+                                user['name'],
+                                style: GoogleFonts.comfortaa(color: HandsColors.white, fontSize: 14),
+                              ),
                               onChanged: (checked) {
                                 setState(() {
                                   if (checked == true) {
@@ -341,15 +474,14 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
                                   }
                                 });
                               },
+                              activeColor: HandsColors.handsOrange,
+                              checkColor: HandsColors.white,
                             ),
                           ),
                     ],
                   ),
               const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(onPressed: _createGroup, child: const Text('Create New Group')),
-              ),
+              HandsPrimaryButton(text: 'Create New Group', onPressed: _createGroup, width: double.infinity),
             ],
           ),
         ),

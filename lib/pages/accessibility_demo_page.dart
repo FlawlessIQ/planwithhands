@@ -148,7 +148,7 @@ class _AccessibilityDemoPageState extends State<AccessibilityDemoPage> with Acce
                       child: Row(
                         children: [
                           buildAccessibleImage(
-                            image: const AssetImage('assets/images/Hands Logo V2.png'),
+                            image: const AssetImage('assets/images/hands_icon.png'),
                             semanticLabel: 'Company logo',
                             width: 48,
                             height: 48,

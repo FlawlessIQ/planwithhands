@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hands_app/state/notification_controller.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/theme/theme.dart';
+import 'package:hands_app/shared/components/hands_buttons.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class SendNotificationSheet extends ConsumerStatefulWidget {
   const SendNotificationSheet({super.key});
@@ -150,17 +153,16 @@ class _SendNotificationSheetState extends ConsumerState<SendNotificationSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: MediaQuery.of(context).viewInsets.add(const EdgeInsets.all(16)),
-      child: Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-        ),
+    return Container(
+      decoration: BoxDecoration(
+        color: HandsColors.cardPrimary,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Padding(
+        padding: MediaQuery.of(context).viewInsets.add(const EdgeInsets.all(20)),
         child: Form(
           key: _formKey,
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -168,8 +170,19 @@ class _SendNotificationSheetState extends ConsumerState<SendNotificationSheet> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Send Notification', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                    IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.of(context).pop()),
+                    Text(
+                      'SEND NOTIFICATION',
+                      style: GoogleFonts.comfortaa(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: HandsColors.white,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: HandsColors.white70),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -182,7 +195,26 @@ class _SendNotificationSheetState extends ConsumerState<SendNotificationSheet> {
                     DropdownMenuItem(value: 'Group', child: Text('Send to Group')),
                     DropdownMenuItem(value: 'Location', child: Text('Send to Location')),
                   ],
-                  decoration: const InputDecoration(labelText: 'Recipient Type'),
+                  decoration: InputDecoration(
+                    labelText: 'Recipient Type',
+                    labelStyle: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 14),
+                    filled: true,
+                    fillColor: HandsColors.secondaryContainer,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.0),
+                      borderSide: const BorderSide(color: HandsColors.white12),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.0),
+                      borderSide: const BorderSide(color: HandsColors.white12),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.0),
+                      borderSide: const BorderSide(color: HandsColors.handsOrange, width: 2),
+                    ),
+                  ),
+                  style: GoogleFonts.comfortaa(color: HandsColors.white, fontSize: 14),
+                  dropdownColor: HandsColors.secondaryContainer,
                   onChanged: (v) {
                     setState(() {
                       _recipientType = v!;
@@ -195,33 +227,98 @@ class _SendNotificationSheetState extends ConsumerState<SendNotificationSheet> {
 
                 const SizedBox(height: 12),
                 if (_loading)
-                  const Center(child: CircularProgressIndicator())
+                  const Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(HandsColors.handsOrange),
+                    ),
+                  )
                 else ...[
                   if (_recipientType == 'Group')
                     DropdownButtonFormField<String>(
                       value: _selectedGroup,
-                      decoration: const InputDecoration(labelText: 'Select Group'),
-                      hint: const Text('Choose a group'),
-                      items: _groups.map((g) => DropdownMenuItem(value: g['id'], child: Text(g['name']!))).toList(),
+                      decoration: InputDecoration(
+                        labelText: 'Select Group',
+                        labelStyle: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 14),
+                        filled: true,
+                        fillColor: HandsColors.secondaryContainer,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12.0),
+                          borderSide: const BorderSide(color: HandsColors.white12),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12.0),
+                          borderSide: const BorderSide(color: HandsColors.white12),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12.0),
+                          borderSide: const BorderSide(color: HandsColors.handsOrange, width: 2),
+                        ),
+                      ),
+                      hint: Text(
+                        'Choose a group',
+                        style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 14),
+                      ),
+                      items:
+                          _groups
+                              .map(
+                                (g) => DropdownMenuItem(
+                                  value: g['id'],
+                                  child: Text(
+                                    g['name']!,
+                                    style: GoogleFonts.comfortaa(color: HandsColors.white, fontSize: 14),
+                                  ),
+                                ),
+                              )
+                              .toList(),
                       onChanged: (v) {
                         setState(() {
                           _selectedGroup = v;
                           _updateTitle();
                         });
                       },
+                      dropdownColor: HandsColors.secondaryContainer,
                       validator: (v) => _recipientType == 'Group' && (v == null) ? 'Please select a group' : null,
                     ),
                   if (_recipientType == 'Location')
                     DropdownButtonFormField<String>(
                       value: _selectedLocation,
-                      items: _locations.map((l) => DropdownMenuItem(value: l['id'], child: Text(l['name']!))).toList(),
-                      decoration: const InputDecoration(labelText: 'Select Location'),
+                      items:
+                          _locations
+                              .map(
+                                (l) => DropdownMenuItem(
+                                  value: l['id'],
+                                  child: Text(
+                                    l['name']!,
+                                    style: GoogleFonts.comfortaa(color: HandsColors.white, fontSize: 14),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                      decoration: InputDecoration(
+                        labelText: 'Select Location',
+                        labelStyle: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 14),
+                        filled: true,
+                        fillColor: HandsColors.secondaryContainer,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12.0),
+                          borderSide: const BorderSide(color: HandsColors.white12),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12.0),
+                          borderSide: const BorderSide(color: HandsColors.white12),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12.0),
+                          borderSide: const BorderSide(color: HandsColors.handsOrange, width: 2),
+                        ),
+                      ),
                       onChanged: (v) {
                         setState(() {
                           _selectedLocation = v;
                           _updateTitle();
                         });
                       },
+                      dropdownColor: HandsColors.secondaryContainer,
                       validator:
                           (v) =>
                               _recipientType == 'Location' && (v == null || v.isEmpty)
@@ -233,32 +330,68 @@ class _SendNotificationSheetState extends ConsumerState<SendNotificationSheet> {
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _titleController,
-                  decoration: const InputDecoration(labelText: 'Title'),
+                  decoration: InputDecoration(
+                    labelText: 'Title',
+                    labelStyle: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 14),
+                    filled: true,
+                    fillColor: HandsColors.secondaryContainer,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.0),
+                      borderSide: const BorderSide(color: HandsColors.white12),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.0),
+                      borderSide: const BorderSide(color: HandsColors.white12),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.0),
+                      borderSide: const BorderSide(color: HandsColors.handsOrange, width: 2),
+                    ),
+                  ),
+                  style: GoogleFonts.comfortaa(color: HandsColors.white, fontSize: 14),
                   validator: (v) => v == null || v.isEmpty ? 'Enter a title' : null,
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _messageController,
-                  decoration: const InputDecoration(labelText: 'Message'),
+                  decoration: InputDecoration(
+                    labelText: 'Message',
+                    labelStyle: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 14),
+                    filled: true,
+                    fillColor: HandsColors.secondaryContainer,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.0),
+                      borderSide: const BorderSide(color: HandsColors.white12),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.0),
+                      borderSide: const BorderSide(color: HandsColors.white12),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.0),
+                      borderSide: const BorderSide(color: HandsColors.handsOrange, width: 2),
+                    ),
+                  ),
+                  style: GoogleFonts.comfortaa(color: HandsColors.white, fontSize: 14),
                   maxLines: 3,
                   validator: (v) => v == null || v.isEmpty ? 'Enter a message' : null,
                 ),
 
                 const SizedBox(height: 12),
 
-                // Removed the Push on Login UI component
                 if (_error != null) ...[
-                  Text(_error!, style: const TextStyle(color: Colors.red)),
+                  Text(_error!, style: GoogleFonts.comfortaa(color: HandsColors.error, fontSize: 13)),
                   const SizedBox(height: 8),
                 ],
 
                 const SizedBox(height: 16),
                 _sending
-                    ? const Center(child: CircularProgressIndicator())
-                    : SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(onPressed: _send, child: const Text('Send Notification')),
-                    ),
+                    ? const Center(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(HandsColors.handsOrange),
+                      ),
+                    )
+                    : HandsPrimaryButton(text: 'Send Notification', onPressed: _send, width: double.infinity),
               ],
             ),
           ),

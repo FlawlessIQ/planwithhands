@@ -14,6 +14,9 @@ import 'package:hands_app/data/models/shift_data.dart';
 import 'package:hands_app/routing/routes.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/services/daily_checklist_service.dart';
+import 'package:hands_app/theme/theme.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:hands_app/utils/location_helper.dart';
 import 'package:hands_app/utils/jobtype_helper.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -196,12 +199,12 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
               'This will be where your team members check in and out for shifts.',
             ),
             actions: [
-              FilledButton(
+              HandsPrimaryButton(
+                text: 'Create My First Location',
                 onPressed: () {
                   Navigator.of(context).pop(); // Close the welcome dialog
                   _showLocationBottomSheetForFirstLocation(); // Show the location creation bottom sheet
                 },
-                child: const Text('Create My First Location'),
               ),
             ],
           ),
@@ -261,7 +264,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text('User data is corrupted. Please contact support.'),
-                backgroundColor: Colors.red,
+                backgroundColor: HandsColors.error,
               ),
             );
             context.go(AppRoutes.loginPage.path);
@@ -294,7 +297,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('Organization data is corrupted. Please contact support.'),
-                  backgroundColor: Colors.red,
+                  backgroundColor: HandsColors.error,
                 ),
               );
               context.go(AppRoutes.loginPage.path);
@@ -315,7 +318,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                   content: Text(
                     'Your subscription is not active ($subscriptionStatus). Please complete your payment to access the dashboard.',
                   ),
-                  backgroundColor: Colors.orange,
+                  backgroundColor: HandsColors.amber,
                 ),
               );
               context.go(AppRoutes.loginPage.path);
@@ -328,7 +331,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text('Organization not found. Please contact support.'),
-                backgroundColor: Colors.red,
+                backgroundColor: HandsColors.error,
               ),
             );
             context.go(AppRoutes.loginPage.path);
@@ -349,7 +352,10 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
         logger.w('[AdminDashboard] User document not found');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('User not found. Please contact support.'), backgroundColor: Colors.red),
+            const SnackBar(
+              content: Text('User not found. Please contact support.'),
+              backgroundColor: HandsColors.error,
+            ),
           );
           context.go(AppRoutes.loginPage.path);
         }
@@ -360,7 +366,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error loading dashboard: $e'), backgroundColor: Colors.red));
+        ).showSnackBar(SnackBar(content: Text('Error loading dashboard: $e'), backgroundColor: HandsColors.error));
         context.go(AppRoutes.loginPage.path);
       }
     }
@@ -378,8 +384,11 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
     }
 
     return Scaffold(
+      backgroundColor: HandsColors.scaffoldBackground,
       appBar: AppBar(
-        backgroundColor: Theme.of(context).primaryColor,
+        backgroundColor: HandsColors.cardPrimary,
+        elevation: 0,
+        toolbarHeight: kToolbarHeight,
         title: GenericAppBarContent(appBarTitle: 'Setup', userRole: userRole),
         automaticallyImplyLeading: false,
         actions: [
@@ -417,8 +426,8 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                                 Icons.location_on,
                                 color:
                                     location['id'] == _selectedLocationId
-                                        ? Theme.of(context).primaryColor
-                                        : Colors.grey[600],
+                                        ? HandsColors.handsOrange
+                                        : HandsColors.white30,
                                 size: 16,
                               ),
                               const SizedBox(width: 8),
@@ -447,31 +456,29 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                     // Compact mobile version - just location icon
                     return Container(
                       padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Icon(Icons.location_on, color: Colors.white, size: 20),
+                      decoration: BoxDecoration(color: HandsColors.white12, borderRadius: BorderRadius.circular(6)),
+                      child: const Icon(Icons.location_on, color: HandsColors.white, size: 20),
                     );
                   } else {
                     // Full desktop version
                     return Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+                      decoration: BoxDecoration(color: HandsColors.white12, borderRadius: BorderRadius.circular(8)),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.location_on, color: Colors.white, size: 18),
+                          const Icon(Icons.location_on, color: HandsColors.white, size: 18),
                           const SizedBox(width: 6),
                           Text(
                             _selectedLocationName?.isNotEmpty == true ? _selectedLocationName! : 'Select Location',
-                            style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+                            style: GoogleFonts.comfortaa(
+                              color: HandsColors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w400,
+                            ),
                           ),
                           const SizedBox(width: 4),
-                          const Icon(Icons.arrow_drop_down, color: Colors.white, size: 16),
+                          const Icon(Icons.arrow_drop_down, color: HandsColors.white, size: 16),
                         ],
                       ),
                     );
@@ -508,54 +515,114 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
   }
 
   Widget _buildViewToggle() {
-    // Silver-gradient two-segment toggle button
+    // Modern segmented control toggle
     return LayoutBuilder(
       builder: (context, constraints) {
         final isTight = constraints.maxWidth < 420;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('View', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+            Text(
+              'View',
+              style: GoogleFonts.comfortaa(
+                fontSize: 12,
+                fontWeight: FontWeight.w400,
+                color: HandsColors.white70,
+                letterSpacing: 0.2,
+              ),
+            ),
             const SizedBox(height: 8),
             Container(
-              height: 44,
+              height: 36,
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFF5F5F7), Color(0xFFE9E9EA)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade300, width: 1),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6, offset: const Offset(0, 2)),
-                ],
+                color: HandsColors.secondaryContainer,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: HandsColors.white12, width: 1),
               ),
               child: Row(
                 children: [
-                  _buildToggleSegment(
-                    context,
-                    label: isTight ? 'Shifts' : 'Shifts & Checklists',
-                    icon: Icons.schedule,
-                    selected: _currentView == AdminView.shiftsChecklists,
-                    onTap: () {
-                      if (_currentView != AdminView.shiftsChecklists && mounted) {
-                        setState(() => _currentView = AdminView.shiftsChecklists);
-                      }
-                    },
-                    left: true,
+                  Expanded(
+                    child: InkWell(
+                      borderRadius: const BorderRadius.horizontal(left: Radius.circular(10)),
+                      onTap: () {
+                        if (_currentView != AdminView.shiftsChecklists && mounted) {
+                          setState(() => _currentView = AdminView.shiftsChecklists);
+                        }
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        curve: Curves.easeInOut,
+                        decoration: BoxDecoration(
+                          color:
+                              _currentView == AdminView.shiftsChecklists ? HandsColors.handsOrange : Colors.transparent,
+                          borderRadius: const BorderRadius.horizontal(left: Radius.circular(10)),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.schedule,
+                              size: 16,
+                              color:
+                                  _currentView == AdminView.shiftsChecklists ? HandsColors.white : HandsColors.white70,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              isTight ? 'Shifts' : 'Shifts & Checklists',
+                              style: GoogleFonts.comfortaa(
+                                color:
+                                    _currentView == AdminView.shiftsChecklists
+                                        ? HandsColors.white
+                                        : HandsColors.white70,
+                                fontWeight: FontWeight.w400,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
-                  _buildToggleSegment(
-                    context,
-                    label: isTight ? 'Users' : 'Users & Locations',
-                    icon: Icons.group,
-                    selected: _currentView == AdminView.usersLocations,
-                    onTap: () {
-                      if (_currentView != AdminView.usersLocations && mounted) {
-                        setState(() => _currentView = AdminView.usersLocations);
-                      }
-                    },
-                    left: false,
+                  Expanded(
+                    child: InkWell(
+                      borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                      onTap: () {
+                        if (_currentView != AdminView.usersLocations && mounted) {
+                          setState(() => _currentView = AdminView.usersLocations);
+                        }
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        curve: Curves.easeInOut,
+                        decoration: BoxDecoration(
+                          color:
+                              _currentView == AdminView.usersLocations ? HandsColors.handsOrange : Colors.transparent,
+                          borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.group,
+                              size: 16,
+                              color: _currentView == AdminView.usersLocations ? HandsColors.white : HandsColors.white70,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              isTight ? 'Users' : 'Users & Locations',
+                              style: GoogleFonts.comfortaa(
+                                color:
+                                    _currentView == AdminView.usersLocations ? HandsColors.white : HandsColors.white70,
+                                fontWeight: FontWeight.w400,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -582,35 +649,23 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeInOut,
           decoration: BoxDecoration(
-            gradient:
-                selected
-                    ? const LinearGradient(
-                      colors: [Color(0xFFBFC1C6), Color(0xFFD7D8DB)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    )
-                    : null,
-            color: selected ? null : Colors.transparent,
+            color: selected ? HandsColors.handsOrange : Colors.transparent,
             borderRadius: BorderRadius.horizontal(
               left: left ? const Radius.circular(12) : Radius.zero,
               right: !left ? const Radius.circular(12) : Radius.zero,
             ),
-            boxShadow:
-                selected
-                    ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 8, offset: const Offset(0, 2))]
-                    : [],
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 20, color: selected ? Colors.black87 : Colors.black45),
+              Icon(icon, size: 18, color: selected ? HandsColors.white : HandsColors.white70),
               const SizedBox(width: 8),
               Text(
                 label,
-                style: TextStyle(
-                  color: selected ? Colors.black87 : Colors.black54,
-                  fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-                  fontSize: 15,
+                style: GoogleFonts.comfortaa(
+                  color: selected ? HandsColors.white : HandsColors.white70,
+                  fontWeight: selected ? FontWeight.w400 : FontWeight.w300,
+                  fontSize: 13,
                 ),
               ),
             ],
@@ -627,62 +682,49 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
     required VoidCallback onAdd,
     required Widget child,
   }) {
-    // Create darker background colors from the header gradient
-    final backgroundColors = colors.map((color) => color.withValues(alpha: 0.08)).toList();
-
     return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: colors),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            offset: const Offset(0, 4),
-            blurRadius: 12,
-            spreadRadius: 0,
-          ),
-        ],
-      ),
-      child: Container(
-        margin: const EdgeInsets.all(1), // Creates a subtle border effect
-        decoration: BoxDecoration(
-          gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: backgroundColors),
-          borderRadius: BorderRadius.circular(15),
-        ),
-        child: Column(
-          children: [
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: colors),
-                borderRadius: const BorderRadius.only(topLeft: Radius.circular(15), topRight: Radius.circular(15)),
-              ),
-              child: ListTile(
-                leading: Icon(icon, color: Colors.white, size: 24),
-                title: Text(
-                  title,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.white),
-                ),
-                trailing: ElevatedButton.icon(
-                  onPressed: onAdd,
-                  icon: const Icon(Icons.add_circle_outline, size: 18, color: Colors.white),
-                  label: const Text('Add New', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white.withValues(alpha: 0.2),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    minimumSize: const Size(0, 36),
-                    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
-                    elevation: 0,
-                    side: const BorderSide(color: Colors.white, width: 1),
+      decoration: HandsDecorations.primaryBoxDecoration,
+      child: Column(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: HandsColors.primaryContainer,
+              borderRadius: const BorderRadius.only(topLeft: Radius.circular(16), topRight: Radius.circular(16)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: Row(
+                children: [
+                  Icon(icon, color: HandsColors.handsOrange, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: GoogleFonts.comfortaa(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w400,
+                        color: HandsColors.white,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
                   ),
-                ),
+                  SizedBox(
+                    height: 32,
+                    child: IconButton(
+                      icon: const Icon(Icons.add_circle_outline, size: 20),
+                      color: HandsColors.handsOrange,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      tooltip: 'Add New',
+                      onPressed: onAdd,
+                    ),
+                  ),
+                ],
               ),
             ),
-            child,
-          ],
-        ),
+          ),
+          child,
+        ],
       ),
     );
   }
@@ -777,14 +819,17 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
             final users = snapshot.data?.docs ?? [];
 
             if (users.isEmpty) {
-              return const Padding(
-                padding: EdgeInsets.all(16.0),
+              return Padding(
+                padding: const EdgeInsets.all(16.0),
                 child: Column(
                   children: [
-                    Icon(Icons.people_outline, size: 48, color: Colors.grey),
-                    SizedBox(height: 8),
-                    Text('No users found', style: TextStyle(color: Colors.grey)),
-                    Text('Add users to get started', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    const Icon(Icons.people_outline, size: 36, color: HandsColors.white30),
+                    const SizedBox(height: 8),
+                    Text('No users found', style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11)),
+                    Text(
+                      'Add users to get started',
+                      style: GoogleFonts.comfortaa(color: HandsColors.white30, fontSize: 10),
+                    ),
                   ],
                 ),
               );
@@ -839,30 +884,45 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                               ? 'Manager'
                               : 'General User';
 
-                      return ListTile(
-                        leading: const Icon(Icons.person, color: Colors.white),
-                        title: Text(name.isEmpty ? 'Unnamed User' : name, style: const TextStyle(color: Colors.white)),
-                        subtitle: Text('$email • $roleText', style: const TextStyle(color: Colors.white70)),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit, color: Colors.white),
-                              iconSize: 18,
-                              onPressed: () => _showUserBottomSheet(doc.id, doc.data() as Map<String, dynamic>),
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: HandsDecorations.tertiaryBoxDecoration,
+                        child: ListTile(
+                          leading: const Icon(Icons.person, color: HandsColors.white),
+                          title: Text(
+                            name.isEmpty ? 'Unnamed User' : name,
+                            style: GoogleFonts.comfortaa(
+                              color: HandsColors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w400,
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.white),
-                              iconSize: 18,
-                              onPressed:
-                                  () => _showDeleteConfirmation(
-                                    context: context,
-                                    title: 'Delete User',
-                                    content: 'Are you sure you want to delete this user? This action cannot be undone.',
-                                    onConfirm: () => _deleteUser(doc.id),
-                                  ),
-                            ),
-                          ],
+                          ),
+                          subtitle: Text(
+                            '$email • $roleText',
+                            style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11),
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit, color: HandsColors.white),
+                                iconSize: 18,
+                                onPressed: () => _showUserBottomSheet(doc.id, doc.data() as Map<String, dynamic>),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete, color: HandsColors.white),
+                                iconSize: 18,
+                                onPressed:
+                                    () => _showDeleteConfirmation(
+                                      context: context,
+                                      title: 'Delete User',
+                                      content:
+                                          'Are you sure you want to delete this user? This action cannot be undone.',
+                                      onConfirm: () => _deleteUser(doc.id),
+                                    ),
+                              ),
+                            ],
+                          ),
                         ),
                       );
                     })
@@ -913,14 +973,17 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
             final locations = snapshot.data?.docs ?? [];
 
             if (locations.isEmpty) {
-              return const Padding(
-                padding: EdgeInsets.all(16.0),
+              return Padding(
+                padding: const EdgeInsets.all(16.0),
                 child: Column(
                   children: [
-                    Icon(Icons.location_city_outlined, size: 48, color: Colors.grey),
-                    SizedBox(height: 8),
-                    Text('No locations found', style: TextStyle(color: Colors.grey)),
-                    Text('Add a location to get started', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    const Icon(Icons.location_city_outlined, size: 36, color: HandsColors.white30),
+                    const SizedBox(height: 8),
+                    Text('No locations found', style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11)),
+                    Text(
+                      'Add a location to get started',
+                      style: GoogleFonts.comfortaa(color: HandsColors.white30, fontSize: 10),
+                    ),
                   ],
                 ),
               );
@@ -965,34 +1028,45 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                     addressDisplay = city;
                   }
 
-                  return ListTile(
-                    leading: const Icon(Icons.location_on, color: Colors.white),
-                    title: Text(displayName, style: const TextStyle(color: Colors.white)),
-                    subtitle: Text(
-                      addressDisplay.isEmpty ? 'No address provided' : addressDisplay,
-                      style: const TextStyle(color: Colors.white70),
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.edit, color: Colors.white),
-                          iconSize: 18,
-                          onPressed: () => _showLocationBottomSheet(locationId: doc.id, initialData: locationData),
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: HandsDecorations.tertiaryBoxDecoration,
+                    child: ListTile(
+                      leading: const Icon(Icons.location_on, color: HandsColors.white),
+                      title: Text(
+                        displayName,
+                        style: GoogleFonts.comfortaa(
+                          color: HandsColors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.white),
-                          iconSize: 18,
-                          onPressed:
-                              () => _showDeleteConfirmation(
-                                context: context,
-                                title: 'Delete Location',
-                                content:
-                                    'Are you sure you want to delete ${displayName.isEmpty ? 'this location' : displayName}? This action cannot be undone.',
-                                onConfirm: () => _deleteLocation(doc.id),
-                              ),
-                        ),
-                      ],
+                      ),
+                      subtitle: Text(
+                        addressDisplay.isEmpty ? 'No address provided' : addressDisplay,
+                        style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit, color: HandsColors.white),
+                            iconSize: 18,
+                            onPressed: () => _showLocationBottomSheet(locationId: doc.id, initialData: locationData),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete, color: HandsColors.white),
+                            iconSize: 18,
+                            onPressed:
+                                () => _showDeleteConfirmation(
+                                  context: context,
+                                  title: 'Delete Location',
+                                  content:
+                                      'Are you sure you want to delete ${displayName.isEmpty ? 'this location' : displayName}? This action cannot be undone.',
+                                  onConfirm: () => _deleteLocation(doc.id),
+                                ),
+                          ),
+                        ],
+                      ),
                     ),
                   );
                 }).toList();
@@ -1059,15 +1133,15 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   children: [
-                    Icon(Icons.schedule_outlined, size: 48, color: Colors.grey),
+                    Icon(Icons.schedule_outlined, size: 36, color: HandsColors.white30),
                     const SizedBox(height: 8),
                     Text(
                       _selectedLocationId != null ? 'No shifts found for selected location' : 'No shifts found',
-                      style: const TextStyle(color: Colors.grey),
+                      style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11),
                     ),
                     Text(
                       'Create shifts to manage scheduling',
-                      style: const TextStyle(color: Colors.grey, fontSize: 12),
+                      style: GoogleFonts.comfortaa(color: HandsColors.white30, fontSize: 10),
                     ),
                   ],
                 ),
@@ -1096,43 +1170,54 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                         return location['name'] as String;
                       }).toList();
 
-                  return ListTile(
-                    leading: const Icon(Icons.schedule, color: Colors.white),
-                    title: Text(name, style: const TextStyle(color: Colors.white)),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${_range12h(startTime, endTime)} • ${roles.join(', ')}',
-                          style: const TextStyle(color: Colors.white70),
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: HandsDecorations.tertiaryBoxDecoration,
+                    child: ListTile(
+                      leading: const Icon(Icons.schedule, color: HandsColors.white),
+                      title: Text(
+                        name,
+                        style: GoogleFonts.comfortaa(
+                          color: HandsColors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
                         ),
-                        if (locationNames.isNotEmpty)
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           Text(
-                            'Locations: ${locationNames.join(', ')}',
-                            style: const TextStyle(color: Colors.white60, fontSize: 12),
+                            '${_range12h(startTime, endTime)} • ${roles.join(', ')}',
+                            style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11),
                           ),
-                      ],
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.edit, color: Colors.white),
-                          iconSize: 18,
-                          onPressed: () => _showShiftBottomSheet(shiftId, ShiftData.fromJson(shiftData)),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.white),
-                          iconSize: 18,
-                          onPressed:
-                              () => _showDeleteConfirmation(
-                                context: context,
-                                title: 'Delete Shift',
-                                content: 'Are you sure you want to delete $name? This action cannot be undone.',
-                                onConfirm: () => _deleteShift(shiftId),
-                              ),
-                        ),
-                      ],
+                          if (locationNames.isNotEmpty)
+                            Text(
+                              'Locations: ${locationNames.join(', ')}',
+                              style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 10),
+                            ),
+                        ],
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit, color: HandsColors.white),
+                            iconSize: 18,
+                            onPressed: () => _showShiftBottomSheet(shiftId, ShiftData.fromJson(shiftData)),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete, color: HandsColors.white),
+                            iconSize: 18,
+                            onPressed:
+                                () => _showDeleteConfirmation(
+                                  context: context,
+                                  title: 'Delete Shift',
+                                  content: 'Are you sure you want to delete $name? This action cannot be undone.',
+                                  onConfirm: () => _deleteShift(shiftId),
+                                ),
+                          ),
+                        ],
+                      ),
                     ),
                   );
                 }).toList();
@@ -1187,15 +1272,18 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   children: [
-                    Icon(Icons.checklist_outlined, size: 48, color: Colors.grey),
+                    Icon(Icons.checklist_outlined, size: 36, color: HandsColors.white30),
                     SizedBox(height: 8),
                     Text(
                       _selectedLocationName != null
                           ? 'No checklists found for $_selectedLocationName'
                           : 'No checklists found',
-                      style: TextStyle(color: Colors.grey),
+                      style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11),
                     ),
-                    Text('Create checklists to track tasks', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    Text(
+                      'Create checklists to track tasks',
+                      style: GoogleFonts.comfortaa(color: HandsColors.white30, fontSize: 10),
+                    ),
                   ],
                 ),
               );
@@ -1210,30 +1298,44 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                   final tasksList = checklistData['tasks'] as List<dynamic>? ?? [];
                   final taskCount = tasksList.length;
 
-                  return ListTile(
-                    leading: const Icon(Icons.checklist, color: Colors.white),
-                    title: Text(name, style: const TextStyle(color: Colors.white)),
-                    subtitle: Text('$description • $taskCount tasks', style: const TextStyle(color: Colors.white70)),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.edit, color: Colors.white),
-                          iconSize: 18,
-                          onPressed: () => _showChecklistBottomSheet(doc.id, checklistData),
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: HandsDecorations.tertiaryBoxDecoration,
+                    child: ListTile(
+                      leading: const Icon(Icons.checklist, color: HandsColors.white),
+                      title: Text(
+                        name,
+                        style: GoogleFonts.comfortaa(
+                          color: HandsColors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.white),
-                          iconSize: 18,
-                          onPressed:
-                              () => _showDeleteConfirmation(
-                                context: context,
-                                title: 'Delete Checklist',
-                                content: 'Are you sure you want to delete $name? This action cannot be undone.',
-                                onConfirm: () => _deleteChecklist(doc.id),
-                              ),
-                        ),
-                      ],
+                      ),
+                      subtitle: Text(
+                        '$description • $taskCount tasks',
+                        style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit, color: HandsColors.white),
+                            iconSize: 18,
+                            onPressed: () => _showChecklistBottomSheet(doc.id, checklistData),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete, color: HandsColors.white),
+                            iconSize: 18,
+                            onPressed:
+                                () => _showDeleteConfirmation(
+                                  context: context,
+                                  title: 'Delete Checklist',
+                                  content: 'Are you sure you want to delete $name? This action cannot be undone.',
+                                  onConfirm: () => _deleteChecklist(doc.id),
+                                ),
+                          ),
+                        ],
+                      ),
                     ),
                   );
                 }).toList();
@@ -1375,13 +1477,13 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('Location deleted'), backgroundColor: Colors.green));
+        ).showSnackBar(const SnackBar(content: Text('Location deleted'), backgroundColor: HandsColors.sageGreen));
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error deleting location: $e'), backgroundColor: Colors.red));
+        ).showSnackBar(SnackBar(content: Text('Error deleting location: $e'), backgroundColor: HandsColors.error));
       }
     }
   }
@@ -1576,7 +1678,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Failed to save checklist: $e'), backgroundColor: Colors.red));
+        ).showSnackBar(SnackBar(content: Text('Failed to save checklist: $e'), backgroundColor: HandsColors.error));
       }
     }
   }
@@ -1618,7 +1720,10 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error deleting user: ${e.message} (Code: ${e.code})'), backgroundColor: Colors.red),
+            SnackBar(
+              content: Text('Error deleting user: ${e.message} (Code: ${e.code})'),
+              backgroundColor: HandsColors.error,
+            ),
           );
         }
       }
@@ -1645,7 +1750,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('User deleted from database. Note: Authentication record may still exist.'),
-            backgroundColor: Colors.orange,
+            backgroundColor: HandsColors.amber,
           ),
         );
       }
@@ -1654,7 +1759,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Failed to delete user: $e'), backgroundColor: Colors.red));
+        ).showSnackBar(SnackBar(content: Text('Failed to delete user: $e'), backgroundColor: HandsColors.error));
       }
     }
   }
@@ -1704,23 +1809,41 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
     required String content,
     required VoidCallback onConfirm,
   }) {
-    showDialog(
+    showModalBottomSheet(
       context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder:
-          (context) => AlertDialog(
-            title: Text(title),
-            content: Text(content),
-            actions: [
-              TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  onConfirm();
-                },
-                style: TextButton.styleFrom(foregroundColor: Colors.red),
-                child: const Text('Delete'),
-              ),
-            ],
+          (context) => HandsBottomSheet(
+            title: title,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 16),
+                Text(
+                  content,
+                  style: GoogleFonts.inter(fontSize: 13, color: HandsColors.white70),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(child: HandsSecondaryButton(text: 'Cancel', onPressed: () => Navigator.of(context).pop())),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: HandsTextButton(
+                        text: 'Delete',
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          onConfirm();
+                        },
+                        textColor: HandsColors.error,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
     );
   }

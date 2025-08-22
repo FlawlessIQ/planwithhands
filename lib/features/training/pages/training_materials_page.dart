@@ -7,6 +7,7 @@ import 'package:hands_app/core/logging/logger.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 // Ensure userStateProvider is exported from user_state.dart
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
+import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
 import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:video_player/video_player.dart';
@@ -14,6 +15,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
+import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/global_widgets/hands_icon.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/ui/UploadDocumentBottomSheet.dart';
@@ -217,22 +219,12 @@ class ViewDocumentsPage extends HookConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme.of(context).primaryColor,
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.pop()),
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: Row(
-          children: const [
-            HandsIcon(size: 36, enableShadow: false),
-            SizedBox(width: 12),
-            Text(
-              'Training Materials',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20),
-            ),
-          ],
-        ),
-        actions: [UnifiedMenuButton(userRole: userRole)],
-        centerTitle: false,
+        backgroundColor: HandsColors.cardPrimary,
         elevation: 0,
+        toolbarHeight: kToolbarHeight,
+        title: GenericAppBarContent(appBarTitle: 'Training Materials', userRole: userRole),
+        automaticallyImplyLeading: false,
+        actions: [UnifiedMenuButton(userRole: userRole)],
       ),
       floatingActionButton:
           userRole == 2

@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 class WebAssetService {
-  static const String _logoPath = 'assets/images/hands_logo_v2.png';
+  static const String _logoPath = 'assets/images/hands_icon.png';
 
   /// Preload critical images for web performance
   static Future<void> preloadCriticalAssets(BuildContext context) async {
@@ -37,12 +37,7 @@ class WebAssetService {
         filterQuality: FilterQuality.medium,
         errorBuilder: (context, error, stackTrace) {
           return errorWidget ??
-              Container(
-                width: width,
-                height: height,
-                color: Colors.grey[300],
-                child: const Icon(Icons.error),
-              );
+              Container(width: width, height: height, color: Colors.grey[300], child: const Icon(Icons.error));
         },
         frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
           if (wasSynchronouslyLoaded) return child;
@@ -52,12 +47,7 @@ class WebAssetService {
             child:
                 frame != null
                     ? child
-                    : (placeholder ??
-                        Container(
-                          width: width,
-                          height: height,
-                          color: Colors.grey[200],
-                        )),
+                    : (placeholder ?? Container(width: width, height: height, color: Colors.grey[200])),
           );
         },
       );

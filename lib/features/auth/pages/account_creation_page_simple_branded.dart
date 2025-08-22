@@ -7,8 +7,10 @@ import 'package:hands_app/services/stripe_service.dart';
 import 'package:hands_app/config/feature_flags.dart';
 import 'package:flutter/services.dart';
 import 'package:hands_app/global_widgets/hands_icon.dart';
+import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/core/logging/logger.dart';
+import 'package:hands_app/theme/theme.dart';
 
 class SimpleSignUpPage extends StatefulWidget {
   final String? email;
@@ -317,9 +319,11 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(isInvitedUser ? 'Complete Account Setup' : 'Join Hands'),
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
+        backgroundColor: HandsColors.cardPrimary,
+        elevation: 0,
+        toolbarHeight: kToolbarHeight,
+        title: GenericAppBarContent(appBarTitle: isInvitedUser ? 'Complete Account Setup' : 'Join Hands', userRole: 0),
+        automaticallyImplyLeading: false,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -456,8 +460,8 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                         return Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: Colors.grey[50],
-                            border: Border.all(color: Colors.grey[300]!),
+                            color: HandsColors.cardPrimary,
+                            border: Border.all(color: Colors.white24),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Column(
@@ -466,7 +470,10 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  const Text('Estimated Charge', style: TextStyle(fontWeight: FontWeight.bold)),
+                                  const Text(
+                                    'Estimated Charge',
+                                    style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                                  ),
                                   Text(
                                     '\$${monthly.toStringAsFixed(2)} / month',
                                     style: const TextStyle(
@@ -480,8 +487,8 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                               if (_isAnnual) ...[
                                 const SizedBox(height: 8),
                                 Text(
-                                  'Annual billing selected — billed annually at checkout',
-                                  style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                                  'Annual billing selected \u2014 billed annually at checkout',
+                                  style: TextStyle(fontSize: 12, color: Colors.white70),
                                 ),
                               ],
                             ],

@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:hands_app/state/auth_controller.dart';
 import 'package:hands_app/global_widgets/generic_text_field.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hands_app/routing/routes.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
+import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/global_widgets/hands_icon.dart';
-import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 
 class LoginPage extends HookConsumerWidget {
   const LoginPage({super.key});
@@ -17,158 +19,129 @@ class LoginPage extends HookConsumerWidget {
     final forgotEmailController = TextEditingController();
     final authActions = ref.watch(authControllerProvider.notifier);
 
-    showDialog(
+    HandsDialog.show(
       context: context,
-      builder: (BuildContext dialogContext) {
-        bool isLoading = false;
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: Row(
-                children: [
-                  Icon(Icons.lock_reset, color: Theme.of(context).primaryColor, size: 28),
-                  const SizedBox(width: 12),
-                  const Text('Reset Password'),
-                ],
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Enter your email address and we\'ll send you a link to reset your password.',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                  const SizedBox(height: 20),
-                  GenericTextField(
-                    hintText: 'Email Address',
-                    textEditingController: forgotEmailController,
-                    isAutofocused: true,
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed:
-                      isLoading
-                          ? null
-                          : () {
-                            Navigator.of(dialogContext).pop();
-                          },
-                  child: Text('Cancel', style: TextStyle(color: Colors.grey.shade600)),
+      title: 'Reset Password',
+      isDismissible: true,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.lock_reset, color: HandsColors.handsOrange, size: 24),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Enter your email address and we\'ll send you a link to reset your password.',
+                  style: GoogleFonts.comfortaa(fontSize: 14, fontWeight: FontWeight.normal, color: HandsColors.white),
                 ),
-                ElevatedButton(
-                  onPressed:
-                      isLoading
-                          ? null
-                          : () async {
-                            final email = forgotEmailController.text.trim();
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          GenericTextField(
+            hintText: 'Email Address',
+            textEditingController: forgotEmailController,
+            isAutofocused: true,
+          ),
+        ],
+      ),
+      actions: [
+        HandsTextButton(text: 'Cancel', onPressed: () => Navigator.of(context).pop(), textColor: HandsColors.white70),
+        HandsPrimaryButton(
+          text: 'Send Reset Link',
+          onPressed: () async {
+            final email = forgotEmailController.text.trim();
 
-                            if (email.isEmpty) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Please enter your email address.'),
-                                  backgroundColor: Colors.orange,
-                                ),
-                              );
-                              return;
-                            }
-
-                            if (!email.contains('@') || !email.contains('.')) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Please enter a valid email address.'),
-                                  backgroundColor: Colors.orange,
-                                ),
-                              );
-                              return;
-                            }
-
-                            setState(() {
-                              isLoading = true;
-                            });
-
-                            try {
-                              await authActions.sendPasswordResetEmail(email);
-
-                              if (context.mounted) {
-                                Navigator.of(dialogContext).pop();
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Row(
-                                      children: [
-                                        const Icon(Icons.check_circle, color: Colors.white),
-                                        const SizedBox(width: 8),
-                                        Expanded(child: Text('Password reset email sent to $email')),
-                                      ],
-                                    ),
-                                    backgroundColor: Colors.green,
-                                    duration: const Duration(seconds: 4),
-                                  ),
-                                );
-                              }
-                            } catch (e) {
-                              setState(() {
-                                isLoading = false;
-                              });
-
-                              if (context.mounted) {
-                                String errorMessage = 'Failed to send reset email.';
-                                if (e is FirebaseAuthException) {
-                                  switch (e.code) {
-                                    case 'user-not-found':
-                                      errorMessage = 'No account found with this email address.';
-                                      break;
-                                    case 'invalid-email':
-                                      errorMessage = 'Please enter a valid email address.';
-                                      break;
-                                    case 'too-many-requests':
-                                      errorMessage = 'Too many requests. Please try again later.';
-                                      break;
-                                    default:
-                                      errorMessage = e.message ?? errorMessage;
-                                  }
-                                }
-
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Row(
-                                      children: [
-                                        const Icon(Icons.error, color: Colors.white),
-                                        const SizedBox(width: 8),
-                                        Expanded(child: Text(errorMessage)),
-                                      ],
-                                    ),
-                                    backgroundColor: Colors.red,
-                                    duration: const Duration(seconds: 4),
-                                  ),
-                                );
-                              }
-                            }
-                          },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).primaryColor,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            if (email.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Row(
+                    children: [
+                      const Icon(Icons.warning, color: Colors.white),
+                      const SizedBox(width: 8),
+                      const Expanded(child: Text('Please enter your email address.')),
+                    ],
                   ),
-                  child:
-                      isLoading
-                          ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          )
-                          : const Text('Send Reset Link'),
+                  backgroundColor: HandsColors.handsOrange,
                 ),
-              ],
-            );
+              );
+              return;
+            }
+
+            if (!email.contains('@') || !email.contains('.')) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Row(
+                    children: [
+                      const Icon(Icons.warning, color: Colors.white),
+                      const SizedBox(width: 8),
+                      const Expanded(child: Text('Please enter a valid email address.')),
+                    ],
+                  ),
+                  backgroundColor: HandsColors.handsOrange,
+                ),
+              );
+              return;
+            }
+
+            try {
+              await authActions.sendPasswordResetEmail(email);
+
+              if (context.mounted) {
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Row(
+                      children: [
+                        const Icon(Icons.check_circle, color: Colors.white),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text('Password reset email sent to $email')),
+                      ],
+                    ),
+                    backgroundColor: HandsColors.sageGreen,
+                    duration: const Duration(seconds: 4),
+                  ),
+                );
+              }
+            } catch (e) {
+              if (context.mounted) {
+                String errorMessage = 'Failed to send reset email.';
+                if (e is FirebaseAuthException) {
+                  switch (e.code) {
+                    case 'user-not-found':
+                      errorMessage = 'No account found with this email address.';
+                      break;
+                    case 'invalid-email':
+                      errorMessage = 'Please enter a valid email address.';
+                      break;
+                    case 'too-many-requests':
+                      errorMessage = 'Too many requests. Please try again later.';
+                      break;
+                    default:
+                      errorMessage = e.message ?? errorMessage;
+                  }
+                }
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Row(
+                      children: [
+                        const Icon(Icons.error, color: Colors.white),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(errorMessage)),
+                      ],
+                    ),
+                    backgroundColor: HandsColors.error,
+                    duration: const Duration(seconds: 4),
+                  ),
+                );
+              }
+            }
           },
-        );
-      },
+        ),
+      ],
     ).then((_) {
       forgotEmailController.dispose();
     });
@@ -182,8 +155,6 @@ class LoginPage extends HookConsumerWidget {
     final isLoading = useState(false);
     final isPasswordVisible = useState(false);
     final formKey = useMemoized(() => GlobalKey<FormState>());
-
-    final theme = Theme.of(context);
 
     // Function to handle login submission
     Future<void> handleLogin() async {
@@ -259,14 +230,17 @@ class LoginPage extends HookConsumerWidget {
     return SafeArea(
       child: Scaffold(
         appBar: AppBar(
-          backgroundColor: Theme.of(context).primaryColor,
-          foregroundColor: Colors.white,
-          title: const GenericAppBarContent(appBarTitle: 'Login'),
+          backgroundColor: HandsColors.primaryContainer,
+          foregroundColor: HandsColors.white,
+          title: Text(
+            'LOGIN',
+            style: GoogleFonts.comfortaa(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+          ),
           centerTitle: true,
           automaticallyImplyLeading: false,
           elevation: 0,
         ),
-        backgroundColor: theme.colorScheme.surface,
+        backgroundColor: HandsColors.scaffoldBackground,
         body: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
           child: ConstrainedBox(
@@ -277,31 +251,32 @@ class LoginPage extends HookConsumerWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                const SizedBox(height: 20),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 24.0),
-                  child: HandsIcon(
-                    size: 128, // Consistent size across platforms
-                  ),
-                ),
+                const SizedBox(height: 40),
+                // Hands Logo
+                Padding(padding: const EdgeInsets.only(bottom: 32.0), child: HandsIcon(size: 140, enableShadow: false)),
+                // Welcome Text
                 Text(
                   'WELCOME BACK TO HANDS!',
-                  style: theme.textTheme.titleMedium?.copyWith(
+                  style: GoogleFonts.comfortaa(
+                    fontSize: 24,
                     fontWeight: FontWeight.bold,
-                    letterSpacing: 1.2,
-                    color: theme.primaryColor,
+                    letterSpacing: 1.5,
+                    color: HandsColors.white,
                   ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 24),
-                const Text('Please sign in to continue', textAlign: TextAlign.center),
-                const SizedBox(height: 24),
-                Card(
-                  color: theme.cardColor,
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                const SizedBox(height: 12),
+                Text(
+                  'Please sign in to continue',
+                  style: GoogleFonts.comfortaa(fontSize: 14, fontWeight: FontWeight.normal, color: HandsColors.white70),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 40),
+                // Login Form Card
+                Container(
+                  decoration: HandsDecorations.primaryBoxDecoration,
                   child: Padding(
-                    padding: const EdgeInsets.all(20.0),
+                    padding: const EdgeInsets.all(24.0),
                     child: Form(
                       key: formKey,
                       onChanged: () {
@@ -311,12 +286,40 @@ class LoginPage extends HookConsumerWidget {
                       child: AutofillGroup(
                         child: Column(
                           children: [
+                            // Email Field
                             TextFormField(
                               controller: emailController,
                               decoration: InputDecoration(
                                 hintText: 'Email',
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                prefixIcon: const Icon(Icons.email_outlined),
+                                prefixIcon: Icon(Icons.email_outlined, color: HandsColors.white70),
+                                filled: true,
+                                fillColor: HandsColors.secondaryContainer,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12.0),
+                                  borderSide: const BorderSide(color: HandsColors.white12),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12.0),
+                                  borderSide: const BorderSide(color: HandsColors.white12),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12.0),
+                                  borderSide: const BorderSide(color: HandsColors.handsOrange, width: 2),
+                                ),
+                                errorBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12.0),
+                                  borderSide: const BorderSide(color: HandsColors.error, width: 2),
+                                ),
+                                hintStyle: GoogleFonts.comfortaa(
+                                  fontWeight: FontWeight.normal,
+                                  fontSize: 14,
+                                  color: HandsColors.white70,
+                                ),
+                              ),
+                              style: GoogleFonts.comfortaa(
+                                fontWeight: FontWeight.normal,
+                                fontSize: 14,
+                                color: HandsColors.white,
                               ),
                               keyboardType: TextInputType.emailAddress,
                               textInputAction: TextInputAction.next,
@@ -331,23 +334,51 @@ class LoginPage extends HookConsumerWidget {
                                 return null;
                               },
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 20),
+                            // Password Field
                             TextFormField(
                               controller: passwordController,
                               decoration: InputDecoration(
                                 hintText: 'Password',
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                prefixIcon: const Icon(Icons.lock_outlined),
+                                prefixIcon: Icon(Icons.lock_outlined, color: HandsColors.white70),
                                 suffixIcon: IconButton(
                                   icon: Icon(
                                     isPasswordVisible.value ? Icons.visibility_off : Icons.visibility,
-                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                                    color: HandsColors.white70,
                                   ),
                                   onPressed: () {
                                     isPasswordVisible.value = !isPasswordVisible.value;
                                   },
                                   tooltip: isPasswordVisible.value ? 'Hide password' : 'Show password',
                                 ),
+                                filled: true,
+                                fillColor: HandsColors.secondaryContainer,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12.0),
+                                  borderSide: const BorderSide(color: HandsColors.white12),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12.0),
+                                  borderSide: const BorderSide(color: HandsColors.white12),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12.0),
+                                  borderSide: const BorderSide(color: HandsColors.handsOrange, width: 2),
+                                ),
+                                errorBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12.0),
+                                  borderSide: const BorderSide(color: HandsColors.error, width: 2),
+                                ),
+                                hintStyle: GoogleFonts.comfortaa(
+                                  fontWeight: FontWeight.normal,
+                                  fontSize: 14,
+                                  color: HandsColors.white70,
+                                ),
+                              ),
+                              style: GoogleFonts.comfortaa(
+                                fontWeight: FontWeight.normal,
+                                fontSize: 14,
+                                color: HandsColors.white,
                               ),
                               obscureText: !isPasswordVisible.value,
                               textInputAction: TextInputAction.done,
@@ -360,57 +391,25 @@ class LoginPage extends HookConsumerWidget {
                               },
                               onFieldSubmitted: (_) => handleLogin(),
                             ),
-                            const SizedBox(height: 28),
-                            SizedBox(
+                            const SizedBox(height: 32),
+                            // Sign In Button
+                            HandsPrimaryButton(
+                              text: 'SIGN IN',
+                              onPressed: handleLogin,
+                              isLoading: isLoading.value,
                               width: double.infinity,
-                              height: 48,
-                              child: ElevatedButton(
-                                onPressed: isLoading.value ? null : handleLogin,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: theme.primaryColor,
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                  elevation: 2,
-                                ),
-                                child:
-                                    isLoading.value
-                                        ? const SizedBox(
-                                          width: 20,
-                                          height: 20,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                          ),
-                                        )
-                                        : const Text(
-                                          'SIGN IN',
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                            letterSpacing: 1.2,
-                                          ),
-                                        ),
-                              ),
                             ),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 16.0),
-                                  child: TextButton(
-                                    onPressed: () {
-                                      _showForgotPasswordDialog(context, ref);
-                                    },
-                                    child: Text(
-                                      'Forgot Password?',
-                                      style: TextStyle(
-                                        color: Theme.of(context).colorScheme.primary,
-                                        decoration: TextDecoration.underline,
-                                      ),
-                                    ),
-                                  ),
+                            // Forgot Password Link
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: Padding(
+                                padding: const EdgeInsets.only(top: 16.0),
+                                child: HandsTextButton(
+                                  text: 'Forgot Password?',
+                                  onPressed: () => _showForgotPasswordDialog(context, ref),
+                                  textColor: HandsColors.handsOrange,
                                 ),
-                              ],
+                              ),
                             ),
                           ],
                         ),
@@ -418,18 +417,25 @@ class LoginPage extends HookConsumerWidget {
                     ),
                   ),
                 ),
+                // Sign Up Link
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16.0),
+                  padding: const EdgeInsets.symmetric(vertical: 32.0),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text("Don't have an account?", style: theme.textTheme.bodyMedium),
+                      Text(
+                        "Don't have an account?",
+                        style: GoogleFonts.comfortaa(
+                          fontSize: 14,
+                          fontWeight: FontWeight.normal,
+                          color: HandsColors.white70,
+                        ),
+                      ),
                       const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: () {
-                          context.go(AppRoutes.accountCreationPage.path);
-                        },
-                        child: Text('SIGN UP', style: theme.textTheme.labelLarge?.copyWith(color: theme.primaryColor)),
+                      HandsTextButton(
+                        text: 'SIGN UP',
+                        onPressed: () => context.go(AppRoutes.accountCreationPage.path),
+                        textColor: HandsColors.handsOrange,
                       ),
                     ],
                   ),

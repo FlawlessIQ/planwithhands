@@ -2055,20 +2055,20 @@ class DailyChecklistService {
                   taskData['name'] as String? ??
                   taskData['taskName'] as String? ??
                   'Unknown Task';
-              
+
               // Get shift information
               final shiftId = taskData['shiftId'] as String? ?? data['shiftId'] as String? ?? '';
               final shiftName = taskData['shiftName'] as String? ?? data['shiftName'] as String? ?? '';
-              
+
               // Count total occurrences and track shifts
               taskStats[taskName] ??= {
-                'missedCount': 0, 
+                'missedCount': 0,
                 'totalOccurrences': 0,
                 'shifts': <String>{}, // Set of shift IDs
                 'shiftNames': <String>{}, // Set of shift names
               };
               taskStats[taskName]!['totalOccurrences'] = (taskStats[taskName]!['totalOccurrences'] ?? 0) + 1;
-              
+
               // Add shift information
               if (shiftId.isNotEmpty) {
                 (taskStats[taskName]!['shifts'] as Set<String>).add(shiftId);
@@ -2076,7 +2076,7 @@ class DailyChecklistService {
               if (shiftName.isNotEmpty) {
                 (taskStats[taskName]!['shiftNames'] as Set<String>).add(shiftName);
               }
-              
+
               // Count missed
               if (!completed && !isCarryForward) {
                 taskStats[taskName]!['missedCount'] = (taskStats[taskName]!['missedCount'] ?? 0) + 1;
@@ -2130,20 +2130,20 @@ class DailyChecklistService {
                     taskData['name'] as String? ??
                     taskData['taskName'] as String? ??
                     'Unknown Task';
-                
+
                 // Get shift information
                 final shiftId = taskData['shiftId'] as String? ?? data['shiftId'] as String? ?? '';
                 final shiftName = taskData['shiftName'] as String? ?? data['shiftName'] as String? ?? '';
-                
+
                 // Count total occurrences and track shifts
                 taskStats[taskName] ??= {
-                  'missedCount': 0, 
+                  'missedCount': 0,
                   'totalOccurrences': 0,
                   'shifts': <String>{}, // Set of shift IDs
                   'shiftNames': <String>{}, // Set of shift names
                 };
                 taskStats[taskName]!['totalOccurrences'] = (taskStats[taskName]!['totalOccurrences'] ?? 0) + 1;
-                
+
                 // Add shift information
                 if (shiftId.isNotEmpty) {
                   (taskStats[taskName]!['shifts'] as Set<String>).add(shiftId);
@@ -2151,7 +2151,7 @@ class DailyChecklistService {
                 if (shiftName.isNotEmpty) {
                   (taskStats[taskName]!['shiftNames'] as Set<String>).add(shiftName);
                 }
-                
+
                 // Count missed
                 if (!completed && !isCarryForward) {
                   taskStats[taskName]!['missedCount'] = (taskStats[taskName]!['missedCount'] ?? 0) + 1;
@@ -2164,14 +2164,14 @@ class DailyChecklistService {
           }
         }
       }
-      
+
       // Resolve missing shift names from shift IDs
       for (final entry in taskStats.entries) {
         final taskName = entry.key;
         final stats = entry.value;
         final shiftIds = stats['shifts'] as Set<String>;
         final shiftNames = stats['shiftNames'] as Set<String>;
-        
+
         // If we have shift IDs but missing shift names, resolve them
         for (final shiftId in shiftIds) {
           if (shiftId.isNotEmpty && !shiftNames.any((name) => name.isNotEmpty)) {
@@ -2185,10 +2185,10 @@ class DailyChecklistService {
             }
           }
         }
-        
+
         debugPrint('[DailyChecklistService] Task "$taskName" appears in shifts: ${shiftNames.join(', ')}');
       }
-      
+
       // Convert to sorted list
       final sorted =
           taskStats.entries
