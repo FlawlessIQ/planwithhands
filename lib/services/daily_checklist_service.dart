@@ -19,6 +19,8 @@ import 'dart:convert';
 class DailyChecklistService {
   final FirebaseFirestore _firestore = FirestoreEnforcer.instance;
   final Uuid _uuid = const Uuid();
+  // Tracks which (org|date|location) combinations have attempted an on-demand carry-forward fallback
+  static final Set<String> _carryForwardFallbackAttempts = <String>{};
 
   /// Helper function to safely convert task data from either List or Map format
   List<Map<String, dynamic>> _extractTasksList(Map<String, dynamic> data) {
@@ -26,12 +28,29 @@ class DailyChecklistService {
     if (tasksData == null) return [];
 
     if (tasksData is List) {
-      // Handle List format
-      return List<Map<String, dynamic>>.from(tasksData);
+      // Handle List format – defensively coerce each element
+      final List<Map<String, dynamic>> safe = [];
+      for (final item in tasksData) {
+        if (item is Map) {
+          // Coerce dynamic map -> Map<String,dynamic>
+          safe.add(Map<String, dynamic>.from(item.cast<String, dynamic>()));
+        } else {
+          debugPrint('[DailyChecklistService] Skipping non-map task list element of type ${item.runtimeType}');
+        }
+      }
+      return safe;
     } else if (tasksData is Map) {
       // Handle Map format - convert map values to list
-      final Map<String, dynamic> tasksMap = Map<String, dynamic>.from(tasksData);
-      return tasksMap.values.whereType<Map<String, dynamic>>().cast<Map<String, dynamic>>().toList();
+      final Map<String, dynamic> tasksMap = Map<String, dynamic>.from(tasksData.cast<String, dynamic>());
+      final List<Map<String, dynamic>> safe = [];
+      for (final value in tasksMap.values) {
+        if (value is Map) {
+          safe.add(Map<String, dynamic>.from(value.cast<String, dynamic>()));
+        } else {
+          debugPrint('[DailyChecklistService] Skipping non-map task map value of type ${value.runtimeType}');
+        }
+      }
+      return safe;
     }
 
     debugPrint('[DailyChecklistService] Unexpected tasks format: ${tasksData.runtimeType}');
@@ -1673,6 +1692,9 @@ class DailyChecklistService {
     final todayStr = _formatDate(targetDate);
 
     try {
+      debugPrint(
+        '[DailyChecklistService] carryForward: START org=$organizationId targetDate=$todayStr (yesterday=$yString)',
+      );
       // Iterate all locations in org – daily_checklists are scoped per location
       final locationsQuery =
           await _firestore.collection('organizations').doc(organizationId).collection('locations').get();
@@ -1692,7 +1714,7 @@ class DailyChecklistService {
                 .get();
 
         debugPrint(
-          '[DailyChecklistService] carryForward: found ${ySnapshots.docs.length} checklist docs for location $locationId on $yString',
+          '[DailyChecklistService] carryForward: location=$locationId yesterdayChecklists=${ySnapshots.docs.length}',
         );
         for (final doc in ySnapshots.docs) {
           final data = doc.data();
@@ -1851,15 +1873,22 @@ class DailyChecklistService {
               FirestoreTTLHelper.batchSetWithTTL(batch, ref, cfTaskData);
               i++;
             }
+            int cfInserted = carryForwardTasks.length;
             try {
               await batch.commit();
+              debugPrint(
+                '[DailyChecklistService] carryForward: inserted $cfInserted CF tasks into today checklist $todayChecklistId (loc=$locationId)',
+              );
             } catch (e) {
-              debugPrint('[DailyChecklistService] carryForward: failed to commit CF tasks for checklist ${doc.id}: $e');
+              debugPrint(
+                '[DailyChecklistService] carryForward: failed to commit $cfInserted CF tasks for checklist ${doc.id}: $e',
+              );
             }
             // Intentionally do not modify parent metrics; Missed tasks are shown separately.
           }
         }
       }
+      debugPrint('[DailyChecklistService] carryForward: COMPLETE org=$organizationId targetDate=$todayStr');
     } catch (e) {
       debugPrint('[DailyChecklistService] carryForwardMissedTasks error: $e');
     }
@@ -1873,7 +1902,7 @@ class DailyChecklistService {
     String? locationId,
   }) async {
     final dateStr = _formatDate(targetDate);
-    debugPrint('[MissedTasks] CG load org=$organizationId, date=$dateStr, locationId=$locationId');
+    debugPrint('[MissedTasks][v2] CG load ENTER org=$organizationId, date=$dateStr, locationId=$locationId');
 
     Query q = _firestore
         .collectionGroup('tasks')
@@ -1883,9 +1912,100 @@ class DailyChecklistService {
     if (locationId != null) {
       q = q.where('locationId', isEqualTo: locationId);
     }
-    final snap = await q.get();
+    QuerySnapshot snap; // use raw snapshot to avoid generic mismatch across platforms
+    try {
+      debugPrint('[MissedTasks][v2] BEFORE query (org=$organizationId date=$dateStr loc=$locationId)');
+      snap = await q.get();
+      debugPrint(
+        '[MissedTasks][v2] AFTER query docs=${snap.docs.length} (org=$organizationId date=$dateStr loc=$locationId)',
+      );
+    } catch (e, st) {
+      debugPrint('[MissedTasks][v2] QUERY ERROR org=$organizationId date=$dateStr loc=$locationId error=$e');
+      debugPrint(st.toString());
+      final msg = e.toString();
+      // Permission denied fallback: enumerate today's checklists for this location/org and manually filter tasks
+      if (msg.contains('permission-denied')) {
+        debugPrint('[MissedTasks][v2] Entering manual fallback enumeration due to permission-denied.');
+        try {
+          final List<Map<String, dynamic>> collected = [];
+          if (locationId != null) {
+            final locRef = _firestore
+                .collection('organizations')
+                .doc(organizationId)
+                .collection('locations')
+                .doc(locationId);
+            final checklistSnap = await locRef.collection('daily_checklists').where('date', isEqualTo: dateStr).get();
+            debugPrint('[MissedTasks][v2] Fallback found ${checklistSnap.docs.length} daily_checklists for today');
+            for (final c in checklistSnap.docs) {
+              try {
+                final tasksSnap = await c.reference.collection('tasks').where('isCarryForward', isEqualTo: true).get();
+                debugPrint('[MissedTasks][v2] Fallback checklist ${c.id} tasks=${tasksSnap.docs.length}');
+                for (final t in tasksSnap.docs) {
+                  final data = t.data();
+                  if (data['organizationId'] == organizationId && data['dateString'] == dateStr) {
+                    collected.add({'ref': t.reference, ...Map<String, dynamic>.from(data)});
+                  }
+                }
+              } catch (inner) {
+                debugPrint('[MissedTasks][v2] Fallback error reading tasks for checklist ${c.id}: $inner');
+              }
+            }
+          } else {
+            // No specific location: enumerate all locations the user can access under org
+            final locs = await _firestore.collection('organizations').doc(organizationId).collection('locations').get();
+            debugPrint('[MissedTasks][v2] Fallback (all locations) count=${locs.docs.length}');
+            for (final loc in locs.docs) {
+              final checklistSnap =
+                  await loc.reference.collection('daily_checklists').where('date', isEqualTo: dateStr).get();
+              for (final c in checklistSnap.docs) {
+                final tasksSnap = await c.reference.collection('tasks').where('isCarryForward', isEqualTo: true).get();
+                for (final t in tasksSnap.docs) {
+                  final data = t.data();
+                  if (data['organizationId'] == organizationId && data['dateString'] == dateStr) {
+                    collected.add({'ref': t.reference, ...Map<String, dynamic>.from(data)});
+                  }
+                }
+              }
+            }
+          }
+          debugPrint('[MissedTasks][v2] Fallback enumeration gathered ${collected.length} CF tasks');
+          return await _groupMissedTasksFromTaskDocs(collected);
+        } catch (fallbackErr) {
+          debugPrint('[MissedTasks][v2] Manual fallback failed: $fallbackErr');
+        }
+      }
+      rethrow;
+    }
+    debugPrint(
+      '[MissedTasks][v2] loadMissedTasksForToday query returned ${snap.docs.length} carry-forward task docs for date=$dateStr org=$organizationId loc=$locationId',
+    );
+
+    // Fallback: if no carry-forward tasks found for today yet, attempt to trigger carry-forward once
+    if (snap.docs.isEmpty) {
+      final fallbackKey = '$organizationId|$dateStr|${locationId ?? 'all'}';
+      // simple in-memory static cache to avoid repeated attempts in a single app session
+      if (!_carryForwardFallbackAttempts.contains(fallbackKey)) {
+        _carryForwardFallbackAttempts.add(fallbackKey);
+        debugPrint(
+          '[MissedTasks][v2] No CF tasks found. Triggering carryForwardMissedTasks fallback (key=$fallbackKey)',
+        );
+        try {
+          await carryForwardMissedTasks(organizationId: organizationId, targetDate: targetDate);
+          // Re-query after carry-forward attempt
+          final retry = await q.get();
+          debugPrint('[MissedTasks][v2] Fallback re-query found ${retry.docs.length} CF task docs (previously 0)');
+          if (retry.docs.isNotEmpty) {
+            return await _groupMissedTasksFromTaskDocs(
+              retry.docs.map((d) => {'ref': d.reference, ...d.data() as Map<String, dynamic>}).toList(),
+            );
+          }
+        } catch (e) {
+          debugPrint('[MissedTasks][v2] Fallback carryForwardMissedTasks error: $e');
+        }
+      }
+    }
     return await _groupMissedTasksFromTaskDocs(
-      snap.docs.map((d) => {'ref': d.reference, ...d.data() as Map<String, dynamic>}).toList(),
+      snap.docs.map((d) => {'ref': d.reference, ...Map<String, dynamic>.from(d.data() as Map)}).toList(),
     );
   }
 

@@ -124,12 +124,13 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
   }
 
   Future<void> _ensureDailyChecklistsExist() async {
-    try {
-      final service = DailyChecklistService();
-      await service.generateAllDailyChecklistsForDate(organizationId: widget.organizationId, date: _todayKey);
-    } catch (e) {
-      logger.w('[ManagerDashboard] generateAllDailyChecklistsForDate failed: $e');
-    }
+    // Temporarily disabled to isolate login issues
+    // try {
+    //   final service = DailyChecklistService();
+    //   await service.generateAllDailyChecklistsForDate(organizationId: widget.organizationId, date: _todayKey);
+    // } catch (e) {
+    //   logger.w('[ManagerDashboard] generateAllDailyChecklistsForDate failed: $e');
+    // }
   }
 
   Future<void> _loadLocations() async {

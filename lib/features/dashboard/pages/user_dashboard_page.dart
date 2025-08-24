@@ -227,8 +227,22 @@ class UserDashboardPage extends HookConsumerWidget {
         logger.d("[Dashboard][DEBUG] Setting ${foundShifts.length} shifts to assignedShifts");
         assignedShifts.value = foundShifts;
 
-        // Set selectedLocationIds to just the selected location for all shifts
-        selectedLocationIds.value = foundShifts.map((_) => selectedLocationId.value ?? 'default').toList();
+        // Derive per-shift effective location IDs. Previous implementation used a single selectedLocationId or 'default',
+        // which caused checklist queries to point at a non-existent 'default' location and return 0 results.
+        selectedLocationIds.value =
+            foundShifts.map((shift) {
+              final shiftLocs = coerceToLocationIds(shift.locationIds);
+              // If the user has explicitly selected a location and this shift includes it, honor that.
+              if (selectedLocationId.value != null && shiftLocs.contains(selectedLocationId.value)) {
+                return selectedLocationId.value!;
+              }
+              // Otherwise pick the first declared shift location.
+              if (shiftLocs.isNotEmpty) return shiftLocs.first;
+              // Fallback (should rarely happen) – keep a sentinel but log for visibility.
+              logger.w('[Dashboard][WARN] Shift ${shift.shiftId} has no locationIds; using fallback "default"');
+              return 'default';
+            }).toList();
+        logger.d('[Dashboard][DEBUG] Computed per-shift selectedLocationIds: ${selectedLocationIds.value}');
 
         // Load checklists for each shift
         List<List<DailyChecklist>> checklistGroups = [];
@@ -243,11 +257,12 @@ class UserDashboardPage extends HookConsumerWidget {
         // Ensure daily checklists (and carry-forward of missed tasks) exist for today
         // This makes sure missed tasks from yesterday are copied into today's
         // checklist subcollections before we attempt to load them for the UI.
-        try {
-          await DailyChecklistService().ensureDailyChecklistsExist(organizationId.value!);
-        } catch (e) {
-          logger.e('[Dashboard] ensureDailyChecklistsExist error: $e', e);
-        }
+        // Temporarily disabled to isolate login issues
+        // try {
+        //   await DailyChecklistService().ensureDailyChecklistsExist(organizationId.value!);
+        // } catch (e) {
+        //   logger.e('[Dashboard] ensureDailyChecklistsExist error: $e', e);
+        // }
 
         // Load missed carry-forward tasks for yesterday using the centralized service
         try {
@@ -624,6 +639,28 @@ class UserDashboardPage extends HookConsumerWidget {
                                         ref.read(operationalStateProvider.notifier).selectShift(shift);
                                       } catch (e) {
                                         logger.e('[Dashboard] Failed to update OperationalState selectedShift: $e', e);
+                                      }
+
+                                      // If no explicit location selected yet, adopt the shift's location so subsequent reloads
+                                      // filter/associate correctly. Without this, checklist loading may target a placeholder.
+                                      try {
+                                        if (selectedLocationId.value == null) {
+                                          final shiftLocs = coerceToLocationIds(shift.locationIds);
+                                          if (shiftLocs.isNotEmpty) {
+                                            selectedLocationId.value = shiftLocs.first;
+                                            logger.d(
+                                              '[Dashboard] Adopted shift location ${shiftLocs.first} as selectedLocationId',
+                                            );
+                                          } else {
+                                            // locationId from dialog result (non-null) as fallback
+                                            selectedLocationId.value = locationId;
+                                            logger.d(
+                                              '[Dashboard] Adopted dialog location $locationId as selectedLocationId (fallback)',
+                                            );
+                                          }
+                                        }
+                                      } catch (e) {
+                                        logger.e('[Dashboard] Error adopting shift location: $e', e);
                                       }
 
                                       // Refresh the dashboard to show the new volunteer shift
@@ -1132,6 +1169,40 @@ Future<List<DailyChecklist>> _loadChecklistsForShiftSimple(
     logger.d("[Dashboard] Found ${checklistSnapshot.docs.length} existing checklists");
     final checklists = checklistSnapshot.docs.map((doc) => DailyChecklist.fromMap(doc.data(), doc.id)).toList();
 
+    // NEW: Hydrate tasks from subcollection if parent 'tasks' array is empty (post-migration storage)
+    for (int i = 0; i < checklists.length; i++) {
+      final checklist = checklists[i];
+      if (checklist.tasks.isNotEmpty) continue; // already has inline tasks
+      try {
+        final tasksSnap =
+            await FirestoreEnforcer.instance
+                .collection('organizations')
+                .doc(organizationId)
+                .collection('locations')
+                .doc(locationId)
+                .collection('daily_checklists')
+                .doc(checklist.id)
+                .collection('tasks')
+                .get();
+        if (tasksSnap.docs.isNotEmpty) {
+          logger.d('[Dashboard] Hydrating ${tasksSnap.docs.length} subcollection tasks for checklist ${checklist.id}');
+          final subTasks =
+              tasksSnap.docs.map((d) {
+                final data = Map<String, dynamic>.from(d.data());
+                // Normalize to fields DailyChecklistTask expects
+                if (!data.containsKey('taskId')) data['taskId'] = d.id;
+                if (!data.containsKey('description')) {
+                  data['description'] = data['taskName'] ?? data['name'] ?? data['title'] ?? 'Task';
+                }
+                return DailyChecklistTask.fromMap(data);
+              }).toList();
+          checklists[i] = checklist.copyWith(tasks: subTasks);
+        }
+      } catch (e) {
+        logger.w('[Dashboard] Failed hydrating tasks for checklist ${checklist.id}: $e');
+      }
+    }
+
     // Fallback logic
     if (checklists.isEmpty && shift.checklistTemplateIds.isNotEmpty) {
       logger.d("[Dashboard] No existing checklists found, generating from templates: ${shift.checklistTemplateIds}");
@@ -1272,6 +1343,7 @@ class _HelpOutDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Dialog(
+      backgroundColor: HandsColors.primaryContainer,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: SizedBox(
         width: MediaQuery.of(context).size.width * 0.9,
@@ -1282,9 +1354,9 @@ class _HelpOutDialog extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               decoration: BoxDecoration(
-                color: Colors.grey[50],
+                color: HandsColors.cardPrimary,
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
+                border: Border(bottom: BorderSide(color: HandsColors.white12)),
               ),
               child: Row(
                 children: [
@@ -1294,14 +1366,16 @@ class _HelpOutDialog extends StatelessWidget {
                       children: [
                         Text(
                           'Available Shifts',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+                          style: Theme.of(
+                            context,
+                          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600, color: HandsColors.white),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 4),
                         Text(
                           'Select a shift to begin working at $selectedLocationName',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: HandsColors.white70),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -1311,7 +1385,7 @@ class _HelpOutDialog extends StatelessWidget {
                   const SizedBox(width: 8),
                   IconButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close),
+                    icon: const Icon(Icons.close, color: HandsColors.white70),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                     iconSize: 20,
@@ -1333,9 +1407,9 @@ class _HelpOutDialog extends StatelessWidget {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.error_outline, size: 48, color: Colors.grey[400]),
+                          Icon(Icons.error_outline, size: 48, color: HandsColors.white30),
                           const SizedBox(height: 16),
-                          Text('Error loading shifts', style: TextStyle(color: Colors.grey[600])),
+                          Text('Error loading shifts', style: TextStyle(color: HandsColors.white70)),
                         ],
                       ),
                     );
@@ -1348,11 +1422,11 @@ class _HelpOutDialog extends StatelessWidget {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.work_off, size: 40, color: Colors.grey[400]),
+                          Icon(Icons.work_off, size: 40, color: HandsColors.white30),
                           const SizedBox(height: 12),
                           Text(
                             'No available shifts',
-                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.grey[600]),
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: HandsColors.white70),
                           ),
                           const SizedBox(height: 6),
                           Padding(
@@ -1362,13 +1436,13 @@ class _HelpOutDialog extends StatelessWidget {
                                 Text(
                                   'There are no shifts available for you to join today.',
                                   textAlign: TextAlign.center,
-                                  style: TextStyle(color: Colors.grey[500]),
+                                  style: TextStyle(color: HandsColors.white70),
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
                                   'Shifts will become available to select 30 minutes before their start time.',
                                   textAlign: TextAlign.center,
-                                  style: TextStyle(color: Colors.grey[500]),
+                                  style: TextStyle(color: HandsColors.white70),
                                 ),
                               ],
                             ),
@@ -1385,20 +1459,27 @@ class _HelpOutDialog extends StatelessWidget {
                       final shift = shifts[index];
                       return Card(
                         margin: const EdgeInsets.only(bottom: 8),
+                        color: HandsColors.secondaryContainer,
                         child: ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: Theme.of(context).primaryColor,
-                            child: const Icon(Icons.work, color: Colors.white, size: 20),
+                            backgroundColor: HandsColors.handsOrange,
+                            child: const Icon(Icons.work, color: HandsColors.white, size: 20),
                           ),
-                          title: Text(shift.shiftName, style: const TextStyle(fontWeight: FontWeight.w500)),
-                          subtitle: Text('${shift.startTime} - ${shift.endTime}'),
+                          title: Text(
+                            shift.shiftName,
+                            style: TextStyle(fontWeight: FontWeight.w500, color: HandsColors.white),
+                          ),
+                          subtitle: Text(
+                            '${shift.startTime} - ${shift.endTime}',
+                            style: TextStyle(color: HandsColors.white70),
+                          ),
                           trailing: ElevatedButton(
                             onPressed: () {
                               Navigator.of(context).pop({'shift': shift, 'locationId': selectedLocationId});
                             },
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Theme.of(context).primaryColor,
-                              foregroundColor: Colors.white,
+                              backgroundColor: HandsColors.handsOrange,
+                              foregroundColor: HandsColors.white,
                             ),
                             child: const Text('Join'),
                           ),
@@ -2634,9 +2715,9 @@ class _TaskTileFromData extends HookWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey[300]!),
+        border: Border.all(color: HandsColors.white12),
         borderRadius: BorderRadius.circular(8),
-        color: isCompleted ? Colors.green[50] : Colors.grey[50],
+        color: isCompleted ? HandsColors.sageGreen.withOpacity(0.2) : HandsColors.cardTertiary,
       ),
       child: Column(
         children: [
@@ -2647,13 +2728,15 @@ class _TaskTileFromData extends HookWidget {
               onChanged: (value) async {
                 await _handleTaskToggle(context, value ?? false);
               },
-              activeColor: Colors.green,
+              activeColor: HandsColors.sageGreen,
+              checkColor: HandsColors.white,
             ),
             title: Text(
               taskData.taskName,
               style: TextStyle(
                 decoration: isCompleted ? TextDecoration.lineThrough : null,
-                color: isCompleted ? Colors.grey[600] : Colors.black,
+                color: isCompleted ? HandsColors.white70 : HandsColors.white,
+                fontWeight: FontWeight.w500,
               ),
             ),
             subtitle: () {
@@ -2662,7 +2745,7 @@ class _TaskTileFromData extends HookWidget {
                       ? taskData.completedByUserName
                       : taskData.completedBy;
               if (by == null || by.isEmpty) return null;
-              return Text("Completed by $by", style: TextStyle(fontSize: 10, color: Colors.grey[600]));
+              return Text("Completed by $by", style: TextStyle(fontSize: 10, color: HandsColors.white70));
             }(),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
@@ -2670,42 +2753,58 @@ class _TaskTileFromData extends HookWidget {
                 // Show a photo icon when a photo URL exists; otherwise show the camera required indicator if the task requires a photo
                 if ((taskData.photoUrl ?? '').isNotEmpty || (taskData.proofImageUrl ?? '').isNotEmpty)
                   IconButton(
-                    icon: Icon(Icons.photo, size: 16, color: Colors.green),
+                    icon: Icon(Icons.photo, size: 16, color: HandsColors.sageGreen),
                     tooltip: 'View photo',
                     onPressed: () => _showPhotoDialog(context),
                   )
                 else if (taskData.photoRequired)
                   IconButton(
-                    icon: Icon(Icons.camera_alt, size: 16, color: Colors.orange),
+                    icon: Icon(Icons.camera_alt, size: 16, color: HandsColors.amber),
                     onPressed: () => _showPhotoDialog(context),
                   ),
                 if (taskData.notes != null && taskData.notes!.isNotEmpty)
                   IconButton(
-                    icon: Icon(Icons.note, size: 16, color: Colors.blue[600]),
+                    icon: Icon(Icons.note, size: 16, color: HandsColors.handsOrange),
                     onPressed: () => _showNotesDialog(context),
                   ),
                 if (taskData.notCompletedReason != null && taskData.notCompletedReason!.isNotEmpty)
                   IconButton(
-                    icon: Icon(Icons.warning, size: 16, color: Colors.orange[700]),
+                    icon: Icon(Icons.warning, size: 16, color: HandsColors.amber),
                     onPressed: () => _showNotCompletedReasonDialog(context),
                   ),
                 PopupMenuButton<String>(
-                  icon: Icon(Icons.more_vert, size: 18, color: Colors.grey[600]),
+                  icon: Icon(Icons.more_vert, size: 18, color: HandsColors.white70),
                   onSelected: (value) => _handleMenuAction(context, value),
                   itemBuilder:
                       (context) => [
-                        const PopupMenuItem(
+                        PopupMenuItem(
                           value: 'photo',
-                          child: Row(children: [Icon(Icons.camera_alt, size: 18), SizedBox(width: 8), Text('Photo')]),
+                          child: Row(
+                            children: [
+                              Icon(Icons.camera_alt, size: 18, color: HandsColors.white70),
+                              SizedBox(width: 8),
+                              Text('Photo', style: TextStyle(color: HandsColors.white)),
+                            ],
+                          ),
                         ),
-                        const PopupMenuItem(
+                        PopupMenuItem(
                           value: 'notes',
-                          child: Row(children: [Icon(Icons.note, size: 18), SizedBox(width: 8), Text('Notes')]),
+                          child: Row(
+                            children: [
+                              Icon(Icons.note, size: 18, color: HandsColors.white70),
+                              SizedBox(width: 8),
+                              Text('Notes', style: TextStyle(color: HandsColors.white)),
+                            ],
+                          ),
                         ),
-                        const PopupMenuItem(
+                        PopupMenuItem(
                           value: 'not_completed',
                           child: Row(
-                            children: [Icon(Icons.warning, size: 18), SizedBox(width: 8), Text('Cannot Complete')],
+                            children: [
+                              Icon(Icons.warning, size: 18, color: HandsColors.white70),
+                              SizedBox(width: 8),
+                              Text('Cannot Complete', style: TextStyle(color: HandsColors.white)),
+                            ],
                           ),
                         ),
                       ],

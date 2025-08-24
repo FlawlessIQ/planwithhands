@@ -1,12 +1,12 @@
 import 'package:flutter/foundation.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:timezone/timezone.dart' as tz;
 
 Future<String> resolveTimezoneId({required String orgId, String? locationId}) async {
   try {
     if (locationId != null && locationId.isNotEmpty) {
       final locDoc =
-          await FirebaseFirestore.instance
+          await FirestoreEnforcer.instance
               .collection('organizations')
               .doc(orgId)
               .collection('locations')
@@ -18,7 +18,7 @@ Future<String> resolveTimezoneId({required String orgId, String? locationId}) as
         if (tzid != null && tzid.isNotEmpty) return tzid;
       }
     }
-    final orgDoc = await FirebaseFirestore.instance.collection('organizations').doc(orgId).get();
+    final orgDoc = await FirestoreEnforcer.instance.collection('organizations').doc(orgId).get();
     if (orgDoc.exists) {
       final data = orgDoc.data() ?? {};
       final tzid = (data['timezoneId'] ?? data['timeZone'] ?? data['timezone']) as String?;

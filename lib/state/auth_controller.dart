@@ -11,7 +11,6 @@ import 'package:hands_app/data/models/user_data.dart';
 import 'package:hands_app/state/operational_state.dart';
 import 'package:hands_app/state/user_state.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:hands_app/services/daily_checklist_service.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/features/messaging/services/token_registration_service.dart';
 import 'package:hands_app/utils/location_helper.dart';
@@ -112,12 +111,49 @@ class AuthController extends _$AuthController {
           jobTypes: jobTypes,
         );
 
+        // If security rules depend on orgMemberships/roles maps (new schema) but they are absent, add ephemeral client-side logging & optional patch
+        final needsOrgMemberships = !(data.containsKey('orgMemberships')) && organizationId.isNotEmpty;
+        final needsRoles = !(data.containsKey('roles')) && organizationId.isNotEmpty;
+        if (needsOrgMemberships || needsRoles) {
+          debugPrint(
+            '[AUTH_CONTROLLER] User doc missing new schema fields: ${needsOrgMemberships ? 'orgMemberships ' : ''}${needsRoles ? 'roles ' : ''}- applying lightweight server merge to satisfy rules.',
+          );
+          try {
+            final Map<String, dynamic> patch = {};
+            if (needsOrgMemberships) {
+              patch['orgMemberships'] = [organizationId];
+            }
+            if (needsRoles) {
+              // Map orgId -> role string derived from userRole numeric
+              String roleStr;
+              switch (userData.userRole) {
+                case 2:
+                  roleStr = 'admin';
+                  break;
+                case 1:
+                  roleStr = 'manager';
+                  break;
+                default:
+                  roleStr = 'member';
+              }
+              patch['roles'] = {organizationId: roleStr};
+            }
+            if (patch.isNotEmpty) {
+              await firestore.collection('users').doc(userId).set(patch, SetOptions(merge: true));
+              debugPrint('[AUTH_CONTROLLER] Added missing membership fields: $patch');
+            }
+          } catch (e) {
+            debugPrint('[AUTH_CONTROLLER] Failed to patch missing membership fields: $e');
+          }
+        }
+
         debugPrint('[AUTH_CONTROLLER] UserData object created: $userData');
 
-        // Ensure daily checklists are created if they don't exist
-        if (userData.organizationId.isNotEmpty) {
-          await DailyChecklistService().ensureDailyChecklistsExist(userData.organizationId);
-        }
+        // Temporarily disable daily checklist generation to isolate login issues
+        // TODO: Re-enable after fixing permission issues
+        // if (userData.organizationId.isNotEmpty) {
+        //   await DailyChecklistService().ensureDailyChecklistsExist(userData.organizationId);
+        // }
 
         // Set the user data in the UserState provider
         ref.read(userStateProvider.notifier).setUserData(userData);

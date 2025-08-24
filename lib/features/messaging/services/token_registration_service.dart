@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 
@@ -9,7 +10,7 @@ class TokenRegistrationService {
       final token = await FirebaseMessaging.instance.getToken();
       if (token == null) return;
       final docId = '${userId}_$token';
-      await FirebaseFirestore.instance.collection('deviceTokens').doc(docId).set({
+      await FirestoreEnforcer.instance.collection('deviceTokens').doc(docId).set({
         'userId': userId,
         'fcmToken': token,
         'platform':

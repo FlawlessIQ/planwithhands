@@ -37,7 +37,7 @@ class _ManageLocationsPageState extends State<ManageLocationsPage> {
     try {
       final orgRef = FirestoreEnforcer.instance.collection('organizations').doc(widget.organizationId);
       final locsRef = orgRef.collection('locations');
-      final batch = FirebaseFirestore.instance.batch();
+      final batch = FirestoreEnforcer.instance.batch();
 
       // Delete the location
       batch.delete(doc.reference);
@@ -104,7 +104,7 @@ class _ManageLocationsPageState extends State<ManageLocationsPage> {
       final orgRef = FirestoreEnforcer.instance.collection('organizations').doc(widget.organizationId);
       final locsRef = orgRef.collection('locations');
 
-      final batch = FirebaseFirestore.instance.batch();
+      final batch = FirestoreEnforcer.instance.batch();
       final all = await locsRef.get();
       for (final d in all.docs) {
         batch.update(d.reference, {'isPrimary': d.id == doc.id, 'updatedAt': FieldValue.serverTimestamp()});

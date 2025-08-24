@@ -6,10 +6,13 @@ import 'package:hands_app/state/auth_controller.dart';
 import 'package:hands_app/global_widgets/generic_text_field.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:hands_app/routing/routes.dart';
 import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/global_widgets/hands_icon.dart';
+import 'package:hands_app/state/user_state.dart';
 
 class LoginPage extends HookConsumerWidget {
   const LoginPage({super.key});
@@ -149,6 +152,30 @@ class LoginPage extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // EARLY AUTH GUARD: If already authenticated, route away immediately to prevent loops
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser != null) {
+      // Try to infer role from userState if loaded
+      final userState = ref.watch(userStateProvider);
+      final role = userState.userData?.userRole;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        switch (role) {
+          case 2:
+            context.go(AppRoutes.adminDashboardPage.path);
+            break;
+          case 1:
+            context.go(AppRoutes.managerDashboardPage.path);
+            break;
+          case 0:
+            context.go(AppRoutes.userDashboardPage.path);
+            break;
+          default:
+            context.go(AppRoutes.userDashboardPage.path);
+        }
+      });
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     final authActions = ref.watch(authControllerProvider.notifier);
     final emailController = useTextEditingController();
     final passwordController = useTextEditingController();
@@ -158,6 +185,16 @@ class LoginPage extends HookConsumerWidget {
 
     // Function to handle login submission
     Future<void> handleLogin() async {
+      // Prevent duplicate submissions
+      if (isLoading.value) {
+        debugPrint('[LOGIN] Ignoring duplicate submit while loading');
+        return;
+      }
+      // If already signed in, do nothing (early guard)
+      if (FirebaseAuth.instance.currentUser != null) {
+        debugPrint('[LOGIN] Already authenticated; ignoring manual submit');
+        return;
+      }
       debugPrint('[LOGIN] Starting login process...');
       if (!formKey.currentState!.validate()) {
         debugPrint('[LOGIN] Form validation failed');
@@ -183,6 +220,29 @@ class LoginPage extends HookConsumerWidget {
           }
         } else {
           debugPrint('[LOGIN] userData found, userRole: ${userData.userRole}');
+          // Debug: Dump user document fields (non-sensitive) to aid rule troubleshooting
+          try {
+            final uid = FirebaseAuth.instance.currentUser?.uid;
+            if (uid != null) {
+              final snap =
+                  await FirebaseFirestore.instanceFor(
+                    app: Firebase.app(),
+                    databaseId: 'planwithhands',
+                  ).collection('users').doc(uid).get();
+              final data = snap.data();
+              if (data != null) {
+                final redacted = Map<String, dynamic>.from(data)
+                  ..removeWhere((k, _) => ['email', 'phone', 'password', 'apiKey'].contains(k));
+                debugPrint(
+                  '[LOGIN][DEBUG_USER_DOC] keys=${redacted.keys.toList()} organizationId=${redacted['organizationId']} orgMemberships=${redacted['orgMemberships']} roles=${redacted['roles']} userRole=${redacted['userRole']}',
+                );
+              } else {
+                debugPrint('[LOGIN][DEBUG_USER_DOC] User doc missing in planwithhands DB');
+              }
+            }
+          } catch (e) {
+            debugPrint('[LOGIN][DEBUG_USER_DOC] Error reading user doc: $e');
+          }
           if (context.mounted) {
             // Route based on user role
             switch (userData.userRole) {

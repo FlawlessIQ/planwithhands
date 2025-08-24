@@ -205,7 +205,15 @@ class _OrganizationSetupWidgetState extends State<OrganizationSetupWidget> {
               const SizedBox(height: 12),
 
               ...requirements.entries.map((entry) {
-                final requirement = entry.value as Map<String, dynamic>;
+                // Safely normalize dynamic map (avoid LinkedMap<dynamic,dynamic> cast issues)
+                Map<String, dynamic> requirement = {};
+                try {
+                  if (entry.value is Map) {
+                    requirement = Map<String, dynamic>.from(entry.value as Map);
+                  }
+                } catch (e) {
+                  logger.w('[OrganizationSetupWidget] Skipping malformed requirement entry ${entry.key}: $e');
+                }
                 final isComplete = requirement['met'] as bool? ?? false;
                 final count = requirement['count'] as int? ?? 0;
                 final required = requirement['required'] as int? ?? 1;

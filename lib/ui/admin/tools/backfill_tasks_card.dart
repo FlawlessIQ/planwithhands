@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/services/task_backfill_service.dart';
 
 class BackfillTasksCard extends StatefulWidget {
@@ -26,7 +26,7 @@ class _BackfillTasksCardState extends State<BackfillTasksCard> {
   @override
   void initState() {
     super.initState();
-    _backfillService = TaskBackfillService(firestore: FirebaseFirestore.instance);
+    _backfillService = TaskBackfillService(firestore: FirestoreEnforcer.instance);
   }
 
   void _resetCounters() {

@@ -259,7 +259,15 @@ class OrganizationSetupService {
     final requirements = setupStatus['requirements'] as Map<String, dynamic>? ?? {};
 
     for (final reqEntry in requirements.entries) {
-      final requirement = reqEntry.value as Map<String, dynamic>;
+      Map<String, dynamic> requirement = {};
+      try {
+        if (reqEntry.value is Map) {
+          requirement = Map<String, dynamic>.from(reqEntry.value as Map);
+        }
+      } catch (_) {
+        // skip malformed entries silently
+        continue;
+      }
       if (!requirement['met']) {
         recommendations.add({
           'title': 'Complete ${requirement['name']} Setup',

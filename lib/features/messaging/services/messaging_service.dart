@@ -1,10 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/message_thread.dart';
 import '../models/message.dart';
 
 class MessagingService {
-  final _db = FirebaseFirestore.instance;
+  final _db = FirestoreEnforcer.instance;
   final _auth = FirebaseAuth.instance;
 
   String? get currentUserId => _auth.currentUser?.uid;

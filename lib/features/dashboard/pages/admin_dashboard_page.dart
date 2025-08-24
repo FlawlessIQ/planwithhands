@@ -31,7 +31,9 @@ import 'package:crypto/crypto.dart' as crypto;
 enum AdminView { shiftsChecklists, usersLocations }
 
 class AdminDashboardPage extends ConsumerStatefulWidget {
-  const AdminDashboardPage({super.key});
+  final WidgetBuilder? overrideBodyBuilder;
+
+  const AdminDashboardPage({super.key, this.overrideBodyBuilder});
 
   @override
   ConsumerState<AdminDashboardPage> createState() => _AdminDashboardPageState();
@@ -363,11 +365,22 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
       }
     } catch (e) {
       logger.e('[AdminDashboard] Error checking user access: $e', e);
+      final isPermission = e.toString().contains('permission-denied');
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error loading dashboard: $e'), backgroundColor: HandsColors.error));
-        context.go(AppRoutes.loginPage.path);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isPermission
+                  ? 'Permission issue accessing organization resources. Investigating rules (temporary broadening applied).'
+                  : 'Error loading dashboard: $e',
+            ),
+            backgroundColor: HandsColors.error,
+          ),
+        );
+        // Stay on page to allow UI + logs instead of bouncing back to login causing perceived loop
+        setState(() {
+          isLoading = false;
+        });
       }
     }
   }
@@ -382,6 +395,8 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
     if (isLoading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+
+    final Widget body = widget.overrideBodyBuilder?.call(context) ?? _buildMobileBody(context);
 
     return Scaffold(
       backgroundColor: HandsColors.scaffoldBackground,
@@ -491,26 +506,30 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
           UnifiedMenuButton(userRole: userRole),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildViewToggle(),
-            const SizedBox(height: 16),
-            if (_currentView == AdminView.shiftsChecklists) ...[
-              _buildShiftsSection(),
-              const SizedBox(height: 16),
-              _buildChecklistsSection(),
-            ] else if (_currentView == AdminView.usersLocations) ...[
-              _buildUsersSection(),
-              const SizedBox(height: 16),
-              _buildLocationsSection(),
-            ],
-          ],
-        ),
-      ),
+      body: body,
       bottomNavigationBar: BottomNavBar(currentIndex: 2, userRole: userRole),
+    );
+  }
+
+  Widget _buildMobileBody(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildViewToggle(),
+          const SizedBox(height: 16),
+          if (_currentView == AdminView.shiftsChecklists) ...[
+            _buildShiftsSection(),
+            const SizedBox(height: 16),
+            _buildChecklistsSection(),
+          ] else if (_currentView == AdminView.usersLocations) ...[
+            _buildUsersSection(),
+            const SizedBox(height: 16),
+            _buildLocationsSection(),
+          ],
+        ],
+      ),
     );
   }
 
@@ -630,48 +649,6 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
           ],
         );
       },
-    );
-  }
-
-  // --- Place this helper inside the _AdminDashboardPageState class ---
-  Widget _buildToggleSegment(
-    BuildContext context, {
-    required String label,
-    required IconData icon,
-    required bool selected,
-    required VoidCallback onTap,
-    required bool left,
-  }) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeInOut,
-          decoration: BoxDecoration(
-            color: selected ? HandsColors.handsOrange : Colors.transparent,
-            borderRadius: BorderRadius.horizontal(
-              left: left ? const Radius.circular(12) : Radius.zero,
-              right: !left ? const Radius.circular(12) : Radius.zero,
-            ),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 18, color: selected ? HandsColors.white : HandsColors.white70),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: GoogleFonts.comfortaa(
-                  color: selected ? HandsColors.white : HandsColors.white70,
-                  fontWeight: selected ? FontWeight.w400 : FontWeight.w300,
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 
