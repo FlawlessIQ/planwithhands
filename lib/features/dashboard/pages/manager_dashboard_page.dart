@@ -73,10 +73,54 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
   void initState() {
     super.initState();
     _todayKey = _dateFormat.format(DateTime.now());
-    _fetchUserRole();
-    _checkSetupStatus();
-    _loadLocations();
+    _initializeDashboard();
+  }
+
+  // Progressive loading strategy for better performance
+  Future<void> _initializeDashboard() async {
+    // Phase 1: Essential setup (fast)
+    try {
+      await Future.wait([_fetchUserRole(), _checkSetupStatus(), _loadLocations()]).timeout(const Duration(seconds: 5));
+    } catch (e) {
+      logger.e('[Dashboard] Phase 1 initialization failed: $e');
+      // Continue with reduced functionality
+    }
+
+    // Phase 2: Critical dashboard data (prioritized)
+    _loadCriticalData();
+
+    // Phase 3: Background data loading (non-blocking)
+    _loadBackgroundData();
+
     _startAutoRefresh();
+  }
+
+  // Load essential data that users see first
+  Future<void> _loadCriticalData() async {
+    try {
+      // Load today's shifts first (most important)
+      await _loadLiveShifts().timeout(const Duration(seconds: 8));
+
+      // Then load yesterday's missed tasks
+      await _loadYesterdayMissed().timeout(const Duration(seconds: 8));
+    } catch (e) {
+      logger.e('[Dashboard] Critical data loading failed: $e');
+      // Show error state or fallback data
+    }
+  }
+
+  // Load less critical data in background
+  Future<void> _loadBackgroundData() async {
+    // Load these without blocking the UI
+    _loadMissedTrend7d().timeout(const Duration(seconds: 10)).catchError((e) {
+      logger.e('[Dashboard] Missed trend loading failed: $e');
+    });
+    _loadFrequentMisses30d().timeout(const Duration(seconds: 15)).catchError((e) {
+      logger.e('[Dashboard] Frequent misses loading failed: $e');
+    });
+    _loadPoorShifts30d().timeout(const Duration(seconds: 15)).catchError((e) {
+      logger.e('[Dashboard] Poor shifts loading failed: $e');
+    });
   }
 
   @override
@@ -212,14 +256,10 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
     });
   }
 
+  // Optimized loading - now just triggers the progressive loading sequence
   Future<void> _loadAll() async {
-    await Future.wait([
-      _loadYesterdayMissed(),
-      _loadMissedTrend7d(),
-      _loadLiveShifts(),
-      _loadFrequentMisses30d(),
-      _loadPoorShifts30d(),
-    ]);
+    await _loadCriticalData();
+    _loadBackgroundData();
   }
 
   Future<void> _loadYesterdayMissed() async {
@@ -903,10 +943,10 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
               Expanded(
                 flex:
                     isMobile
-                        ? 7
+                        ? 6 // Reduced from 7 to make room for bottom content
                         : isCondensed
                         ? 6
-                        : 6, // Increased flex to give more space to Today's Shifts
+                        : 6,
                 child:
                     (isMobile || isCondensed)
                         ? Column(
@@ -1186,111 +1226,202 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
               Expanded(
                 flex:
                     isMobile
-                        ? 3
+                        ? 4 // Increased flex for mobile to give more space
                         : isCondensed
                         ? 4
-                        : 4, // Reduced flex to give more space to top
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Frequent Misses
-                      Expanded(
-                        flex: 1,
-                        child: _SummaryCard(
-                          title: isMobile ? 'Frequent Misses' : 'Frequent Misses (30d)',
-                          icon: Icons.trending_down,
-                          accentColor: HandsColors.error, // Red for frequent misses
-                          loading: _loadingFrequent,
-                          valueBuilder:
-                              () => Text(
-                                _frequentMisses30d.isEmpty ? '0 HOT SPOTS' : '${_frequentMisses30d.length} HOT SPOTS',
-                                style: GoogleFonts.comfortaa(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w500,
-                                  color: HandsColors.error,
+                        : 4,
+                child: Column(
+                  children: [
+                    // Main bottom content
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child:
+                            isMobile
+                                ?
+                                // Mobile: Stack vertically to prevent overlapping
+                                Column(
+                                  children: [
+                                    // Frequent Misses (mobile)
+                                    Expanded(
+                                      child: _SummaryCard(
+                                        title: 'Frequent Misses (30d)',
+                                        icon: Icons.trending_down,
+                                        accentColor: HandsColors.error,
+                                        loading: _loadingFrequent,
+                                        valueBuilder:
+                                            () => Text(
+                                              _frequentMisses30d.isEmpty
+                                                  ? '0 HOT SPOTS'
+                                                  : '${_frequentMisses30d.length} HOT SPOTS',
+                                              style: GoogleFonts.comfortaa(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w500,
+                                                color: HandsColors.error,
+                                              ),
+                                            ),
+                                        onTap: _openAllFrequentMisses,
+                                        child: _TopListPreview(
+                                          items:
+                                              _frequentMisses30d.take(2).map((t) {
+                                                final name = (t['taskName'] ?? 'Unknown Task').toString();
+                                                final count = (t['count'] ?? t['missedCount'] ?? 0).toString();
+                                                final displayName =
+                                                    name.length > 12 ? '${name.substring(0, 12)}...' : name;
+                                                return '$displayName ×$count';
+                                              }).toList(),
+                                          emptyLabel: 'No frequent misses',
+                                        ),
+                                      ),
+                                    ),
+                                    SizedBox(height: gap),
+                                    // Poor Performing (mobile)
+                                    Expanded(
+                                      child: _SummaryCard(
+                                        title: 'Poor Performing (30d)',
+                                        icon: Icons.speed,
+                                        accentColor: HandsColors.handsOrange,
+                                        loading: _loadingPoorShifts,
+                                        valueBuilder:
+                                            () => Text(
+                                              _poorShifts30d.isEmpty ? 'ALL OK' : '${_poorShifts30d.length} FLAGGED',
+                                              style: GoogleFonts.comfortaa(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w500,
+                                                color:
+                                                    _poorShifts30d.isEmpty
+                                                        ? HandsColors.sageGreen
+                                                        : HandsColors.handsOrange,
+                                              ),
+                                            ),
+                                        onTap: _openPoorShiftDetails,
+                                        child: _TopListPreview(
+                                          items:
+                                              _poorShifts30d.take(2).map((m) {
+                                                final pct = ((m['avgCompletion'] as double?) ?? 0) * 100;
+                                                final shiftName = (m['shiftName'] ?? 'Unknown').toString();
+                                                final displayName =
+                                                    shiftName.length > 12
+                                                        ? '${shiftName.substring(0, 12)}...'
+                                                        : shiftName;
+                                                return '$displayName ${pct.toStringAsFixed(0)}%';
+                                              }).toList(),
+                                          emptyLabel: 'No issues found',
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                )
+                                :
+                                // Desktop: Side by side layout
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    // Frequent Misses
+                                    Expanded(
+                                      flex: 1,
+                                      child: _SummaryCard(
+                                        title: 'Frequent Misses (30d)',
+                                        icon: Icons.trending_down,
+                                        accentColor: HandsColors.error,
+                                        loading: _loadingFrequent,
+                                        valueBuilder:
+                                            () => Text(
+                                              _frequentMisses30d.isEmpty
+                                                  ? '0 HOT SPOTS'
+                                                  : '${_frequentMisses30d.length} HOT SPOTS',
+                                              style: GoogleFonts.comfortaa(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w500,
+                                                color: HandsColors.error,
+                                              ),
+                                            ),
+                                        onTap: _openAllFrequentMisses,
+                                        child: _TopListPreview(
+                                          items:
+                                              _frequentMisses30d.take(3).map((t) {
+                                                final name = (t['taskName'] ?? 'Unknown Task').toString();
+                                                final shift = (t['shiftName'] ?? '').toString();
+                                                final shiftNames = (t['shiftNames'] ?? []).cast<String>();
+                                                final count = (t['count'] ?? t['missedCount'] ?? 0).toString();
+
+                                                String shiftDisplay = '';
+                                                if (shiftNames.isNotEmpty) {
+                                                  if (shiftNames.length == 1) {
+                                                    shiftDisplay = ' • ${shiftNames.first}';
+                                                  } else {
+                                                    shiftDisplay = ' • +${shiftNames.length} shifts';
+                                                  }
+                                                } else if (shift.isNotEmpty) {
+                                                  shiftDisplay = ' • $shift';
+                                                }
+
+                                                final displayName =
+                                                    name.length > 15 ? '${name.substring(0, 15)}...' : name;
+                                                return '$displayName$shiftDisplay ×$count';
+                                              }).toList(),
+                                          emptyLabel: 'No frequent misses',
+                                        ),
+                                      ),
+                                    ),
+                                    SizedBox(width: gap),
+                                    // Poor Performing Shifts
+                                    Expanded(
+                                      flex: 1,
+                                      child: _SummaryCard(
+                                        title: 'Poor Performing Shifts (30d)',
+                                        icon: Icons.speed,
+                                        accentColor: HandsColors.handsOrange,
+                                        loading: _loadingPoorShifts,
+                                        valueBuilder:
+                                            () => Text(
+                                              _poorShifts30d.isEmpty ? 'ALL OK' : '${_poorShifts30d.length} FLAGGED',
+                                              style: GoogleFonts.comfortaa(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w500,
+                                                color:
+                                                    _poorShifts30d.isEmpty
+                                                        ? HandsColors.sageGreen
+                                                        : HandsColors.handsOrange,
+                                              ),
+                                            ),
+                                        onTap: _openPoorShiftDetails,
+                                        child: _TopListPreview(
+                                          items:
+                                              _poorShifts30d.take(3).map((m) {
+                                                final pct = ((m['avgCompletion'] as double?) ?? 0) * 100;
+                                                final shiftName = (m['shiftName'] ?? 'Unknown').toString();
+                                                final displayName =
+                                                    shiftName.length > 18
+                                                        ? '${shiftName.substring(0, 18)}...'
+                                                        : shiftName;
+                                                return '$displayName ${pct.toStringAsFixed(0)}%';
+                                              }).toList(),
+                                          emptyLabel: 'No issues found',
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                          onTap: _openAllFrequentMisses,
-                          child: _TopListPreview(
-                            items:
-                                _frequentMisses30d.take(3).map((t) {
-                                  final name = (t['taskName'] ?? 'Unknown Task').toString();
-                                  final shift = (t['shiftName'] ?? '').toString();
-                                  final shiftNames = (t['shiftNames'] ?? []).cast<String>();
-                                  final count = (t['count'] ?? t['missedCount'] ?? 0).toString();
+                      ),
+                    ),
 
-                                  // Create display string for shifts - make it more concise
-                                  String shiftDisplay = '';
-                                  if (shiftNames.isNotEmpty) {
-                                    if (shiftNames.length == 1) {
-                                      shiftDisplay = ' • ${shiftNames.first}';
-                                    } else {
-                                      shiftDisplay = ' • +${shiftNames.length} shifts';
-                                    }
-                                  } else if (shift.isNotEmpty) {
-                                    shiftDisplay = ' • $shift';
-                                  }
+                    SizedBox(height: compact ? 4 : 6),
 
-                                  // Keep it concise to prevent overflow
-                                  final displayName = name.length > 15 ? '${name.substring(0, 15)}...' : name;
-                                  return '$displayName$shiftDisplay ×$count';
-                                }).toList(),
-                            emptyLabel: 'No frequent misses',
-                          ),
+                    // Task History button - separate from the cards to prevent overlap
+                    SizedBox(
+                      height: compact ? 36 : 44, // Smaller on mobile
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: isMobile ? 4 : 8),
+                        child: HandsPrimaryButton(
+                          text: 'Task History',
+                          onPressed: _openTaskHistorySheet,
+                          icon: Icons.analytics,
+                          width: double.infinity,
                         ),
                       ),
-                      SizedBox(width: gap),
-                      // Poor Performing Shifts
-                      Expanded(
-                        flex: 1,
-                        child: _SummaryCard(
-                          title: isMobile ? 'Poor Performing' : 'Poor Performing Shifts (30d)',
-                          icon: Icons.speed,
-                          accentColor: HandsColors.handsOrange, // Orange for poor performance
-                          loading: _loadingPoorShifts,
-                          valueBuilder:
-                              () => Text(
-                                _poorShifts30d.isEmpty ? 'ALL OK' : '${_poorShifts30d.length} FLAGGED',
-                                style: GoogleFonts.comfortaa(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w500,
-                                  color: _poorShifts30d.isEmpty ? HandsColors.sageGreen : HandsColors.handsOrange,
-                                ),
-                              ),
-                          onTap: _openPoorShiftDetails,
-                          child: _TopListPreview(
-                            items:
-                                _poorShifts30d.take(3).map((m) {
-                                  final pct = ((m['avgCompletion'] as double?) ?? 0) * 100;
-                                  final shiftName = (m['shiftName'] ?? 'Unknown').toString();
-                                  final displayName =
-                                      shiftName.length > 18 ? '${shiftName.substring(0, 18)}...' : shiftName;
-                                  return '$displayName ${pct.toStringAsFixed(0)}%';
-                                }).toList(),
-                            emptyLabel: 'No issues found',
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              SizedBox(height: compact ? 2 : 3),
-
-              // Footer button
-              SizedBox(
-                height: compact ? 44 : 48,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: HandsPrimaryButton(
-                    text: 'Task History',
-                    onPressed: _openTaskHistorySheet,
-                    icon: Icons.analytics,
-                    width: double.infinity,
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -2123,7 +2254,7 @@ class _SwipeShiftCard extends StatelessWidget {
     // Make Harvey ball larger on mobile for better visibility
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = screenWidth < 600;
-    final harveyBallSize = isMobile ? 48.0 : 42.0;
+    final harveyBallSize = isMobile ? 60.0 : 42.0; // Increased mobile size significantly
 
     return Material(
       color: HandsColors.cardTertiary,
@@ -2133,7 +2264,7 @@ class _SwipeShiftCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(8),
+          padding: EdgeInsets.all(isMobile ? 6 : 8), // Reduced padding on mobile
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -2147,7 +2278,11 @@ class _SwipeShiftCard extends StatelessWidget {
                       shiftName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.comfortaa(fontWeight: FontWeight.w600, fontSize: 11, color: HandsColors.white),
+                      style: GoogleFonts.comfortaa(
+                        fontWeight: FontWeight.w600,
+                        fontSize: isMobile ? 10 : 11, // Slightly smaller text on mobile to fit better
+                        color: HandsColors.white,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 4),
@@ -2182,11 +2317,11 @@ class _SwipeShiftCard extends StatelessWidget {
                         if (isMobile)
                           Center(
                             child: Text(
-                              '${(pct * 100).toInt()}',
+                              '${(pct * 100).toInt()}%',
                               style: GoogleFonts.comfortaa(
-                                fontSize: 8, // Increased from 6 to accommodate larger Harvey ball
+                                fontSize: 12, // Much larger text for mobile
                                 fontWeight: FontWeight.bold,
-                                color: pct > 0.5 ? HandsColors.white : HandsColors.white,
+                                color: Colors.black, // Black text as requested
                               ),
                             ),
                           ),
@@ -2195,22 +2330,24 @@ class _SwipeShiftCard extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-
+              SizedBox(height: isMobile ? 4 : 8), // Reduced spacing on mobile
               // Tasks completed (center)
               Text(
                 '$completedTasks/$totalTasks tasks',
-                style: GoogleFonts.comfortaa(fontSize: 10, color: HandsColors.white70, fontWeight: FontWeight.w500),
+                style: GoogleFonts.comfortaa(
+                  fontSize: isMobile ? 9 : 10,
+                  color: HandsColors.white70,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
-              const SizedBox(height: 4),
-
+              SizedBox(height: isMobile ? 2 : 4), // Reduced spacing on mobile
               // Time remaining (center)
               Text(
                 status,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: GoogleFonts.comfortaa(
-                  fontSize: 9,
+                  fontSize: isMobile ? 8 : 9, // Smaller text on mobile
                   color: _getTimeStatusColor(status),
                   fontWeight: FontWeight.w500,
                 ),

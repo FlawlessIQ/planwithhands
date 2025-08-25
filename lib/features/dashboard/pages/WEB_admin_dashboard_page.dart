@@ -432,41 +432,50 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
                 onSelected: (value) {
                   setState(() {
                     _selectedLocationId = value;
-                    _selectedLocationName = _availableLocations
-                        .firstWhere((loc) => loc['id'] == value, orElse: () => {'name': 'Unknown Location'})['name']
-                        as String?;
+                    _selectedLocationName =
+                        _availableLocations.firstWhere(
+                              (loc) => loc['id'] == value,
+                              orElse: () => {'name': 'Unknown Location'},
+                            )['name']
+                            as String?;
                   });
                 },
-                itemBuilder: (context) => _availableLocations.map((location) {
-                  return PopupMenuItem<String>(
-                    value: location['id'],
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.location_on,
-                          color: location['id'] == _selectedLocationId ? HandsColors.handsOrange : HandsColors.white70,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            location['name'],
-                            style: GoogleFonts.comfortaa(
-                              fontWeight: location['id'] == _selectedLocationId ? FontWeight.bold : FontWeight.normal,
-                              color: HandsColors.white,
+                itemBuilder:
+                    (context) =>
+                        _availableLocations.map((location) {
+                          return PopupMenuItem<String>(
+                            value: location['id'],
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.location_on,
+                                  color:
+                                      location['id'] == _selectedLocationId
+                                          ? HandsColors.handsOrange
+                                          : HandsColors.white70,
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    location['name'],
+                                    style: GoogleFonts.comfortaa(
+                                      fontWeight:
+                                          location['id'] == _selectedLocationId ? FontWeight.bold : FontWeight.normal,
+                                      color: HandsColors.white,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (location['id'] == _selectedLocationId)
+                                  const Padding(
+                                    padding: EdgeInsets.only(left: 8),
+                                    child: Icon(Icons.check, color: HandsColors.handsOrange, size: 16),
+                                  ),
+                              ],
                             ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (location['id'] == _selectedLocationId)
-                          const Padding(
-                            padding: EdgeInsets.only(left: 8),
-                            child: Icon(Icons.check, color: HandsColors.handsOrange, size: 16),
-                          ),
-                      ],
-                    ),
-                  );
-                }).toList(),
+                          );
+                        }).toList(),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
@@ -503,14 +512,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           // Left Navigation Bar
           _buildLeftNavigation(),
           // Main Content Area
-          Expanded(
-            child: Column(
-              children: [
-                _buildFilterBar(),
-                Expanded(child: _buildMainContent()),
-              ],
-            ),
-          ),
+          Expanded(child: Column(children: [_buildFilterBar(), Expanded(child: _buildMainContent())])),
         ],
       ),
       bottomNavigationBar: BottomNavBar(currentIndex: 2, userRole: userRole), // Admin tab is index 2
@@ -527,9 +529,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(24),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: HandsColors.white12, width: 1)),
-            ),
+            decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: HandsColors.white12, width: 1))),
             child: Text(
               'ADMIN SETUP',
               style: GoogleFonts.comfortaa(
@@ -599,11 +599,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
-                Icon(
-                  icon,
-                  color: isActive ? HandsColors.handsOrange : HandsColors.white70,
-                  size: 20,
-                ),
+                Icon(icon, color: isActive ? HandsColors.handsOrange : HandsColors.white70, size: 20),
                 const SizedBox(width: 12),
                 Text(
                   label,
@@ -644,12 +640,13 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
                     hintText: 'Search ${_getTabDisplayName()}...',
                     hintStyle: GoogleFonts.comfortaa(color: HandsColors.white30),
                     prefixIcon: const Icon(Icons.search, color: HandsColors.white30),
-                    suffixIcon: _searchQuery.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear, color: HandsColors.white30),
-                            onPressed: () => _searchController.clear(),
-                          )
-                        : null,
+                    suffixIcon:
+                        _searchQuery.isNotEmpty
+                            ? IconButton(
+                              icon: const Icon(Icons.clear, color: HandsColors.white30),
+                              onPressed: () => _searchController.clear(),
+                            )
+                            : null,
                     filled: true,
                     fillColor: HandsColors.secondaryContainer,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
@@ -674,13 +671,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           // Location filter for mobile/smaller screens (if needed)
           if (_shouldShowLocationFilter() && MediaQuery.of(context).size.width < 1200) ...[
             const SizedBox(height: 16),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: SizedBox(
-                width: 250,
-                child: _locationPicker(context),
-              ),
-            ),
+            Align(alignment: Alignment.centerLeft, child: SizedBox(width: 250, child: _locationPicker(context))),
           ],
         ],
       ),
@@ -1424,11 +1415,32 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               final data = doc.data() as Map<String, dynamic>;
               logger.d('[WEBAdminDashboard] Processing location: ${doc.id} -> $data');
 
+              // Try multiple possible field names for location name
+              String locationName = '';
+              if (data['name'] != null && data['name'].toString().isNotEmpty) {
+                locationName = data['name'].toString();
+              } else if (data['locationName'] != null && data['locationName'].toString().isNotEmpty) {
+                locationName = data['locationName'].toString();
+              } else {
+                locationName = 'Unnamed Location';
+              }
+
+              // Try multiple possible field names for address
+              String address = '';
+              if (data['address'] != null && data['address'].toString().isNotEmpty) {
+                address = data['address'].toString();
+              } else if (data['locationAddress'] != null && data['locationAddress'].toString().isNotEmpty) {
+                address = data['locationAddress'].toString();
+              } else {
+                address = 'No address';
+              }
+
               return {
                 'id': doc.id,
-                'name': data['name'] ?? 'Unnamed Location',
-                'address': data['address'] ?? 'No address',
-                'isActive': data['isActive'] ?? true,
+                'name': locationName,
+                'address': address,
+                'isActive': data['isActive'] ?? data['active'] ?? true,
+                'isPrimary': data['isPrimary'] ?? false,
                 'createdAt': data['createdAt'],
                 ...data,
               };
@@ -1535,6 +1547,11 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
                 icon: Icon(location['isActive'] ? Icons.archive : Icons.unarchive, color: HandsColors.amber, size: 20),
                 onPressed: () => _toggleLocationActive(location),
                 tooltip: location['isActive'] ? 'Archive' : 'Restore',
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete, color: HandsColors.error, size: 20),
+                onPressed: () => _deleteLocation(location),
+                tooltip: 'Delete',
               ),
             ],
           ),
@@ -1897,6 +1914,49 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
       _showSnackBar('Location ${location['isActive'] ? 'archived' : 'restored'} successfully');
     } catch (e) {
       _showSnackBar('Failed to update location: $e', isError: true);
+    }
+  }
+
+  void _deleteLocation(Map<String, dynamic> location) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            backgroundColor: HandsColors.cardPrimary,
+            title: Text('Delete Location', style: GoogleFonts.comfortaa(color: HandsColors.white)),
+            content: Text(
+              'Are you sure you want to delete "${location['name']}"? This action cannot be undone and will affect any shifts or users assigned to this location.',
+              style: GoogleFonts.comfortaa(color: HandsColors.white70),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text('Cancel', style: GoogleFonts.comfortaa(color: HandsColors.white70)),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: Text('Delete', style: GoogleFonts.comfortaa(color: HandsColors.error)),
+              ),
+            ],
+          ),
+    );
+
+    if (confirm == true) {
+      try {
+        await FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(widget.organizationId)
+            .collection('locations')
+            .doc(location['id'])
+            .delete();
+
+        _showSnackBar('Location deleted successfully');
+
+        // Refresh locations list and reload tables
+        await _loadLocations();
+      } catch (e) {
+        _showSnackBar('Failed to delete location: $e', isError: true);
+      }
     }
   }
 

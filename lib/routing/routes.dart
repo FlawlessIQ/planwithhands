@@ -6,6 +6,7 @@ import 'package:hands_app/features/dashboard/pages/admin_dashboard_page.dart';
 import 'package:hands_app/features/dashboard/pages/WEB_admin_dashboard_page.dart'
     show WEBAdminDashboardPage, WebAdminTab;
 import 'package:hands_app/features/dashboard/pages/manager_dashboard_page.dart';
+import 'package:hands_app/features/dashboard/pages/WEB_manager_dashboard_page.dart' as web_manager;
 import 'package:hands_app/features/auth/pages/login_page.dart';
 import 'package:hands_app/features/auth/pages/account_creation_page_simple_branded.dart' as branded;
 // import 'package:hands_app/features/auth/pages/invitation_page.dart';
@@ -38,13 +39,15 @@ Widget _buildAdminSetupPage(BuildContext ctx, {required String organizationId, S
   final isLargeScreen = screenWidth >= 1024; // Desktop/large tablet threshold
   final aspectRatio = screenWidth / screenHeight;
   final isLandscapeDesktop = aspectRatio > 1.3 && screenWidth >= 1024;
-  
+
   // Use web version for desktop-like environments (large screens in landscape)
   // Use mobile version for mobile devices, even when accessing via web
   final useWebVersion = kIsWeb && (isLargeScreen || isLandscapeDesktop);
-  
-  debugPrint('Admin route -> ${useWebVersion ? 'WEB' : 'MOBILE'} | width=$screenWidth height=$screenHeight ratio=${aspectRatio.toStringAsFixed(2)} | orgId=$organizationId tab=$tab');
-  
+
+  debugPrint(
+    'Admin route -> ${useWebVersion ? 'WEB' : 'MOBILE'} | width=$screenWidth height=$screenHeight ratio=${aspectRatio.toStringAsFixed(2)} | orgId=$organizationId tab=$tab',
+  );
+
   // Convert string tab to WebAdminTab enum for web version
   WebAdminTab? webAdminTab;
   if (tab != null && useWebVersion) {
@@ -63,11 +66,36 @@ Widget _buildAdminSetupPage(BuildContext ctx, {required String organizationId, S
         break;
     }
   }
-  
-  return useWebVersion 
-    ? WEBAdminDashboardPage(organizationId: organizationId, initialTab: webAdminTab) 
-    : AdminDashboardPage();
-}enum AppRoutes {
+
+  return useWebVersion
+      ? WEBAdminDashboardPage(organizationId: organizationId, initialTab: webAdminTab)
+      : AdminDashboardPage();
+}
+
+// Helper function to build the appropriate manager dashboard page based on platform
+Widget _buildManagerDashboardPage(BuildContext ctx, {required String organizationId}) {
+  // Check if we should use the web version based on screen size and device characteristics
+  final mediaQuery = MediaQuery.of(ctx);
+  final screenWidth = mediaQuery.size.width;
+  final screenHeight = mediaQuery.size.height;
+  final isLargeScreen = screenWidth >= 1024; // Desktop/large tablet threshold
+  final aspectRatio = screenWidth / screenHeight;
+  final isLandscapeDesktop = aspectRatio > 1.3 && screenWidth >= 1024;
+
+  // Use web version for desktop-like environments (large screens in landscape)
+  // Use mobile version for mobile devices, even when accessing via web
+  final useWebVersion = kIsWeb && (isLargeScreen || isLandscapeDesktop);
+
+  debugPrint(
+    'Manager route -> ${useWebVersion ? 'WEB' : 'MOBILE'} | width=$screenWidth height=$screenHeight ratio=${aspectRatio.toStringAsFixed(2)} | orgId=$organizationId',
+  );
+
+  return useWebVersion
+      ? web_manager.ManagerDashboardPage(organizationId: organizationId)
+      : ManagerDashboardPage(organizationId: organizationId);
+}
+
+enum AppRoutes {
   homePage('/'),
   accountCreationPage('/create_account'),
   loginPage('/login'),
@@ -209,7 +237,7 @@ class AuthGateWithOrgForManager extends ConsumerWidget {
               return const Scaffold(body: Center(child: CircularProgressIndicator()));
             }
             // Allow both managers and admins to view this page
-            return ManagerDashboardPage(organizationId: orgId);
+            return _buildManagerDashboardPage(context, organizationId: orgId);
           },
         );
       },

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:hands_app/theme/theme.dart';
 
 class ProfessionalMessageDialog extends StatelessWidget {
   final String title;
@@ -32,6 +33,7 @@ class ProfessionalMessageDialog extends StatelessWidget {
       elevation: 8,
       child: Container(
         constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
+        decoration: BoxDecoration(color: HandsColors.secondaryContainer, borderRadius: BorderRadius.circular(16)),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -99,7 +101,7 @@ class ProfessionalMessageDialog extends StatelessWidget {
                 child: SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [Text(content, style: const TextStyle(fontSize: 16, height: 1.5, color: Colors.black87))],
+                    children: [Text(content, style: const TextStyle(fontSize: 16, height: 1.5, color: Colors.white))],
                   ),
                 ),
               ),
