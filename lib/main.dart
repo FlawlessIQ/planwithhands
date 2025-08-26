@@ -14,6 +14,7 @@ import 'package:hands_app/services/web_asset_service.dart';
 import 'package:hands_app/services/stripe_service.dart';
 import 'package:hands_app/services/daily_background_service.dart';
 import 'package:hands_app/services/push_notification_service.dart';
+import 'package:hands_app/services/location_selection_service.dart';
 import 'package:hands_app/debug/functions_connection_debug.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:hands_app/core/logging/logger.dart';
@@ -133,6 +134,13 @@ void main() async {
 
   // Initialize background services
   _initializeBackgroundServices();
+
+  // Initialize location selection service to load saved location
+  try {
+    await LocationSelectionService.instance.initialize();
+  } catch (e) {
+    logger.e('Failed to initialize LocationSelectionService: $e', e);
+  }
 
   runApp(
     ProviderScope(

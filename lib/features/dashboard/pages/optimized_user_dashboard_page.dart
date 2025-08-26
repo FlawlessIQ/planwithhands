@@ -5,6 +5,7 @@ import 'package:hands_app/services/dashboard_data_service.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/models/daily_checklist.dart';
 import 'package:hands_app/data/models/shift_data.dart';
+import 'package:hands_app/services/location_selection_service.dart';
 
 /// Optimized User Dashboard with Performance Enhancements
 ///
@@ -226,7 +227,7 @@ class OptimizedUserDashboardPage extends HookWidget {
           const Text('Location: ', style: TextStyle(fontWeight: FontWeight.w500)),
           Expanded(
             child: DropdownButtonFormField<String?>(
-              value: selectedLocationId,
+              value: selectedLocationId ?? LocationSelectionService.instance.currentLocationId,
               decoration: const InputDecoration(
                 contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 border: OutlineInputBorder(),
@@ -240,7 +241,11 @@ class OptimizedUserDashboardPage extends HookWidget {
                   ),
                 ),
               ],
-              onChanged: onLocationChanged,
+              onChanged: (value) {
+                // Update global persisted selection (null allowed -> all)
+                LocationSelectionService.instance.setLocation(value);
+                onLocationChanged?.call(value);
+              },
             ),
           ),
         ],

@@ -16,6 +16,7 @@ import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/utils/location_helper.dart';
 import 'package:hands_app/utils/jobtype_helper.dart';
 import 'package:hands_app/data/models/shift_data.dart';
+import 'package:hands_app/services/location_selection_service.dart';
 
 // Bottom sheet widgets for editing
 import 'package:hands_app/features/shifts/shift_template_bottom_sheet.dart';
@@ -74,8 +75,37 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
   void initState() {
     super.initState();
     _currentTab = widget.initialTab ?? WebAdminTab.shifts;
+    // Seed selected location from global persisted value if available
+    _selectedLocationId = LocationSelectionService.instance.currentLocationId;
+    // Keep in sync with global location selection changes from other pages/dialogs.
+    LocationSelectionService.instance.listenable.addListener(_onGlobalLocationChanged);
     _checkUserAccess();
     _searchController.addListener(_onSearchChanged);
+  }
+
+  void _onGlobalLocationChanged() {
+    final globalId = LocationSelectionService.instance.currentLocationId;
+    if (globalId != null && globalId != _selectedLocationId) {
+      setState(() {
+        _selectedLocationId = globalId;
+        // Optionally update name if we have it
+        final match = _availableLocations.firstWhere(
+          (l) => l['id'] == globalId,
+          orElse: () => {'name': _selectedLocationName},
+        );
+        _selectedLocationName = match['name'] as String? ?? _selectedLocationName;
+      });
+      // Reload data scoped to new location
+      unawaited(_reloadAllTables());
+    }
+  }
+
+  @override
+  void dispose() {
+    LocationSelectionService.instance.listenable.removeListener(_onGlobalLocationChanged);
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    super.dispose();
   }
 
   // Reload on mount after access check sets up org
@@ -181,6 +211,8 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               _availableLocations.firstWhere((l) => l['id'] == value, orElse: () => {'name': 'Location'})['name']
                   as String?;
         });
+        // Persist globally so other pages adopt the change
+        LocationSelectionService.instance.setLocation(value);
         await _reloadAllTables();
       },
       itemBuilder:
@@ -225,11 +257,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
     }
   }
 
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
+  // (Original dispose merged into enhanced dispose near top adding global listener removal)
 
   void _onSearchChanged() {
     setState(() {
@@ -831,6 +859,14 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           });
         }
 
+        // Ensure archived/inactive shifts (active == false) appear at bottom (stable grouping)
+        shifts.sort((a, b) {
+          final aInactive = (a['active'] ?? true) == false;
+          final bInactive = (b['active'] ?? true) == false;
+          if (aInactive == bInactive) return 0;
+          return aInactive ? 1 : -1; // inactive last
+        });
+
         return _buildDataTable(
           columns: [
             DataColumn(
@@ -972,6 +1008,11 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
                 onPressed: () => _toggleShiftActive(shift),
                 tooltip: shift['active'] ? 'Archive' : 'Restore',
               ),
+              IconButton(
+                icon: const Icon(Icons.delete, color: HandsColors.error, size: 20),
+                onPressed: () => _deleteShift(shift),
+                tooltip: 'Delete',
+              ),
             ],
           ),
         ),
@@ -1049,6 +1090,14 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           });
         }
 
+        // Ensure archived checklists (archived == true) appear at bottom
+        checklists.sort((a, b) {
+          final aArchived = (a['archived'] ?? false) == true;
+          final bArchived = (b['archived'] ?? false) == true;
+          if (aArchived == bArchived) return 0;
+          return aArchived ? 1 : -1; // archived last
+        });
+
         return _buildDataTable(
           columns: [
             DataColumn(
@@ -1071,8 +1120,9 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               },
               numeric: true,
             ),
-            const DataColumn(label: Text('Actions')),
             const DataColumn(label: Text('Used in Shifts')),
+            const DataColumn(label: Text('Status')),
+            const DataColumn(label: Text('Actions')),
           ],
           rows: checklists,
           buildRow: (checklist) => _buildChecklistRow(checklist),
@@ -1093,28 +1143,6 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           ),
         ),
         DataCell(Text('${checklist['taskCount']} tasks', style: GoogleFonts.comfortaa(color: HandsColors.white70))),
-        DataCell(
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.edit, color: HandsColors.handsOrange, size: 20),
-                onPressed: () => _editChecklist(checklist),
-                tooltip: 'Edit',
-              ),
-              IconButton(
-                icon: const Icon(Icons.copy, color: HandsColors.white70, size: 20),
-                onPressed: () => _duplicateChecklist(checklist),
-                tooltip: 'Duplicate',
-              ),
-              IconButton(
-                icon: const Icon(Icons.delete, color: HandsColors.error, size: 20),
-                onPressed: () => _deleteChecklist(checklist),
-                tooltip: 'Delete',
-              ),
-            ],
-          ),
-        ),
         DataCell(
           Builder(
             builder: (context) {
@@ -1143,6 +1171,50 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
                 style: GoogleFonts.comfortaa(color: HandsColors.white70),
               );
             },
+          ),
+        ),
+        DataCell(
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: (checklist['archived'] ?? false) == true ? HandsColors.error : HandsColors.sageGreen,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              (checklist['archived'] ?? false) == true ? 'Archived' : 'Active',
+              style: GoogleFonts.comfortaa(color: HandsColors.white, fontSize: 12, fontWeight: FontWeight.w500),
+            ),
+          ),
+        ),
+        DataCell(
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.edit, color: HandsColors.handsOrange, size: 20),
+                onPressed: () => _editChecklist(checklist),
+                tooltip: 'Edit',
+              ),
+              IconButton(
+                icon: const Icon(Icons.copy, color: HandsColors.white70, size: 20),
+                onPressed: () => _duplicateChecklist(checklist),
+                tooltip: 'Duplicate',
+              ),
+              IconButton(
+                icon: Icon(
+                  (checklist['archived'] ?? false) ? Icons.unarchive : Icons.archive,
+                  color: HandsColors.amber,
+                  size: 20,
+                ),
+                onPressed: () => _toggleChecklistArchived(checklist),
+                tooltip: (checklist['archived'] ?? false) ? 'Restore' : 'Archive',
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete, color: HandsColors.error, size: 20),
+                onPressed: () => _deleteChecklist(checklist),
+                tooltip: 'Delete',
+              ),
+            ],
           ),
         ),
       ],
@@ -1250,6 +1322,14 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           });
         }
 
+        // Ensure inactive users (isActive == false) appear at bottom
+        users.sort((a, b) {
+          final aInactive = (a['isActive'] ?? true) == false;
+          final bInactive = (b['isActive'] ?? true) == false;
+          if (aInactive == bInactive) return 0;
+          return aInactive ? 1 : -1;
+        });
+
         return _buildDataTable(
           columns: [
             DataColumn(
@@ -1282,7 +1362,6 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
             const DataColumn(label: Text('Locations')),
             const DataColumn(label: Text('Status')),
             const DataColumn(label: Text('Actions')),
-            const DataColumn(label: Text('Delete')),
           ],
           rows: users,
           buildRow: (user) => _buildUserRow(user),
@@ -1349,39 +1428,41 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
                 onPressed: () => _editUser(user),
                 tooltip: 'Edit',
               ),
-              if (role < 2) // Don't allow archiving admins
+              if (role < 2)
                 IconButton(
                   icon: Icon(user['isActive'] ? Icons.archive : Icons.unarchive, color: HandsColors.amber, size: 20),
                   onPressed: () => _toggleUserActive(user),
                   tooltip: user['isActive'] ? 'Deactivate' : 'Activate',
                 ),
+              IconButton(
+                icon: const Icon(Icons.delete, color: HandsColors.error),
+                tooltip: 'Delete user',
+                onPressed: () async {
+                  final ok =
+                      await showDialog<bool>(
+                        context: context,
+                        builder:
+                            (_) => AlertDialog(
+                              title: const Text('Delete user?'),
+                              content: const Text('This action cannot be undone.'),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                                FilledButton(
+                                  onPressed: () => Navigator.pop(context, true),
+                                  child: const Text('Delete'),
+                                ),
+                              ],
+                            ),
+                      ) ??
+                      false;
+                  if (!ok) return;
+                  await _deleteUser(user['id']);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('User deleted')));
+                  }
+                },
+              ),
             ],
-          ),
-        ),
-        DataCell(
-          IconButton(
-            icon: const Icon(Icons.delete, color: HandsColors.error),
-            tooltip: 'Delete user',
-            onPressed: () async {
-              final ok =
-                  await showDialog<bool>(
-                    context: context,
-                    builder:
-                        (_) => AlertDialog(
-                          title: const Text('Delete user?'),
-                          content: const Text('This action cannot be undone.'),
-                          actions: [
-                            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
-                          ],
-                        ),
-                  ) ??
-                  false;
-              if (!ok) return;
-              await _deleteUser(user['id']);
-              // Data will be updated automatically via StreamBuilder
-              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('User deleted')));
-            },
           ),
         ),
       ],
@@ -1480,6 +1561,14 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           });
         }
 
+        // Ensure inactive locations (isActive == false) appear at bottom
+        locations.sort((a, b) {
+          final aInactive = (a['isActive'] ?? true) == false;
+          final bInactive = (b['isActive'] ?? true) == false;
+          if (aInactive == bInactive) return 0;
+          return aInactive ? 1 : -1;
+        });
+
         return _buildDataTable(
           columns: [
             DataColumn(
@@ -1542,6 +1631,11 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
                 icon: const Icon(Icons.edit, color: HandsColors.handsOrange, size: 20),
                 onPressed: () => _editLocation(location),
                 tooltip: 'Edit',
+              ),
+              IconButton(
+                icon: const Icon(Icons.copy, color: HandsColors.white70, size: 20),
+                onPressed: () => _duplicateLocation(location),
+                tooltip: 'Duplicate',
               ),
               IconButton(
                 icon: Icon(location['isActive'] ? Icons.archive : Icons.unarchive, color: HandsColors.amber, size: 20),
@@ -1622,9 +1716,18 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
   }
 
   Widget _buildPaginationControls(int totalRows) {
-    final totalPages = (totalRows / _rowsPerPage).ceil();
-    final hasNextPage = _currentPage < totalPages - 1;
-    final hasPreviousPage = _currentPage > 0;
+    // Guard against zero rows; previous logic caused clamp(1,0) ArgumentError when totalRows == 0
+    final totalPages = totalRows == 0 ? 0 : (totalRows / _rowsPerPage).ceil();
+    // Use a local page index for display to avoid mutating state during build
+    final displayPage =
+        (totalPages == 0) ? 0 : _currentPage.clamp(0, totalPages - 1); // clamp in case underlying data shrank
+    final hasNextPage = totalPages == 0 ? false : displayPage < totalPages - 1;
+    final hasPreviousPage = totalPages == 0 ? false : displayPage > 0;
+    final startRow = totalRows == 0 ? 0 : displayPage * _rowsPerPage + 1;
+    final endRow =
+        totalRows == 0
+            ? 0
+            : (((displayPage + 1) * _rowsPerPage) > totalRows ? totalRows : ((displayPage + 1) * _rowsPerPage));
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1636,7 +1739,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
-            'Showing ${_currentPage * _rowsPerPage + 1}-${((_currentPage + 1) * _rowsPerPage).clamp(1, totalRows)} of $totalRows',
+            totalRows == 0 ? 'Showing 0 of 0' : 'Showing $startRow-$endRow of $totalRows',
             style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 12),
           ),
           Row(
@@ -1668,7 +1771,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
                 onPressed: hasPreviousPage ? () => setState(() => _currentPage--) : null,
               ),
               Text(
-                'Page ${_currentPage + 1} of $totalPages',
+                totalPages == 0 ? 'Page 0 of 0' : 'Page ${displayPage + 1} of $totalPages',
                 style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 12),
               ),
               IconButton(
@@ -1695,6 +1798,72 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
         return singular ? 'User' : 'Users';
       case WebAdminTab.locations:
         return singular ? 'Location' : 'Locations';
+    }
+  }
+
+  Future<void> _deleteShift(Map<String, dynamic> shift) async {
+    final ok =
+        await showDialog<bool>(
+          context: context,
+          builder:
+              (_) => AlertDialog(
+                title: const Text('Delete shift?'),
+                content: Text('Are you sure you want to delete "${shift['name']}"? This cannot be undone.'),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                  FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+                ],
+              ),
+        ) ??
+        false;
+    if (!ok) return;
+    try {
+      await FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(widget.organizationId)
+          .collection('shifts')
+          .doc(shift['id'])
+          .delete();
+      _showSnackBar('Shift deleted');
+    } catch (e) {
+      _showSnackBar('Failed to delete shift');
+    }
+  }
+
+  Future<void> _toggleChecklistArchived(Map<String, dynamic> checklist) async {
+    final archived = (checklist['archived'] ?? false) == true;
+    try {
+      await FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(widget.organizationId)
+          .collection('checklist_templates')
+          .doc(checklist['id'])
+          .update({'archived': !archived, 'updatedAt': FieldValue.serverTimestamp()});
+      _showSnackBar('Checklist ${archived ? 'restored' : 'archived'}');
+    } catch (e) {
+      _showSnackBar('Failed to update checklist');
+    }
+  }
+
+  Future<void> _duplicateLocation(Map<String, dynamic> location) async {
+    try {
+      final newData =
+          Map<String, dynamic>.from(location)
+            ..remove('id')
+            ..remove('createdAt')
+            ..remove('updatedAt')
+            ..['name'] = '${location['name']} Copy'
+            ..['createdAt'] = FieldValue.serverTimestamp();
+      final ref =
+          FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(widget.organizationId)
+              .collection('locations')
+              .doc();
+      await ref.set(newData);
+      _showSnackBar('Location duplicated');
+    } catch (e) {
+      _showSnackBar('Failed to duplicate');
     }
   }
 
@@ -1749,18 +1918,115 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
   }
 
   void _editShift(Map<String, dynamic>? shift) {
-    _showEditDialog(
-      ShiftTemplateBottomSheet(
-        organizationId: widget.organizationId,
-        shiftId: shift?['id'],
-        shiftData: shift != null ? _mapToShiftData(shift) : null,
-        availableLocations: _availableLocations,
-        onShiftSaved: () {
-          Navigator.of(context).pop();
-          _showSnackBar(shift == null ? 'Shift created successfully' : 'Shift updated successfully');
-        },
-      ),
-    );
+    // Ensure we always open the editor and avoid throwing on legacy/malformed docs.
+    // _mapToShiftData may return null; if so build a resilient fallback using safe
+    // coercion helpers and guard with try/catch so the UI still opens.
+    logger.i('[WEBAdminDashboard] _editShift invoked for shiftId=${shift?['id']} name=${shift?['name']}');
+    ShiftData? shiftData;
+    if (shift != null) {
+      shiftData = _mapToShiftData(shift);
+      if (shiftData == null) {
+        // Local helpers to coerce dynamic Firestore values into safe types.
+        List<String> _coerceStringList(dynamic v) {
+          if (v == null) return [];
+          if (v is List) return v.map((e) => e?.toString() ?? '').where((s) => s.isNotEmpty).toList();
+          return [v.toString()];
+        }
+
+        Map<String, int> _coerceIntMap(dynamic v) {
+          final out = <String, int>{};
+          if (v == null) return out;
+          if (v is Map) {
+            v.forEach((key, value) {
+              try {
+                if (value is int)
+                  out[key.toString()] = value;
+                else if (value is String) {
+                  final parsed = int.tryParse(value);
+                  if (parsed != null) out[key.toString()] = parsed;
+                } else if (value is double)
+                  out[key.toString()] = value.toInt();
+              } catch (_) {}
+            });
+          }
+          return out;
+        }
+
+        DateTime? _toDate(dynamic v) {
+          if (v == null) return null;
+          if (v is Timestamp) return v.toDate();
+          if (v is DateTime) return v;
+          try {
+            return DateTime.parse(v.toString());
+          } catch (_) {
+            return null;
+          }
+        }
+
+        try {
+          shiftData = ShiftData(
+            shiftId: shift['id'] ?? '',
+            shiftName: shift['name'] ?? shift['shiftName'] ?? 'Unnamed Shift',
+            createdAt: _toDate(shift['createdAt']) ?? DateTime.now(),
+            startTime: shift['startTime'] ?? '',
+            endTime: shift['endTime'] ?? '',
+            organizationId: widget.organizationId,
+            locationIds: _coerceStringList(shift['locations'] ?? shift['locationIds'] ?? shift['location']),
+            checklistTemplateIds: _coerceStringList(
+              shift['checklists'] ?? shift['checklistTemplateIds'] ?? shift['checklistIds'],
+            ),
+            jobType: _coerceStringList(shift['jobType'] ?? shift['jobTypes']),
+            staffingLevels: _coerceIntMap(shift['staffingLevels']),
+            days: _coerceStringList(shift['days']),
+            repeatsDaily: shift['repeatsDaily'] ?? false,
+            activeDays:
+                (shift['activeDays'] is List)
+                    ? (shift['activeDays'] as List)
+                        .map((e) => int.tryParse(e.toString()) ?? 0)
+                        .where((i) => i != 0)
+                        .toList()
+                    : [],
+            assignedUserIds: _coerceStringList(shift['assignedUserIds']),
+            volunteers: _coerceStringList(shift['volunteers']),
+            published: shift['published'] ?? false,
+            shiftDate: _toDate(shift['shiftDate']),
+            updatedAt: _toDate(shift['updatedAt']),
+          );
+        } catch (e, st) {
+          logger.e('[WEBAdminDashboard] Error building fallback ShiftData: $e\n$st');
+          // Fallback to minimal ShiftData so the editor still opens.
+          shiftData = ShiftData(
+            shiftId: shift['id'] ?? '',
+            shiftName: shift['name'] ?? shift['shiftName'] ?? 'Unnamed Shift',
+            createdAt: DateTime.now(),
+            startTime: shift['startTime'] ?? '',
+            endTime: shift['endTime'] ?? '',
+            organizationId: widget.organizationId,
+          );
+        }
+      }
+    }
+
+    // Always attempt to open the edit dialog; if shiftData is null the editor will
+    // open in create mode, otherwise it'll populate fields.
+    try {
+      _showEditDialog(
+        ShiftTemplateBottomSheet(
+          key: UniqueKey(), // force rebuild each time
+          organizationId: widget.organizationId,
+          shiftId: shift?['id'],
+          shiftData: shiftData,
+          availableLocations: _availableLocations,
+          onShiftSaved: () {
+            Navigator.of(context).pop();
+            _showSnackBar(shift == null ? 'Shift created successfully' : 'Shift updated successfully');
+          },
+        ),
+      );
+    } catch (e, st) {
+      logger.e('[WEBAdminDashboard] Failed to open shift editor dialog: $e\n$st');
+      _showSnackBar('Failed to open shift editor', isError: true);
+    }
   }
 
   void _duplicateShift(Map<String, dynamic> shift) async {
@@ -1799,19 +2065,32 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
   }
 
   void _editChecklist(Map<String, dynamic>? checklist) {
-    _showEditDialog(
-      ChecklistBottomSheet(
-        organizationId: widget.organizationId,
-        locationId: _selectedLocationId ?? _availableLocations.first['id'] ?? '',
-        checklistId: checklist?['id'],
-        initialData: checklist,
-        availableLocations: _availableLocations,
-        onSave: (checklistData) {
-          Navigator.of(context).pop();
-          _showSnackBar(checklist == null ? 'Checklist created successfully' : 'Checklist updated successfully');
-        },
-      ),
+    logger.i(
+      '[WEBAdminDashboard] _editChecklist invoked for checklistId=${checklist?['id']} name=${checklist?['name']}',
     );
+    // Resolve a safe locationId fallback.
+    final safeLocationId =
+        _selectedLocationId ??
+        (_availableLocations.isNotEmpty ? (_availableLocations.first['id'] as String? ?? '') : '');
+    try {
+      _showEditDialog(
+        ChecklistBottomSheet(
+          key: UniqueKey(), // force rebuild each open
+          organizationId: widget.organizationId,
+          locationId: safeLocationId,
+          checklistId: checklist?['id'],
+          initialData: checklist,
+          availableLocations: _availableLocations,
+          onSave: (checklistData) {
+            Navigator.of(context).pop();
+            _showSnackBar(checklist == null ? 'Checklist created successfully' : 'Checklist updated successfully');
+          },
+        ),
+      );
+    } catch (e, st) {
+      logger.e('[WEBAdminDashboard] Failed to open checklist editor dialog: $e\n$st');
+      _showSnackBar('Failed to open checklist editor', isError: true);
+    }
   }
 
   void _duplicateChecklist(Map<String, dynamic> checklist) async {

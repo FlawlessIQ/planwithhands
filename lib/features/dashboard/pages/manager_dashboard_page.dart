@@ -15,6 +15,7 @@ import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
 import 'package:hands_app/services/daily_checklist_service.dart';
 import 'package:hands_app/services/organization_setup_service.dart';
+import 'package:hands_app/services/location_selection_service.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/widgets/organization_setup_widget.dart';
 
@@ -69,10 +70,20 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
   List<Map<String, String>> _shifts = [];
   List<Map<String, String>> _checklists = [];
 
+  // Global location selection service
+  final LocationSelectionService _locationSelectionService = LocationSelectionService.instance;
+
   @override
   void initState() {
     super.initState();
     _todayKey = _dateFormat.format(DateTime.now());
+    // Seed from global selection if present before loading
+    final globalLoc = _locationSelectionService.currentLocationId;
+    if (globalLoc != null && globalLoc.isNotEmpty) {
+      _selectedLocationId = globalLoc;
+    }
+    // Listen for global selection changes
+    _locationSelectionService.listenable.addListener(_onGlobalLocationChanged);
     _initializeDashboard();
   }
 
@@ -126,7 +137,35 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    // Remove global listener
+    _locationSelectionService.listenable.removeListener(_onGlobalLocationChanged);
     super.dispose();
+  }
+
+  Future<void> _onGlobalLocationChanged() async {
+    if (!mounted) return;
+    final globalId = _locationSelectionService.currentLocationId;
+    if (globalId == _selectedLocationId) return; // no change
+    // Resolve name if we already have locations loaded
+    String? locName;
+    if (_availableLocations.isNotEmpty && globalId != null) {
+      try {
+        final match = _availableLocations.firstWhere((l) => l['id'] == globalId);
+        locName = match['name'] as String?;
+      } catch (_) {}
+    }
+    setState(() {
+      _selectedLocationId = globalId;
+      if (locName != null) _selectedLocationName = locName;
+    });
+    if (globalId != null && globalId.isNotEmpty) {
+      try {
+        await _loadFilterOptions();
+        await _loadAll();
+      } catch (e) {
+        logger.w('[ManagerDashboard] _onGlobalLocationChanged reload failed: $e');
+      }
+    }
   }
 
   // ===== Data Loading =====
@@ -197,19 +236,41 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
             };
           }).toList();
 
+      // Determine the location to use using a global-first policy:
+      // 1) If a persisted global location exists and is valid for this org, prefer it.
+      // 2) Else if the current local selection is valid, keep it.
+      // 3) Else pick the primary/first location as a fallback.
+      final globalId = LocationSelectionService.instance.currentLocationId;
+      String? locationToSelect;
+      String? locationToSelectName;
+
+      final hasGlobalValid = globalId != null && locations.any((l) => l['id'] == globalId);
+      final currentIsValid = _selectedLocationId != null && locations.any((l) => l['id'] == _selectedLocationId);
+
+      if (hasGlobalValid) {
+        locationToSelect = globalId;
+        locationToSelectName = locations.firstWhere((l) => l['id'] == globalId)['name'] as String?;
+      } else if (currentIsValid) {
+        locationToSelect = _selectedLocationId;
+        locationToSelectName = locations.firstWhere((l) => l['id'] == _selectedLocationId)['name'] as String?;
+      } else if (locations.isNotEmpty) {
+        final primary = locations.firstWhere((l) => l['isPrimary'] == true, orElse: () => locations.first);
+        locationToSelect = primary['id'] as String?;
+        locationToSelectName = primary['name'] as String?;
+      }
+
       if (!mounted) return;
       setState(() {
         _availableLocations = locations;
-        if (locations.isNotEmpty) {
-          final primary = locations.firstWhere((l) => l['isPrimary'] == true, orElse: () => locations.first);
-          // Only auto-select the primary location if there is no current valid selection
-          final currentIsValid = _selectedLocationId != null && locations.any((l) => l['id'] == _selectedLocationId);
-          if (!currentIsValid) {
-            _selectedLocationId = primary['id'] as String?;
-            _selectedLocationName = primary['name'] as String?;
-          }
-        }
+        _selectedLocationId = locationToSelect ?? _selectedLocationId;
+        _selectedLocationName = locationToSelectName ?? _selectedLocationName;
       });
+
+      // Ensure the global service matches the decided selection
+      if (_selectedLocationId != null && LocationSelectionService.instance.currentLocationId != _selectedLocationId) {
+        LocationSelectionService.instance.setLocation(_selectedLocationId!);
+      }
+
       if (_selectedLocationId != null) {
         await _loadFilterOptions();
         await _loadAll();
@@ -810,6 +871,10 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                     _selectedLocationName =
                         matches.isNotEmpty ? (matches.first['name'] as String?) : 'Unknown Location';
                   });
+                  // Persist globally
+                  if (value.isNotEmpty) {
+                    _locationSelectionService.setLocation(value);
+                  }
                   logger.i(
                     '[ManagerDashboard][DEBUG] Updated _selectedLocationId: $_selectedLocationId, name: $_selectedLocationName',
                   );

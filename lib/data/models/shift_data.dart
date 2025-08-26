@@ -51,11 +51,14 @@ Map<String, dynamic> _normalizeShiftJson(Map<String, dynamic> json) {
   List<int> ensureIntList(dynamic v) {
     if (v == null) return <int>[];
     if (v is List) {
-      return v.map((e) {
-        if (e is int) return e;
-        if (e is String) return int.tryParse(e) ?? 0;
-        return 0;
-      }).where((i) => i != 0).toList();
+      return v
+          .map((e) {
+            if (e is int) return e;
+            if (e is String) return int.tryParse(e) ?? 0;
+            return 0;
+          })
+          .where((i) => i != 0)
+          .toList();
     }
     if (v is int) return <int>[v];
     if (v is String) {
@@ -102,4 +105,3 @@ Map<String, dynamic> _normalizeShiftJson(Map<String, dynamic> json) {
 
   return copy;
 }
-

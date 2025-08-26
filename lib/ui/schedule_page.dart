@@ -118,8 +118,10 @@ class _SchedulePageState extends State<SchedulePage> {
   }
 
   Future<void> _addOrEditShift([ScheduleEntryData? scheduleEntry, ShiftData? template]) async {
-  logger.d('_addOrEditShift called with scheduleEntry: ${scheduleEntry?.toString()}, template: ${template?.shiftName}');
-  logger.d('_orgId: $_orgId, _selectedLocation: $_selectedLocation');
+    logger.d(
+      '_addOrEditShift called with scheduleEntry: ${scheduleEntry?.toString()}, template: ${template?.shiftName}',
+    );
+    logger.d('_orgId: $_orgId, _selectedLocation: $_selectedLocation');
 
     // Find the template for this shift (needed for defaultParLevels and shiftName)
     final shiftTemplatesSnap =
@@ -130,8 +132,8 @@ class _SchedulePageState extends State<SchedulePage> {
             .where('locationIds', arrayContains: _selectedLocation)
             .get();
 
-  final templates = shiftTemplatesSnap.docs;
-  logger.d('Found ${templates.length} shift templates');
+    final templates = shiftTemplatesSnap.docs;
+    logger.d('Found ${templates.length} shift templates');
 
     Map<String, dynamic>? templateData;
     String? shiftId;
@@ -140,7 +142,7 @@ class _SchedulePageState extends State<SchedulePage> {
       // Editing existing schedule entry
       shiftId = scheduleEntry.shiftId;
       final matchingTemplates = templates.where((doc) => doc.id == scheduleEntry.shiftId).toList();
-  logger.d('Found ${matchingTemplates.length} matching templates for shiftId: ${scheduleEntry.shiftId}');
+      logger.d('Found ${matchingTemplates.length} matching templates for shiftId: ${scheduleEntry.shiftId}');
       if (matchingTemplates.isNotEmpty) {
         templateData = matchingTemplates.first.data();
         debugPrint("Template data found: ${templateData.keys}");
@@ -149,7 +151,7 @@ class _SchedulePageState extends State<SchedulePage> {
       // Creating new schedule entry from template
       shiftId = template.shiftId;
       final matchingTemplates = templates.where((doc) => doc.id == template.shiftId).toList();
-  logger.d('Found ${matchingTemplates.length} matching templates for template shiftId: ${template.shiftId}');
+      logger.d('Found ${matchingTemplates.length} matching templates for template shiftId: ${template.shiftId}');
       if (matchingTemplates.isNotEmpty) {
         templateData = matchingTemplates.first.data();
         debugPrint("Template data found for new entry: ${templateData.keys}");
@@ -157,7 +159,7 @@ class _SchedulePageState extends State<SchedulePage> {
     }
 
     if ((scheduleEntry != null || template != null) && templateData != null && shiftId != null) {
-  logger.d('Opening ShiftBottomSheet for shiftId: $shiftId');
+      logger.d('Opening ShiftBottomSheet for shiftId: $shiftId');
       final shiftName = templateData['shiftName'] ?? 'Unnamed Shift';
       final defaultParLevels = Map<String, int>.from(templateData['staffingLevels'] ?? {});
       final dayShiftKey = scheduleEntry?.dayShiftKey ?? '${DateFormat('yyyy-MM-dd').format(_selectedDate)}_$shiftId';
@@ -182,7 +184,9 @@ class _SchedulePageState extends State<SchedulePage> {
             ),
       );
     } else {
-      logger.w('Cannot open ShiftBottomSheet: scheduleEntry=${scheduleEntry != null}, template=${template != null}, templateData=${templateData != null}, shiftId=$shiftId');
+      logger.w(
+        'Cannot open ShiftBottomSheet: scheduleEntry=${scheduleEntry != null}, template=${template != null}, templateData=${templateData != null}, shiftId=$shiftId',
+      );
       if (scheduleEntry == null && template == null) {
         logger.d('Both scheduleEntry and template are null');
       }
@@ -748,10 +752,7 @@ class _SchedulePageState extends State<SchedulePage> {
                           ),
                           Text(
                             DateFormat.MMMd().format(day),
-                            style: GoogleFonts.comfortaa(
-                              fontSize: 10,
-                              color: HandsColors.white70,
-                            ),
+                            style: GoogleFonts.comfortaa(fontSize: 10, color: HandsColors.white70),
                           ),
                           // Publish status indicator
                           StreamBuilder<bool>(
@@ -808,7 +809,8 @@ class _SchedulePageState extends State<SchedulePage> {
                 );
               }
 
-              final shifts = snap.docs.map((doc) {
+              final shifts =
+                  snap.docs.map((doc) {
                     final data = (doc.data() ?? {}) as Map<String, dynamic>;
                     // Build activeDays list: prefer non-empty activeDays, otherwise fallback to days strings
                     final List<dynamic> storedActive = data['activeDays'] as List<dynamic>? ?? [];

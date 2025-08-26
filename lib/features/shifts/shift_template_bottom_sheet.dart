@@ -444,10 +444,11 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
       context: context,
       builder:
           (_) => Container(
-            height: 250,
+            // Slightly smaller picker height for mobile
+            height: 220,
             decoration: BoxDecoration(
               color: HandsColors.primaryContainer,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
             ),
             child: CupertinoDatePicker(
               mode: CupertinoDatePickerMode.time,
@@ -645,102 +646,161 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            // Header with close button
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    final mq = MediaQuery.of(context);
+    final width = mq.size.width;
+    final isDialog = context.findAncestorWidgetOfExactType<Dialog>() != null;
+    final isWide = width >= 900; // threshold for horizontal stepper
+
+    Widget header({bool showDivider = true, bool showHandle = false}) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (showHandle)
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(top: 6, bottom: 8),
+              decoration: BoxDecoration(color: HandsColors.white, borderRadius: BorderRadius.circular(2)),
+            ),
+          Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: BottomSheetStyles.horizontalPadding,
+              vertical: isDialog ? 12 : 14,
+            ),
+            child: Row(
               children: [
                 Expanded(
                   child: Text(
                     isEditing ? 'Edit shift template' : 'Create shift template',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                    style: GoogleFonts.comfortaa(
+                      fontWeight: FontWeight.bold,
+                      fontSize: isDialog ? 18 : 19,
+                      color: HandsColors.white,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.of(context).pop()),
+                IconButton(
+                  onPressed: () {
+                    if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+                  },
+                  splashRadius: 20,
+                  icon: const Icon(Icons.close),
+                  tooltip: 'Close',
+                ),
               ],
             ),
-            const Divider(),
-            if (isLoading) const LinearProgressIndicator(),
-            Expanded(
-              child: Stepper(
-                currentStep: _currentStep,
-                onStepTapped: (index) {
-                  // Allow navigating to any step when editing an existing shift; otherwise only go backwards
-                  if (isEditing) {
-                    setState(() => _currentStep = index);
-                  } else if (index <= _currentStep) {
-                    setState(() => _currentStep = index);
-                  }
-                },
-                onStepContinue: _nextStep,
-                onStepCancel: _prevStep,
-                controlsBuilder: (context, details) {
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 12.0,
-                      horizontal: BottomSheetStyles.horizontalPadding,
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: details.onStepCancel,
-                          style: BottomSheetStyles.secondaryTextButtonStyle(context),
-                          child: const Text('Back'),
-                        ),
-                        const SizedBox(width: 12),
-                        ElevatedButton(
-                          onPressed: details.onStepContinue,
-                          style: BottomSheetStyles.primaryButtonStyle(),
-                          child: Text(_currentStep < 3 ? 'Next' : 'Save'),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-                steps: [
-                  Step(
-                    title: BottomSheetStyles.stepTitle('Info'),
-                    isActive: _currentStep >= 0,
-                    content: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
-                      child: Form(key: _formKey, child: _buildInfoStep()),
-                    ),
-                  ),
-                  Step(
-                    title: BottomSheetStyles.stepTitle('Locations'),
-                    isActive: _currentStep >= 1,
-                    content: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
-                      child: _buildLocationStep(),
-                    ),
-                  ),
-                  Step(
-                    title: BottomSheetStyles.stepTitle('Roles'),
-                    isActive: _currentStep >= 2,
-                    content: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
-                      child: _buildRolesAndStaffingStep(),
-                    ),
-                  ),
-                  Step(
-                    title: BottomSheetStyles.stepTitle('Checklists'),
-                    isActive: _currentStep >= 3,
-                    content: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
-                      child: _buildChecklistStep(),
-                    ),
-                  ),
-                ],
-              ),
+          ),
+          if (showDivider) const Divider(height: 1),
+          if (isLoading) const LinearProgressIndicator(minHeight: 2),
+        ],
+      );
+    }
+
+    Widget buildStepper() {
+      return Stepper(
+        type: isWide ? StepperType.horizontal : StepperType.vertical,
+        currentStep: _currentStep,
+        onStepTapped: (index) {
+          if (isEditing) {
+            setState(() => _currentStep = index);
+          } else if (index <= _currentStep) {
+            setState(() => _currentStep = index);
+          }
+        },
+        onStepContinue: _nextStep,
+        onStepCancel: _prevStep,
+        controlsBuilder: (context, details) {
+          return Padding(
+            padding: EdgeInsets.symmetric(vertical: isDialog ? 8 : 12, horizontal: BottomSheetStyles.horizontalPadding),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: details.onStepCancel,
+                  style: BottomSheetStyles.secondaryTextButtonStyle(context),
+                  child: const Text('Back'),
+                ),
+                const SizedBox(width: 10),
+                ElevatedButton(
+                  onPressed: details.onStepContinue,
+                  style: BottomSheetStyles.primaryButtonStyle(),
+                  child: Text(_currentStep < 3 ? 'Next' : 'Save'),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          );
+        },
+        steps: [
+          Step(
+            title: BottomSheetStyles.stepTitle('Info'),
+            isActive: _currentStep >= 0,
+            content: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
+              child: Form(key: _formKey, child: _buildInfoStep()),
+            ),
+          ),
+          Step(
+            title: BottomSheetStyles.stepTitle('Locations'),
+            isActive: _currentStep >= 1,
+            content: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
+              child: _buildLocationStep(),
+            ),
+          ),
+          Step(
+            title: BottomSheetStyles.stepTitle('Roles'),
+            isActive: _currentStep >= 2,
+            content: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
+              child: _buildRolesAndStaffingStep(),
+            ),
+          ),
+          Step(
+            title: BottomSheetStyles.stepTitle('Checklists'),
+            isActive: _currentStep >= 3,
+            content: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
+              child: _buildChecklistStep(),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Dialog path: direct column (no draggable sheet) for zero top gap.
+    // FIX: Removed SingleChildScrollView around Stepper to avoid placing Stepper
+    // in an unbounded vertical viewport (caused RenderFlex unbounded height error).
+    if (isDialog) {
+      return Material(
+        color: HandsColors.cardPrimary,
+        borderRadius: BorderRadius.circular(12),
+        child: Column(children: [header(showHandle: false), Expanded(child: buildStepper())]),
+      );
+    }
+
+    // Mobile / non-dialog: use DraggableScrollableSheet inside bottom sheet context
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.9,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      builder: (context, scrollController) {
+        return SafeArea(
+          child: Material(
+            color: HandsColors.cardPrimary,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+            child: Column(
+              children: [
+                header(showHandle: true),
+                // Directly use Stepper inside Expanded; Stepper internally scrolls.
+                Expanded(child: buildStepper()),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -781,10 +841,7 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
         CheckboxListTile(
           title: Text(
             'Repeats daily',
-            style: GoogleFonts.comfortaa(
-              color: HandsColors.white,
-              fontWeight: FontWeight.w500,
-            ),
+            style: GoogleFonts.comfortaa(color: HandsColors.white, fontWeight: FontWeight.w500),
           ),
           value: _repeatsDaily,
           checkColor: HandsColors.white,
@@ -797,35 +854,42 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
           },
         ),
         const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          children:
-              _weekDays
-                  .map(
-                    (d) => ChoiceChip(
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final isNarrow = constraints.maxWidth < 380;
+            return Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children:
+                  _weekDays.map((d) {
+                    // When repeatsDaily is enabled the chip is filled with sageGreen;
+                    // make the label text dark in that case for contrast. Otherwise
+                    // keep the existing white/white70 behavior for orange/neutral chips.
+                    final bool selected = _repeatsDaily || _selectedDays.contains(d);
+                    final bool greenFill = _repeatsDaily; // repeatsDaily uses sageGreen
+                    return ChoiceChip(
                       label: Text(
-                        d,
+                        isNarrow ? d.substring(0, 3) : d,
                         style: GoogleFonts.comfortaa(
-                          color: _repeatsDaily || _selectedDays.contains(d) 
-                              ? HandsColors.white 
-                              : HandsColors.white70,
+                          color: selected ? (greenFill ? Colors.black : HandsColors.white) : HandsColors.white70,
                           fontWeight: FontWeight.w500,
+                          fontSize: isNarrow ? 12 : 14,
                         ),
                       ),
-                      selected: _repeatsDaily || _selectedDays.contains(d),
-                      selectedColor: _repeatsDaily 
-                          ? HandsColors.sageGreen 
-                          : HandsColors.handsOrange,
+                      selected: selected,
+                      selectedColor: greenFill ? HandsColors.sageGreen : HandsColors.handsOrange,
                       backgroundColor: HandsColors.secondaryContainer,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       onSelected:
                           _repeatsDaily
                               ? null
                               : (s) {
                                 setState(() => s ? _selectedDays.add(d) : _selectedDays.remove(d));
                               },
-                    ),
-                  )
-                  .toList(),
+                    );
+                  }).toList(),
+            );
+          },
         ),
       ],
     );
@@ -839,34 +903,36 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children:
-          widget.availableLocations
-              .map(
-                (loc) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8.0),
-                  child: CheckboxListTile(
-                    title: Text(
-                      loc['name'] as String,
-                      style: GoogleFonts.comfortaa(
-                        color: HandsColors.white,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    value: selectedLocationIds.contains(loc['id']),
-                    checkColor: HandsColors.white,
-                    activeColor: HandsColors.sageGreen,
-                    onChanged: (v) {
-                      setState(() {
-                        if (v!) {
-                          selectedLocationIds.add(loc['id']);
-                        } else {
-                          selectedLocationIds.remove(loc['id']);
-                        }
-                      });
-                    },
+          widget.availableLocations.map((loc) {
+            final bool checked = selectedLocationIds.contains(loc['id']);
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 6.0),
+              child: CheckboxListTile(
+                dense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 8.0),
+                title: Text(
+                  loc['name'] as String,
+                  style: GoogleFonts.comfortaa(
+                    color: checked ? Colors.black : HandsColors.white,
+                    fontWeight: FontWeight.w500,
+                    fontSize: 14,
                   ),
                 ),
-              )
-              .toList(),
+                value: checked,
+                checkColor: HandsColors.white,
+                activeColor: HandsColors.sageGreen,
+                onChanged: (v) {
+                  setState(() {
+                    if (v!) {
+                      selectedLocationIds.add(loc['id']);
+                    } else {
+                      selectedLocationIds.remove(loc['id']);
+                    }
+                  });
+                },
+              ),
+            );
+          }).toList(),
     );
   }
 
@@ -978,11 +1044,14 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
         return Column(
           children:
               docs.map((d) {
+                final bool checked = selectedChecklistTemplateIds.contains(d.id);
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 8.0),
                   child: CheckboxListTile(
-                    title: Text(d['name'] ?? 'Checklist'),
-                    value: selectedChecklistTemplateIds.contains(d.id),
+                    dense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 8.0),
+                    title: Text(d['name'] ?? 'Checklist', style: TextStyle(color: checked ? Colors.black : null)),
+                    value: checked,
                     onChanged: (v) {
                       setState(
                         () => v! ? selectedChecklistTemplateIds.add(d.id) : selectedChecklistTemplateIds.remove(d.id),

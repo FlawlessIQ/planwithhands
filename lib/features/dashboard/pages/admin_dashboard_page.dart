@@ -23,6 +23,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hands_app/state/app_state.dart';
 import 'package:hands_app/data/models/location_data.dart';
 import 'package:hands_app/core/logging/logger.dart';
+import 'package:hands_app/services/location_selection_service.dart';
 // Admin tools widgets removed from this page; imports intentionally removed
 import 'dart:convert';
 import 'package:crypto/crypto.dart' as crypto;
@@ -132,37 +133,48 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
         setState(() {
           _availableLocations = locations;
 
-          // Auto-select primary location or first location if available and no location is currently selected
-          if (locations.isNotEmpty) {
-            final currentSelectedLocation = ref.read(appStateProvider).selectedLocation;
+          // Determine the effective location: global state takes precedence.
+          final globalLocationId = LocationSelectionService.instance.currentLocationId;
+          final currentSelectedLocation = ref.read(appStateProvider).selectedLocation;
 
-            // Only auto-select if no location is currently selected or the current selection is invalid
-            if (currentSelectedLocation == null ||
-                !locations.any((loc) => loc['id'] == currentSelectedLocation.locationId)) {
-              final primaryLocation = locations.firstWhere(
-                (loc) => loc['isPrimary'] == true,
-                orElse: () => locations.first,
-              );
+          Map<String, dynamic>? locationToSelect;
 
-              // Update shared state with selected location
-              final locationData = LocationData(
-                locationId: primaryLocation['id'],
-                locationName: primaryLocation['name'],
-                createdAt: DateTime.now(),
-                locationAddress: '',
-              );
-              ref.read(appStateProvider.notifier).setSelectedLocation(locationData);
+          // 1. Prioritize global selection if it's valid and available in the current list.
+          if (globalLocationId != null && locations.any((loc) => loc['id'] == globalLocationId)) {
+            locationToSelect = locations.firstWhere((loc) => loc['id'] == globalLocationId);
+            logger.d('[AdminDashboard] Applying location from global service: ${locationToSelect['name']}');
+          }
+          // 2. Fallback to auto-selecting primary/first location if no valid global or local selection exists.
+          else if (locations.isNotEmpty &&
+              (currentSelectedLocation == null ||
+                  !locations.any((loc) => loc['id'] == currentSelectedLocation.locationId))) {
+            locationToSelect = locations.firstWhere((loc) => loc['isPrimary'] == true, orElse: () => locations.first);
+            logger.d('[AdminDashboard] Auto-selecting default location: ${locationToSelect['name']}');
+          }
 
-              logger.d(
-                '[AdminDashboard] Auto-selected location: ${primaryLocation['name']} (${primaryLocation['id']})',
-              );
-            } else {
-              logger.d('[AdminDashboard] Keeping existing selection: ${currentSelectedLocation.locationName}');
-            }
+          // If a location has been chosen (either global or default), update all state.
+          if (locationToSelect != null) {
+            final locationData = LocationData(
+              locationId: locationToSelect['id'],
+              locationName: locationToSelect['name'],
+              createdAt: DateTime.now(),
+              locationAddress: '',
+            );
+            // Update Riverpod state
+            ref.read(appStateProvider.notifier).setSelectedLocation(locationData);
+            // ALWAYS ensure global state is synchronized with the decision made.
+            LocationSelectionService.instance.setLocation(locationToSelect['id']);
+
+            logger.d(
+              '[AdminDashboard] Final selected location is: ${locationToSelect['name']} (${locationToSelect['id']})',
+            );
+          } else if (locations.isNotEmpty) {
+            logger.d('[AdminDashboard] Keeping existing Riverpod selection: ${currentSelectedLocation?.locationName}');
           } else {
-            // Clear selected location
+            // Clear selected location if no locations are available
             ref.read(appStateProvider.notifier).setSelectedLocation(null);
-            logger.i('[AdminDashboard] No locations found - will show location creation flow');
+            LocationSelectionService.instance.setLocation(null); // Also clear global state
+            logger.i('[AdminDashboard] No locations found - clearing selection.');
 
             // Only show the location creation bottom sheet if we haven't already shown the welcome dialog
             if (!_hasShownWelcomeDialog) {
@@ -404,7 +416,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
         backgroundColor: HandsColors.cardPrimary,
         elevation: 0,
         toolbarHeight: kToolbarHeight,
-  title: GenericAppBarContent(appBarTitle: 'Setup', userRole: userRole),
+        title: GenericAppBarContent(appBarTitle: 'Setup', userRole: userRole),
         automaticallyImplyLeading: false,
         actions: [
           // Compact location selector for mobile
@@ -427,6 +439,10 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                   locationAddress: '',
                 );
                 ref.read(appStateProvider.notifier).setSelectedLocation(locationData);
+                // Also persist to global notifier so other pages without Riverpod can react
+                try {
+                  LocationSelectionService.instance.setLocation(selectedLoc['id']);
+                } catch (_) {}
 
                 _triggerRefresh();
               },
@@ -527,11 +543,14 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                 if (mounted) {
                   await showDialog<void>(
                     context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('User document'),
-                      content: SingleChildScrollView(child: Text(pretty)),
-                      actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close'))],
-                    ),
+                    builder:
+                        (context) => AlertDialog(
+                          title: const Text('User document'),
+                          content: SingleChildScrollView(child: Text(pretty)),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close')),
+                          ],
+                        ),
                   );
                 }
               } catch (e) {
@@ -1240,7 +1259,9 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                                 }
 
                                 raw['locationIds'] = _coerceStringList(raw['locationIds'] ?? raw['locationId']);
-                                raw['checklistTemplateIds'] = _coerceStringList(raw['checklistTemplateIds'] ?? raw['checklistId']);
+                                raw['checklistTemplateIds'] = _coerceStringList(
+                                  raw['checklistTemplateIds'] ?? raw['checklistId'],
+                                );
                                 raw['jobType'] = _coerceStringList(raw['jobTypes'] ?? raw['jobType']);
                                 raw['days'] = _coerceStringList(raw['days']);
                                 raw['activeDays'] = _coerceIntList(raw['activeDays']);
@@ -1251,9 +1272,16 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                                 logger.e('Error normalizing shift data for edit: $e', st);
                                 // Fallback: attempt to open sheet with best-effort map
                                 try {
-                                  _showShiftBottomSheet(shiftId, ShiftData.fromJson(Map<String, dynamic>.from(shiftData)));
+                                  _showShiftBottomSheet(
+                                    shiftId,
+                                    ShiftData.fromJson(Map<String, dynamic>.from(shiftData)),
+                                  );
                                 } catch (_) {
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Unable to open shift editor for this shift (malformed data)')));
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Unable to open shift editor for this shift (malformed data)'),
+                                    ),
+                                  );
                                 }
                               }
                             },

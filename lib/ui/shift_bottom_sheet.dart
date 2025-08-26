@@ -710,13 +710,7 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(roleName, style: const TextStyle(fontWeight: FontWeight.w500, color: HandsColors.white)),
-                Text(
-                  'Required: $count',
-                  style: GoogleFonts.comfortaa(
-                    fontSize: 12,
-                    color: HandsColors.white70,
-                  ),
-                ),
+                Text('Required: $count', style: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white70)),
               ],
             ),
           ),

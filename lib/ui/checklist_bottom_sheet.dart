@@ -127,7 +127,199 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
     final textScaler = mediaQuery.textScaler.clamp(minScaleFactor: 1.0, maxScaleFactor: 1.2);
+    final width = mediaQuery.size.width;
+    final isDialog = context.findAncestorWidgetOfExactType<Dialog>() != null;
+    final isWide = width >= 900;
 
+    // Reusable app bar widget (slightly tighter for web)
+    Widget buildHeader({bool showHandle = true}) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (showHandle)
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.symmetric(vertical: 6),
+              decoration: BoxDecoration(color: HandsColors.white, borderRadius: BorderRadius.circular(2)),
+            ),
+          Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: BottomSheetStyles.horizontalPadding,
+              vertical: isDialog ? 12 : 14,
+            ),
+            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: HandsColors.secondaryContainer))),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.checklistId == null ? 'Create checklist' : 'Edit checklist',
+                    style: GoogleFonts.comfortaa(
+                      fontSize: isDialog ? 18 : 19,
+                      fontWeight: FontWeight.bold,
+                      color: HandsColors.white,
+                    ),
+                    textScaler: textScaler,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                IconButton(
+                  onPressed: () {
+                    if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+                  },
+                  icon: const Icon(Icons.close),
+                  tooltip: 'Close',
+                  splashRadius: 20,
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    Widget buildStepper() {
+      final stepTitleSize = isDialog ? 13.0 : 14.0;
+      return Theme(
+        data: Theme.of(
+          context,
+        ).copyWith(colorScheme: Theme.of(context).colorScheme.copyWith(primary: HandsColors.handsOrange)),
+        child: Stepper(
+          type: isWide ? StepperType.horizontal : StepperType.vertical,
+          // Horizontal reduces vertical scrolling on wide web dialogs
+          currentStep: _currentStep,
+          onStepTapped: (index) {
+            if (widget.checklistId != null) {
+              final otherLocations =
+                  widget.availableLocations.where((location) => location['id'] != widget.locationId).toList();
+              if (index == 2 && otherLocations.isEmpty) {
+                setState(() => _currentStep = 3);
+              } else {
+                setState(() => _currentStep = index);
+              }
+            } else if (index <= _currentStep) {
+              setState(() => _currentStep = index);
+            }
+          },
+          onStepContinue: _nextStep,
+          onStepCancel: _prevStep,
+          controlsBuilder: (context, details) {
+            return Padding(
+              padding: EdgeInsets.symmetric(vertical: isDialog ? 8 : 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  if (details.stepIndex > 0) HandsSecondaryButton(text: 'Back', onPressed: details.onStepCancel),
+                  const SizedBox(width: 10),
+                  HandsPrimaryButton(
+                    text: details.stepIndex < 3 ? 'Continue' : 'Save checklist',
+                    onPressed: _loading ? null : details.onStepContinue,
+                    isLoading: _loading,
+                  ),
+                ],
+              ),
+            );
+          },
+          steps: [
+            Step(
+              title: Text(
+                'Info',
+                style: GoogleFonts.comfortaa(
+                  fontWeight: FontWeight.bold,
+                  color: HandsColors.white,
+                  fontSize: stepTitleSize,
+                ),
+              ),
+              content: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
+                child: _buildInfoStep(),
+              ),
+              isActive: _currentStep >= 0,
+              state:
+                  widget.checklistId != null
+                      ? (_currentStep == 0 ? StepState.indexed : StepState.complete)
+                      : (_currentStep > 0 ? StepState.complete : StepState.indexed),
+            ),
+            Step(
+              title: Text(
+                'Shifts',
+                style: GoogleFonts.comfortaa(
+                  fontWeight: FontWeight.bold,
+                  color: HandsColors.white,
+                  fontSize: stepTitleSize,
+                ),
+              ),
+              content: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
+                child: _buildShiftAssignmentStep(),
+              ),
+              isActive: _currentStep >= 1,
+              state:
+                  widget.checklistId != null
+                      ? (_currentStep == 1 ? StepState.indexed : StepState.complete)
+                      : (_currentStep > 1
+                          ? StepState.complete
+                          : (_currentStep == 1 ? StepState.indexed : StepState.disabled)),
+            ),
+            Step(
+              title: Text(
+                'Locations',
+                style: GoogleFonts.comfortaa(
+                  fontWeight: FontWeight.bold,
+                  color: HandsColors.white,
+                  fontSize: stepTitleSize,
+                ),
+              ),
+              content: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
+                child: _buildLocationStep(),
+              ),
+              isActive: _currentStep >= 2,
+              state:
+                  widget.checklistId != null
+                      ? (_currentStep == 2 ? StepState.indexed : StepState.complete)
+                      : (_currentStep > 2
+                          ? StepState.complete
+                          : (_currentStep == 2 ? StepState.indexed : StepState.disabled)),
+            ),
+            Step(
+              title: Text(
+                'Tasks',
+                style: GoogleFonts.comfortaa(
+                  fontWeight: FontWeight.bold,
+                  color: HandsColors.white,
+                  fontSize: stepTitleSize,
+                ),
+              ),
+              content: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
+                child: _buildTasksStep(),
+              ),
+              isActive: _currentStep >= 3,
+              state:
+                  widget.checklistId != null
+                      ? (_currentStep == 3 ? StepState.indexed : StepState.complete)
+                      : (_currentStep == 3 ? StepState.indexed : StepState.disabled),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Dialog (web) path: direct content (no draggable sheet, removes black space)
+    if (isDialog) {
+      // FIX: Removed SingleChildScrollView around Stepper (placed directly in Expanded)
+      // to avoid giving Stepper an unbounded height inside a nested scrollable which
+      // previously caused RenderFlex overflow / unbounded height assertions on web.
+      return Material(
+        color: HandsColors.cardPrimary,
+        borderRadius: BorderRadius.circular(12),
+        child: Column(children: [buildHeader(showHandle: false), Expanded(child: buildStepper())]),
+      );
+    }
+
+    // Mobile / non-dialog path: keep draggable behavior
     return DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.9,
@@ -141,171 +333,11 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
             color: HandsColors.cardPrimary,
             child: Column(
               children: [
-                // Handle bar
-                Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.symmetric(vertical: 8),
-                  decoration: BoxDecoration(color: HandsColors.white, borderRadius: BorderRadius.circular(2)),
-                ),
-                // App bar
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding, vertical: 16),
-                  decoration: BoxDecoration(border: Border(bottom: BorderSide(color: HandsColors.secondaryContainer))),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          widget.checklistId == null ? 'Create checklist' : 'Edit checklist',
-                          style: GoogleFonts.comfortaa(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: HandsColors.white,
-                          ),
-                          textScaler: textScaler,
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close),
-                        tooltip: 'Close',
-                      ),
-                    ],
-                  ),
-                ),
-                // Stepper content
-                Expanded(
-                  child: Theme(
-                    data: Theme.of(
-                      context,
-                    ).copyWith(colorScheme: Theme.of(context).colorScheme.copyWith(primary: HandsColors.handsOrange)),
-                    child: Stepper(
-                      currentStep: _currentStep,
-                      onStepTapped: (index) {
-                        // Allow jumping to any step when editing (checklistId != null),
-                        // but only allow backward/previous steps when creating.
-                        if (widget.checklistId != null) {
-                          // When editing, allow jumping to any step, but handle location step auto-skip
-                          final otherLocations =
-                              widget.availableLocations
-                                  .where((location) => location['id'] != widget.locationId)
-                                  .toList();
-
-                          // If trying to go to location step but no other locations available, skip to tasks
-                          if (index == 2 && otherLocations.isEmpty) {
-                            setState(() => _currentStep = 3);
-                          } else {
-                            setState(() => _currentStep = index);
-                          }
-                        } else if (index <= _currentStep) {
-                          setState(() => _currentStep = index);
-                        }
-                      },
-                      onStepContinue: _nextStep,
-                      onStepCancel: _prevStep,
-                      controlsBuilder: (context, details) {
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              if (details.stepIndex > 0)
-                                HandsSecondaryButton(text: 'Back', onPressed: details.onStepCancel),
-                              const SizedBox(width: 12),
-                              HandsPrimaryButton(
-                                text: details.stepIndex < 3 ? 'Continue' : 'Save checklist',
-                                onPressed: _loading ? null : details.onStepContinue,
-                                isLoading: _loading,
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                      steps: [
-                        Step(
-                          title: Text(
-                            'Name & description',
-                            style: GoogleFonts.comfortaa(
-                              fontWeight: FontWeight.bold,
-                              color: HandsColors.white,
-                              fontSize: 14,
-                            ),
-                          ),
-                          content: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
-                            child: _buildInfoStep(),
-                          ),
-                          isActive: _currentStep >= 0,
-                          state:
-                              widget.checklistId != null
-                                  ? (_currentStep == 0 ? StepState.indexed : StepState.complete)
-                                  : (_currentStep > 0 ? StepState.complete : StepState.indexed),
-                        ),
-                        Step(
-                          title: Text(
-                            'Assign to shifts',
-                            style: GoogleFonts.comfortaa(
-                              fontWeight: FontWeight.bold,
-                              color: HandsColors.white,
-                              fontSize: 14,
-                            ),
-                          ),
-                          content: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
-                            child: _buildShiftAssignmentStep(),
-                          ),
-                          isActive: _currentStep >= 1,
-                          state:
-                              widget.checklistId != null
-                                  ? (_currentStep == 1 ? StepState.indexed : StepState.complete)
-                                  : (_currentStep > 1
-                                      ? StepState.complete
-                                      : (_currentStep == 1 ? StepState.indexed : StepState.disabled)),
-                        ),
-                        Step(
-                          title: Text(
-                            'Locations',
-                            style: GoogleFonts.comfortaa(
-                              fontWeight: FontWeight.bold,
-                              color: HandsColors.white,
-                              fontSize: 14,
-                            ),
-                          ),
-                          content: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
-                            child: _buildLocationStep(),
-                          ),
-                          isActive: _currentStep >= 2,
-                          state:
-                              widget.checklistId != null
-                                  ? (_currentStep == 2 ? StepState.indexed : StepState.complete)
-                                  : (_currentStep > 2
-                                      ? StepState.complete
-                                      : (_currentStep == 2 ? StepState.indexed : StepState.disabled)),
-                        ),
-                        Step(
-                          title: Text(
-                            'Tasks',
-                            style: GoogleFonts.comfortaa(
-                              fontWeight: FontWeight.bold,
-                              color: HandsColors.white,
-                              fontSize: 14,
-                            ),
-                          ),
-                          content: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
-                            child: _buildTasksStep(),
-                          ),
-                          isActive: _currentStep >= 3,
-                          state:
-                              widget.checklistId != null
-                                  ? (_currentStep == 3 ? StepState.indexed : StepState.complete)
-                                  : (_currentStep == 3 ? StepState.indexed : StepState.disabled),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+                buildHeader(showHandle: true),
+                // FIX: Removed outer SingleChildScrollView; Stepper handles its own
+                // internal layout. Wrapping it in an additional scroll view inside
+                // Expanded led to unbounded height issues similar to shift editor.
+                Expanded(child: buildStepper()),
               ],
             ),
           ),
@@ -342,7 +374,7 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
         setState(() => _currentStep--);
       }
     } else {
-      Navigator.of(context).pop();
+      if (Navigator.of(context).canPop()) Navigator.of(context).pop();
     }
   }
 
@@ -425,6 +457,7 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
             title: Text(shiftName),
             subtitle: Text(_range12h(startTime, endTime)),
             value: _selectedShiftIds.contains(shiftId),
+            dense: true,
             onChanged: (bool? value) {
               setState(() {
                 if (value == true) {
@@ -474,7 +507,8 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
 
           return CheckboxListTile(
             title: Text(locationName),
-            subtitle: Text('Location ID: ${locationId.substring(0, 8)}...'),
+            dense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12.0),
             value: _selectedLocationIds.contains(locationId),
             onChanged: (bool? value) {
               setState(() {
@@ -518,6 +552,10 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
   Widget _buildTasksStep() {
     final screenWidth = MediaQuery.of(context).size.width;
     final isNarrowScreen = screenWidth < 600; // Mobile threshold
+    final screenHeight = MediaQuery.of(context).size.height;
+    // Dynamic height target: 35% of screen height, clamped
+    final dynamicHeight = screenHeight * 0.35;
+    final taskListHeight = dynamicHeight.clamp(220, 420).toDouble();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -541,7 +579,8 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
           )
         else
           SizedBox(
-            height: 300, // Fixed height for scrollable area
+            // Adaptive height to reduce scrolling while staying within viewport
+            height: isNarrowScreen ? taskListHeight * 0.9 : taskListHeight,
             child: ReorderableListView.builder(
               buildDefaultDragHandles: false,
               itemCount: _tasks.length + 1, // +1 for the trailing Add Task row
@@ -580,7 +619,7 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
                   margin: const EdgeInsets.symmetric(vertical: 6),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(BottomSheetStyles.controlRadius)),
                   child: Padding(
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(8),
                     child: isNarrowScreen ? _buildMobileTaskLayout(task, index) : _buildDesktopTaskLayout(task, index),
                   ),
                 );
@@ -627,27 +666,21 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
           child: Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: task['photoRequired'] == true 
-                  ? HandsColors.sageGreen.withValues(alpha: 0.1)
-                  : HandsColors.secondaryContainer,
+              color:
+                  task['photoRequired'] == true
+                      ? HandsColors.sageGreen.withValues(alpha: 0.1)
+                      : HandsColors.secondaryContainer,
               borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: task['photoRequired'] == true 
-                    ? HandsColors.sageGreen 
-                    : HandsColors.white30,
-              ),
+              border: Border.all(color: task['photoRequired'] == true ? HandsColors.sageGreen : HandsColors.white30),
             ),
             child: Icon(
               task['photoRequired'] == true ? Icons.camera_alt : Icons.camera_alt_outlined,
-              color: task['photoRequired'] == true 
-                  ? HandsColors.sageGreen 
-                  : HandsColors.white70,
+              color: task['photoRequired'] == true ? HandsColors.sageGreen : HandsColors.white70,
               size: 16,
             ),
           ),
         ),
         const SizedBox(width: 8),
-        // Delete button (right)
         GestureDetector(
           onTap: () {
             setState(() {
@@ -765,7 +798,7 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
 
     if (mounted) {
       setState(() => _loading = false);
-      Navigator.of(context).pop();
+      if (Navigator.of(context).canPop()) Navigator.of(context).pop();
     }
   }
 

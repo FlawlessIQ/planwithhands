@@ -22,6 +22,7 @@ import 'package:hands_app/data/models/missed_tasks_section.dart';
 import 'package:hands_app/data/models/task_data.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/core/logging/logger.dart';
+import 'package:hands_app/services/location_selection_service.dart';
 import 'package:hands_app/services/native_photo_service.dart';
 
 // --- MAIN DASHBOARD PAGE ---
@@ -37,6 +38,7 @@ class UserDashboardPage extends HookConsumerWidget {
     final selectedLocationIds = useState<List<String>>([]);
     final allChecklists = useState<List<List<DailyChecklist>>>([]);
     final hasLoadedOnce = useState(false);
+    final _shouldReload = useState<bool>(false);
     final userRole = useState<int>(0);
     final organizationId = useState<String?>(null);
     final userJobTypes = useState<List<String>>([]);
@@ -44,16 +46,62 @@ class UserDashboardPage extends HookConsumerWidget {
     final missedTasksLoading = useState(false);
     final lastLoadedDate = useState<String?>(null);
 
-  // Local hook state for role-aware shifts & missed tasks (kept separate from the older missedTasksSections)
-  final shifts = useState<List<Map<String, dynamic>>>(const []);
-  final missedGroups = useState<List<Map<String, dynamic>>>(const []);
-  final loadingMissed = useState<bool>(false);
+    // Local hook state for role-aware shifts & missed tasks (kept separate from the older missedTasksSections)
+    final shifts = useState<List<Map<String, dynamic>>>(const []);
+    final missedGroups = useState<List<Map<String, dynamic>>>(const []);
+    final loadingMissed = useState<bool>(false);
 
     // Location selection state
     final selectedLocationId = useState<String?>(null);
     final selectedLocationName = useState<String?>(null);
     final availableLocations = useState<List<Map<String, dynamic>>>([]);
     final isLoadingLocations = useState(true);
+    // Global location service - listen for external changes
+    final _locationService = LocationSelectionService.instance;
+
+    // Seed from global selection if present and listen for changes
+    useEffect(() {
+      final global = _locationService.currentLocationId;
+      if (global != null && global.isNotEmpty && availableLocations.value.isNotEmpty) {
+        // Only seed if we don't already have a valid selection
+        final currentIsValid =
+            selectedLocationId.value != null &&
+            availableLocations.value.any((l) => l['id'] == selectedLocationId.value);
+        if (!currentIsValid) {
+          selectedLocationId.value = global;
+          // Try to resolve name if available
+          try {
+            final match = availableLocations.value.firstWhere((l) => l['id'] == global, orElse: () => {});
+            if (match.isNotEmpty) selectedLocationName.value = match['name'];
+          } catch (_) {}
+        }
+      }
+
+      // Listen for global changes and update local state
+      void listener() {
+        final g = _locationService.currentLocationId;
+        if (g == selectedLocationId.value) return;
+        selectedLocationId.value = g;
+        // Update name if we have locations loaded
+        try {
+          final match = availableLocations.value.firstWhere((l) => l['id'] == g, orElse: () => {});
+          if (match.isNotEmpty) selectedLocationName.value = match['name'];
+        } catch (_) {}
+        // Request a reload via flag (avoids forward reference to local function)
+        _shouldReload.value = true;
+      }
+
+      _locationService.listenable.addListener(listener);
+
+      return () {
+        _locationService.listenable.removeListener(listener);
+      };
+    }, [availableLocations.value]); // Add availableLocations as dependency
+
+    // NOTE: moved effect that triggers reload after global location change to below
+    // the loadDashboardData() declaration to avoid referencing a local function
+    // before it's declared. See patch later in this file where the effect is
+    // re-inserted.
 
     final now = DateTime.now();
     final todayString = DateFormat('yyyy-MM-dd').format(now);
@@ -136,17 +184,33 @@ class UserDashboardPage extends HookConsumerWidget {
 
         availableLocations.value = locations;
 
-        // Auto-select primary location or first location if available
-        if (locations.isNotEmpty) {
-          final primaryLocation = locations.firstWhere(
-            (loc) => loc['isPrimary'] == true,
-            orElse: () => locations.first,
-          );
-          selectedLocationId.value = primaryLocation['id'];
-          selectedLocationName.value = primaryLocation['name'];
+        // --- NEW LOGIC: Prioritize global selection ---
+        final globalLocationId = LocationSelectionService.instance.currentLocationId;
+        Map<String, dynamic>? locationToSelect;
+
+        // 1. Use global selection if valid
+        if (globalLocationId != null && locations.any((loc) => loc['id'] == globalLocationId)) {
+          locationToSelect = locations.firstWhere((loc) => loc['id'] == globalLocationId);
+          logger.d('[UserDashboard] Applying location from global service: \\${locationToSelect['name']}');
+        }
+        // 2. Fallback to primary/first location if no valid global selection
+        else if (locations.isNotEmpty) {
+          locationToSelect = locations.firstWhere((loc) => loc['isPrimary'] == true, orElse: () => locations.first);
+          logger.d('[UserDashboard] Auto-selecting default location: \\${locationToSelect['name']}');
         }
 
-        logger.d("[Dashboard] Loaded ${locations.length} locations, selected: ${selectedLocationName.value}");
+        if (locationToSelect != null) {
+          selectedLocationId.value = locationToSelect['id'];
+          selectedLocationName.value = locationToSelect['name'];
+          // Always sync global state to the chosen location
+          try {
+            LocationSelectionService.instance.setLocation(locationToSelect['id']);
+          } catch (e) {
+            logger.w("[Dashboard] Failed to set global location: $e");
+          }
+        }
+
+        logger.d("[Dashboard] Loaded \\${locations.length} locations, selected: \\${selectedLocationName.value}");
       } catch (e) {
         logger.e("[Dashboard] Error loading locations: $e", e);
       } finally {
@@ -439,7 +503,22 @@ class UserDashboardPage extends HookConsumerWidget {
       fetchUserRole().then((_) async {
         // Load locations after user role is fetched
         if (organizationId.value != null) {
+          // Before loading locations, check if there's a global selection to honor
+          final globalSelection = _locationService.currentLocationId;
           await loadLocations();
+
+          // After loading locations, if we have a global selection that's valid, use it
+          if (globalSelection != null && globalSelection.isNotEmpty && availableLocations.value.isNotEmpty) {
+            final match = availableLocations.value.firstWhere(
+              (l) => l['id'] == globalSelection,
+              orElse: () => <String, dynamic>{},
+            );
+            if (match.isNotEmpty) {
+              selectedLocationId.value = globalSelection;
+              selectedLocationName.value = match['name'];
+            }
+          }
+
           logger.d("[Dashboard] Loaded ${availableLocations.value.length} locations from initialization hook");
         }
       });
@@ -450,8 +529,25 @@ class UserDashboardPage extends HookConsumerWidget {
       return null;
     }, []);
 
-  // Convenience local closures that delegate to file-level helpers but use current hook state
-  bool matchesUserJobTypeLocal(Map<String, dynamic> data) {
+    // When reload flag is set by the listener, call the loader.
+    // Placed here after the loadDashboardData() declaration to avoid forward-reference.
+    useEffect(() {
+      if (_shouldReload.value) {
+        Future.microtask(() async {
+          try {
+            await loadDashboardData();
+          } catch (e) {
+            logger.e('[Dashboard] reload after global location change failed: $e');
+          } finally {
+            _shouldReload.value = false;
+          }
+        });
+      }
+      return null;
+    }, [_shouldReload.value]);
+
+    // Convenience local closures that delegate to file-level helpers but use current hook state
+    bool matchesUserJobTypeLocal(Map<String, dynamic> data) {
       final userJobType = userJobTypes.value.isNotEmpty ? userJobTypes.value.first : null;
       return _matchesUserJobType(data, userJobType: userJobType, userRole: userRole.value);
     }
@@ -469,7 +565,7 @@ class UserDashboardPage extends HookConsumerWidget {
           .collection('shifts')
           .where('locationIds', arrayContains: selectedLocationId.value);
 
-  final isAdminMgr = _isManagerOrAdmin(userRole.value);
+      final isAdminMgr = _isManagerOrAdmin(userRole.value);
       if (!isAdminMgr && userJobTypes.value.isNotEmpty) {
         try {
           // Narrow server-side when possible; prefer array-contains-any for multiple job types
@@ -507,7 +603,7 @@ class UserDashboardPage extends HookConsumerWidget {
           locationId: selectedLocationId.value,
         );
 
-  final isAdminMgr = _isManagerOrAdmin(userRole.value);
+        final isAdminMgr = _isManagerOrAdmin(userRole.value);
         final uj = userJobTypes.value.isNotEmpty ? userJobTypes.value.first.toLowerCase().trim() : '';
         final filtered = <Map<String, dynamic>>[];
 
@@ -623,6 +719,10 @@ class UserDashboardPage extends HookConsumerWidget {
                   orElse: () => <String, String>{'name': 'Unknown Location'},
                 );
                 selectedLocationName.value = selected['name'];
+                // Persist globally so other pages adopt the change
+                try {
+                  LocationSelectionService.instance.setLocation(value);
+                } catch (_) {}
                 isLoading.value = true;
                 await loadDashboardData();
                 isLoading.value = false;
@@ -793,22 +893,27 @@ class UserDashboardPage extends HookConsumerWidget {
                                         logger.d("[Dashboard] Successfully added user to shift volunteers");
                                       }
 
-                                          // Optimistically ensure the joined shift appears immediately in the UI for the current session.
-                                          try {
-                                            if (!assignedShifts.value.any((s) => s.shiftId == shift.shiftId)) {
-                                              // Insert at the front so it's visible
-                                              assignedShifts.value = [shift, ...assignedShifts.value];
-                                              // Set selectedLocationIds accordingly
-                                              final adoptLoc = selectedLocationId.value ?? locationId;
-                                              selectedLocationIds.value = [adoptLoc, ...selectedLocationIds.value];
+                                      // Optimistically ensure the joined shift appears immediately in the UI for the current session.
+                                      try {
+                                        if (!assignedShifts.value.any((s) => s.shiftId == shift.shiftId)) {
+                                          // Insert at the front so it's visible
+                                          assignedShifts.value = [shift, ...assignedShifts.value];
+                                          // Set selectedLocationIds accordingly
+                                          final adoptLoc = selectedLocationId.value ?? locationId;
+                                          selectedLocationIds.value = [adoptLoc, ...selectedLocationIds.value];
 
-                                              // Load checklists for this shift instantly and prepend
-                                              final loaded = await _loadChecklistsForShiftSimple(shift, adoptLoc, todayString, organizationId.value!);
-                                              allChecklists.value = [loaded, ...allChecklists.value];
-                                            }
-                                          } catch (e) {
-                                            logger.w('[Dashboard] Optimistic UI update failed: $e');
-                                          }
+                                          // Load checklists for this shift instantly and prepend
+                                          final loaded = await _loadChecklistsForShiftSimple(
+                                            shift,
+                                            adoptLoc,
+                                            todayString,
+                                            organizationId.value!,
+                                          );
+                                          allChecklists.value = [loaded, ...allChecklists.value];
+                                        }
+                                      } catch (e) {
+                                        logger.w('[Dashboard] Optimistic UI update failed: $e');
+                                      }
 
                                       // Mark this shift as selected in global operational state so its checklists auto-expand
                                       try {
@@ -1731,9 +1836,9 @@ class _HelpOutDialog extends StatelessWidget {
 
   Future<List<ShiftData>> _getAvailableShifts() async {
     try {
-  final now = DateTime.now();
-  final todayString = DateFormat('yyyy-MM-dd').format(now);
-      
+      final now = DateTime.now();
+      final todayString = DateFormat('yyyy-MM-dd').format(now);
+
       if (selectedLocationId == null) return [];
 
       // Get all shifts for the organization that apply to this location
@@ -1854,7 +1959,9 @@ class _HelpOutDialog extends StatelessWidget {
               final vj = (raw['volunteerJoins'] as Map?)?.cast<String, dynamic>();
               final joinedMarker = vj != null ? vj[currentUser.uid] : null;
               if (joinedMarker == todayString) {
-                debugPrint('[HelpOutSheet] Skipping shift ${shift.shiftName} because user already joined today (marker=$joinedMarker)');
+                debugPrint(
+                  '[HelpOutSheet] Skipping shift ${shift.shiftName} because user already joined today (marker=$joinedMarker)',
+                );
                 continue;
               }
 
@@ -1862,7 +1969,9 @@ class _HelpOutDialog extends StatelessWidget {
               try {
                 final rawVols = (raw['volunteers'] as List?)?.map((e) => e.toString()).toList() ?? [];
                 if (rawVols.contains(currentUser.uid)) {
-                  debugPrint('[HelpOutSheet] Skipping shift ${shift.shiftName} because user is already in volunteers array');
+                  debugPrint(
+                    '[HelpOutSheet] Skipping shift ${shift.shiftName} because user is already in volunteers array',
+                  );
                   continue;
                 }
               } catch (e) {
@@ -2488,7 +2597,10 @@ class _ConsolidatedMissedTasksCard extends HookWidget {
                         style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: HandsColors.sageGreen),
                       ),
                       const SizedBox(height: 2),
-                      Text('No missed tasks from yesterday.', style: TextStyle(color: HandsColors.white70, fontSize: 12)),
+                      Text(
+                        'No missed tasks from yesterday.',
+                        style: TextStyle(color: HandsColors.white70, fontSize: 12),
+                      ),
                     ],
                   ),
                 ),
@@ -2586,7 +2698,9 @@ class _ConsolidatedMissedTasksCard extends HookWidget {
                     LinearProgressIndicator(
                       value: progress,
                       backgroundColor: HandsColors.cardTertiary,
-                      valueColor: AlwaysStoppedAnimation<Color>(progress == 1.0 ? HandsColors.sageGreen : HandsColors.missedRed),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        progress == 1.0 ? HandsColors.sageGreen : HandsColors.missedRed,
+                      ),
                       minHeight: 6,
                     ),
                   ],
@@ -2783,17 +2897,7 @@ class _ChecklistCard extends HookConsumerWidget {
             ? (opState.selectedShift!.shiftId == checklist.shiftId)
             : opState.expandedChecklists.contains(checklist.id);
 
-    final isExpanded = useState(initiallyExpanded);
-    // Keep expansion in sync when the selectedShift or expandedChecklists changes
-    useEffect(() {
-      final newVal =
-          (opState.selectedShift != null)
-              ? (opState.selectedShift!.shiftId == checklist.shiftId)
-              : opState.expandedChecklists.contains(checklist.id);
-      isExpanded.value = newVal;
-      return null;
-    }, [opState.selectedShift, opState.expandedChecklists]);
-
+    final isExpanded = useState<bool>(initiallyExpanded);
     final statusColor = checklist.isCompleted ? Colors.green : Colors.orange;
 
     return Card(
@@ -2807,17 +2911,12 @@ class _ChecklistCard extends HookConsumerWidget {
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
             ),
             subtitle: StreamBuilder<List<TaskData>>(
-              stream: DailyChecklistService()
-                  .streamChecklistTasks(
-                    organizationId: checklist.organizationId,
-                    locationId: checklist.locationId,
-                    checklistId: checklist.id,
-                  )
-                  .map((list) => list),
+              stream: DailyChecklistService().streamChecklistTasks(
+                organizationId: checklist.organizationId,
+                locationId: checklist.locationId,
+                checklistId: checklist.id,
+              ),
               builder: (context, snapshot) {
-                logger.d(
-                  '[Dashboard][_ChecklistCard] header snapshot.hasData=${snapshot.hasData} checklistId=${checklist.id}',
-                );
                 if (!snapshot.hasData) {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -2828,20 +2927,7 @@ class _ChecklistCard extends HookConsumerWidget {
                   );
                 }
 
-                final tasks = snapshot.data;
-                if (tasks == null) {
-                  // Defensive: if data is unexpectedly null, show the same loading affordance as before
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 4),
-                      LinearProgressIndicator(value: 0.0, backgroundColor: Colors.grey[300]),
-                    ],
-                  );
-                }
-                logger.d(
-                  '[Dashboard][_ChecklistCard] header received ${tasks.length} tasks for checklist=${checklist.id}',
-                );
+                final tasks = snapshot.data ?? [];
                 final totalTasks = tasks.length;
                 final completedTasksCount = tasks.where((t) => t.completed).length;
                 final progressPercentage = totalTasks > 0 ? completedTasksCount / totalTasks : 0.0;
@@ -2865,7 +2951,7 @@ class _ChecklistCard extends HookConsumerWidget {
               children: [
                 Icon(checklist.isCompleted ? Icons.check_circle : Icons.pending_actions, color: statusColor),
                 const SizedBox(width: 8),
-                // Quick admin/debug actions removed ("Reseed from template" menu)
+                // Expand/collapse affordance
                 Icon(isExpanded.value ? Icons.expand_less : Icons.expand_more, color: Colors.grey[600]),
               ],
             ),

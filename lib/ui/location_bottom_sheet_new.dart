@@ -70,6 +70,8 @@ class _LocationWizardState extends State<LocationWizard> {
   }
 
   Future<void> _bootstrap() async {
+    if (!mounted) return;
+    if (!mounted) return;
     setState(() => _loading = true);
     try {
       final sub = await StripeService.getSubscriptionData(widget.organizationId);
@@ -90,10 +92,12 @@ class _LocationWizardState extends State<LocationWizard> {
     } catch (e) {
       debugPrint('[LocationWizard] Init error: $e');
     } finally {
-      setState(() {
-        _initialized = true;
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _initialized = true;
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -160,8 +164,20 @@ class _LocationWizardState extends State<LocationWizard> {
         }
       }
 
-      widget.onCompleted?.call();
-      if (mounted) Navigator.of(context).pop(true);
+      // If a parent supplies onCompleted it is responsible for closing the dialog / route.
+      // Previously we always called Navigator.pop() here AND most callers (e.g. admin dashboard)
+      // also popped inside their onCompleted callback, resulting in a double pop that
+      // triggered GoRouter's `currentConfiguration.isNotEmpty` assertion and subsequent
+      // setState-after-dispose errors when async loads completed on the disposed page.
+      final hasExternalCompletionHandler = widget.onCompleted != null;
+      try {
+        widget.onCompleted?.call();
+      } catch (e) {
+        debugPrint('[LocationWizard] onCompleted handler threw: $e');
+      }
+      if (!hasExternalCompletionHandler && mounted) {
+        Navigator.of(context).pop(true);
+      }
     } catch (e) {
       debugPrint('[LocationWizard] Error saving locations: $e');
       if (mounted) {
