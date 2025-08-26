@@ -1879,15 +1879,28 @@ class _HelpOutDialog extends StatelessWidget {
 
       if (selectedLocationId == null) return [];
 
-      // Get all shifts for the organization that apply to this location
-      final shiftsQuery = FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(organizationId)
-          .collection('shifts')
-          .where('locationIds', arrayContains: selectedLocationId);
+    // Get all shifts for the organization that apply to this location.
+    // Some older shift docs may store a single 'locationId' string instead of
+    // the newer 'locationIds' array. Query both and merge to ensure we don't
+    // miss shifts like the Opening Bar which may use the legacy field.
+    final shiftsColl = FirestoreEnforcer.instance
+      .collection('organizations')
+      .doc(organizationId)
+      .collection('shifts');
 
-      final shiftsSnapshot = await shiftsQuery.get();
-      final shifts = <ShiftData>[];
+    final qArray = shiftsColl.where('locationIds', arrayContains: selectedLocationId);
+    final qSingle = shiftsColl.where('locationId', isEqualTo: selectedLocationId);
+
+    final snapArray = await qArray.get();
+    final snapSingle = await qSingle.get();
+
+    // Merge and dedupe by document id
+    final Map<String, QueryDocumentSnapshot> docsById = {};
+    for (final d in snapArray.docs) docsById[d.id] = d;
+    for (final d in snapSingle.docs) docsById[d.id] = d;
+
+    final combinedDocs = docsById.values.toList();
+    final shifts = <ShiftData>[];
 
       // Load current user role and job types for filtering logic
       int userRole = 0; // 0=user, 1=manager, 2=admin
@@ -1910,6 +1923,11 @@ class _HelpOutDialog extends StatelessWidget {
       bool isShiftWithinWindow(ShiftData shift) {
         try {
           // Scheduled for today?
+          // For managers/admins (userRole >= 1) allow bypassing the 'days' check
+          // so they can see live shifts in the time window even if the shift
+          // document doesn't list today in its 'days' array (useful for
+          // one-off or legacy data). For general users, we require the shift
+          // to be scheduled for today.
           final scheduledToday = shift.repeatsDaily || shift.days.contains(todayDayName);
           debugPrint(
             '[HelpOutSheet] Shift ${shift.shiftName} scheduled for today ($todayDayName): $scheduledToday (repeatsDaily: ${shift.repeatsDaily}, days: ${shift.days})',
@@ -1961,13 +1979,13 @@ class _HelpOutDialog extends StatelessWidget {
       }
 
       debugPrint(
-        '[HelpOutSheet] Found ${shiftsSnapshot.docs.length} potential shifts for location $selectedLocationId',
+        '[HelpOutSheet] Found ${combinedDocs.length} potential shifts for location $selectedLocationId',
       );
       debugPrint('[HelpOutSheet] User role: $userRole, jobTypes: $userJobTypes, todayDayName: $todayDayName');
 
-      for (final doc in shiftsSnapshot.docs) {
+      for (final doc in combinedDocs) {
         try {
-          final raw = Map<String, dynamic>.from(doc.data());
+          final raw = Map<String, dynamic>.from((doc.data() ?? <String, dynamic>{}) as Map<String, dynamic>);
           debugPrint('[HelpOutSheet] Processing shift ${doc.id}: ${raw['shiftName']}');
 
           // Apply defensive coercion like we do in the service layer
