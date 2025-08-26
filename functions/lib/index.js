@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.placeDetailsHttp = exports.placesAutocompleteHttp = exports.createBillingPortalSession = exports.updateSubscription = exports.cancelSubscription = exports.stripeWebhook = exports.createCheckoutSession = exports.deleteUser = exports.createUser = exports.repairTaskTitlesFromCsv = exports.repairTemplateTaskTitles = exports.migrateChecklistTemplates = exports.syncTodayOnShiftChange = exports.syncTodayOnTemplateChange = void 0;
+exports.proxyDownload = exports.proxyUpload = exports.getSignedUploadUrl = exports.placeDetailsHttp = exports.placesAutocompleteHttp = exports.createBillingPortalSession = exports.updateSubscription = exports.cancelSubscription = exports.stripeWebhook = exports.createCheckoutSession = exports.deleteUser = exports.createUser = exports.repairTaskTitlesFromCsv = exports.repairTemplateTaskTitles = exports.migrateChecklistTemplates = exports.syncTodayOnShiftChange = exports.syncTodayOnTemplateChange = void 0;
 /* eslint-disable @typescript-eslint/no-require-imports */
 const admin = __importStar(require("firebase-admin"));
 // Ensure admin is initialized (idempotent)
@@ -72,3 +72,14 @@ exports.createBillingPortalSession = stripeModule.createBillingPortalSession;
 const placesModule = require("../places_functions");
 exports.placesAutocompleteHttp = placesModule.placesAutocompleteHttp;
 exports.placeDetailsHttp = placesModule.placeDetailsHttp;
+// Signed upload URL provider
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const signedUploadModule = require("./signedUpload");
+exports.getSignedUploadUrl = signedUploadModule.getSignedUploadUrl;
+// Export proxy upload callable
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const proxyUploadModule = require("./proxyUpload");
+exports.proxyUpload = proxyUploadModule.proxyUpload;
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const proxyDownloadModule = require("./proxyDownload");
+exports.proxyDownload = proxyDownloadModule.proxyDownload;

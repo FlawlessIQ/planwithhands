@@ -42,7 +42,9 @@ Widget _buildAdminSetupPage(BuildContext ctx, {required String organizationId, S
 
   // Use web version for desktop-like environments (large screens in landscape)
   // Use mobile version for mobile devices, even when accessing via web
-  final useWebVersion = kIsWeb && (isLargeScreen || isLandscapeDesktop);
+  // Allow forcing the web layout via ?forceWeb=true in the browser URL (useful for debugging)
+  final forceWeb = Uri.base.queryParameters['forceWeb'] == 'true';
+  final useWebVersion = forceWeb || (kIsWeb && (isLargeScreen || isLandscapeDesktop));
 
   debugPrint(
     'Admin route -> ${useWebVersion ? 'WEB' : 'MOBILE'} | width=$screenWidth height=$screenHeight ratio=${aspectRatio.toStringAsFixed(2)} | orgId=$organizationId tab=$tab',
@@ -50,6 +52,9 @@ Widget _buildAdminSetupPage(BuildContext ctx, {required String organizationId, S
 
   // Convert string tab to WebAdminTab enum for web version
   WebAdminTab? webAdminTab;
+  if (forceWeb) {
+    debugPrint('[ROUTES] forceWeb=true -> forcing WEB admin layout');
+  }
   if (tab != null && useWebVersion) {
     switch (tab.toLowerCase()) {
       case 'shifts':

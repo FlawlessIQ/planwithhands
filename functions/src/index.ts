@@ -46,3 +46,17 @@ export const createBillingPortalSession = stripeModule.createBillingPortalSessio
 const placesModule = require("../places_functions");
 export const placesAutocompleteHttp = placesModule.placesAutocompleteHttp as any;
 export const placeDetailsHttp = placesModule.placeDetailsHttp as any;
+
+// Signed upload URL provider
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const signedUploadModule = require("./signedUpload");
+export const getSignedUploadUrl = signedUploadModule.getSignedUploadUrl as any;
+
+// Export proxy upload callable
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const proxyUploadModule = require("./proxyUpload");
+export const proxyUpload = proxyUploadModule.proxyUpload as any;
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const proxyDownloadModule = require("./proxyDownload");
+export const proxyDownload = proxyDownloadModule.proxyDownload as any;

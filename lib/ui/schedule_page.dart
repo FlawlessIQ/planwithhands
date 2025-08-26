@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:hands_app/theme/theme.dart';
 
 import 'package:hands_app/data/models/shift_data.dart';
 import 'package:hands_app/data/models/schedule_entry_data.dart';
@@ -35,8 +37,7 @@ class _SchedulePageState extends State<SchedulePage> {
 
   int? _userRole;
   String? _userId;
-  final ViewMode _viewMode = ViewMode.Editor;
-  // Removed ScheduleData? _schedule; (not used or defined)
+  // Removed unused _viewMode and unused schedule field
 
   @override
   void initState() {
@@ -325,58 +326,7 @@ class _SchedulePageState extends State<SchedulePage> {
     }
   }
 
-  Future<void> _showAssignmentSheet(ShiftData shift, ScheduleEntryData entry) async {
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) {
-        return DraggableScrollableSheet(
-          expand: false,
-          builder: (context, scrollController) {
-            return Container(
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-              ),
-              child: DefaultTabController(
-                length: 2,
-                child: Column(
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 4,
-                      margin: const EdgeInsets.symmetric(vertical: 8),
-                      decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(2)),
-                    ),
-                    const TabBar(tabs: [Tab(text: 'Available'), Tab(text: 'Other Qualified')]),
-                    Expanded(
-                      child: TabBarView(
-                        children: [
-                          Center(child: Text('Available staff list here')),
-                          Center(child: Text('Other qualified staff here')),
-                        ],
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: ElevatedButton(
-                        onPressed: () {
-                          // TODO: implement publish/unpublish logic and send email notifications
-                          Navigator.of(context).pop();
-                        },
-                        child: const Text('Publish'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
+  // _showAssignmentSheet removed (unused)
 
   Stream<List<ScheduleEntryData>> _shiftsForDayStream(DateTime day) {
     if (_orgId == null || _selectedLocation == null) {
@@ -790,11 +740,18 @@ class _SchedulePageState extends State<SchedulePage> {
                         children: [
                           Text(
                             DateFormat.E().format(day),
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                            style: GoogleFonts.comfortaa(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                              color: HandsColors.white,
+                            ),
                           ),
                           Text(
                             DateFormat.MMMd().format(day),
-                            style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                            style: GoogleFonts.comfortaa(
+                              fontSize: 10,
+                              color: HandsColors.white70,
+                            ),
                           ),
                           // Publish status indicator
                           StreamBuilder<bool>(

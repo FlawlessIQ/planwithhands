@@ -947,7 +947,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Top row - two main cards side by side
-          Container(
+          SizedBox(
             height: 350, // Reduced height to prevent overflow
             child: Row(
               children: [
@@ -995,7 +995,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        Container(height: 80, child: MiniSparkBars(values: _missedTrend7d, height: 80)),
+                        SizedBox(height: 80, child: MiniSparkBars(values: _missedTrend7d, height: 80)),
                         const Spacer(),
                         // Location footer
                         if (_selectedLocationName != null)
@@ -1061,7 +1061,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                         tooltip: 'Refresh',
                       ),
                     ],
-                    content: Container(
+                    content: SizedBox(
                       height: 240, // Reduced height for better fit
                       child: _SimpleShiftList(shifts: _filteredLiveShifts, onOpen: _openTodayShifts),
                     ),
@@ -1074,7 +1074,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
           const SizedBox(height: 24),
 
           // Bottom row - three cards side by side
-          Container(
+          SizedBox(
             height: 350, // Reduced height to prevent overflow
             child: Row(
               children: [
@@ -1714,7 +1714,7 @@ class MiniSparkBars extends StatelessWidget {
     if (values.isEmpty) return SizedBox(height: height, child: const SizedBox.shrink());
 
     // Simple bar chart instead of custom paint to avoid mouse tracker issues on web
-    return Container(
+    return SizedBox(
       height: height,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -2641,7 +2641,7 @@ class _SimpleDashboardCard extends StatelessWidget {
 
               // Content
               if (loading)
-                Container(
+                SizedBox(
                   height: 240, // Reduced loading height
                   child: Center(
                     child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(accentColor)),
@@ -2729,7 +2729,7 @@ class _SimpleShiftList extends StatelessWidget {
                     ),
 
                     // Harvey ball (completion indicator) in center
-                    Container(
+                    SizedBox(
                       width: 50,
                       height: 50,
                       child: Stack(
@@ -2748,7 +2748,7 @@ class _SimpleShiftList extends StatelessWidget {
                           // Completion fill
                           if (completionPct > 0)
                             ClipOval(
-                              child: Container(
+                              child: SizedBox(
                                 width: 50,
                                 height: 50,
                                 child: CustomPaint(

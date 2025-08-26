@@ -9,17 +9,12 @@ service cloud.firestore {
     // placement inside the organizations/{orgId} block caused
     // permission-denied on collectionGroup queries.
     // -------------------------------------------------------------------
-    match /{path=**}/tasks/{taskId} {
-      allow get, list: if request.auth != null &&
-        resource.data.organizationId != null &&
-        isOrgMember(resource.data.organizationId);
-      allow create, update: if request.auth != null &&
-        request.resource.data.organizationId != null &&
-        isOrgMember(request.resource.data.organizationId);
-      allow delete: if request.auth != null &&
-        resource.data.organizationId != null &&
-        isOrgManagerOrAdmin(resource.data.organizationId);
+    match /organizations/{orgId}/checklist_templates/{templateId}/tasks/{taskId} {
+      allow get, list: if request.auth != null && isOrgMember(orgId);
+      allow create, update: if request.auth != null && isOrgManagerOrAdmin(orgId) && request.resource.data.organizationId == orgId;
+      allow delete: if request.auth != null && isOrgManagerOrAdmin(orgId);
     }
+
     // -------------------------------------------------------------------
     // Helper functions (scoped to entire database)
     // -------------------------------------------------------------------
@@ -66,12 +61,19 @@ service cloud.firestore {
     // Users (retain existing self-access pattern)
     // -------------------------------------------------------------------
     match /users/{userId} {
-      // Self access
-      allow read, update, delete: if request.auth != null && request.auth.uid == userId;
-      // TEMP: Allow broader access for debugging - any authenticated user can list users
+      // Allow the user to read/update/delete their own document OR allow org managers/admins
+      // to manage users within their organization.
+      allow read, update, delete: if request.auth != null && (
+        request.auth.uid == userId ||
+        (resource.data.organizationId != null && isOrgManagerOrAdmin(resource.data.organizationId))
+      );
+
+      // Allow listing/getting user docs to authenticated users for debugging/UX.
+      // (Can be tightened to org members if desired.)
       allow get, list: if request.auth != null;
-      // Original rule: allow get, list: if request.auth != null && resource.data.organizationId != null && isOrgManagerOrAdmin(resource.data.organizationId);
-      allow create: if request.auth != null; // signup flow
+
+      // Signup flow: allow authenticated creation (server-side sign-up also exists)
+      allow create: if request.auth != null;
     }
 
     // -------------------------------------------------------------------

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -42,6 +43,11 @@ class UserDashboardPage extends HookConsumerWidget {
     final missedTasksSections = useState<List<MissedTasksSection>>([]);
     final missedTasksLoading = useState(false);
     final lastLoadedDate = useState<String?>(null);
+
+  // Local hook state for role-aware shifts & missed tasks (kept separate from the older missedTasksSections)
+  final shifts = useState<List<Map<String, dynamic>>>(const []);
+  final missedGroups = useState<List<Map<String, dynamic>>>(const []);
+  final loadingMissed = useState<bool>(false);
 
     // Location selection state
     final selectedLocationId = useState<String?>(null);
@@ -223,6 +229,21 @@ class UserDashboardPage extends HookConsumerWidget {
                   return shiftLocs.contains(selectedLocationId.value);
                 }).toList()
                 : foundShifts;
+        // Merge any currently-present (optimistic) assigned shifts so we don't drop them
+        try {
+          final existing = assignedShifts.value;
+          // Build map of found shifts keyed by shiftId for de-duping
+          final Map<String, ShiftData> byId = {for (var s in foundShifts) s.shiftId: s};
+          for (final ex in existing) {
+            if (ex.shiftId.isNotEmpty && !byId.containsKey(ex.shiftId)) {
+              byId[ex.shiftId] = ex;
+            }
+          }
+          foundShifts = byId.values.toList();
+        } catch (e) {
+          logger.w('[Dashboard] Failed merging optimistic assigned shifts: $e');
+        }
+
         foundShifts.sort((a, b) => a.startTime.compareTo(b.startTime));
         logger.d("[Dashboard][DEBUG] Setting ${foundShifts.length} shifts to assignedShifts");
         assignedShifts.value = foundShifts;
@@ -429,6 +450,132 @@ class UserDashboardPage extends HookConsumerWidget {
       return null;
     }, []);
 
+  // Convenience local closures that delegate to file-level helpers but use current hook state
+  bool matchesUserJobTypeLocal(Map<String, dynamic> data) {
+      final userJobType = userJobTypes.value.isNotEmpty ? userJobTypes.value.first : null;
+      return _matchesUserJobType(data, userJobType: userJobType, userRole: userRole.value);
+    }
+
+    // Shifts listener: role-aware, rebinds when org/location/role/job types change
+    useEffect(() {
+      if (organizationId.value == null || selectedLocationId.value == null) {
+        shifts.value = const [];
+        return null;
+      }
+
+      Query<Map<String, dynamic>> q = FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(organizationId.value!)
+          .collection('shifts')
+          .where('locationIds', arrayContains: selectedLocationId.value);
+
+  final isAdminMgr = _isManagerOrAdmin(userRole.value);
+      if (!isAdminMgr && userJobTypes.value.isNotEmpty) {
+        try {
+          // Narrow server-side when possible; prefer array-contains-any for multiple job types
+          q = q.where('jobTypes', arrayContainsAny: userJobTypes.value);
+        } catch (_) {
+          try {
+            q = q.where('jobType', isEqualTo: userJobTypes.value.first);
+          } catch (_) {
+            // Ignore server-side narrowing failures and fall back to client-side filter
+          }
+        }
+      }
+
+      final sub = q.snapshots().listen((snap) {
+        final out = <Map<String, dynamic>>[];
+        for (final d in snap.docs) {
+          final data = Map<String, dynamic>.from(d.data());
+          data['id'] = d.id;
+          if (isAdminMgr || matchesUserJobTypeLocal(data)) out.add(data);
+        }
+        shifts.value = out;
+      });
+
+      return sub.cancel;
+    }, [organizationId.value, selectedLocationId.value, userRole.value, userJobTypes.value]);
+
+    // Missed tasks loader (role-aware) - uses carry-forward query and keeps UI model in sync
+    Future<void> _loadMissedYesterdayRoleAware() async {
+      if (organizationId.value == null) return;
+      loadingMissed.value = true;
+      try {
+        final groups = await DailyChecklistService().getYesterdayMissedFromTodayCarryForward(
+          organizationId: organizationId.value!,
+          today: DateTime.now(),
+          locationId: selectedLocationId.value,
+        );
+
+  final isAdminMgr = _isManagerOrAdmin(userRole.value);
+        final uj = userJobTypes.value.isNotEmpty ? userJobTypes.value.first.toLowerCase().trim() : '';
+        final filtered = <Map<String, dynamic>>[];
+
+        for (final g in groups) {
+          final gj = (g['jobType'] ?? g['shiftJobType'] ?? g['role'] ?? '').toString().toLowerCase().trim();
+
+          if (isAdminMgr) {
+            filtered.add(g);
+            continue;
+          }
+          if (gj.isNotEmpty && gj == uj) {
+            filtered.add(g);
+            continue;
+          }
+
+          // Fallback: cross-check shiftId with loaded shifts
+          final sid = (g['shiftId'] ?? '').toString();
+          if (sid.isNotEmpty) {
+            final found = shifts.value.firstWhere((s) => s['id'] == sid, orElse: () => const {});
+            if (found.isNotEmpty && matchesUserJobTypeLocal(found)) {
+              filtered.add(g);
+            }
+          }
+        }
+
+        missedGroups.value = filtered;
+
+        // Also refresh the UI-facing MissedTasksSection list using the existing loader and apply same filter
+        try {
+          final today = DateTime.now();
+          var sections = await DailyChecklistService().loadMissedTasksForToday(
+            organizationId: organizationId.value!,
+            targetDate: today,
+            locationId: selectedLocationId.value,
+          );
+
+          if (!isAdminMgr && userJobTypes.value.isNotEmpty) {
+            final filteredSections = <MissedTasksSection>[];
+            for (final sec in sections) {
+              final sid = sec.shiftId;
+              final found = shifts.value.firstWhere((s) => s['id'] == sid, orElse: () => const {});
+              if (found.isNotEmpty && matchesUserJobTypeLocal(found)) {
+                filteredSections.add(sec);
+              }
+            }
+            sections = filteredSections;
+          }
+          missedTasksSections.value = sections;
+        } catch (e, st) {
+          logger.e('[Dashboard] Error refreshing MissedTasksSection list: $e', e, st);
+        }
+      } catch (e, st) {
+        logger.e('[Dashboard] Error _loadMissedYesterdayRoleAware: $e', e, st);
+      } finally {
+        loadingMissed.value = false;
+      }
+    }
+
+    useEffect(() {
+      if (organizationId.value == null || selectedLocationId.value == null) {
+        missedGroups.value = const [];
+        missedTasksSections.value = const [];
+        return null;
+      }
+      _loadMissedYesterdayRoleAware();
+      return null;
+    }, [organizationId.value, selectedLocationId.value, userRole.value, userJobTypes.value, shifts.value.length]);
+
     // Check for new day when component is rebuilt or when state changes
     useEffect(() {
       // If we've loaded before and it's a new day, reload the dashboard
@@ -613,26 +760,55 @@ class UserDashboardPage extends HookConsumerWidget {
                                   final user = FirebaseAuth.instance.currentUser;
                                   if (user != null) {
                                     try {
-                                      await FirestoreEnforcer.instance
-                                          .collection('organizations')
-                                          .doc(organizationId.value!)
-                                          .collection('shifts')
-                                          .doc(shift.shiftId)
-                                          .update({
-                                            'volunteers': FieldValue.arrayUnion([user.uid]),
-                                            // Track that this user explicitly joined this shift for TODAY only
-                                            'volunteerJoins.${user.uid}': todayString,
-                                          });
+                                      // If the shift already lists this user as a volunteer, don't attempt to re-add.
+                                      if (shift.volunteers.contains(user.uid)) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text('You are already signed up for ${shift.shiftName}.'),
+                                            backgroundColor: Colors.orange,
+                                            duration: const Duration(seconds: 2),
+                                          ),
+                                        );
+                                        logger.d("[Dashboard] User already in volunteers for shift ${shift.shiftId}");
+                                      } else {
+                                        await FirestoreEnforcer.instance
+                                            .collection('organizations')
+                                            .doc(organizationId.value!)
+                                            .collection('shifts')
+                                            .doc(shift.shiftId)
+                                            .update({
+                                              'volunteers': FieldValue.arrayUnion([user.uid]),
+                                              // Track that this user explicitly joined this shift for TODAY only
+                                              'volunteerJoins.${user.uid}': todayString,
+                                            });
 
-                                      // Show success message
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text('Successfully joined ${shift.shiftName}!'),
-                                          backgroundColor: Colors.green,
-                                          duration: const Duration(seconds: 2),
-                                        ),
-                                      );
-                                      logger.d("[Dashboard] Successfully added user to shift volunteers");
+                                        // Show success message
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Successfully joined ${shift.shiftName}!'),
+                                            backgroundColor: Colors.green,
+                                            duration: const Duration(seconds: 2),
+                                          ),
+                                        );
+                                        logger.d("[Dashboard] Successfully added user to shift volunteers");
+                                      }
+
+                                          // Optimistically ensure the joined shift appears immediately in the UI for the current session.
+                                          try {
+                                            if (!assignedShifts.value.any((s) => s.shiftId == shift.shiftId)) {
+                                              // Insert at the front so it's visible
+                                              assignedShifts.value = [shift, ...assignedShifts.value];
+                                              // Set selectedLocationIds accordingly
+                                              final adoptLoc = selectedLocationId.value ?? locationId;
+                                              selectedLocationIds.value = [adoptLoc, ...selectedLocationIds.value];
+
+                                              // Load checklists for this shift instantly and prepend
+                                              final loaded = await _loadChecklistsForShiftSimple(shift, adoptLoc, todayString, organizationId.value!);
+                                              allChecklists.value = [loaded, ...allChecklists.value];
+                                            }
+                                          } catch (e) {
+                                            logger.w('[Dashboard] Optimistic UI update failed: $e');
+                                          }
 
                                       // Mark this shift as selected in global operational state so its checklists auto-expand
                                       try {
@@ -644,28 +820,30 @@ class UserDashboardPage extends HookConsumerWidget {
                                       // If no explicit location selected yet, adopt the shift's location so subsequent reloads
                                       // filter/associate correctly. Without this, checklist loading may target a placeholder.
                                       try {
-                                        if (selectedLocationId.value == null) {
-                                          final shiftLocs = coerceToLocationIds(shift.locationIds);
-                                          if (shiftLocs.isNotEmpty) {
-                                            selectedLocationId.value = shiftLocs.first;
-                                            logger.d(
-                                              '[Dashboard] Adopted shift location ${shiftLocs.first} as selectedLocationId',
+                                        // Adopt the joined shift's location so the dashboard will show its assigned checklists.
+                                        final shiftLocs = coerceToLocationIds(shift.locationIds);
+                                        final adoptLoc = shiftLocs.isNotEmpty ? shiftLocs.first : locationId;
+                                        if (selectedLocationId.value != adoptLoc) {
+                                          selectedLocationId.value = adoptLoc;
+                                          // Try to set a human-readable name if we have it available
+                                          try {
+                                            final nameEntry = availableLocations.value.firstWhere(
+                                              (l) => l['id'] == adoptLoc,
+                                              orElse: () => <String, dynamic>{},
                                             );
-                                          } else {
-                                            // locationId from dialog result (non-null) as fallback
-                                            selectedLocationId.value = locationId;
-                                            logger.d(
-                                              '[Dashboard] Adopted dialog location $locationId as selectedLocationId (fallback)',
-                                            );
-                                          }
+                                            if (nameEntry.isNotEmpty) selectedLocationName.value = nameEntry['name'];
+                                          } catch (_) {}
+                                          logger.d(
+                                            '[Dashboard] Adopted shift location $adoptLoc as selectedLocationId',
+                                          );
                                         }
                                       } catch (e) {
                                         logger.e('[Dashboard] Error adopting shift location: $e', e);
                                       }
 
                                       // Refresh the dashboard to show the new volunteer shift
-                                      logger.d("[Dashboard] Refreshing dashboard after joining volunteer shift...");
-                                      await loadDashboardData();
+                                      // logger.d("[Dashboard] Refreshing dashboard after joining volunteer shift...");
+                                      // await loadDashboardData(); // DISABLED: This causes a race condition where the optimistic UI update is wiped.
                                     } catch (e) {
                                       logger.e('[Dashboard] Error joining volunteer shift: $e', e);
                                       ScaffoldMessenger.of(context).showSnackBar(
@@ -1054,6 +1232,55 @@ Future<List<ShiftData>> _getAllShiftsForToday(String userId, String todayDayName
   return allShifts;
 }
 
+// Small UI helpers used by dashboard lists
+bool _isManagerOrAdmin(int userRole) {
+  return userRole == 1 || userRole == 2;
+}
+
+// Checks if a shift doc matches the employee's job type.
+bool _matchesUserJobType(Map<String, dynamic> data, {String? userJobType, int userRole = 0}) {
+  if (userRole == 1 || userRole == 2) return true;
+  final uj = (userJobType ?? '').trim().toLowerCase();
+  if (uj.isEmpty) return false;
+
+  final single = (data['jobType'] ?? data['role'] ?? '').toString().trim().toLowerCase();
+  if (single.isNotEmpty && single == uj) return true;
+
+  final list = data['jobTypes'];
+  if (list is List) {
+    for (final v in list) {
+      if ((v ?? '').toString().trim().toLowerCase() == uj) return true;
+    }
+  }
+  return false;
+}
+
+// Normalize schedule like mobile (adjust to your exact mobile formatting if needed)
+String _formatSchedule(Map<String, dynamic> s) {
+  final start = (s['startTime'] ?? '').toString();
+  final end = (s['endTime'] ?? '').toString();
+  final daily = s['repeatsDaily'] == true;
+  final days = (s['days'] is List) ? List.from(s['days']) : const [];
+  String range = (start.isNotEmpty && end.isNotEmpty) ? '$start–$end' : '';
+  if (daily) return range.isEmpty ? 'Daily' : 'Daily • $range';
+
+  String mapDay(dynamic d) {
+    final dd = d.toString().toLowerCase();
+    if (dd.startsWith('mon') || dd == '1') return 'Mon';
+    if (dd.startsWith('tue') || dd == '2') return 'Tue';
+    if (dd.startsWith('wed') || dd == '3') return 'Wed';
+    if (dd.startsWith('thu') || dd == '4') return 'Thu';
+    if (dd.startsWith('fri') || dd == '5') return 'Fri';
+    if (dd.startsWith('sat') || dd == '6') return 'Sat';
+    if (dd.startsWith('sun') || dd == '0' || dd == '7') return 'Sun';
+    return dd.substring(0, 3).toUpperCase();
+  }
+
+  if (days.isEmpty) return range.isEmpty ? '—' : range;
+  final names = days.map(mapDay).join(' ');
+  return range.isEmpty ? names : '$names • $range';
+}
+
 // Helper function to check if a shift is active for today
 Future<bool> _isShiftActiveForToday(
   ShiftData shift,
@@ -1250,19 +1477,20 @@ Future<void> _leaveVolunteerShift(
   final confirmed = await showDialog<bool>(
     context: context,
     builder:
-        (context) => AlertDialog(
-          title: const Text('Leave Volunteer Shift'),
-          content: Text(
-            'Are you sure you want to leave the "${shift.shiftName}" volunteer shift? This will remove you from future assignments for this shift.',
-          ),
+        (context) => HandsDialog(
+          title: 'Leave Volunteer Shift',
           actions: [
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
             ElevatedButton(
               onPressed: () => Navigator.pop(context, true),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: HandsColors.white),
               child: const Text('Leave Shift'),
             ),
           ],
+          child: Text(
+            'Are you sure you want to leave the "${shift.shiftName}" volunteer shift? This will remove you from future assignments for this shift.',
+            style: const TextStyle(color: HandsColors.white70, height: 1.2),
+          ),
         ),
   );
 
@@ -1470,7 +1698,12 @@ class _HelpOutDialog extends StatelessWidget {
                             style: TextStyle(fontWeight: FontWeight.w500, color: HandsColors.white),
                           ),
                           subtitle: Text(
-                            '${shift.startTime} - ${shift.endTime}',
+                            _formatSchedule({
+                              'startTime': shift.startTime,
+                              'endTime': shift.endTime,
+                              'repeatsDaily': shift.repeatsDaily,
+                              'days': shift.days,
+                            }),
                             style: TextStyle(color: HandsColors.white70),
                           ),
                           trailing: ElevatedButton(
@@ -1498,6 +1731,9 @@ class _HelpOutDialog extends StatelessWidget {
 
   Future<List<ShiftData>> _getAvailableShifts() async {
     try {
+  final now = DateTime.now();
+  final todayString = DateFormat('yyyy-MM-dd').format(now);
+      
       if (selectedLocationId == null) return [];
 
       // Get all shifts for the organization that apply to this location
@@ -1609,6 +1845,33 @@ class _HelpOutDialog extends StatelessWidget {
           final withinWindow = isShiftWithinWindow(shift);
           debugPrint('[HelpOutSheet] Shift ${shift.shiftName} within time window: $withinWindow');
           if (!withinWindow) continue;
+
+          // Skip if user already joined this shift today (volunteerJoins.{uid} == todayString)
+          try {
+            final currentUser = FirebaseAuth.instance.currentUser;
+            // Only hide already-joined shifts for general users (userRole == 0).
+            if (currentUser != null && userRole == 0) {
+              final vj = (raw['volunteerJoins'] as Map?)?.cast<String, dynamic>();
+              final joinedMarker = vj != null ? vj[currentUser.uid] : null;
+              if (joinedMarker == todayString) {
+                debugPrint('[HelpOutSheet] Skipping shift ${shift.shiftName} because user already joined today (marker=$joinedMarker)');
+                continue;
+              }
+
+              // Also skip if the user is already listed in the shift's volunteers array
+              try {
+                final rawVols = (raw['volunteers'] as List?)?.map((e) => e.toString()).toList() ?? [];
+                if (rawVols.contains(currentUser.uid)) {
+                  debugPrint('[HelpOutSheet] Skipping shift ${shift.shiftName} because user is already in volunteers array');
+                  continue;
+                }
+              } catch (e) {
+                // ignore volunteers parsing errors
+              }
+            }
+          } catch (e) {
+            // ignore join-check errors and proceed
+          }
 
           // Role-based visibility:
           // - userRole 1 (manager) and 2 (admin): see all shifts within window
@@ -1726,45 +1989,38 @@ class _NotesDialogState extends State<_NotesDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      titlePadding: EdgeInsets.zero,
-      title: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.deepPurple, Colors.deepPurpleAccent],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+    return HandsDialog(
+      title: 'Task Notes',
+      actions: [
+        TextButton(
+          onPressed: _isSaving ? null : () => Navigator.pop(context),
+          style: TextButton.styleFrom(foregroundColor: HandsColors.white70),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton.icon(
+          onPressed: _isSaving ? null : _saveNotes,
+          icon: const Icon(Icons.save),
+          label: const Text('Save Notes'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Theme.of(context).primaryColor,
+            foregroundColor: HandsColors.white,
           ),
-          borderRadius: const BorderRadius.only(topLeft: Radius.circular(12), topRight: Radius.circular(12)),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          children: [
-            const Icon(Icons.notes, color: Colors.white),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Task Notes',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: Colors.white),
-              ),
-            ),
-          ],
-        ),
-      ),
-      content: SizedBox(
+      ],
+      child: SizedBox(
         width: double.maxFinite,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Task: ${widget.task.taskName ?? 'Unknown Task'}', style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              'Task: ${widget.task.taskName ?? 'Unknown Task'}',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(color: HandsColors.white),
+            ),
             const SizedBox(height: 16),
             Text(
               'Add notes or comments about this task:',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: HandsColors.white70),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -1774,35 +2030,19 @@ class _NotesDialogState extends State<_NotesDialog> {
                 hintText: 'Enter your notes here...',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                 filled: true,
-                fillColor: Colors.grey[50],
+                fillColor: HandsColors.cardPrimary,
               ),
+              style: const TextStyle(color: HandsColors.white),
             ),
             if (_isSaving) ...[
               const SizedBox(height: 16),
               const LinearProgressIndicator(),
               const SizedBox(height: 8),
-              const Center(child: Text('Saving notes...', style: TextStyle(color: Colors.blue))),
+              Center(child: Text('Saving notes...', style: TextStyle(color: HandsColors.handsOrange))),
             ],
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: _isSaving ? null : () => Navigator.pop(context),
-          style: TextButton.styleFrom(foregroundColor: Colors.grey[800]),
-          child: const Text('Cancel'),
-        ),
-        ElevatedButton.icon(
-          onPressed: _isSaving ? null : _saveNotes,
-          icon: const Icon(Icons.save),
-          label: const Text('Save Notes'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Theme.of(context).primaryColor,
-            foregroundColor: Colors.white,
-          ),
-        ),
-      ],
-      actionsPadding: const EdgeInsets.all(16),
     );
   }
 }
@@ -2019,45 +2259,38 @@ class _NotCompletedReasonDialogState extends State<_NotCompletedReasonDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      titlePadding: EdgeInsets.zero,
-      title: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.orange.shade700, Colors.deepOrangeAccent],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+    return HandsDialog(
+      title: 'Task Not Completed',
+      actions: [
+        TextButton(
+          onPressed: _isSaving ? null : () => Navigator.pop(context),
+          style: TextButton.styleFrom(foregroundColor: HandsColors.white70),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton.icon(
+          onPressed: _isSaving ? null : _saveReason,
+          icon: const Icon(Icons.save),
+          label: const Text('Save Reason'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Theme.of(context).primaryColor,
+            foregroundColor: HandsColors.white,
           ),
-          borderRadius: const BorderRadius.only(topLeft: Radius.circular(12), topRight: Radius.circular(12)),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          children: [
-            const Icon(Icons.error_outline, color: Colors.white),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Task Not Completed',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: Colors.white),
-              ),
-            ),
-          ],
-        ),
-      ),
-      content: SizedBox(
+      ],
+      child: SizedBox(
         width: double.maxFinite,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Task: ${widget.task.taskName ?? 'Unknown Task'}', style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              'Task: ${widget.task.taskName ?? 'Unknown Task'}',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(color: HandsColors.white),
+            ),
             const SizedBox(height: 16),
             Text(
               'Why was this task not completed?',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: HandsColors.white70),
             ),
             const SizedBox(height: 12),
 
@@ -2065,8 +2298,9 @@ class _NotCompletedReasonDialogState extends State<_NotCompletedReasonDialog> {
             Container(
               constraints: const BoxConstraints(maxHeight: 300), // Increased height for more options
               decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.shade300),
+                border: Border.all(color: HandsColors.white12),
                 borderRadius: BorderRadius.circular(8),
+                color: HandsColors.cardPrimary,
               ),
               child: Scrollbar(
                 child: SingleChildScrollView(
@@ -2074,7 +2308,7 @@ class _NotCompletedReasonDialogState extends State<_NotCompletedReasonDialog> {
                     children:
                         _predefinedReasons.map((reason) {
                           return RadioListTile<String>(
-                            title: Text(reason),
+                            title: Text(reason, style: const TextStyle(color: HandsColors.white)),
                             value: reason,
                             groupValue: _selectedPredefinedReason,
                             onChanged: (value) {
@@ -2087,6 +2321,7 @@ class _NotCompletedReasonDialogState extends State<_NotCompletedReasonDialog> {
                             },
                             dense: true,
                             contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                            activeColor: HandsColors.handsOrange,
                           );
                         }).toList(),
                   ),
@@ -2104,8 +2339,9 @@ class _NotCompletedReasonDialogState extends State<_NotCompletedReasonDialog> {
                   hintText: 'Please specify the reason...',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                   filled: true,
-                  fillColor: Colors.grey[50],
+                  fillColor: HandsColors.cardPrimary,
                 ),
+                style: const TextStyle(color: HandsColors.white),
               ),
             ],
 
@@ -2113,28 +2349,11 @@ class _NotCompletedReasonDialogState extends State<_NotCompletedReasonDialog> {
               const SizedBox(height: 16),
               const LinearProgressIndicator(),
               const SizedBox(height: 8),
-              const Center(child: Text('Saving reason...', style: TextStyle(color: Colors.blue))),
+              Center(child: Text('Saving reason...', style: TextStyle(color: HandsColors.handsOrange))),
             ],
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: _isSaving ? null : () => Navigator.pop(context),
-          style: TextButton.styleFrom(foregroundColor: Colors.grey[800]),
-          child: const Text('Cancel'),
-        ),
-        ElevatedButton.icon(
-          onPressed: _isSaving ? null : _saveReason,
-          icon: const Icon(Icons.save),
-          label: const Text('Save Reason'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Theme.of(context).primaryColor,
-            foregroundColor: Colors.white,
-          ),
-        ),
-      ],
-      actionsPadding: const EdgeInsets.all(16),
     );
   }
 }
@@ -2222,21 +2441,21 @@ class _ConsolidatedMissedTasksCard extends HookWidget {
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.red[300]!),
+            border: Border.all(color: HandsColors.missedRedBorder),
             gradient: LinearGradient(
-              colors: [Colors.red[50]!, Colors.red[100]!],
+              colors: [HandsColors.missedRed.withOpacity(0.18), HandsColors.missedRed.withOpacity(0.08)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
           ),
-          child: const Padding(
-            padding: EdgeInsets.all(16.0),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
             child: Center(
               child: Column(
                 children: [
-                  SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-                  SizedBox(height: 8),
-                  Text('Loading missed tasks...', style: TextStyle(fontSize: 12)),
+                  const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                  const SizedBox(height: 8),
+                  Text('Loading missed tasks...', style: TextStyle(fontSize: 12, color: HandsColors.white70)),
                 ],
               ),
             ),
@@ -2248,17 +2467,17 @@ class _ConsolidatedMissedTasksCard extends HookWidget {
     if (sections.isEmpty) {
       return Card(
         elevation: 2,
-        color: Colors.green[50],
+        color: HandsColors.sageGreen.withOpacity(0.08),
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.green[300]!),
+            border: Border.all(color: HandsColors.sageGreen.withOpacity(0.25)),
           ),
           child: Padding(
             padding: const EdgeInsets.all(16.0),
             child: Row(
               children: [
-                Icon(Icons.check_circle, color: Colors.green[600], size: 24),
+                Icon(Icons.check_circle, color: HandsColors.sageGreen, size: 24),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -2266,10 +2485,10 @@ class _ConsolidatedMissedTasksCard extends HookWidget {
                     children: [
                       Text(
                         'All caught up!',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.green[800]),
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: HandsColors.sageGreen),
                       ),
                       const SizedBox(height: 2),
-                      Text('No missed tasks from yesterday.', style: TextStyle(color: Colors.green[700], fontSize: 12)),
+                      Text('No missed tasks from yesterday.', style: TextStyle(color: HandsColors.white70, fontSize: 12)),
                     ],
                   ),
                 ),
@@ -2292,9 +2511,9 @@ class _ConsolidatedMissedTasksCard extends HookWidget {
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.red[300]!),
+          border: Border.all(color: HandsColors.missedRedBorder),
           gradient: LinearGradient(
-            colors: [Colors.red[50]!, Colors.red[100]!],
+            colors: [HandsColors.missedRedContainer, HandsColors.cardTertiary],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -2309,7 +2528,7 @@ class _ConsolidatedMissedTasksCard extends HookWidget {
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [Colors.red[600]!, Colors.red[500]!],
+                    colors: [HandsColors.missedRed, HandsColors.missedRed.withOpacity(0.85)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
@@ -2338,7 +2557,7 @@ class _ConsolidatedMissedTasksCard extends HookWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withOpacity(0.08),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
@@ -2361,13 +2580,13 @@ class _ConsolidatedMissedTasksCard extends HookWidget {
                   children: [
                     Text(
                       "$completedTasks of $totalTasks tasks completed",
-                      style: TextStyle(color: Colors.red[800], fontWeight: FontWeight.w500, fontSize: 13),
+                      style: TextStyle(color: HandsColors.missedRed, fontWeight: FontWeight.w500, fontSize: 13),
                     ),
                     const SizedBox(height: 8),
                     LinearProgressIndicator(
                       value: progress,
-                      backgroundColor: Colors.grey[300],
-                      valueColor: AlwaysStoppedAnimation<Color>(progress == 1.0 ? Colors.green : Colors.red[600]!),
+                      backgroundColor: HandsColors.cardTertiary,
+                      valueColor: AlwaysStoppedAnimation<Color>(progress == 1.0 ? HandsColors.sageGreen : HandsColors.missedRed),
                       minHeight: 6,
                     ),
                   ],
@@ -2755,12 +2974,30 @@ class _TaskTileFromData extends HookWidget {
                   IconButton(
                     icon: Icon(Icons.photo, size: 16, color: HandsColors.sageGreen),
                     tooltip: 'View photo',
-                    onPressed: () => _showPhotoDialog(context),
+                    onPressed: () => NativePhotoService.viewExistingPhoto(context: context, task: taskData),
                   )
                 else if (taskData.photoRequired)
                   IconButton(
                     icon: Icon(Icons.camera_alt, size: 16, color: HandsColors.amber),
-                    onPressed: () => _showPhotoDialog(context),
+                    onPressed: () async {
+                      // Mirror missed-task behavior: prefer task fields when invoking photo options
+                      final orgId = taskData.organizationId ?? checklist.organizationId;
+                      final locId = taskData.locationId ?? checklist.locationId;
+                      final listId = taskData.checklistId ?? checklist.id;
+
+                      final updated = await NativePhotoService.showPhotoOptions(
+                        context: context,
+                        task: taskData,
+                        organizationId: orgId,
+                        locationId: locId,
+                        checklistId: listId,
+                      );
+
+                      if (updated != null) {
+                        // Refresh caller's task list
+                        onTaskToggled();
+                      }
+                    },
                   ),
                 if (taskData.notes != null && taskData.notes!.isNotEmpty)
                   IconButton(
@@ -2854,7 +3091,12 @@ class _TaskTileFromData extends HookWidget {
   void _handleMenuAction(BuildContext context, String action) {
     switch (action) {
       case 'photo':
-        _showPhotoDialog(context);
+        if ((taskData.photoUrl ?? '').isNotEmpty || (taskData.proofImageUrl ?? '').isNotEmpty) {
+          NativePhotoService.viewExistingPhoto(context: context, task: taskData);
+        } else {
+          // Use same flow as missed tasks: prefer task fields when showing photo options
+          _showPhotoDialog(context);
+        }
         break;
       case 'notes':
         _showNotesDialog(context);
@@ -2866,12 +3108,22 @@ class _TaskTileFromData extends HookWidget {
   }
 
   void _showPhotoDialog(BuildContext context) async {
+    if ((taskData.photoUrl ?? '').isNotEmpty || (taskData.proofImageUrl ?? '').isNotEmpty) {
+      NativePhotoService.viewExistingPhoto(context: context, task: taskData);
+      return;
+    }
+
+    // Prefer task-scoped identifiers when available, fall back to checklist metadata
+    final orgId = taskData.organizationId ?? checklist.organizationId;
+    final locId = taskData.locationId ?? checklist.locationId;
+    final listId = taskData.checklistId ?? checklist.id;
+
     final updated = await NativePhotoService.showPhotoOptions(
       context: context,
       task: taskData,
-      organizationId: checklist.organizationId,
-      locationId: checklist.locationId,
-      checklistId: checklist.id,
+      organizationId: orgId,
+      locationId: locId,
+      checklistId: listId,
     );
 
     if (updated != null) {
@@ -2917,9 +3169,9 @@ class _MissedTaskInteractionTile extends HookWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.orange[300]!),
+        border: Border.all(color: HandsColors.missedRedBorder),
         borderRadius: BorderRadius.circular(8),
-        color: task.completed ? Colors.green[50] : Colors.red[50],
+        color: task.completed ? HandsColors.sageGreen.withOpacity(0.12) : HandsColors.missedRedContainer,
       ),
       child: ListTile(
         dense: true,
@@ -2932,7 +3184,7 @@ class _MissedTaskInteractionTile extends HookWidget {
           task.taskName,
           style: TextStyle(
             decoration: task.completed ? TextDecoration.lineThrough : null,
-            color: task.completed ? Colors.grey[600] : Colors.black,
+            color: task.completed ? HandsColors.white70 : HandsColors.white,
           ),
         ),
         subtitle: Column(
@@ -2955,9 +3207,9 @@ class _MissedTaskInteractionTile extends HookWidget {
                     padding: const EdgeInsets.only(top: 2.0, right: 8),
                     child: Row(
                       children: [
-                        Icon(Icons.note, size: 14, color: Colors.blue[600]),
+                        Icon(Icons.note, size: 14, color: HandsColors.handsOrange),
                         const SizedBox(width: 4),
-                        Text('Note', style: TextStyle(fontSize: 10, color: Colors.blue[700])),
+                        Text('Note', style: const TextStyle(fontSize: 10, color: HandsColors.white70)),
                       ],
                     ),
                   ),
@@ -2966,9 +3218,9 @@ class _MissedTaskInteractionTile extends HookWidget {
                     padding: const EdgeInsets.only(top: 2.0),
                     child: Row(
                       children: [
-                        Icon(Icons.warning, size: 14, color: Colors.orange[700]),
+                        Icon(Icons.warning, size: 14, color: HandsColors.amber),
                         const SizedBox(width: 4),
-                        Text('Reason', style: TextStyle(fontSize: 10, color: Colors.orange[800])),
+                        Text('Reason', style: const TextStyle(fontSize: 10, color: HandsColors.white70)),
                       ],
                     ),
                   ),
@@ -2981,8 +3233,14 @@ class _MissedTaskInteractionTile extends HookWidget {
           children: [
             if ((task.photoUrl ?? '').isNotEmpty || (task.proofImageUrl ?? '').isNotEmpty)
               IconButton(
-                icon: Icon(Icons.photo, size: 14, color: Colors.green),
+                icon: const Icon(Icons.photo, size: 16, color: HandsColors.sageGreen),
                 tooltip: 'View photo',
+                onPressed: () => NativePhotoService.viewExistingPhoto(context: context, task: task),
+              )
+            else if (task.photoRequired)
+              IconButton(
+                icon: const Icon(Icons.camera_alt, size: 16, color: HandsColors.amber),
+                tooltip: 'Add photo',
                 onPressed: () async {
                   final updated = await NativePhotoService.showPhotoOptions(
                     context: context,
@@ -3009,7 +3267,7 @@ class _MissedTaskInteractionTile extends HookWidget {
                 },
               ),
             PopupMenuButton<String>(
-              icon: Icon(Icons.more_vert, size: 14, color: Colors.grey[600]),
+              icon: const Icon(Icons.more_vert, size: 14, color: HandsColors.white70),
               onSelected: (value) async => _handleMenuAction(context, value),
               itemBuilder:
                   (context) => [

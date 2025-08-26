@@ -5,6 +5,8 @@ import 'package:hands_app/data/models/shift_data.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/ui/bottom_sheet_styles.dart';
 import 'package:hands_app/utils/location_helper.dart';
+import 'package:hands_app/theme/theme.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 /// Dialog for managing job types with full CRUD functionality.
 class ShiftJobTypeManagementDialog extends StatefulWidget {
@@ -443,7 +445,10 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
       builder:
           (_) => Container(
             height: 250,
-            color: Colors.white,
+            decoration: BoxDecoration(
+              color: HandsColors.primaryContainer,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            ),
             child: CupertinoDatePicker(
               mode: CupertinoDatePickerMode.time,
               initialDateTime: DateTime(
@@ -774,8 +779,16 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
         ),
         const SizedBox(height: BottomSheetStyles.verticalSectionSpacing),
         CheckboxListTile(
-          title: const Text('Repeats daily'),
+          title: Text(
+            'Repeats daily',
+            style: GoogleFonts.comfortaa(
+              color: HandsColors.white,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
           value: _repeatsDaily,
+          checkColor: HandsColors.white,
+          activeColor: HandsColors.sageGreen,
           onChanged: (v) {
             setState(() {
               _repeatsDaily = v!;
@@ -790,13 +803,20 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
               _weekDays
                   .map(
                     (d) => ChoiceChip(
-                      label: Text(d),
-                      selected: _selectedDays.contains(d),
-                      selectedColor: BottomSheetStyles.accentTeal.withOpacity(0.12),
-                      backgroundColor: Colors.grey.shade100,
-                      labelStyle: TextStyle(
-                        color: _selectedDays.contains(d) ? BottomSheetStyles.accentTeal : BottomSheetStyles.mutedText,
+                      label: Text(
+                        d,
+                        style: GoogleFonts.comfortaa(
+                          color: _repeatsDaily || _selectedDays.contains(d) 
+                              ? HandsColors.white 
+                              : HandsColors.white70,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
+                      selected: _repeatsDaily || _selectedDays.contains(d),
+                      selectedColor: _repeatsDaily 
+                          ? HandsColors.sageGreen 
+                          : HandsColors.handsOrange,
+                      backgroundColor: HandsColors.secondaryContainer,
                       onSelected:
                           _repeatsDaily
                               ? null
@@ -824,8 +844,16 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
                 (loc) => Padding(
                   padding: const EdgeInsets.only(bottom: 8.0),
                   child: CheckboxListTile(
-                    title: Text(loc['name'] as String),
+                    title: Text(
+                      loc['name'] as String,
+                      style: GoogleFonts.comfortaa(
+                        color: HandsColors.white,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                     value: selectedLocationIds.contains(loc['id']),
+                    checkColor: HandsColors.white,
+                    activeColor: HandsColors.sageGreen,
                     onChanged: (v) {
                       setState(() {
                         if (v!) {

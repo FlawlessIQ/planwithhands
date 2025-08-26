@@ -404,7 +404,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
         backgroundColor: HandsColors.cardPrimary,
         elevation: 0,
         toolbarHeight: kToolbarHeight,
-        title: GenericAppBarContent(appBarTitle: 'Setup', userRole: userRole),
+  title: GenericAppBarContent(appBarTitle: 'Setup', userRole: userRole),
         automaticallyImplyLeading: false,
         actions: [
           // Compact location selector for mobile
@@ -502,6 +502,46 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
               ),
             ),
           ),
+          // Debug: show current user's firestore doc for permission troubleshooting
+          IconButton(
+            tooltip: 'Debug user doc',
+            icon: const Icon(Icons.bug_report, color: HandsColors.white),
+            onPressed: () async {
+              final current = FirebaseAuth.instance.currentUser;
+              if (current == null) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Not signed in')));
+                }
+                return;
+              }
+              try {
+                final doc = await FirestoreEnforcer.instance.collection('users').doc(current.uid).get();
+                if (!doc.exists) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('User doc not found')));
+                  }
+                  return;
+                }
+                final data = doc.data();
+                final pretty = const JsonEncoder.withIndent('  ').convert(data);
+                if (mounted) {
+                  await showDialog<void>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('User document'),
+                      content: SingleChildScrollView(child: Text(pretty)),
+                      actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close'))],
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error reading user doc: $e')));
+                }
+              }
+            },
+          ),
+
           // Menu button
           UnifiedMenuButton(userRole: userRole),
         ],
@@ -1180,7 +1220,43 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                           IconButton(
                             icon: const Icon(Icons.edit, color: HandsColors.white),
                             iconSize: 18,
-                            onPressed: () => _showShiftBottomSheet(shiftId, ShiftData.fromJson(shiftData)),
+                            onPressed: () {
+                              // Defensive normalization: some older shift docs may store
+                              // single-string fields (e.g. "locationId" or legacy values)
+                              // where the model expects lists. Coerce those to lists so
+                              // the generated fromJson doesn't throw.
+                              try {
+                                final raw = Map<String, dynamic>.from(shiftData);
+                                List<String> _coerceStringList(dynamic v) {
+                                  if (v == null) return <String>[];
+                                  if (v is List) return v.map((e) => e.toString()).toList();
+                                  return <String>[v.toString()];
+                                }
+
+                                List<int> _coerceIntList(dynamic v) {
+                                  if (v == null) return <int>[];
+                                  if (v is List) return v.map((e) => int.tryParse(e.toString()) ?? 0).toList();
+                                  return <int>[(int.tryParse(v.toString()) ?? 0)];
+                                }
+
+                                raw['locationIds'] = _coerceStringList(raw['locationIds'] ?? raw['locationId']);
+                                raw['checklistTemplateIds'] = _coerceStringList(raw['checklistTemplateIds'] ?? raw['checklistId']);
+                                raw['jobType'] = _coerceStringList(raw['jobTypes'] ?? raw['jobType']);
+                                raw['days'] = _coerceStringList(raw['days']);
+                                raw['activeDays'] = _coerceIntList(raw['activeDays']);
+
+                                final normalized = ShiftData.fromJson(raw);
+                                _showShiftBottomSheet(shiftId, normalized);
+                              } catch (e, st) {
+                                logger.e('Error normalizing shift data for edit: $e', st);
+                                // Fallback: attempt to open sheet with best-effort map
+                                try {
+                                  _showShiftBottomSheet(shiftId, ShiftData.fromJson(Map<String, dynamic>.from(shiftData)));
+                                } catch (_) {
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Unable to open shift editor for this shift (malformed data)')));
+                                }
+                              }
+                            },
                           ),
                           IconButton(
                             icon: const Icon(Icons.delete, color: HandsColors.white),
@@ -1471,7 +1547,9 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
     required bool duplicateToAll,
     String? existingChecklistId,
   }) async {
+    logger.i('[AdminDashboard] _saveChecklist triggered. existingChecklistId: $existingChecklistId');
     if (organizationId == null) {
+      logger.e('[AdminDashboard] Aborting save: organizationId is null.');
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error: Missing organization ID.')));
       return;
     }
@@ -1484,8 +1562,8 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
         .doc(organizationId)
         .collection('checklist_templates')
         .doc(existingChecklistId); // If null, a new ID is generated
-
-    // Keep tasks on parent for backward UI, but also mirror to subcollection (canonical)
+    final mainChecklistId = mainChecklistRef.id;
+    logger.d('[AdminDashboard] Main checklist ID: $mainChecklistId');
     final List<Map<String, dynamic>> tasksArray =
         (checklistData['tasks'] is List)
             ? List<Map<String, dynamic>>.from(checklistData['tasks'])
@@ -1500,7 +1578,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
     };
 
     batch.set(mainChecklistRef, checklistDocPayload, SetOptions(merge: true));
-    final mainChecklistId = mainChecklistRef.id;
+    // final mainChecklistId = mainChecklistRef.id;
 
     // 2. If duplicating, save additional copies (but organization-level templates don't need location duplication)
     // Note: Since we're now using organization-level templates, they're automatically available to all locations
@@ -1536,14 +1614,18 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
 
     try {
       // Commit parent doc + shift associations first
+      logger.d('[AdminDashboard] Starting checklist save batch commit...');
       await batch.commit();
+      logger.d('[AdminDashboard] Checklist save batch committed successfully');
 
       // Replace tasks in template's canonical subcollection
       final tasksColl = mainChecklistRef.collection('tasks');
 
       // 3a. Delete existing subcollection tasks (if any) in chunks (<=500 ops per batch)
+      logger.d('[AdminDashboard] Deleting existing tasks...');
       final existingTasksSnap = await tasksColl.get();
       if (existingTasksSnap.docs.isNotEmpty) {
+        logger.d('[AdminDashboard] Found ${existingTasksSnap.docs.length} existing tasks to delete');
         WriteBatch delBatch = FirestoreEnforcer.instance.batch();
         int opCount = 0;
         for (final doc in existingTasksSnap.docs) {
@@ -1551,17 +1633,20 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
           opCount++;
           if (opCount == 450) {
             // leave headroom
+            logger.d('[AdminDashboard] Committing delete batch (450 ops)...');
             await delBatch.commit();
             delBatch = FirestoreEnforcer.instance.batch();
             opCount = 0;
           }
         }
         if (opCount > 0) {
+          logger.d('[AdminDashboard] Committing final delete batch ($opCount ops)...');
           await delBatch.commit();
         }
       }
 
       // 3b. Create new subcollection tasks with stable-ish IDs based on name (+dup index)
+      logger.d('[AdminDashboard] Adding ${tasksArray.length} new tasks...');
       if (tasksArray.isNotEmpty) {
         WriteBatch addBatch = FirestoreEnforcer.instance.batch();
         int opCount = 0;
@@ -1587,6 +1672,8 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
             'name': normName, // keep for compatibility
             'photoRequired': photoRequired,
             'order': order,
+            // Required for Firestore security rules
+            'organizationId': organizationId,
             // Optional metadata
             'updatedAt': FieldValue.serverTimestamp(),
           }, SetOptions(merge: true));
@@ -1594,16 +1681,19 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
           opCount++;
           if (opCount == 450) {
             // commit in chunks
+            logger.d('[AdminDashboard] Committing add batch (450 ops)...');
             await addBatch.commit();
             addBatch = FirestoreEnforcer.instance.batch();
             opCount = 0;
           }
         }
         if (opCount > 0) {
+          logger.d('[AdminDashboard] Committing final add batch ($opCount ops)...');
           await addBatch.commit();
         }
       }
 
+      logger.d('[AdminDashboard] Checklist save completed successfully');
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -1651,7 +1741,8 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
       } catch (e) {
         logger.e('[AdminDashboard] Reseed step failed: $e', e);
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      logger.e('[AdminDashboard] Failed to save checklist: $e', e, stackTrace);
       if (mounted) {
         ScaffoldMessenger.of(
           context,

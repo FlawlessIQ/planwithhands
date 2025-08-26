@@ -10,6 +10,7 @@ import 'package:hands_app/utils/firestore_ttl_helper.dart';
 import 'package:hands_app/data/models/missed_tasks_section.dart';
 import 'package:hands_app/utils/location_helper.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:hands_app/data/models/task_data.dart';
 import 'package:hands_app/services/daily_background_service.dart';
@@ -551,12 +552,37 @@ class DailyChecklistService {
     try {
       // Build a stable storage path
       final fileName = '${taskId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final storageRef = FirebaseStorage.instance.ref().child('task_photos').child(fileName);
+      final storagePath = 'task_photos/$fileName';
 
-      // Upload: use putData so it works across web and native
-      final bytes = await imageFile.readAsBytes();
-      final uploadTask = await storageRef.putData(bytes);
-      final downloadUrl = await uploadTask.ref.getDownloadURL();
+      String downloadUrl;
+
+      // On web, avoid direct browser -> storage.googleapis.com uploads (CORS).
+      // Use a server-side signed upload URL (Cloud Function) to PUT the bytes.
+      if (kIsWeb) {
+        // Read bytes and send via callable that proxies the upload server-side to avoid CORS issues
+        final bytes = await imageFile.readAsBytes();
+        try {
+          final functions = FirebaseFunctions.instance;
+          final callable = functions.httpsCallable('proxyUpload');
+          final base64Payload = base64Encode(bytes);
+          final result = await callable.call(<String, dynamic>{
+            'path': storagePath,
+            'contentType': 'image/jpeg',
+            'base64': base64Payload,
+          });
+          downloadUrl = result.data['downloadUrl'] as String;
+        } catch (e) {
+          debugPrint('[DailyChecklistService] Signed upload failed: $e');
+          rethrow;
+        }
+      } else {
+        final storageRef = FirebaseStorage.instance.ref().child('task_photos').child(fileName);
+
+        // Upload: use putData so it works across native
+        final bytes = await imageFile.readAsBytes();
+        final uploadTask = await storageRef.putData(bytes);
+        downloadUrl = await uploadTask.ref.getDownloadURL();
+      }
 
       // Persist into Firestore via existing helper
       await updateTaskPhotoInSubcollection(

@@ -6,6 +6,8 @@ import 'package:hands_app/data/models/extended_user_data.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/utils/location_helper.dart';
 import 'package:hands_app/core/logging/logger.dart';
+import 'package:hands_app/theme/theme.dart';
+import 'package:google_fonts/google_fonts.dart';
 // jobtype_helper import removed — not used in this file
 
 class ShiftBottomSheet extends StatefulWidget {
@@ -396,11 +398,18 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
                         children: [
                           Text(
                             widget.shiftName,
-                            style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w600),
+                            style: theme.textTheme.headlineSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: HandsColors.white,
+                            ),
                           ),
                           Text(
                             widget.dayShiftKey.replaceAll('_', ' '),
-                            style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+                            style: GoogleFonts.comfortaa(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: HandsColors.white70,
+                            ),
                           ),
                         ],
                       ),
@@ -461,7 +470,11 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
                             children: [
                               Text(
                                 'Required Roles',
-                                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                                style: GoogleFonts.comfortaa(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: HandsColors.white,
+                                ),
                               ),
                               TextButton.icon(
                                 onPressed: _showAddRoleDialog,
@@ -501,9 +514,10 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
                           // Assigned users section
                           Text(
                             'Assigned Users',
-                            style: theme.textTheme.titleMedium?.copyWith(
+                            style: GoogleFonts.comfortaa(
+                              fontSize: 16,
                               fontWeight: FontWeight.w600,
-                              color: Colors.blue[700],
+                              color: HandsColors.sageGreen,
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -547,12 +561,16 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
                             ),
 
                           const SizedBox(height: 24),
-                          Divider(thickness: 1, color: Colors.grey),
+                          Divider(thickness: 1, color: HandsColors.white30),
                           const SizedBox(height: 12),
                           // Available users section
                           Text(
                             'Available Users (Matching Roles)',
-                            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                            style: GoogleFonts.comfortaa(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: HandsColors.white,
+                            ),
                           ),
                           const SizedBox(height: 12),
                           ...availableUsers
@@ -561,13 +579,14 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
 
                           // Divider and secondary section for non-matching users
                           const SizedBox(height: 24),
-                          Divider(thickness: 1, color: Colors.grey),
+                          Divider(thickness: 1, color: HandsColors.white30),
                           const SizedBox(height: 12),
                           Text(
                             'Other Users (No Matching Role)',
-                            style: theme.textTheme.titleMedium?.copyWith(
+                            style: GoogleFonts.comfortaa(
+                              fontSize: 16,
                               fontWeight: FontWeight.w600,
-                              color: Colors.grey[700],
+                              color: HandsColors.white70,
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -690,8 +709,14 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(roleName, style: const TextStyle(fontWeight: FontWeight.w500)),
-                Text('Required: $count', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                Text(roleName, style: const TextStyle(fontWeight: FontWeight.w500, color: HandsColors.white)),
+                Text(
+                  'Required: $count',
+                  style: GoogleFonts.comfortaa(
+                    fontSize: 12,
+                    color: HandsColors.white70,
+                  ),
+                ),
               ],
             ),
           ),

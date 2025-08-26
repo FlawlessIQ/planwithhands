@@ -15,6 +15,10 @@ class HandsColors {
   static const Color sageGreen = Color(0xFF8AA87E); // Success color
   static const Color amber = Color(0xFFF6C344); // Warning color
   static const Color error = Color(0xFFD32F2F); // Error color (old red moved here)
+  // Missed task / muted error variants
+  static const Color missedRed = Color(0xFF8B1E1E); // darker, less saturated red for accents
+  static const Color missedRedBorder = Color(0xFF7A1A1A);
+  static const Color missedRedContainer = Color(0xFF3F1414); // dark container background for missed tasks
 
   // Text Colors
   static const Color white = Color(0xFFFFFFFF);
