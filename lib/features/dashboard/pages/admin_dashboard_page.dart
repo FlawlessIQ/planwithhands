@@ -1246,25 +1246,25 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                               // the generated fromJson doesn't throw.
                               try {
                                 final raw = Map<String, dynamic>.from(shiftData);
-                                List<String> _coerceStringList(dynamic v) {
+                                List<String> coerceStringList(dynamic v) {
                                   if (v == null) return <String>[];
                                   if (v is List) return v.map((e) => e.toString()).toList();
                                   return <String>[v.toString()];
                                 }
 
-                                List<int> _coerceIntList(dynamic v) {
+                                List<int> coerceIntList(dynamic v) {
                                   if (v == null) return <int>[];
                                   if (v is List) return v.map((e) => int.tryParse(e.toString()) ?? 0).toList();
                                   return <int>[(int.tryParse(v.toString()) ?? 0)];
                                 }
 
-                                raw['locationIds'] = _coerceStringList(raw['locationIds'] ?? raw['locationId']);
-                                raw['checklistTemplateIds'] = _coerceStringList(
+                                raw['locationIds'] = coerceStringList(raw['locationIds'] ?? raw['locationId']);
+                                raw['checklistTemplateIds'] = coerceStringList(
                                   raw['checklistTemplateIds'] ?? raw['checklistId'],
                                 );
-                                raw['jobType'] = _coerceStringList(raw['jobTypes'] ?? raw['jobType']);
-                                raw['days'] = _coerceStringList(raw['days']);
-                                raw['activeDays'] = _coerceIntList(raw['activeDays']);
+                                raw['jobType'] = coerceStringList(raw['jobTypes'] ?? raw['jobType']);
+                                raw['days'] = coerceStringList(raw['days']);
+                                raw['activeDays'] = coerceIntList(raw['activeDays']);
 
                                 final normalized = ShiftData.fromJson(raw);
                                 _showShiftBottomSheet(shiftId, normalized);

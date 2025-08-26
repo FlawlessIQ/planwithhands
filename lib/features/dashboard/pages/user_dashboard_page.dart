@@ -286,11 +286,31 @@ class UserDashboardPage extends HookConsumerWidget {
         // This will automatically clean up expired volunteer shifts
         List<ShiftData> foundShifts = await _getAllShiftsForToday(user.uid, todayDayName, todayString);
         logger.d("[Dashboard][DEBUG] Found ${foundShifts.length} shifts after querying for today");
+        // Filter by selected location, but preserve shifts the user explicitly joined (volunteer shifts).
         foundShifts =
             selectedLocationId.value != null
                 ? foundShifts.where((shift) {
-                  final shiftLocs = coerceToLocationIds(shift.locationIds);
-                  return shiftLocs.contains(selectedLocationId.value);
+                  try {
+                    final shiftLocs = coerceToLocationIds(shift.locationIds);
+                    // Keep shift if it matches the selected location
+                    if (shiftLocs.contains(selectedLocationId.value)) return true;
+
+                    // Also keep the shift if the current user has joined it today (volunteer)
+                    final currentUser = FirebaseAuth.instance.currentUser;
+                    if (currentUser != null) {
+                      try {
+                        // ShiftData.volunteers is non-nullable (defaults to empty list). Keep the shift if the
+                        // current user is listed as a volunteer so joined shifts persist across location changes.
+                        final vols = shift.volunteers;
+                        if (vols.contains(currentUser.uid)) return true;
+                      } catch (_) {
+                        // ignore and fall through
+                      }
+                    }
+                  } catch (e) {
+                    logger.w('[Dashboard] Error while filtering shifts by location but preserving joined shifts: $e');
+                  }
+                  return false;
                 }).toList()
                 : foundShifts;
         // Merge any currently-present (optimistic) assigned shifts so we don't drop them
@@ -941,6 +961,12 @@ class UserDashboardPage extends HookConsumerWidget {
                                           logger.d(
                                             '[Dashboard] Adopted shift location $adoptLoc as selectedLocationId',
                                           );
+                                            // Persist this selection globally so other pages and future visits honor it
+                                            try {
+                                              LocationSelectionService.instance.setLocation(adoptLoc);
+                                            } catch (e) {
+                                              logger.w('[Dashboard] Failed to persist adopted location: $e');
+                                            }
                                         }
                                       } catch (e) {
                                         logger.e('[Dashboard] Error adopting shift location: $e', e);
@@ -1286,13 +1312,25 @@ Future<List<ShiftData>> _getAllShiftsForToday(String userId, String todayDayName
         final vj = (data['volunteerJoins'] as Map?)?.cast<String, dynamic>();
         final joinedMarker = vj != null ? vj[userId] : null;
         final joinedToday = joinedMarker == todayString;
-        if (!joinedToday) {
+
+        // If the user explicitly joined this volunteer shift today, include it regardless
+        // of the volunteer pre-start window so it persists in the user's assigned list.
+        if (joinedToday) {
           logger.d(
-            "[Dashboard][DEBUG] Skipping volunteer shift ${shift.shiftName}: user didn't join today (marker=$joinedMarker, today=$todayString)",
+            "[Dashboard][DEBUG] User joined volunteer shift today: ${shift.shiftName} (marker=$joinedMarker)",
           );
+          if (!allShifts.any((existingShift) => existingShift.shiftId == shift.shiftId)) {
+            allShifts.add(shift);
+            logger.d("[Dashboard][DEBUG] Added volunteer shift to list (joinedToday): ${shift.shiftName}");
+          } else {
+            logger.d("[Dashboard][DEBUG] Volunteer shift already in list (joinedToday): ${shift.shiftName}");
+          }
+          // move to next volunteer shift
           continue;
         }
 
+        // For volunteer shifts the user has not explicitly joined today, preserve the
+        // previous behavior: only include if within the volunteer visibility window.
         final isActiveToday = await _isShiftActiveForToday(shift, todayDayName, todayString, isVolunteerShift: true);
         if (isActiveToday) {
           logger.d(
