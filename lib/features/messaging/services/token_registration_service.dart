@@ -22,6 +22,9 @@ class TokenRegistrationService {
                 ? 'android'
                 : 'other',
         'updatedAt': FieldValue.serverTimestamp(),
+        // TTL: Automatically expires after 30 days for cleanup.
+        // Configure TTL policy in Firebase Console → Firestore → TTL to use this field.
+        'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
       }, SetOptions(merge: true));
     } catch (e) {
       debugPrint('[TokenRegistrationService] Failed to register token: $e');

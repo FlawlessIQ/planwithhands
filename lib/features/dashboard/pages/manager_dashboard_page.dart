@@ -12,6 +12,7 @@ import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
+import 'package:hands_app/global_widgets/professional_harvey_ball.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
 import 'package:hands_app/services/daily_checklist_service.dart';
 import 'package:hands_app/services/organization_setup_service.dart';
@@ -1304,75 +1305,82 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                         child:
                             isMobile
                                 ?
-                                // Mobile: Stack vertically to prevent overlapping
+                                // Mobile: show two metric cards side-by-side, Task History below
                                 Column(
                                   children: [
-                                    // Frequent Misses (mobile)
+                                    // Row with the two metric cards
                                     Expanded(
-                                      child: _SummaryCard(
-                                        title: 'Frequent Misses (30d)',
-                                        icon: Icons.trending_down,
-                                        accentColor: HandsColors.error,
-                                        loading: _loadingFrequent,
-                                        valueBuilder:
-                                            () => Text(
-                                              _frequentMisses30d.isEmpty
-                                                  ? '0 HOT SPOTS'
-                                                  : '${_frequentMisses30d.length} HOT SPOTS',
-                                              style: GoogleFonts.comfortaa(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w500,
-                                                color: HandsColors.error,
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            child: _SummaryCard(
+                                              title: 'Frequent Misses (30d)',
+                                              icon: Icons.trending_down,
+                                              accentColor: HandsColors.error,
+                                              loading: _loadingFrequent,
+                                              valueBuilder:
+                                                  () => Text(
+                                                    _frequentMisses30d.isEmpty
+                                                        ? '0 HOT SPOTS'
+                                                        : '${_frequentMisses30d.length} HOT SPOTS',
+                                                    style: GoogleFonts.comfortaa(
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.w500,
+                                                      color: HandsColors.error,
+                                                    ),
+                                                  ),
+                                              onTap: _openAllFrequentMisses,
+                                              child: _TopListPreview(
+                                                items:
+                                                    _frequentMisses30d.take(2).map((t) {
+                                                      final name = (t['taskName'] ?? 'Unknown Task').toString();
+                                                      final count = (t['count'] ?? t['missedCount'] ?? 0).toString();
+                                                      final displayName =
+                                                          name.length > 12 ? '${name.substring(0, 12)}...' : name;
+                                                      return '$displayName ×$count';
+                                                    }).toList(),
+                                                emptyLabel: 'No frequent misses',
                                               ),
                                             ),
-                                        onTap: _openAllFrequentMisses,
-                                        child: _TopListPreview(
-                                          items:
-                                              _frequentMisses30d.take(2).map((t) {
-                                                final name = (t['taskName'] ?? 'Unknown Task').toString();
-                                                final count = (t['count'] ?? t['missedCount'] ?? 0).toString();
-                                                final displayName =
-                                                    name.length > 12 ? '${name.substring(0, 12)}...' : name;
-                                                return '$displayName ×$count';
-                                              }).toList(),
-                                          emptyLabel: 'No frequent misses',
-                                        ),
-                                      ),
-                                    ),
-                                    SizedBox(height: gap),
-                                    // Poor Performing (mobile)
-                                    Expanded(
-                                      child: _SummaryCard(
-                                        title: 'Poor Performing (30d)',
-                                        icon: Icons.speed,
-                                        accentColor: HandsColors.handsOrange,
-                                        loading: _loadingPoorShifts,
-                                        valueBuilder:
-                                            () => Text(
-                                              _poorShifts30d.isEmpty ? 'ALL OK' : '${_poorShifts30d.length} FLAGGED',
-                                              style: GoogleFonts.comfortaa(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w500,
-                                                color:
+                                          ),
+                                          SizedBox(width: gap),
+                                          Expanded(
+                                            child: _SummaryCard(
+                                              title: 'Poor Performing (30d)',
+                                              icon: Icons.speed,
+                                              accentColor: HandsColors.handsOrange,
+                                              loading: _loadingPoorShifts,
+                                              valueBuilder:
+                                                  () => Text(
                                                     _poorShifts30d.isEmpty
-                                                        ? HandsColors.sageGreen
-                                                        : HandsColors.handsOrange,
+                                                        ? 'ALL OK'
+                                                        : '${_poorShifts30d.length} FLAGGED',
+                                                    style: GoogleFonts.comfortaa(
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.w500,
+                                                      color:
+                                                          _poorShifts30d.isEmpty
+                                                              ? HandsColors.sageGreen
+                                                              : HandsColors.handsOrange,
+                                                    ),
+                                                  ),
+                                              onTap: _openPoorShiftDetails,
+                                              child: _TopListPreview(
+                                                items:
+                                                    _poorShifts30d.take(2).map((m) {
+                                                      final pct = ((m['avgCompletion'] as double?) ?? 0) * 100;
+                                                      final shiftName = (m['shiftName'] ?? 'Unknown').toString();
+                                                      final displayName =
+                                                          shiftName.length > 12
+                                                              ? '${shiftName.substring(0, 12)}...'
+                                                              : shiftName;
+                                                      return '$displayName ${pct.toStringAsFixed(0)}%';
+                                                    }).toList(),
+                                                emptyLabel: 'No issues found',
                                               ),
                                             ),
-                                        onTap: _openPoorShiftDetails,
-                                        child: _TopListPreview(
-                                          items:
-                                              _poorShifts30d.take(2).map((m) {
-                                                final pct = ((m['avgCompletion'] as double?) ?? 0) * 100;
-                                                final shiftName = (m['shiftName'] ?? 'Unknown').toString();
-                                                final displayName =
-                                                    shiftName.length > 12
-                                                        ? '${shiftName.substring(0, 12)}...'
-                                                        : shiftName;
-                                                return '$displayName ${pct.toStringAsFixed(0)}%';
-                                              }).toList(),
-                                          emptyLabel: 'No issues found',
-                                        ),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   ],
@@ -1474,10 +1482,15 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                     SizedBox(height: compact ? 4 : 6),
 
                     // Task History button - separate from the cards to prevent overlap
-                    SizedBox(
-                      height: compact ? 36 : 44, // Smaller on mobile
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(horizontal: isMobile ? 4 : 8),
+                    Padding(
+                      // Increase bottom padding to account for browser chrome / safe area
+                      padding: EdgeInsets.only(
+                        left: isMobile ? 4 : 8,
+                        right: isMobile ? 4 : 8,
+                        bottom: MediaQuery.of(context).padding.bottom + (compact ? 16 : 20) + 8,
+                      ),
+                      child: SizedBox(
+                        height: compact ? 44 : 52, // Slightly taller to improve tap target and avoid overlap
                         child: HandsPrimaryButton(
                           text: 'Task History',
                           onPressed: _openTaskHistorySheet,
@@ -1925,15 +1938,15 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
   }
 
   Future<void> _openTaskHistorySheet() async {
-    // Default date range: last 14 days
-    _selectedDateRange ??= DateTimeRange(start: DateTime.now().subtract(const Duration(days: 14)), end: DateTime.now());
+    // Default date range: last 3 days
+    _selectedDateRange ??= DateTimeRange(start: DateTime.now().subtract(const Duration(days: 3)), end: DateTime.now());
     showDialog(
       context: context,
       builder:
           (context) => _ProfessionalDialog(
             title: 'Previous Tasks',
             width: MediaQuery.of(context).size.width * 0.95,
-            height: MediaQuery.of(context).size.height * 0.85,
+            height: MediaQuery.of(context).size.height * 0.9, // Increased from 0.85 to 0.9 for better mobile experience
             child: _TaskHistoryDialog(
               organizationId: widget.organizationId,
               selectedLocationId: _selectedLocationId,
@@ -2204,13 +2217,74 @@ class _TrendLineChartPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
 
-class _LiveShiftStrip extends StatelessWidget {
+class _LiveShiftStrip extends StatefulWidget {
   final List<Map<String, dynamic>> shifts;
   final VoidCallback onOpen;
   const _LiveShiftStrip({required this.shifts, required this.onOpen});
 
   @override
+  State<_LiveShiftStrip> createState() => _LiveShiftStripState();
+}
+
+class _LiveShiftStripState extends State<_LiveShiftStrip> {
+  final ScrollController _scrollController = ScrollController();
+  final PageController _pageController = PageController(viewportFraction: 0.85);
+  bool _showLeft = false;
+  bool _showRight = false;
+  int _currentPage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+    _pageController.addListener(_onPage);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _updateIndicators());
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    _pageController.removeListener(_onPage);
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() => _updateIndicators();
+
+  void _onPage() {
+    final p = (_pageController.page ?? 0).round();
+    if (p != _currentPage) {
+      setState(() => _currentPage = p);
+    }
+    _updateIndicators();
+  }
+
+  void _updateIndicators() {
+    final shifts = widget.shifts;
+    if (!mounted) return;
+    final isMobile = MediaQuery.of(context).size.width < 600;
+
+    if (isMobile) {
+      final maxScroll =
+          _scrollController.position.hasContentDimensions ? _scrollController.position.maxScrollExtent : 0.0;
+      final offset = _scrollController.offset;
+      setState(() {
+        _showLeft = offset > 8;
+        _showRight = maxScroll - offset > 8;
+      });
+    } else {
+      final pages = (shifts.length / 6).ceil();
+      setState(() {
+        _showLeft = _currentPage > 0;
+        _showRight = _currentPage < pages - 1;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final shifts = widget.shifts;
     if (shifts.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(16),
@@ -2241,57 +2315,136 @@ class _LiveShiftStrip extends StatelessWidget {
 
     final inProgress = shifts.where((s) => s['timeStatus'].toString().contains('remaining')).toList();
     final toShow = inProgress.isNotEmpty ? inProgress : shifts;
-
-    // Check if we're on mobile for different layout
     final isMobile = MediaQuery.of(context).size.width < 600;
 
-    // Mobile layout: Simple horizontal scrollable list
+    // Mobile: horizontal scroll with subtle arrows
     if (isMobile) {
       return SizedBox(
-        height: 140, // Increased height to accommodate larger Harvey balls and prevent content cutoff
-        child: ListView.builder(
-          scrollDirection: Axis.horizontal,
-          itemCount: toShow.length,
-          itemBuilder: (context, index) {
-            return Container(
-              width: 160, // Fixed width for each card
-              margin: EdgeInsets.only(right: index < toShow.length - 1 ? 8 : 0),
-              child: _SwipeShiftCard(shift: toShow[index], onTap: onOpen),
-            );
-          },
+        height: 140,
+        child: Stack(
+          children: [
+            ListView.builder(
+              controller: _scrollController,
+              scrollDirection: Axis.horizontal,
+              itemCount: toShow.length,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              itemBuilder: (context, index) {
+                return Container(
+                  width: 140,
+                  margin: EdgeInsets.only(right: index < toShow.length - 1 ? 8 : 0),
+                  child: _SwipeShiftCard(shift: toShow[index], onTap: widget.onOpen),
+                );
+              },
+            ),
+            // Left arrow
+            if (_showLeft)
+              Positioned(
+                left: 4,
+                top: 0,
+                bottom: 0,
+                child: IgnorePointer(
+                  ignoring: false,
+                  child: Container(
+                    alignment: Alignment.centerLeft,
+                    width: 28,
+                    decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.black26, Colors.transparent])),
+                    child: Opacity(opacity: 0.35, child: Icon(Icons.arrow_back_ios, size: 18, color: Colors.white)),
+                  ),
+                ),
+              ),
+            // Right arrow
+            if (_showRight)
+              Positioned(
+                right: 4,
+                top: 0,
+                bottom: 0,
+                child: IgnorePointer(
+                  ignoring: false,
+                  child: Container(
+                    alignment: Alignment.centerRight,
+                    width: 28,
+                    decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, Colors.black26])),
+                    child: Opacity(opacity: 0.35, child: Icon(Icons.arrow_forward_ios, size: 18, color: Colors.white)),
+                  ),
+                ),
+              ),
+          ],
         ),
       );
     }
 
-    // Desktop layout: PageView with GridView (original implementation)
+    // Desktop: page-based grid with arrows
+    final pages = (toShow.length / 6).ceil();
     return ClipRect(
       child: SizedBox(
-        height: 140, // Increased height to accommodate larger Harvey balls and prevent content cutoff
-        child: PageView.builder(
-          controller: PageController(viewportFraction: 0.85), // Show slight preview of next card
-          itemCount: (toShow.length / 6).ceil(), // Pages needed for all shifts
-          itemBuilder: (context, pageIndex) {
-            final startIndex = pageIndex * 6;
-            final endIndex = (startIndex + 6).clamp(0, toShow.length);
-            final pageShifts = toShow.sublist(startIndex, endIndex);
+        height: 140,
+        child: Stack(
+          children: [
+            PageView.builder(
+              controller: _pageController,
+              itemCount: pages,
+              itemBuilder: (context, pageIndex) {
+                final startIndex = pageIndex * 6;
+                final endIndex = (startIndex + 6).clamp(0, toShow.length);
+                final pageShifts = toShow.sublist(startIndex, endIndex);
 
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: GridView.builder(
-                physics: NeverScrollableScrollPhysics(), // Disable grid scrolling since we're using PageView
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3, // 3 columns
-                  childAspectRatio: 1.1, // Slightly wider than tall
-                  crossAxisSpacing: 6,
-                  mainAxisSpacing: 6,
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: GridView.builder(
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      childAspectRatio: 1.1,
+                      crossAxisSpacing: 6,
+                      mainAxisSpacing: 6,
+                    ),
+                    itemCount: pageShifts.length,
+                    itemBuilder: (context, index) => _SwipeShiftCard(shift: pageShifts[index], onTap: widget.onOpen),
+                  ),
+                );
+              },
+            ),
+            // Left arrow
+            if (_showLeft)
+              Positioned(
+                left: 2,
+                top: 0,
+                bottom: 0,
+                child: GestureDetector(
+                  onTap:
+                      () => _pageController.previousPage(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      ),
+                  child: Container(
+                    width: 36,
+                    alignment: Alignment.center,
+                    color: Colors.transparent,
+                    child: Opacity(opacity: 0.28, child: Icon(Icons.chevron_left, size: 28, color: Colors.white)),
+                  ),
                 ),
-                itemCount: pageShifts.length,
-                itemBuilder: (context, index) {
-                  return _SwipeShiftCard(shift: pageShifts[index], onTap: onOpen);
-                },
               ),
-            );
-          },
+            // Right arrow
+            if (_showRight)
+              Positioned(
+                right: 2,
+                top: 0,
+                bottom: 0,
+                child: GestureDetector(
+                  onTap:
+                      () => _pageController.nextPage(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      ),
+                  child: Container(
+                    width: 36,
+                    alignment: Alignment.center,
+                    color: Colors.transparent,
+                    child: Opacity(opacity: 0.28, child: Icon(Icons.chevron_right, size: 28, color: Colors.white)),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -2313,13 +2466,11 @@ class _SwipeShiftCard extends StatelessWidget {
     final totalTasks = shift['totalTasks'] ?? 1;
     final shiftName = shift['shiftName'] ?? 'Unnamed';
 
-    // Determine if shift is finished
-    final isFinished = status.contains('Finished') || status.contains('Complete');
-
     // Make Harvey ball larger on mobile for better visibility
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = screenWidth < 600;
-    final harveyBallSize = isMobile ? 60.0 : 42.0; // Increased mobile size significantly
+    // Reduce harvey ball on very narrow screens to create more room for time text
+    final harveyBallSize = isMobile ? (screenWidth < 360 ? 44.0 : 46.0) : 42.0;
 
     return Material(
       color: HandsColors.cardTertiary,
@@ -2351,51 +2502,17 @@ class _SwipeShiftCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 4),
-                  // Harvey ball in top right - enhanced for mobile compatibility
-                  Container(
-                    width: harveyBallSize,
-                    height: harveyBallSize,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: pct > 0 ? Colors.green[700]! : Colors.grey[500]!, width: 2.5),
-                    ),
-                    child: Stack(
-                      children: [
-                        // Custom paint Harvey ball
-                        Positioned.fill(child: CustomPaint(painter: _HarveyBallPainter(pct, isFinished))),
-                        // Fallback indicator for mobile if CustomPaint fails
-                        if (isMobile)
-                          Center(
-                            child: Container(
-                              width: harveyBallSize * 0.6,
-                              height: harveyBallSize * 0.6,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color:
-                                    pct > 0
-                                        ? Colors.green[600]!.withOpacity(pct.clamp(0.3, 1.0))
-                                        : (isFinished ? Colors.red.withOpacity(0.3) : Colors.grey[300]),
-                              ),
-                            ),
-                          ),
-                        // Debug percentage text
-                        if (isMobile)
-                          Center(
-                            child: Text(
-                              '${(pct * 100).toInt()}%',
-                              style: GoogleFonts.comfortaa(
-                                fontSize: 12, // Much larger text for mobile
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black, // Black text as requested
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
+                  // Professional Harvey Ball - consistent with web version
+                  ProfessionalHarveyBall(
+                    percentage: pct,
+                    size: harveyBallSize,
+                    showPercentage: true,
+                    animate: true,
+                    strokeWidth: 2.5,
                   ),
                 ],
               ),
-              SizedBox(height: isMobile ? 4 : 8), // Reduced spacing on mobile
+              SizedBox(height: isMobile ? 2 : 6), // Tighter spacing to pull time text up
               // Tasks completed (center)
               Text(
                 '$completedTasks/$totalTasks tasks',
@@ -2405,8 +2522,8 @@ class _SwipeShiftCard extends StatelessWidget {
                   fontWeight: FontWeight.w500,
                 ),
               ),
-              SizedBox(height: isMobile ? 2 : 4), // Reduced spacing on mobile
-              // Time remaining (center)
+              SizedBox(height: isMobile ? 0 : 2), // Remove extra gap on mobile
+              // Time remaining (center) - move up closer to tasks
               Text(
                 status,
                 maxLines: 1,
@@ -2435,57 +2552,6 @@ class _SwipeShiftCard extends StatelessWidget {
       return HandsColors.amber;
     }
   }
-}
-
-// Custom painter for harvey ball completion indicator
-class _HarveyBallPainter extends CustomPainter {
-  final double percentage;
-  final bool isFinished;
-
-  _HarveyBallPainter(this.percentage, this.isFinished);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = (size.width / 2) - 1; // Slightly smaller to ensure border visibility
-
-    // Determine background color for incomplete portion
-    final incompleteColor = isFinished ? Colors.red : Colors.grey[300]!;
-
-    // Draw outer circle (background - grey or red if finished)
-    final backgroundPaint =
-        Paint()
-          ..color = incompleteColor
-          ..style = PaintingStyle.fill
-          ..isAntiAlias = true; // Better rendering on mobile
-    canvas.drawCircle(center, radius, backgroundPaint);
-
-    // Draw filled portion based on percentage (always green)
-    if (percentage > 0) {
-      final fillPaint =
-          Paint()
-            ..color =
-                Colors.green[600]! // Slightly darker green for better visibility
-            ..style = PaintingStyle.fill
-            ..isAntiAlias = true; // Better rendering on mobile
-
-      // Draw pie slice from top (90 degrees) clockwise
-      final sweepAngle = 2 * 3.14159 * percentage;
-      final rect = Rect.fromCircle(center: center, radius: radius);
-      canvas.drawArc(
-        rect,
-        -3.14159 / 2, // Start from top (-90 degrees)
-        sweepAngle,
-        true,
-        fillPaint,
-      );
-    }
-
-    // Note: Border is handled by Container decoration for better mobile compatibility
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _TimeChip extends StatelessWidget {
@@ -2572,12 +2638,20 @@ class _ProfessionalDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isSmallScreen = screenWidth < 600;
+
     return Dialog(
       backgroundColor: HandsColors.primaryContainer,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      insetPadding:
+          isSmallScreen
+              ? const EdgeInsets.symmetric(horizontal: 10, vertical: 40)
+              : const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
       child: SizedBox(
-        width: width ?? MediaQuery.of(context).size.width * 0.9,
-        height: height ?? MediaQuery.of(context).size.height * 0.8,
+        width: width ?? (isSmallScreen ? screenWidth * 0.95 : screenWidth * 0.9),
+        height: height ?? (isSmallScreen ? screenHeight * 0.9 : screenHeight * 0.8),
         child: Column(
           children: [
             // Header with title and X button
@@ -2594,12 +2668,12 @@ class _ProfessionalDialog extends StatelessWidget {
                     child: Text(
                       title.toUpperCase(),
                       style: GoogleFonts.comfortaa(
-                        fontSize: 14,
+                        fontSize: isSmallScreen ? 12 : 14,
                         fontWeight: FontWeight.w600,
                         color: HandsColors.white,
                         letterSpacing: 0.5,
                       ),
-                      maxLines: 2,
+                      maxLines: isSmallScreen ? 1 : 2,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -2651,7 +2725,13 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
   String _selectedCompletion = 'all';
   DateTimeRange? _dateRange;
   bool _loading = false;
-  List<_TaskRow> _rows = [];
+  List<_TaskRow> _allRows = [];
+  List<_TaskRow> _displayedRows = [];
+  int _currentPage = 0;
+  static const int _itemsPerPage = 10;
+
+  // User name cache to avoid repeated lookups
+  final Map<String, String> _userNameCache = {};
 
   @override
   void initState() {
@@ -2664,6 +2744,71 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
   void dispose() {
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  void _updateDisplayedRows() {
+    setState(() {
+      final startIndex = _currentPage * _itemsPerPage;
+      final endIndex = startIndex + _itemsPerPage;
+      _displayedRows = _allRows.take(endIndex).toList();
+    });
+  }
+
+  void _loadMore() {
+    setState(() {
+      _currentPage++;
+      _updateDisplayedRows();
+    });
+  }
+
+  // Function to resolve user UID to display name
+  Future<String> _resolveUserName(String uid) async {
+    if (uid.isEmpty || uid == 'Unknown') return 'Unknown';
+
+    // Check cache first
+    if (_userNameCache.containsKey(uid)) {
+      return _userNameCache[uid]!;
+    }
+
+    try {
+      final userDoc = await FirestoreEnforcer.instance.collection('users').doc(uid).get();
+      if (userDoc.exists) {
+        final userData = userDoc.data()!;
+        final firstName = userData['firstName'] ?? '';
+        final lastName = userData['lastName'] ?? '';
+        final displayName = '$firstName $lastName'.trim();
+        final userName = displayName.isNotEmpty ? displayName : (userData['email'] ?? uid);
+        _userNameCache[uid] = userName;
+        return userName;
+      }
+    } catch (e) {
+      print('[TaskHistory] Error resolving user name for $uid: $e');
+    }
+
+    _userNameCache[uid] = uid; // Cache the UID itself as fallback
+    return uid;
+  }
+
+  // Function to format timestamp
+  String _formatTimestamp(dynamic timestamp) {
+    if (timestamp == null || timestamp.toString().isEmpty) return '';
+
+    try {
+      DateTime dateTime;
+
+      if (timestamp is Timestamp) {
+        dateTime = timestamp.toDate();
+      } else if (timestamp is String) {
+        dateTime = DateTime.parse(timestamp);
+      } else {
+        return timestamp.toString();
+      }
+
+      return DateFormat('MMM dd, HH:mm').format(dateTime);
+    } catch (e) {
+      print('[TaskHistory] Error formatting timestamp $timestamp: $e');
+      return timestamp.toString();
+    }
   }
 
   Future<void> _load() async {
@@ -2757,9 +2902,56 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
         for (final t in tasks) {
           final name = (t['taskName'] ?? t['name'] ?? 'Unnamed Task').toString();
           final completed = t['completed'] == true || t['isCompleted'] == true || t['status'] == 'completed';
-          final reason = (t['reason'] ?? t['reasonNotCompleted'] ?? '').toString();
-          final note = (t['note'] ?? t['notes'] ?? '').toString();
-          final photos = List<String>.from(t['photoUrls'] ?? const []);
+          final reason = (t['reason'] ?? t['reasonNotCompleted'] ?? t['reasonForNotCompleting'] ?? '').toString();
+          final note = (t['note'] ?? t['notes'] ?? t['taskNote'] ?? '').toString();
+
+          // Handle photos with multiple possible field names
+          List<String> photos = [];
+          print('[TaskHistory] Debug: Checking photo fields for task: $name');
+          print('[TaskHistory] Debug: Task data keys: ${t.keys.toList()}');
+
+          if (t['photoUrls'] != null) {
+            photos = List<String>.from(t['photoUrls']);
+            print('[TaskHistory] Debug: Found photoUrls: $photos');
+          } else if (t['photos'] != null) {
+            photos = List<String>.from(t['photos']);
+            print('[TaskHistory] Debug: Found photos: $photos');
+          } else if (t['imageUrls'] != null) {
+            photos = List<String>.from(t['imageUrls']);
+            print('[TaskHistory] Debug: Found imageUrls: $photos');
+          } else if (t['photo'] != null) {
+            final photoValue = t['photo'];
+            if (photoValue is String && photoValue.isNotEmpty) {
+              photos = [photoValue];
+            } else if (photoValue is List) {
+              photos = List<String>.from(photoValue);
+            }
+            print('[TaskHistory] Debug: Found photo: $photos');
+          } else if (t['photoUrl'] != null) {
+            final photoUrl = t['photoUrl'].toString();
+            if (photoUrl.isNotEmpty) {
+              photos = [photoUrl];
+            }
+            print('[TaskHistory] Debug: Found photoUrl: $photos');
+          }
+          print('[TaskHistory] Debug: Final photos list: $photos');
+
+          // Extract completedBy UID and resolve to user name
+          final completedByUid =
+              (t['completedBy'] ?? t['completedByUserId'] ?? t['completedByUserName'] ?? '').toString();
+          String completedByName = '';
+          String formattedTime = '';
+
+          if (completed && completedByUid.isNotEmpty) {
+            // Resolve user name from UID
+            completedByName = await _resolveUserName(completedByUid);
+
+            // Format timestamp
+            final timeCompleted = t['timeCompleted'] ?? t['completedAt'] ?? t['updatedAt'] ?? t['timestamp'];
+            formattedTime = _formatTimestamp(timeCompleted);
+          }
+
+          final photoRequired = t['photoRequired'] == true || t['requiresPhoto'] == true || t['requirePhoto'] == true;
 
           // Checklist filter (best-effort, some data models store checklistId on parent)
           if (_selectedChecklist != 'all' && (data['templateId'] ?? data['checklistId']) != _selectedChecklist) {
@@ -2789,6 +2981,9 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
               note: note,
               photoCount: photos.length,
               photoUrls: photos,
+              completedBy: completedByName,
+              timeCompleted: formattedTime,
+              photoRequired: photoRequired,
             ),
           );
         }
@@ -2796,7 +2991,11 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
 
       print('[TaskHistory] Final result: ${rows.length} tasks found');
       if (!mounted) return;
-      setState(() => _rows = rows..sort((a, b) => b.date.compareTo(a.date)));
+      setState(() {
+        _allRows = rows..sort((a, b) => b.date.compareTo(a.date));
+        _currentPage = 0;
+        _updateDisplayedRows();
+      });
     } catch (e) {
       print('[TaskHistory] Error loading tasks: $e');
       if (!mounted) return;
@@ -2823,387 +3022,892 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Compact filter controls
+        // Modern filter controls with dark theme
         Container(
-          padding: const EdgeInsets.all(12),
-          color: HandsColors.secondaryContainer,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          decoration: BoxDecoration(
+            color: HandsColors.cardTertiary,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+            border: Border(bottom: BorderSide(color: HandsColors.white12)),
+          ),
           child: Column(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: SizedBox(
-                      height: 36,
-                      child: TextField(
-                        controller: _searchCtrl,
-                        style: const TextStyle(fontSize: 13, color: HandsColors.white),
-                        decoration: InputDecoration(
-                          prefixIcon: const Icon(Icons.search, size: 18, color: HandsColors.white70),
-                          labelText: 'Search tasks',
-                          labelStyle: const TextStyle(fontSize: 12, color: HandsColors.white70),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          border: OutlineInputBorder(
-                            borderSide: const BorderSide(color: HandsColors.white30),
-                            borderRadius: BorderRadius.circular(8),
+              // Search and date picker row - use Column on very small screens to prevent overflow
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final isVerySmall = constraints.maxWidth < 360;
+                  if (isVerySmall) {
+                    // Stack vertically on very small screens
+                    return Column(
+                      children: [
+                        Container(
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: HandsColors.primaryContainer,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: HandsColors.white12),
                           ),
-                          enabledBorder: OutlineInputBorder(
-                            borderSide: const BorderSide(color: HandsColors.white30),
-                            borderRadius: BorderRadius.circular(8),
+                          child: TextField(
+                            controller: _searchCtrl,
+                            style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                            decoration: InputDecoration(
+                              prefixIcon: const Icon(Icons.search, size: 20, color: HandsColors.white70),
+                              hintText: 'Search tasks...',
+                              hintStyle: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white70),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              border: InputBorder.none,
+                              isDense: true,
+                            ),
+                            onSubmitted: (_) => _load(),
                           ),
-                          focusedBorder: OutlineInputBorder(
-                            borderSide: const BorderSide(color: HandsColors.handsOrange),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          isDense: true,
-                          filled: true,
-                          fillColor: HandsColors.cardTertiary,
                         ),
-                        onSubmitted: (_) => _load(),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    height: 36,
-                    child: HandsSecondaryButton(
-                      text:
-                          _dateRange == null
-                              ? 'Date Range'
-                              : '${DateFormat('M/d').format(_dateRange!.start)} - ${DateFormat('M/d').format(_dateRange!.end)}',
-                      onPressed: _pickRange,
-                      icon: Icons.date_range,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: SizedBox(
-                      height: 36,
-                      child: DropdownButtonFormField<String>(
-                        value: _selectedShift,
-                        style: const TextStyle(fontSize: 12),
-                        decoration: const InputDecoration(
-                          border: OutlineInputBorder(),
-                          labelText: 'Shift',
-                          labelStyle: TextStyle(fontSize: 11),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          isDense: true,
-                        ),
-                        items: [
-                          const DropdownMenuItem(
-                            value: 'all',
-                            child: Text('All shifts', style: TextStyle(fontSize: 12)),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          height: 44,
+                          width: double.infinity,
+                          child: HandsSecondaryButton(
+                            text:
+                                _dateRange == null
+                                    ? 'Date Range'
+                                    : '${DateFormat('M/d').format(_dateRange!.start)} - ${DateFormat('M/d').format(_dateRange!.end)}',
+                            onPressed: _pickRange,
+                            icon: Icons.date_range,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                           ),
-                          ...widget.shifts.map(
-                            (s) => DropdownMenuItem(
-                              value: s['id'],
-                              child: Text(s['name'] ?? 'Shift', style: const TextStyle(fontSize: 12)),
+                        ),
+                      ],
+                    );
+                  } else {
+                    // Side by side on larger screens
+                    return Row(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: Container(
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: HandsColors.primaryContainer,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: HandsColors.white12),
+                            ),
+                            child: TextField(
+                              controller: _searchCtrl,
+                              style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                              decoration: InputDecoration(
+                                prefixIcon: const Icon(Icons.search, size: 20, color: HandsColors.white70),
+                                hintText: 'Search tasks...',
+                                hintStyle: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white70),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                border: InputBorder.none,
+                                isDense: true,
+                              ),
+                              onSubmitted: (_) => _load(),
                             ),
                           ),
-                        ],
-                        onChanged: (v) => setState(() => _selectedShift = v ?? 'all'),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: SizedBox(
-                      height: 36,
-                      child: DropdownButtonFormField<String>(
-                        value: _selectedCompletion,
-                        style: const TextStyle(fontSize: 12),
-                        decoration: const InputDecoration(
-                          border: OutlineInputBorder(),
-                          labelText: 'Status',
-                          labelStyle: TextStyle(fontSize: 11),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          isDense: true,
                         ),
-                        items: const [
-                          DropdownMenuItem(value: 'all', child: Text('All', style: TextStyle(fontSize: 12))),
-                          DropdownMenuItem(value: 'completed', child: Text('Done', style: TextStyle(fontSize: 12))),
-                          DropdownMenuItem(value: 'incomplete', child: Text('Missed', style: TextStyle(fontSize: 12))),
-                          DropdownMenuItem(
-                            value: 'incomplete_with_reason',
-                            child: Text('Missed w/ reason', style: TextStyle(fontSize: 12)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 2,
+                          child: SizedBox(
+                            height: 44,
+                            child: HandsSecondaryButton(
+                              text:
+                                  _dateRange == null
+                                      ? 'Date Range'
+                                      : '${DateFormat('M/d').format(_dateRange!.start)} - ${DateFormat('M/d').format(_dateRange!.end)}',
+                              onPressed: _pickRange,
+                              icon: Icons.date_range,
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                            ),
                           ),
-                        ],
-                        onChanged: (v) => setState(() => _selectedCompletion = v ?? 'all'),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  SizedBox(
-                    height: 36,
-                    child: HandsPrimaryButton(
-                      text: 'Apply',
-                      onPressed: _load,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    height: 36,
-                    child: HandsTextButton(
-                      text: 'Clear',
-                      onPressed: () async {
-                        setState(() {
-                          _searchCtrl.clear();
-                          _selectedShift = 'all';
-                          _selectedChecklist = 'all';
-                          _selectedCompletion = 'all';
-                        });
-                        await _load();
-                      },
-                    ),
-                  ),
-                ],
+                        ),
+                      ],
+                    );
+                  }
+                },
               ),
+              const SizedBox(height: 12),
+              // Filter dropdowns row - responsive layout
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final isVerySmall = constraints.maxWidth < 360;
+                  if (isVerySmall) {
+                    // Stack vertically on very small screens
+                    return Column(
+                      children: [
+                        Container(
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: HandsColors.primaryContainer,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: HandsColors.white12),
+                          ),
+                          child: DropdownButtonFormField<String>(
+                            value: _selectedShift,
+                            dropdownColor: HandsColors.primaryContainer,
+                            style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                            decoration: InputDecoration(
+                              labelText: 'Shift',
+                              labelStyle: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white70),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              border: InputBorder.none,
+                              isDense: true,
+                            ),
+                            items: [
+                              DropdownMenuItem(
+                                value: 'all',
+                                child: Text(
+                                  'All shifts',
+                                  style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                ),
+                              ),
+                              ...widget.shifts.map(
+                                (s) => DropdownMenuItem(
+                                  value: s['id'],
+                                  child: Text(
+                                    s['name'] ?? 'Shift',
+                                    style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ),
+                            ],
+                            onChanged: (v) => setState(() => _selectedShift = v ?? 'all'),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Container(
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: HandsColors.primaryContainer,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: HandsColors.white12),
+                          ),
+                          child: DropdownButtonFormField<String>(
+                            value: _selectedCompletion,
+                            dropdownColor: HandsColors.primaryContainer,
+                            style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                            decoration: InputDecoration(
+                              labelText: 'Status',
+                              labelStyle: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white70),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              border: InputBorder.none,
+                              isDense: true,
+                            ),
+                            items: [
+                              DropdownMenuItem(
+                                value: 'all',
+                                child: Text(
+                                  'All',
+                                  style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                ),
+                              ),
+                              DropdownMenuItem(
+                                value: 'completed',
+                                child: Text(
+                                  'Completed',
+                                  style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                ),
+                              ),
+                              DropdownMenuItem(
+                                value: 'incomplete',
+                                child: Text(
+                                  'Missed',
+                                  style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                ),
+                              ),
+                              DropdownMenuItem(
+                                value: 'incomplete_with_reason',
+                                child: Text(
+                                  'Missed w/ reason',
+                                  style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                            onChanged: (v) => setState(() => _selectedCompletion = v ?? 'all'),
+                          ),
+                        ),
+                      ],
+                    );
+                  } else {
+                    // Side by side on larger screens
+                    return Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: HandsColors.primaryContainer,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: HandsColors.white12),
+                            ),
+                            child: DropdownButtonFormField<String>(
+                              value: _selectedShift,
+                              dropdownColor: HandsColors.primaryContainer,
+                              style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                              decoration: InputDecoration(
+                                labelText: 'Shift',
+                                labelStyle: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white70),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                border: InputBorder.none,
+                                isDense: true,
+                              ),
+                              items: [
+                                DropdownMenuItem(
+                                  value: 'all',
+                                  child: Text(
+                                    'All shifts',
+                                    style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                  ),
+                                ),
+                                ...widget.shifts.map(
+                                  (s) => DropdownMenuItem(
+                                    value: s['id'],
+                                    child: Text(
+                                      s['name'] ?? 'Shift',
+                                      style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              onChanged: (v) => setState(() => _selectedShift = v ?? 'all'),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Container(
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: HandsColors.primaryContainer,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: HandsColors.white12),
+                            ),
+                            child: DropdownButtonFormField<String>(
+                              value: _selectedCompletion,
+                              dropdownColor: HandsColors.primaryContainer,
+                              style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                              decoration: InputDecoration(
+                                labelText: 'Status',
+                                labelStyle: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white70),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                border: InputBorder.none,
+                                isDense: true,
+                              ),
+                              items: [
+                                DropdownMenuItem(
+                                  value: 'all',
+                                  child: Text(
+                                    'All',
+                                    style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                  ),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'completed',
+                                  child: Text(
+                                    'Completed',
+                                    style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                  ),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'incomplete',
+                                  child: Text(
+                                    'Missed',
+                                    style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                  ),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'incomplete_with_reason',
+                                  child: Text(
+                                    'Missed w/ reason',
+                                    style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                              onChanged: (v) => setState(() => _selectedCompletion = v ?? 'all'),
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+                },
+              ),
+              const SizedBox(height: 16),
+              // Action buttons row - prevent overflow with flexible layout
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final isVerySmall = constraints.maxWidth < 320;
+                  if (isVerySmall) {
+                    // Stack vertically on very small screens
+                    return Column(
+                      children: [
+                        SizedBox(
+                          width: double.infinity,
+                          child: HandsPrimaryButton(
+                            text: 'Apply Filters',
+                            onPressed: _load,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: HandsSecondaryButton(
+                            text: 'Clear All',
+                            onPressed: () async {
+                              setState(() {
+                                _searchCtrl.clear();
+                                _selectedShift = 'all';
+                                _selectedChecklist = 'all';
+                                _selectedCompletion = 'all';
+                                _currentPage = 0;
+                              });
+                              await _load();
+                            },
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
+                      ],
+                    );
+                  } else {
+                    // Side by side on larger screens
+                    return Row(
+                      children: [
+                        Expanded(
+                          child: HandsPrimaryButton(
+                            text: 'Apply Filters',
+                            onPressed: _load,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: HandsSecondaryButton(
+                            text: 'Clear All',
+                            onPressed: () async {
+                              setState(() {
+                                _searchCtrl.clear();
+                                _selectedShift = 'all';
+                                _selectedChecklist = 'all';
+                                _selectedCompletion = 'all';
+                                _currentPage = 0;
+                              });
+                              await _load();
+                            },
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+                },
+              ),
+              // Results summary
+              if (!_loading && _allRows.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: HandsColors.sageGreen.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: HandsColors.sageGreen.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, size: 16, color: HandsColors.sageGreen),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Showing ${_displayedRows.length} of ${_allRows.length} tasks',
+                          style: GoogleFonts.comfortaa(
+                            fontSize: 12,
+                            color: HandsColors.sageGreen,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),
-        // Results
+        // Results with pagination
         Expanded(
           child:
               _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _rows.isEmpty
                   ? const Center(
-                    child: Text('No tasks found for selected filters.', style: TextStyle(color: Colors.grey)),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(color: HandsColors.handsOrange),
+                        SizedBox(height: 16),
+                        Text('Loading tasks...', style: TextStyle(color: HandsColors.white70)),
+                      ],
+                    ),
                   )
-                  : ListView.builder(
-                    padding: const EdgeInsets.all(12),
-                    itemCount: _rows.length,
-                    itemBuilder: (context, i) {
-                      final r = _rows[i];
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        decoration: HandsDecorations.tertiaryBoxDecoration,
-                        child: ExpansionTile(
-                          tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                          expandedCrossAxisAlignment: CrossAxisAlignment.start,
-                          title: Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                  : _displayedRows.isEmpty
+                  ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.search_off, size: 64, color: HandsColors.white30),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No tasks found',
+                          style: GoogleFonts.comfortaa(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: HandsColors.white70,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Try adjusting your filters or date range',
+                          style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white30),
+                        ),
+                      ],
+                    ),
+                  )
+                  : Column(
+                    children: [
+                      Expanded(
+                        child: ListView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          itemCount: _displayedRows.length,
+                          itemBuilder: (context, i) {
+                            final r = _displayedRows[i];
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              decoration: BoxDecoration(
+                                color: HandsColors.cardTertiary,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: HandsColors.white12),
+                              ),
+                              child: ExpansionTile(
+                                tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                                expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                                backgroundColor: Colors.transparent,
+                                collapsedBackgroundColor: Colors.transparent,
+                                iconColor: HandsColors.white70,
+                                collapsedIconColor: HandsColors.white70,
+                                title: Row(
                                   children: [
-                                    Text(r.taskName, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      '${r.date} • ${r.shiftName}${r.checklistName.isNotEmpty ? ' • ${r.checklistName}' : ''}',
-                                      style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            r.taskName,
+                                            style: GoogleFonts.comfortaa(
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 15,
+                                              color: HandsColors.white,
+                                            ),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '${r.date} • ${r.shiftName}${r.checklistName.isNotEmpty ? ' • ${r.checklistName}' : ''}',
+                                            style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 12),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Column(
+                                      children: [
+                                        // Modern status badge
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color:
+                                                r.completed
+                                                    ? HandsColors.sageGreen.withOpacity(0.2)
+                                                    : HandsColors.error.withOpacity(0.2),
+                                            borderRadius: BorderRadius.circular(20),
+                                            border: Border.all(
+                                              color: r.completed ? HandsColors.sageGreen : HandsColors.error,
+                                              width: 1.5,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                r.completed ? Icons.check_circle : Icons.cancel,
+                                                size: 14,
+                                                color: r.completed ? HandsColors.sageGreen : HandsColors.error,
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                r.completed ? 'Completed' : 'Missed',
+                                                style: GoogleFonts.comfortaa(
+                                                  color: r.completed ? HandsColors.sageGreen : HandsColors.error,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        // Content indicator
+                                        if (r.photoCount > 0 || r.reason.isNotEmpty || r.note.isNotEmpty) ...[
+                                          const SizedBox(height: 4),
+                                          Container(
+                                            padding: const EdgeInsets.all(4),
+                                            decoration: BoxDecoration(
+                                              color: HandsColors.handsOrange.withOpacity(0.2),
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: Icon(Icons.info, size: 12, color: HandsColors.handsOrange),
+                                          ),
+                                        ],
+                                      ],
                                     ),
                                   ],
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  // Status badge
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: r.completed ? Colors.green.shade50 : Colors.red.shade50,
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color: r.completed ? Colors.green.shade200 : Colors.red.shade200,
-                                      ),
-                                    ),
-                                    child: Text(
-                                      r.completed ? 'Done' : 'Missed',
-                                      style: TextStyle(
-                                        color: r.completed ? Colors.green.shade700 : Colors.red.shade700,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                  // Indicators for additional content
-                                  if (r.photoCount > 0 || r.reason.isNotEmpty || r.note.isNotEmpty) ...[
-                                    const SizedBox(width: 4),
+                                  // Modern styled additional details when expanded
+                                  if (r.completed && r.completedBy.isNotEmpty) ...[
                                     Container(
-                                      width: 16,
-                                      height: 16,
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.all(12),
+                                      margin: const EdgeInsets.only(bottom: 12),
                                       decoration: BoxDecoration(
-                                        color: Theme.of(context).primaryColor.withOpacity(0.1),
-                                        shape: BoxShape.circle,
+                                        color: HandsColors.sageGreen.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: HandsColors.sageGreen.withOpacity(0.3)),
                                       ),
-                                      child: Icon(Icons.info_outline, size: 12, color: Theme.of(context).primaryColor),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Icon(Icons.person_outlined, size: 18, color: HandsColors.sageGreen),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'Completed by:',
+                                                style: GoogleFonts.comfortaa(
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 13,
+                                                  color: HandsColors.sageGreen,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  r.completedBy,
+                                                  style: GoogleFonts.comfortaa(
+                                                    fontSize: 12,
+                                                    color: HandsColors.white,
+                                                    height: 1.4,
+                                                  ),
+                                                ),
+                                              ),
+                                              if (r.timeCompleted.isNotEmpty) ...[
+                                                Icon(Icons.access_time, size: 14, color: HandsColors.sageGreen),
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  r.timeCompleted,
+                                                  style: GoogleFonts.comfortaa(
+                                                    fontSize: 11,
+                                                    color: HandsColors.white70,
+                                                    height: 1.4,
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                  if (r.reason.isNotEmpty) ...[
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.all(12),
+                                      margin: const EdgeInsets.only(bottom: 12),
+                                      decoration: BoxDecoration(
+                                        color: HandsColors.amber.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: HandsColors.amber.withOpacity(0.3)),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Icon(Icons.warning_amber_rounded, size: 18, color: HandsColors.amber),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'Reason for not completing:',
+                                                style: GoogleFonts.comfortaa(
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 13,
+                                                  color: HandsColors.amber,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            r.reason,
+                                            style: GoogleFonts.comfortaa(
+                                              fontSize: 12,
+                                              color: HandsColors.white,
+                                              height: 1.4,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                  if (r.note.isNotEmpty) ...[
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.all(12),
+                                      margin: const EdgeInsets.only(bottom: 12),
+                                      decoration: BoxDecoration(
+                                        color: HandsColors.handsOrange.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: HandsColors.handsOrange.withOpacity(0.3)),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Icon(Icons.note_outlined, size: 18, color: HandsColors.handsOrange),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'Note:',
+                                                style: GoogleFonts.comfortaa(
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 13,
+                                                  color: HandsColors.handsOrange,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            r.note,
+                                            style: GoogleFonts.comfortaa(
+                                              fontSize: 12,
+                                              color: HandsColors.white,
+                                              height: 1.4,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                  if (r.photoUrls.isNotEmpty) ...[
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: HandsColors.sageGreen.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: HandsColors.sageGreen.withOpacity(0.3)),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Icon(
+                                                Icons.photo_library_outlined,
+                                                size: 18,
+                                                color: HandsColors.sageGreen,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'Photos (${r.photoCount}):',
+                                                style: GoogleFonts.comfortaa(
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 13,
+                                                  color: HandsColors.sageGreen,
+                                                ),
+                                              ),
+                                              if (r.photoRequired) ...[
+                                                const SizedBox(width: 8),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: HandsColors.handsOrange.withOpacity(0.2),
+                                                    borderRadius: BorderRadius.circular(8),
+                                                    border: Border.all(color: HandsColors.handsOrange),
+                                                  ),
+                                                  child: Text(
+                                                    'REQUIRED',
+                                                    style: GoogleFonts.comfortaa(
+                                                      color: HandsColors.handsOrange,
+                                                      fontSize: 9,
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                          const SizedBox(height: 12),
+                                          Wrap(
+                                            spacing: 8,
+                                            runSpacing: 8,
+                                            children:
+                                                r.photoUrls.take(6).map((photoUrl) {
+                                                  print('[TaskHistory] Debug: Attempting to load image: $photoUrl');
+                                                  return GestureDetector(
+                                                    onTap: () => _showFullScreenImage(context, photoUrl, r.taskName),
+                                                    child: Container(
+                                                      width: 60,
+                                                      height: 60,
+                                                      decoration: BoxDecoration(
+                                                        borderRadius: BorderRadius.circular(8),
+                                                        border: Border.all(color: HandsColors.white30),
+                                                      ),
+                                                      child: ClipRRect(
+                                                        borderRadius: BorderRadius.circular(7),
+                                                        child: Image.network(
+                                                          photoUrl,
+                                                          fit: BoxFit.cover,
+                                                          loadingBuilder: (context, child, loadingProgress) {
+                                                            if (loadingProgress == null) return child;
+                                                            return Container(
+                                                              color: HandsColors.primaryContainer,
+                                                              child: const Center(
+                                                                child: SizedBox(
+                                                                  width: 20,
+                                                                  height: 20,
+                                                                  child: CircularProgressIndicator(
+                                                                    strokeWidth: 2,
+                                                                    color: HandsColors.handsOrange,
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                            );
+                                                          },
+                                                          errorBuilder: (context, error, stackTrace) {
+                                                            print(
+                                                              '[TaskHistory] Debug: Image load error for $photoUrl: $error',
+                                                            );
+                                                            return Container(
+                                                              color: HandsColors.primaryContainer,
+                                                              child: Column(
+                                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                                children: [
+                                                                  const Icon(
+                                                                    Icons.broken_image,
+                                                                    color: HandsColors.white30,
+                                                                    size: 20,
+                                                                  ),
+                                                                  Text(
+                                                                    'Load failed',
+                                                                    style: GoogleFonts.comfortaa(
+                                                                      fontSize: 7,
+                                                                      color: HandsColors.white30,
+                                                                    ),
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                            );
+                                                          },
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  );
+                                                }).toList(),
+                                          ),
+                                          if (r.photoUrls.length > 6) ...[
+                                            const SizedBox(height: 8),
+                                            Text(
+                                              '+${r.photoUrls.length - 6} more photos',
+                                              style: GoogleFonts.comfortaa(
+                                                fontSize: 11,
+                                                color: HandsColors.sageGreen,
+                                                fontStyle: FontStyle.italic,
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                  ] else if (r.photoRequired) ...[
+                                    // Show when photo was required but not added
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: HandsColors.amber.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: HandsColors.amber.withOpacity(0.3)),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.photo_camera_outlined, size: 18, color: HandsColors.amber),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'Photo was required but not added',
+                                            style: GoogleFonts.comfortaa(
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 13,
+                                              color: HandsColors.amber,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ],
                                 ],
                               ),
-                            ],
-                          ),
-                          children: [
-                            // Show additional details when expanded
-                            if (r.reason.isNotEmpty) ...[
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(12),
-                                margin: const EdgeInsets.only(bottom: 8),
-                                decoration: BoxDecoration(
-                                  color: Colors.orange.shade50,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.orange.shade200),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Icon(Icons.warning_amber, size: 16, color: Colors.orange.shade700),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          'Reason for not completing:',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 12,
-                                            color: Colors.orange.shade700,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(r.reason, style: TextStyle(fontSize: 11, color: Colors.orange.shade800)),
-                                  ],
-                                ),
-                              ),
-                            ],
-                            if (r.note.isNotEmpty) ...[
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(12),
-                                margin: const EdgeInsets.only(bottom: 8),
-                                decoration: BoxDecoration(
-                                  color: Colors.blue.shade50,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.blue.shade200),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Icon(Icons.note, size: 16, color: Colors.blue.shade700),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          'Note:',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 12,
-                                            color: Colors.blue.shade700,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(r.note, style: TextStyle(fontSize: 11, color: Colors.blue.shade800)),
-                                  ],
-                                ),
-                              ),
-                            ],
-                            if (r.photoUrls.isNotEmpty) ...[
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: Colors.green.shade50,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.green.shade200),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Icon(Icons.photo_library, size: 16, color: Colors.green.shade700),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          'Photos (${r.photoCount}):',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 12,
-                                            color: Colors.green.shade700,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Wrap(
-                                      spacing: 8,
-                                      runSpacing: 8,
-                                      children:
-                                          r.photoUrls.take(6).map((photoUrl) {
-                                            return GestureDetector(
-                                              onTap: () => _showFullScreenImage(context, photoUrl, r.taskName),
-                                              child: Container(
-                                                width: 60,
-                                                height: 60,
-                                                decoration: BoxDecoration(
-                                                  borderRadius: BorderRadius.circular(8),
-                                                  border: Border.all(color: Colors.grey[300]!),
-                                                ),
-                                                child: ClipRRect(
-                                                  borderRadius: BorderRadius.circular(7),
-                                                  child: Image.network(
-                                                    photoUrl,
-                                                    fit: BoxFit.cover,
-                                                    loadingBuilder: (context, child, loadingProgress) {
-                                                      if (loadingProgress == null) return child;
-                                                      return Container(
-                                                        color: Colors.grey[200],
-                                                        child: Center(
-                                                          child: SizedBox(
-                                                            width: 20,
-                                                            height: 20,
-                                                            child: CircularProgressIndicator(strokeWidth: 2),
-                                                          ),
-                                                        ),
-                                                      );
-                                                    },
-                                                    errorBuilder: (context, error, stackTrace) {
-                                                      return Container(
-                                                        color: Colors.grey[200],
-                                                        child: Icon(
-                                                          Icons.broken_image,
-                                                          color: Colors.grey[400],
-                                                          size: 24,
-                                                        ),
-                                                      );
-                                                    },
-                                                  ),
-                                                ),
-                                              ),
-                                            );
-                                          }).toList(),
-                                    ),
-                                    if (r.photoUrls.length > 6) ...[
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        '+${r.photoUrls.length - 6} more photos',
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          color: Colors.green.shade600,
-                                          fontStyle: FontStyle.italic,
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ],
+                            );
+                          },
                         ),
-                      );
-                    },
+                      ),
+                      // Pagination controls - prevent text overflow
+                      if (_displayedRows.length < _allRows.length) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: HandsColors.cardTertiary,
+                            border: Border(top: BorderSide(color: HandsColors.white12)),
+                          ),
+                          child: Center(
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final remaining = _allRows.length - _displayedRows.length;
+                                final isVerySmall = constraints.maxWidth < 280;
+
+                                return HandsSecondaryButton(
+                                  text:
+                                      isVerySmall
+                                          ? 'Load More ($remaining)'
+                                          : 'Load 10 More Tasks ($remaining remaining)',
+                                  onPressed: _loadMore,
+                                  icon: Icons.expand_more,
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
         ),
       ],
@@ -3307,6 +4011,9 @@ class _TaskRow {
   final String note;
   final int photoCount;
   final List<String> photoUrls;
+  final String completedBy;
+  final String timeCompleted;
+  final bool photoRequired;
 
   _TaskRow({
     required this.date,
@@ -3318,6 +4025,9 @@ class _TaskRow {
     required this.note,
     required this.photoCount,
     required this.photoUrls,
+    required this.completedBy,
+    required this.timeCompleted,
+    required this.photoRequired,
   });
 }
 

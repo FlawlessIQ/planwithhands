@@ -286,31 +286,22 @@ class UserDashboardPage extends HookConsumerWidget {
         // This will automatically clean up expired volunteer shifts
         List<ShiftData> foundShifts = await _getAllShiftsForToday(user.uid, todayDayName, todayString);
         logger.d("[Dashboard][DEBUG] Found ${foundShifts.length} shifts after querying for today");
-        // Filter by selected location, but preserve shifts the user explicitly joined (volunteer shifts).
+        // Filter by selected location. Only include shifts that explicitly list the
+        // selected location. Previously we preserved volunteer-joined shifts across
+        // locations which caused joined shifts to appear at other locations; remove
+        // that behavior so joined shifts only appear when the selected location
+        // matches the shift's declared locations.
         foundShifts =
             selectedLocationId.value != null
                 ? foundShifts.where((shift) {
                   try {
                     final shiftLocs = coerceToLocationIds(shift.locationIds);
-                    // Keep shift if it matches the selected location
-                    if (shiftLocs.contains(selectedLocationId.value)) return true;
-
-                    // Also keep the shift if the current user has joined it today (volunteer)
-                    final currentUser = FirebaseAuth.instance.currentUser;
-                    if (currentUser != null) {
-                      try {
-                        // ShiftData.volunteers is non-nullable (defaults to empty list). Keep the shift if the
-                        // current user is listed as a volunteer so joined shifts persist across location changes.
-                        final vols = shift.volunteers;
-                        if (vols.contains(currentUser.uid)) return true;
-                      } catch (_) {
-                        // ignore and fall through
-                      }
-                    }
+                    // Keep shift only if it matches the selected location
+                    return shiftLocs.contains(selectedLocationId.value);
                   } catch (e) {
-                    logger.w('[Dashboard] Error while filtering shifts by location but preserving joined shifts: $e');
+                    logger.w('[Dashboard] Error while filtering shifts by location: $e');
+                    return false;
                   }
-                  return false;
                 }).toList()
                 : foundShifts;
         // Merge any currently-present (optimistic) assigned shifts so we don't drop them
@@ -961,12 +952,12 @@ class UserDashboardPage extends HookConsumerWidget {
                                           logger.d(
                                             '[Dashboard] Adopted shift location $adoptLoc as selectedLocationId',
                                           );
-                                            // Persist this selection globally so other pages and future visits honor it
-                                            try {
-                                              LocationSelectionService.instance.setLocation(adoptLoc);
-                                            } catch (e) {
-                                              logger.w('[Dashboard] Failed to persist adopted location: $e');
-                                            }
+                                          // Persist this selection globally so other pages and future visits honor it
+                                          try {
+                                            LocationSelectionService.instance.setLocation(adoptLoc);
+                                          } catch (e) {
+                                            logger.w('[Dashboard] Failed to persist adopted location: $e');
+                                          }
                                         }
                                       } catch (e) {
                                         logger.e('[Dashboard] Error adopting shift location: $e', e);
@@ -1316,9 +1307,7 @@ Future<List<ShiftData>> _getAllShiftsForToday(String userId, String todayDayName
         // If the user explicitly joined this volunteer shift today, include it regardless
         // of the volunteer pre-start window so it persists in the user's assigned list.
         if (joinedToday) {
-          logger.d(
-            "[Dashboard][DEBUG] User joined volunteer shift today: ${shift.shiftName} (marker=$joinedMarker)",
-          );
+          logger.d("[Dashboard][DEBUG] User joined volunteer shift today: ${shift.shiftName} (marker=$joinedMarker)");
           if (!allShifts.any((existingShift) => existingShift.shiftId == shift.shiftId)) {
             allShifts.add(shift);
             logger.d("[Dashboard][DEBUG] Added volunteer shift to list (joinedToday): ${shift.shiftName}");
@@ -1879,28 +1868,28 @@ class _HelpOutDialog extends StatelessWidget {
 
       if (selectedLocationId == null) return [];
 
-    // Get all shifts for the organization that apply to this location.
-    // Some older shift docs may store a single 'locationId' string instead of
-    // the newer 'locationIds' array. Query both and merge to ensure we don't
-    // miss shifts like the Opening Bar which may use the legacy field.
-    final shiftsColl = FirestoreEnforcer.instance
-      .collection('organizations')
-      .doc(organizationId)
-      .collection('shifts');
+      // Get all shifts for the organization that apply to this location.
+      // Some older shift docs may store a single 'locationId' string instead of
+      // the newer 'locationIds' array. Query both and merge to ensure we don't
+      // miss shifts like the Opening Bar which may use the legacy field.
+      final shiftsColl = FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(organizationId)
+          .collection('shifts');
 
-    final qArray = shiftsColl.where('locationIds', arrayContains: selectedLocationId);
-    final qSingle = shiftsColl.where('locationId', isEqualTo: selectedLocationId);
+      final qArray = shiftsColl.where('locationIds', arrayContains: selectedLocationId);
+      final qSingle = shiftsColl.where('locationId', isEqualTo: selectedLocationId);
 
-    final snapArray = await qArray.get();
-    final snapSingle = await qSingle.get();
+      final snapArray = await qArray.get();
+      final snapSingle = await qSingle.get();
 
-    // Merge and dedupe by document id
-    final Map<String, QueryDocumentSnapshot> docsById = {};
-    for (final d in snapArray.docs) docsById[d.id] = d;
-    for (final d in snapSingle.docs) docsById[d.id] = d;
+      // Merge and dedupe by document id
+      final Map<String, QueryDocumentSnapshot> docsById = {};
+      for (final d in snapArray.docs) docsById[d.id] = d;
+      for (final d in snapSingle.docs) docsById[d.id] = d;
 
-    final combinedDocs = docsById.values.toList();
-    final shifts = <ShiftData>[];
+      final combinedDocs = docsById.values.toList();
+      final shifts = <ShiftData>[];
 
       // Load current user role and job types for filtering logic
       int userRole = 0; // 0=user, 1=manager, 2=admin
@@ -1978,9 +1967,7 @@ class _HelpOutDialog extends StatelessWidget {
         }
       }
 
-      debugPrint(
-        '[HelpOutSheet] Found ${combinedDocs.length} potential shifts for location $selectedLocationId',
-      );
+      debugPrint('[HelpOutSheet] Found ${combinedDocs.length} potential shifts for location $selectedLocationId');
       debugPrint('[HelpOutSheet] User role: $userRole, jobTypes: $userJobTypes, todayDayName: $todayDayName');
 
       for (final doc in combinedDocs) {

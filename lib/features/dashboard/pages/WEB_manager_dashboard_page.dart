@@ -13,6 +13,7 @@ import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
+import 'package:hands_app/global_widgets/professional_harvey_ball.dart';
 import 'package:hands_app/services/daily_checklist_service.dart';
 import 'package:hands_app/services/organization_setup_service.dart';
 import 'package:hands_app/services/location_selection_service.dart';
@@ -407,6 +408,10 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
     setState(() => _loadingLive = true);
     try {
       logger.i('[ManagerDashboard][DEBUG] Entering _loadLiveShifts');
+      // Add console print for browser debugging visibility
+      print('====== MANAGER DASHBOARD: Loading live shifts ======');
+      print('Current location ID: $_selectedLocationId');
+
       final todayStr = _todayKey;
       logger.i('[ManagerDashboard][DEBUG] Today string: $todayStr, Selected Location: $_selectedLocationId');
       final shiftsSnap =
@@ -524,6 +529,80 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
           '[ManagerDashboard][DEBUG] Shift $shiftName: $completedTasks/$totalTasks completed (excluding carry-forward)',
         );
         if (totalTasks > 0) completionPct = completedTasks / totalTasks;
+
+        // Determine whether this shift should be considered "today".
+        // Some shifts are configured to repeat daily, have activeDays (1=Mon..7=Sun),
+        // or a days list with weekday names. We need to be strict about this -
+        // only show shifts that are explicitly scheduled for today's weekday.
+        final now = DateTime.now();
+        final weekday = now.weekday; // 1..7 (Monday=1, Sunday=7)
+        bool scheduledToday = false;
+
+        logger.i('[ManagerDashboard][DEBUG] Checking schedule for shift $shiftName on weekday $weekday');
+
+        // repeatsDaily flag (may be stored as bool)
+        if (shiftData['repeatsDaily'] == true) {
+          logger.i('[ManagerDashboard][DEBUG] Shift $shiftName has repeatsDaily=true');
+          scheduledToday = true;
+        }
+
+        // activeDays can be List<int> or List<String>
+        if (!scheduledToday && (shiftData['activeDays'] is List)) {
+          final active = (shiftData['activeDays'] as List).map((e) => e?.toString()).whereType<String>().toList();
+          logger.i('[ManagerDashboard][DEBUG] Shift $shiftName activeDays: $active, checking against weekday $weekday');
+          for (final a in active) {
+            final ai = int.tryParse(a);
+            if (ai != null && ai == weekday) {
+              logger.i('[ManagerDashboard][DEBUG] Shift $shiftName matches activeDays: $ai == $weekday');
+              scheduledToday = true;
+              break;
+            }
+          }
+        }
+
+        // days may contain names like 'Monday' etc.
+        if (!scheduledToday && (shiftData['days'] is List)) {
+          final todayName = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][weekday - 1];
+          final daysList =
+              (shiftData['days'] as List).map((d) => d?.toString().toLowerCase()).whereType<String>().toList();
+          logger.i('[ManagerDashboard][DEBUG] Shift $shiftName days: $daysList, checking against $todayName');
+          if (daysList.contains(todayName.toLowerCase())) {
+            logger.i('[ManagerDashboard][DEBUG] Shift $shiftName matches days: contains ${todayName.toLowerCase()}');
+            scheduledToday = true;
+          }
+        }
+
+        // Some shifts may have a specific shiftDate field (Timestamp/DateTime)
+        if (!scheduledToday && shiftData.containsKey('shiftDate') && shiftData['shiftDate'] != null) {
+          try {
+            final raw = shiftData['shiftDate'];
+            DateTime? sd;
+            if (raw is DateTime)
+              sd = raw;
+            else if (raw is Timestamp)
+              sd = raw.toDate();
+            else if (raw is String)
+              sd = DateTime.tryParse(raw);
+            if (sd != null) {
+              if (sd.year == now.year && sd.month == now.month && sd.day == now.day) {
+                logger.i('[ManagerDashboard][DEBUG] Shift $shiftName matches shiftDate: $sd');
+                scheduledToday = true;
+              }
+            }
+          } catch (_) {}
+        }
+
+        // REMOVED: Don't automatically include shifts just because they have checklists
+        // The presence of daily_checklists should not override explicit scheduling rules
+        // if (!scheduledToday && checklistsSnap.docs.isNotEmpty) scheduledToday = true;
+
+        logger.i('[ManagerDashboard][DEBUG] Final scheduledToday for shift $shiftName: $scheduledToday');
+
+        // If not scheduled today, skip showing this shift in the Today's Shifts list
+        if (!scheduledToday) {
+          logger.i('[ManagerDashboard][DEBUG] Skipping shift $shiftName — not scheduled today (weekday=$weekday)');
+          continue;
+        }
 
         final timeStatus = _calculateTimeStatus(startTime, endTime);
 
@@ -1113,149 +1192,203 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
           const SizedBox(height: 24),
 
-          // Bottom row - three cards side by side
-          SizedBox(
-            height: 350, // Reduced height to prevent overflow
-            child: Row(
-              children: [
-                // Frequent Misses (left third)
-                Expanded(
-                  flex: 1,
-                  child: _SimpleDashboardCard(
-                    title: 'FREQUENT MISSES (30D)',
-                    icon: Icons.trending_down,
-                    accentColor: HandsColors.error,
-                    loading: _loadingFrequent,
-                    onTap: _openAllFrequentMisses,
-                    content: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 20),
-                        Text(
-                          '${_frequentMisses30d.length}',
-                          style: GoogleFonts.comfortaa(
-                            fontSize: 48,
-                            fontWeight: FontWeight.bold,
-                            color: HandsColors.white,
-                            height: 1.0,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'hot spots',
-                          style: GoogleFonts.comfortaa(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                            color: HandsColors.white70,
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        Expanded(
-                          child: _SimpleTopList(
-                            items:
-                                _frequentMisses30d.take(5).map((t) {
-                                  final name = (t['taskName'] ?? 'Unknown Task').toString();
-                                  final count = (t['count'] ?? t['missedCount'] ?? 0).toString();
-                                  return {'name': name, 'value': '×$count'};
-                                }).toList(),
-                            emptyLabel: 'No frequent misses found',
-                          ),
-                        ),
-                      ],
+          // Bottom row - responsive layout: two metric cards side-by-side and
+          // the Task History card below on narrow screens; three-column layout
+          // on wide screens.
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isNarrow = constraints.maxWidth < 900;
+
+              // Reusable widgets for the three cards (kept inline to preserve original content)
+              final frequentCard = _SimpleDashboardCard(
+                title: 'FREQUENT MISSES (30D)',
+                icon: Icons.trending_down,
+                accentColor: HandsColors.error,
+                loading: _loadingFrequent,
+                onTap: _openAllFrequentMisses,
+                content: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 20),
+                    Text(
+                      '${_frequentMisses30d.length}',
+                      style: GoogleFonts.comfortaa(
+                        fontSize: 48,
+                        fontWeight: FontWeight.bold,
+                        color: HandsColors.white,
+                        height: 1.0,
+                      ),
                     ),
-                  ),
-                ),
-                const SizedBox(width: 24),
-                // Poor Performing Shifts (middle third)
-                Expanded(
-                  flex: 1,
-                  child: _SimpleDashboardCard(
-                    title: 'POOR PERFORMING (30D)',
-                    icon: Icons.speed,
-                    accentColor: HandsColors.handsOrange,
-                    loading: _loadingPoorShifts,
-                    onTap: _openPoorShiftDetails,
-                    content: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 20),
-                        Text(
-                          '${_poorShifts30d.length}',
-                          style: GoogleFonts.comfortaa(
-                            fontSize: 48,
-                            fontWeight: FontWeight.bold,
-                            color: HandsColors.white,
-                            height: 1.0,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _poorShifts30d.isEmpty ? 'all good' : 'flagged',
-                          style: GoogleFonts.comfortaa(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                            color: _poorShifts30d.isEmpty ? HandsColors.sageGreen : HandsColors.white70,
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        Expanded(
-                          child: _SimpleTopList(
-                            items:
-                                _poorShifts30d.take(5).map((m) {
-                                  final name = (m['shiftName'] ?? 'Unknown').toString();
-                                  final pct = ((m['avgCompletion'] as double?) ?? 0) * 100;
-                                  return {'name': name, 'value': '${pct.toStringAsFixed(0)}%'};
-                                }).toList(),
-                            emptyLabel: 'All shifts performing well',
-                          ),
-                        ),
-                      ],
+                    const SizedBox(height: 8),
+                    Text(
+                      'hot spots',
+                      style: GoogleFonts.comfortaa(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: HandsColors.white70,
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 24),
+                    Expanded(
+                      child: _SimpleTopList(
+                        items:
+                            _frequentMisses30d.take(5).map((t) {
+                              final name = (t['taskName'] ?? 'Unknown Task').toString();
+                              final count = (t['count'] ?? t['missedCount'] ?? 0).toString();
+                              return {'name': name, 'value': '×$count'};
+                            }).toList(),
+                        emptyLabel: 'No frequent misses found',
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 24),
-                // Task History (right third)
-                Expanded(
-                  flex: 1,
-                  child: _SimpleDashboardCard(
-                    title: 'TASK HISTORY',
-                    icon: Icons.analytics,
-                    accentColor: HandsColors.handsOrange,
-                    onTap: _openTaskHistorySheet,
-                    content: Column(
+              );
+
+              final poorCard = _SimpleDashboardCard(
+                title: 'POOR PERFORMING (30D)',
+                icon: Icons.speed,
+                accentColor: HandsColors.handsOrange,
+                loading: _loadingPoorShifts,
+                onTap: _openPoorShiftDetails,
+                content: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 20),
+                    Text(
+                      '${_poorShifts30d.length}',
+                      style: GoogleFonts.comfortaa(
+                        fontSize: 48,
+                        fontWeight: FontWeight.bold,
+                        color: HandsColors.white,
+                        height: 1.0,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _poorShifts30d.isEmpty ? 'all good' : 'flagged',
+                      style: GoogleFonts.comfortaa(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: _poorShifts30d.isEmpty ? HandsColors.sageGreen : HandsColors.white70,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Expanded(
+                      child: _SimpleTopList(
+                        items:
+                            _poorShifts30d.take(5).map((m) {
+                              final name = (m['shiftName'] ?? 'Unknown').toString();
+                              final pct = ((m['avgCompletion'] as double?) ?? 0) * 100;
+                              return {'name': name, 'value': '${pct.toStringAsFixed(0)}%'};
+                            }).toList(),
+                        emptyLabel: 'All shifts performing well',
+                      ),
+                    ),
+                  ],
+                ),
+              );
+
+              final taskHistoryCard = _SimpleDashboardCard(
+                title: 'TASK HISTORY',
+                icon: Icons.analytics,
+                accentColor: HandsColors.handsOrange,
+                onTap: _openTaskHistorySheet,
+                content: LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Responsive sizing based on available space
+                    final width = constraints.maxWidth;
+                    final height = constraints.maxHeight;
+                    final isMobile = width < 300;
+                    final isCompact = height < 200;
+
+                    // Calculate dynamic sizes
+                    final iconSize = isMobile ? 50.0 : (isCompact ? 60.0 : 80.0);
+                    final descriptionFontSize = isMobile ? 12.0 : (isCompact ? 13.0 : 16.0);
+                    final buttonFontSize = isMobile ? 11.0 : (isCompact ? 12.0 : 14.0);
+                    final buttonPadding =
+                        isMobile
+                            ? const EdgeInsets.symmetric(horizontal: 16, vertical: 8)
+                            : const EdgeInsets.symmetric(horizontal: 24, vertical: 12);
+                    final verticalSpacing = isMobile ? 12.0 : (isCompact ? 16.0 : 24.0);
+
+                    return Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.analytics, size: 80, color: HandsColors.handsOrange.withOpacity(0.5)),
-                        const SizedBox(height: 24),
-                        Text(
-                          'Detailed task analytics and historical performance data',
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.comfortaa(fontSize: 16, color: HandsColors.white70),
+                        Icon(Icons.analytics, size: iconSize, color: HandsColors.handsOrange.withOpacity(0.5)),
+                        SizedBox(height: verticalSpacing),
+                        Flexible(
+                          child: Text(
+                            'Detailed task analytics and historical performance data',
+                            textAlign: TextAlign.center,
+                            maxLines: isMobile ? 2 : 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.comfortaa(
+                              fontSize: descriptionFontSize,
+                              color: HandsColors.white70,
+                              height: 1.3,
+                            ),
+                          ),
                         ),
-                        const SizedBox(height: 24),
+                        SizedBox(height: verticalSpacing),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          padding: buttonPadding,
                           decoration: BoxDecoration(
                             color: HandsColors.handsOrange.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(24),
+                            borderRadius: BorderRadius.circular(isMobile ? 20 : 24),
                             border: Border.all(color: HandsColors.handsOrange),
                           ),
                           child: Text(
                             'VIEW REPORTS',
                             style: GoogleFonts.comfortaa(
-                              fontSize: 14,
+                              fontSize: buttonFontSize,
                               fontWeight: FontWeight.bold,
                               color: HandsColors.handsOrange,
-                              letterSpacing: 1.0,
+                              letterSpacing: isMobile ? 0.5 : 1.0,
                             ),
                           ),
                         ),
                       ],
-                    ),
-                  ),
+                    );
+                  },
                 ),
-              ],
-            ),
+              );
+
+              if (isNarrow) {
+                // Two metric cards in a row and task history below
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      height: 260,
+                      child: Row(
+                        children: [
+                          Expanded(flex: 1, child: frequentCard),
+                          const SizedBox(width: 24),
+                          Expanded(flex: 1, child: poorCard),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    // Task history as full-width card
+                    SizedBox(height: 180, child: taskHistoryCard),
+                  ],
+                );
+              }
+
+              // Wide layout: three columns side-by-side (preserve original sizing)
+              return SizedBox(
+                height: 350,
+                child: Row(
+                  children: [
+                    Expanded(flex: 1, child: frequentCard),
+                    const SizedBox(width: 24),
+                    Expanded(flex: 1, child: poorCard),
+                    const SizedBox(width: 24),
+                    Expanded(flex: 1, child: taskHistoryCard),
+                  ],
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -1691,8 +1824,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
   }
 
   Future<void> _openTaskHistorySheet() async {
-    // Default date range: last 14 days
-    _selectedDateRange ??= DateTimeRange(start: DateTime.now().subtract(const Duration(days: 14)), end: DateTime.now());
+    // Default date range: last 3 days
+    _selectedDateRange ??= DateTimeRange(start: DateTime.now().subtract(const Duration(days: 3)), end: DateTime.now());
     showDialog(
       context: context,
       builder:
@@ -1918,7 +2051,13 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
   String _selectedCompletion = 'all';
   DateTimeRange? _dateRange;
   bool _loading = false;
-  List<_TaskRow> _rows = [];
+  List<_TaskRow> _allRows = [];
+  List<_TaskRow> _displayedRows = [];
+  int _currentPage = 0;
+  static const int _itemsPerPage = 10;
+
+  // User name cache to avoid repeated lookups
+  final Map<String, String> _userNameCache = {};
 
   @override
   void initState() {
@@ -1931,6 +2070,73 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
   void dispose() {
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  void _updateDisplayedRows() {
+    final startIndex = _currentPage * _itemsPerPage;
+    final endIndex = (startIndex + _itemsPerPage).clamp(0, _allRows.length);
+    setState(() {
+      _displayedRows = _allRows.sublist(startIndex, endIndex);
+    });
+  }
+
+  void _loadMore() {
+    if ((_currentPage + 1) * _itemsPerPage < _allRows.length) {
+      setState(() {
+        _currentPage++;
+      });
+      _updateDisplayedRows();
+    }
+  }
+
+  // Function to resolve user UID to display name
+  Future<String> _resolveUserName(String uid) async {
+    if (uid.isEmpty || uid == 'Unknown') return 'Unknown';
+
+    // Check cache first
+    if (_userNameCache.containsKey(uid)) {
+      return _userNameCache[uid]!;
+    }
+
+    try {
+      final userDoc = await FirestoreEnforcer.instance.collection('users').doc(uid).get();
+      if (userDoc.exists) {
+        final userData = userDoc.data()!;
+        final firstName = userData['firstName'] ?? '';
+        final lastName = userData['lastName'] ?? '';
+        final displayName = '$firstName $lastName'.trim();
+        final userName = displayName.isNotEmpty ? displayName : (userData['email'] ?? uid);
+        _userNameCache[uid] = userName;
+        return userName;
+      }
+    } catch (e) {
+      print('[TaskHistory] Error resolving user name for $uid: $e');
+    }
+
+    _userNameCache[uid] = uid; // Cache the UID itself as fallback
+    return uid;
+  }
+
+  // Function to format timestamp
+  String _formatTimestamp(dynamic timestamp) {
+    if (timestamp == null || timestamp.toString().isEmpty) return '';
+
+    try {
+      DateTime dateTime;
+
+      if (timestamp is Timestamp) {
+        dateTime = timestamp.toDate();
+      } else if (timestamp is String) {
+        dateTime = DateTime.parse(timestamp);
+      } else {
+        return timestamp.toString();
+      }
+
+      return DateFormat('MMM dd, HH:mm').format(dateTime);
+    } catch (e) {
+      print('[TaskHistory] Error formatting timestamp $timestamp: $e');
+      return timestamp.toString();
+    }
   }
 
   Future<void> _load() async {
@@ -2024,9 +2230,56 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
         for (final t in tasks) {
           final name = (t['taskName'] ?? t['name'] ?? 'Unnamed Task').toString();
           final completed = t['completed'] == true || t['isCompleted'] == true || t['status'] == 'completed';
-          final reason = (t['reason'] ?? t['reasonNotCompleted'] ?? '').toString();
-          final note = (t['note'] ?? t['notes'] ?? '').toString();
-          final photos = List<String>.from(t['photoUrls'] ?? const []);
+          final reason = (t['reason'] ?? t['reasonNotCompleted'] ?? t['reasonForNotCompleting'] ?? '').toString();
+          final note = (t['note'] ?? t['notes'] ?? t['taskNote'] ?? '').toString();
+
+          // Handle photos with multiple possible field names
+          List<String> photos = [];
+          print('[TaskHistory] Debug: Checking photo fields for task: ${name}');
+          print('[TaskHistory] Debug: Task data keys: ${t.keys.toList()}');
+
+          if (t['photoUrls'] != null) {
+            photos = List<String>.from(t['photoUrls']);
+            print('[TaskHistory] Debug: Found photoUrls: $photos');
+          } else if (t['photos'] != null) {
+            photos = List<String>.from(t['photos']);
+            print('[TaskHistory] Debug: Found photos: $photos');
+          } else if (t['imageUrls'] != null) {
+            photos = List<String>.from(t['imageUrls']);
+            print('[TaskHistory] Debug: Found imageUrls: $photos');
+          } else if (t['photo'] != null) {
+            final photoValue = t['photo'];
+            if (photoValue is String && photoValue.isNotEmpty) {
+              photos = [photoValue];
+            } else if (photoValue is List) {
+              photos = List<String>.from(photoValue);
+            }
+            print('[TaskHistory] Debug: Found photo: $photos');
+          } else if (t['photoUrl'] != null) {
+            final photoUrl = t['photoUrl'].toString();
+            if (photoUrl.isNotEmpty) {
+              photos = [photoUrl];
+            }
+            print('[TaskHistory] Debug: Found photoUrl: $photos');
+          }
+          print('[TaskHistory] Debug: Final photos list: $photos');
+
+          // Extract completedBy UID and resolve to user name
+          final completedByUid =
+              (t['completedBy'] ?? t['completedByUserId'] ?? t['completedByUserName'] ?? '').toString();
+          String completedByName = '';
+          String formattedTime = '';
+
+          if (completed && completedByUid.isNotEmpty) {
+            // Resolve user name from UID
+            completedByName = await _resolveUserName(completedByUid);
+
+            // Format timestamp
+            final timeCompleted = t['timeCompleted'] ?? t['completedAt'] ?? t['updatedAt'] ?? t['timestamp'];
+            formattedTime = _formatTimestamp(timeCompleted);
+          }
+
+          final photoRequired = t['photoRequired'] == true || t['requiresPhoto'] == true || t['requirePhoto'] == true;
 
           // Checklist filter (best-effort, some data models store checklistId on parent)
           if (_selectedChecklist != 'all' && (data['templateId'] ?? data['checklistId']) != _selectedChecklist) {
@@ -2056,6 +2309,9 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
               note: note,
               photoCount: photos.length,
               photoUrls: photos,
+              completedBy: completedByName,
+              timeCompleted: formattedTime,
+              photoRequired: photoRequired,
             ),
           );
         }
@@ -2063,7 +2319,11 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
 
       print('[TaskHistory] Final result: ${rows.length} tasks found');
       if (!mounted) return;
-      setState(() => _rows = rows..sort((a, b) => b.date.compareTo(a.date)));
+      setState(() {
+        _allRows = rows..sort((a, b) => b.date.compareTo(a.date));
+        _currentPage = 0;
+      });
+      _updateDisplayedRows();
     } catch (e) {
       print('[TaskHistory] Error loading tasks: $e');
       if (!mounted) return;
@@ -2090,387 +2350,643 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Compact filter controls
+        // Modern filter section with dark theme
         Container(
-          padding: const EdgeInsets.all(12),
-          color: HandsColors.secondaryContainer,
+          padding: const EdgeInsets.all(16),
+          margin: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: HandsColors.cardTertiary,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: HandsColors.white12, width: 1),
+          ),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Header
+              Text(
+                'Task History Filters',
+                style: GoogleFonts.comfortaa(fontSize: 16, fontWeight: FontWeight.bold, color: HandsColors.white),
+              ),
+              const SizedBox(height: 16),
+
+              // Search and Date Range Row
               Row(
                 children: [
                   Expanded(
-                    child: SizedBox(
-                      height: 36,
-                      child: TextField(
-                        controller: _searchCtrl,
-                        style: const TextStyle(fontSize: 13, color: HandsColors.white),
-                        decoration: InputDecoration(
-                          prefixIcon: const Icon(Icons.search, size: 18, color: HandsColors.white70),
-                          labelText: 'Search tasks',
-                          labelStyle: const TextStyle(fontSize: 12, color: HandsColors.white70),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          border: OutlineInputBorder(
-                            borderSide: const BorderSide(color: HandsColors.white30),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderSide: const BorderSide(color: HandsColors.white30),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderSide: const BorderSide(color: HandsColors.handsOrange),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          isDense: true,
-                          filled: true,
-                          fillColor: HandsColors.cardTertiary,
+                    flex: 2,
+                    child: TextField(
+                      controller: _searchCtrl,
+                      style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.search, color: HandsColors.white70, size: 20),
+                        labelText: 'Search tasks...',
+                        labelStyle: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white70),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        border: OutlineInputBorder(
+                          borderSide: const BorderSide(color: HandsColors.white12),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        onSubmitted: (_) => _load(),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: const BorderSide(color: HandsColors.white12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: const BorderSide(color: HandsColors.handsOrange, width: 2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        filled: true,
+                        fillColor: HandsColors.primaryContainer,
                       ),
+                      onSubmitted: (_) => _load(),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    height: 36,
+                  const SizedBox(width: 12),
+                  Expanded(
                     child: HandsSecondaryButton(
                       text:
                           _dateRange == null
-                              ? 'Date Range'
+                              ? 'Select Date Range'
                               : '${DateFormat('M/d').format(_dateRange!.start)} - ${DateFormat('M/d').format(_dateRange!.end)}',
                       onPressed: _pickRange,
                       icon: Icons.date_range,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+
+              const SizedBox(height: 12),
+
+              // Dropdown filters row
               Row(
                 children: [
                   Expanded(
-                    child: SizedBox(
-                      height: 36,
-                      child: DropdownButtonFormField<String>(
-                        value: _selectedShift,
-                        style: const TextStyle(fontSize: 12),
-                        decoration: const InputDecoration(
-                          border: OutlineInputBorder(),
-                          labelText: 'Shift',
-                          labelStyle: TextStyle(fontSize: 11),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          isDense: true,
+                    child: DropdownButtonFormField<String>(
+                      value: _selectedShift,
+                      style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                      dropdownColor: HandsColors.primaryContainer,
+                      decoration: InputDecoration(
+                        labelText: 'Shift',
+                        labelStyle: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white70),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        border: OutlineInputBorder(
+                          borderSide: const BorderSide(color: HandsColors.white12),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        items: [
-                          const DropdownMenuItem(
-                            value: 'all',
-                            child: Text('All shifts', style: TextStyle(fontSize: 12)),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: const BorderSide(color: HandsColors.white12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: const BorderSide(color: HandsColors.handsOrange, width: 2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        filled: true,
+                        fillColor: HandsColors.primaryContainer,
+                      ),
+                      items: [
+                        DropdownMenuItem(
+                          value: 'all',
+                          child: Text(
+                            'All shifts',
+                            style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
                           ),
-                          ...widget.shifts.map(
-                            (s) => DropdownMenuItem(
-                              value: s['id'],
-                              child: Text(s['name'] ?? 'Shift', style: const TextStyle(fontSize: 12)),
+                        ),
+                        ...widget.shifts.map(
+                          (s) => DropdownMenuItem(
+                            value: s['id'],
+                            child: Text(
+                              s['name'] ?? 'Shift',
+                              style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
                             ),
                           ),
-                        ],
-                        onChanged: (v) => setState(() => _selectedShift = v ?? 'all'),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: SizedBox(
-                      height: 36,
-                      child: DropdownButtonFormField<String>(
-                        value: _selectedCompletion,
-                        style: const TextStyle(fontSize: 12),
-                        decoration: const InputDecoration(
-                          border: OutlineInputBorder(),
-                          labelText: 'Status',
-                          labelStyle: TextStyle(fontSize: 11),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          isDense: true,
                         ),
-                        items: const [
-                          DropdownMenuItem(value: 'all', child: Text('All', style: TextStyle(fontSize: 12))),
-                          DropdownMenuItem(value: 'completed', child: Text('Done', style: TextStyle(fontSize: 12))),
-                          DropdownMenuItem(value: 'incomplete', child: Text('Missed', style: TextStyle(fontSize: 12))),
-                          DropdownMenuItem(
-                            value: 'incomplete_with_reason',
-                            child: Text('Missed w/ reason', style: TextStyle(fontSize: 12)),
-                          ),
-                        ],
-                        onChanged: (v) => setState(() => _selectedCompletion = v ?? 'all'),
+                      ],
+                      onChanged: (v) => setState(() => _selectedShift = v ?? 'all'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      value: _selectedCompletion,
+                      style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                      dropdownColor: HandsColors.primaryContainer,
+                      decoration: InputDecoration(
+                        labelText: 'Status',
+                        labelStyle: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white70),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        border: OutlineInputBorder(
+                          borderSide: const BorderSide(color: HandsColors.white12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: const BorderSide(color: HandsColors.white12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: const BorderSide(color: HandsColors.handsOrange, width: 2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        filled: true,
+                        fillColor: HandsColors.primaryContainer,
                       ),
+                      items: [
+                        DropdownMenuItem(
+                          value: 'all',
+                          child: Text('All', style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white)),
+                        ),
+                        DropdownMenuItem(
+                          value: 'completed',
+                          child: Text('Done', style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white)),
+                        ),
+                        DropdownMenuItem(
+                          value: 'incomplete',
+                          child: Text('Missed', style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white)),
+                        ),
+                        DropdownMenuItem(
+                          value: 'incomplete_with_reason',
+                          child: Text(
+                            'Missed w/ reason',
+                            style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                          ),
+                        ),
+                      ],
+                      onChanged: (v) => setState(() => _selectedCompletion = v ?? 'all'),
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  SizedBox(
-                    height: 36,
+                ],
+              ),
+
+              const SizedBox(height: 16),
+
+              // Action buttons
+              Row(
+                children: [
+                  Expanded(
                     child: HandsPrimaryButton(
-                      text: 'Apply',
+                      text: 'Apply Filters',
                       onPressed: _load,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    height: 36,
-                    child: HandsTextButton(
-                      text: 'Clear',
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: HandsSecondaryButton(
+                      text: 'Clear All',
                       onPressed: () async {
                         setState(() {
                           _searchCtrl.clear();
                           _selectedShift = 'all';
                           _selectedChecklist = 'all';
                           _selectedCompletion = 'all';
+                          _currentPage = 0;
                         });
                         await _load();
                       },
+                      padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                   ),
                 ],
               ),
+
+              // Results summary
+              if (_allRows.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text(
+                    'Found ${_allRows.length} tasks • Showing ${_displayedRows.length} of ${_allRows.length}',
+                    style: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white70),
+                  ),
+                ),
             ],
           ),
         ),
-        // Results
+
+        // Results section
         Expanded(
           child:
               _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _rows.isEmpty
                   ? const Center(
-                    child: Text('No tasks found for selected filters.', style: TextStyle(color: Colors.grey)),
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(HandsColors.handsOrange),
+                    ),
                   )
-                  : ListView.builder(
-                    padding: const EdgeInsets.all(12),
-                    itemCount: _rows.length,
-                    itemBuilder: (context, i) {
-                      final r = _rows[i];
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        decoration: HandsDecorations.tertiaryBoxDecoration,
-                        child: ExpansionTile(
-                          tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                          expandedCrossAxisAlignment: CrossAxisAlignment.start,
-                          title: Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                  : _allRows.isEmpty
+                  ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.search_off, size: 64, color: HandsColors.white30),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No tasks found',
+                          style: GoogleFonts.comfortaa(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: HandsColors.white70,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Try adjusting your filters or date range',
+                          style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white70),
+                        ),
+                      ],
+                    ),
+                  )
+                  : Column(
+                    children: [
+                      Expanded(
+                        child: ListView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          itemCount: _displayedRows.length,
+                          itemBuilder: (context, i) {
+                            final r = _displayedRows[i];
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              decoration: BoxDecoration(
+                                color: HandsColors.cardTertiary,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: HandsColors.white12, width: 1),
+                              ),
+                              child: ExpansionTile(
+                                tilePadding: const EdgeInsets.all(16),
+                                childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                                expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                                title: Row(
                                   children: [
-                                    Text(r.taskName, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      '${r.date} • ${r.shiftName}${r.checklistName.isNotEmpty ? ' • ${r.checklistName}' : ''}',
-                                      style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            r.taskName,
+                                            style: GoogleFonts.comfortaa(
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 15,
+                                              color: HandsColors.white,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '${r.date} • ${r.shiftName}${r.checklistName.isNotEmpty ? ' • ${r.checklistName}' : ''}',
+                                            style: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white70),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        // Status badge
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: r.completed ? HandsColors.sageGreen : HandsColors.error,
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                r.completed ? Icons.check_circle : Icons.cancel,
+                                                size: 14,
+                                                color: HandsColors.white,
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                r.completed ? 'Completed' : 'Missed',
+                                                style: GoogleFonts.comfortaa(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: HandsColors.white,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        // Content indicators
+                                        if (r.photoCount > 0 || r.reason.isNotEmpty || r.note.isNotEmpty) ...[
+                                          const SizedBox(width: 8),
+                                          Container(
+                                            width: 24,
+                                            height: 24,
+                                            decoration: BoxDecoration(
+                                              color: HandsColors.handsOrange.withOpacity(0.2),
+                                              shape: BoxShape.circle,
+                                              border: Border.all(color: HandsColors.handsOrange, width: 1),
+                                            ),
+                                            child: const Icon(
+                                              Icons.info_outline,
+                                              size: 14,
+                                              color: HandsColors.handsOrange,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
                                     ),
                                   ],
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  // Status badge
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: r.completed ? Colors.green.shade50 : Colors.red.shade50,
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color: r.completed ? Colors.green.shade200 : Colors.red.shade200,
-                                      ),
-                                    ),
-                                    child: Text(
-                                      r.completed ? 'Done' : 'Missed',
-                                      style: TextStyle(
-                                        color: r.completed ? Colors.green.shade700 : Colors.red.shade700,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                  // Indicators for additional content
-                                  if (r.photoCount > 0 || r.reason.isNotEmpty || r.note.isNotEmpty) ...[
-                                    const SizedBox(width: 4),
+                                  // Expanded content with dark theme
+                                  if (r.completed && r.completedBy.isNotEmpty) ...[
                                     Container(
-                                      width: 16,
-                                      height: 16,
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.all(16),
+                                      margin: const EdgeInsets.only(bottom: 12),
                                       decoration: BoxDecoration(
-                                        color: Theme.of(context).primaryColor.withOpacity(0.1),
-                                        shape: BoxShape.circle,
+                                        color: HandsColors.sageGreen.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: HandsColors.sageGreen.withOpacity(0.3)),
                                       ),
-                                      child: Icon(Icons.info_outline, size: 12, color: Theme.of(context).primaryColor),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Icon(Icons.person_outlined, size: 18, color: HandsColors.sageGreen),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'Completed by:',
+                                                style: GoogleFonts.comfortaa(
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 13,
+                                                  color: HandsColors.sageGreen,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  r.completedBy,
+                                                  style: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white),
+                                                ),
+                                              ),
+                                              if (r.timeCompleted.isNotEmpty) ...[
+                                                Icon(Icons.access_time, size: 14, color: HandsColors.sageGreen),
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  r.timeCompleted,
+                                                  style: GoogleFonts.comfortaa(
+                                                    fontSize: 11,
+                                                    color: HandsColors.white70,
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                  if (r.reason.isNotEmpty) ...[
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.all(16),
+                                      margin: const EdgeInsets.only(bottom: 12),
+                                      decoration: BoxDecoration(
+                                        color: HandsColors.amber.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: HandsColors.amber.withOpacity(0.3)),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Icon(Icons.warning_amber, size: 18, color: HandsColors.amber),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'Reason for not completing:',
+                                                style: GoogleFonts.comfortaa(
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 13,
+                                                  color: HandsColors.amber,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            r.reason,
+                                            style: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                  if (r.note.isNotEmpty) ...[
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.all(16),
+                                      margin: const EdgeInsets.only(bottom: 12),
+                                      decoration: BoxDecoration(
+                                        color: HandsColors.handsOrange.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: HandsColors.handsOrange.withOpacity(0.3)),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Icon(Icons.note, size: 18, color: HandsColors.handsOrange),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'Note:',
+                                                style: GoogleFonts.comfortaa(
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 13,
+                                                  color: HandsColors.handsOrange,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            r.note,
+                                            style: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                  if (r.photoUrls.isNotEmpty) ...[
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: HandsColors.sageGreen.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: HandsColors.sageGreen.withOpacity(0.3)),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Icon(Icons.photo_library, size: 18, color: HandsColors.sageGreen),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'Photos (${r.photoCount}):',
+                                                style: GoogleFonts.comfortaa(
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 13,
+                                                  color: HandsColors.sageGreen,
+                                                ),
+                                              ),
+                                              if (r.photoRequired) ...[
+                                                const SizedBox(width: 8),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: HandsColors.handsOrange.withOpacity(0.2),
+                                                    borderRadius: BorderRadius.circular(8),
+                                                    border: Border.all(color: HandsColors.handsOrange),
+                                                  ),
+                                                  child: Text(
+                                                    'REQUIRED',
+                                                    style: GoogleFonts.comfortaa(
+                                                      color: HandsColors.handsOrange,
+                                                      fontSize: 9,
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                          const SizedBox(height: 12),
+                                          Wrap(
+                                            spacing: 8,
+                                            runSpacing: 8,
+                                            children:
+                                                r.photoUrls.take(6).map((photoUrl) {
+                                                  print('[TaskHistory] Debug: Attempting to load image: $photoUrl');
+                                                  return GestureDetector(
+                                                    onTap: () => _showFullScreenImage(context, photoUrl, r.taskName),
+                                                    child: Container(
+                                                      width: 80,
+                                                      height: 80,
+                                                      decoration: BoxDecoration(
+                                                        borderRadius: BorderRadius.circular(12),
+                                                        border: Border.all(color: HandsColors.white12),
+                                                      ),
+                                                      child: ClipRRect(
+                                                        borderRadius: BorderRadius.circular(12),
+                                                        child: Image.network(
+                                                          photoUrl,
+                                                          fit: BoxFit.cover,
+                                                          errorBuilder: (context, error, stackTrace) {
+                                                            print(
+                                                              '[TaskHistory] Debug: Image load error for $photoUrl: $error',
+                                                            );
+                                                            return Container(
+                                                              color: HandsColors.cardTertiary,
+                                                              child: Column(
+                                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                                children: [
+                                                                  const Icon(
+                                                                    Icons.broken_image,
+                                                                    color: HandsColors.white30,
+                                                                    size: 32,
+                                                                  ),
+                                                                  Text(
+                                                                    'Failed to load',
+                                                                    style: GoogleFonts.comfortaa(
+                                                                      fontSize: 8,
+                                                                      color: HandsColors.white30,
+                                                                    ),
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                            );
+                                                          },
+                                                          loadingBuilder: (context, child, loadingProgress) {
+                                                            if (loadingProgress == null) return child;
+                                                            return Container(
+                                                              color: HandsColors.cardTertiary,
+                                                              child: Center(
+                                                                child: CircularProgressIndicator(
+                                                                  value:
+                                                                      loadingProgress.expectedTotalBytes != null
+                                                                          ? loadingProgress.cumulativeBytesLoaded /
+                                                                              loadingProgress.expectedTotalBytes!
+                                                                          : null,
+                                                                  strokeWidth: 2,
+                                                                  valueColor: const AlwaysStoppedAnimation<Color>(
+                                                                    HandsColors.handsOrange,
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                            );
+                                                          },
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  );
+                                                }).toList(),
+                                          ),
+                                          if (r.photoUrls.length > 6)
+                                            Padding(
+                                              padding: const EdgeInsets.only(top: 8),
+                                              child: Text(
+                                                '+ ${r.photoUrls.length - 6} more photos',
+                                                style: GoogleFonts.comfortaa(fontSize: 11, color: HandsColors.white70),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ] else if (r.photoRequired) ...[
+                                    // Show when photo was required but not added
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: HandsColors.amber.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: HandsColors.amber.withOpacity(0.3)),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.photo_camera_outlined, size: 18, color: HandsColors.amber),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'Photo was required but not added',
+                                            style: GoogleFonts.comfortaa(
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 13,
+                                              color: HandsColors.amber,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ],
                                 ],
                               ),
-                            ],
-                          ),
-                          children: [
-                            // Show additional details when expanded
-                            if (r.reason.isNotEmpty) ...[
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(12),
-                                margin: const EdgeInsets.only(bottom: 8),
-                                decoration: BoxDecoration(
-                                  color: Colors.orange.shade50,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.orange.shade200),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Icon(Icons.warning_amber, size: 16, color: Colors.orange.shade700),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          'Reason for not completing:',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 12,
-                                            color: Colors.orange.shade700,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(r.reason, style: TextStyle(fontSize: 11, color: Colors.orange.shade800)),
-                                  ],
-                                ),
-                              ),
-                            ],
-                            if (r.note.isNotEmpty) ...[
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(12),
-                                margin: const EdgeInsets.only(bottom: 8),
-                                decoration: BoxDecoration(
-                                  color: Colors.blue.shade50,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.blue.shade200),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Icon(Icons.note, size: 16, color: Colors.blue.shade700),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          'Note:',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 12,
-                                            color: Colors.blue.shade700,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(r.note, style: TextStyle(fontSize: 11, color: Colors.blue.shade800)),
-                                  ],
-                                ),
-                              ),
-                            ],
-                            if (r.photoUrls.isNotEmpty) ...[
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: Colors.green.shade50,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.green.shade200),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Icon(Icons.photo_library, size: 16, color: Colors.green.shade700),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          'Photos (${r.photoCount}):',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 12,
-                                            color: Colors.green.shade700,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Wrap(
-                                      spacing: 8,
-                                      runSpacing: 8,
-                                      children:
-                                          r.photoUrls.take(6).map((photoUrl) {
-                                            return GestureDetector(
-                                              onTap: () => _showFullScreenImage(context, photoUrl, r.taskName),
-                                              child: Container(
-                                                width: 60,
-                                                height: 60,
-                                                decoration: BoxDecoration(
-                                                  borderRadius: BorderRadius.circular(8),
-                                                  border: Border.all(color: Colors.grey[300]!),
-                                                ),
-                                                child: ClipRRect(
-                                                  borderRadius: BorderRadius.circular(7),
-                                                  child: Image.network(
-                                                    photoUrl,
-                                                    fit: BoxFit.cover,
-                                                    loadingBuilder: (context, child, loadingProgress) {
-                                                      if (loadingProgress == null) return child;
-                                                      return Container(
-                                                        color: Colors.grey[200],
-                                                        child: Center(
-                                                          child: SizedBox(
-                                                            width: 20,
-                                                            height: 20,
-                                                            child: CircularProgressIndicator(strokeWidth: 2),
-                                                          ),
-                                                        ),
-                                                      );
-                                                    },
-                                                    errorBuilder: (context, error, stackTrace) {
-                                                      return Container(
-                                                        color: Colors.grey[200],
-                                                        child: Icon(
-                                                          Icons.broken_image,
-                                                          color: Colors.grey[400],
-                                                          size: 24,
-                                                        ),
-                                                      );
-                                                    },
-                                                  ),
-                                                ),
-                                              ),
-                                            );
-                                          }).toList(),
-                                    ),
-                                    if (r.photoUrls.length > 6) ...[
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        '+${r.photoUrls.length - 6} more photos',
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          color: Colors.green.shade600,
-                                          fontStyle: FontStyle.italic,
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ],
+                            );
+                          },
                         ),
-                      );
-                    },
+                      ),
+
+                      // Pagination controls
+                      if (_allRows.isNotEmpty && (_currentPage + 1) * _itemsPerPage < _allRows.length)
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          child: HandsPrimaryButton(
+                            text: 'Load 10 More Tasks',
+                            onPressed: _loadMore,
+                            icon: Icons.expand_more,
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          ),
+                        ),
+                    ],
                   ),
         ),
       ],
@@ -2574,6 +3090,9 @@ class _TaskRow {
   final String note;
   final int photoCount;
   final List<String> photoUrls;
+  final String completedBy;
+  final String timeCompleted;
+  final bool photoRequired;
 
   _TaskRow({
     required this.date,
@@ -2585,6 +3104,9 @@ class _TaskRow {
     required this.note,
     required this.photoCount,
     required this.photoUrls,
+    required this.completedBy,
+    required this.timeCompleted,
+    required this.photoRequired,
   });
 }
 
@@ -2697,14 +3219,72 @@ class _SimpleDashboardCard extends StatelessWidget {
   }
 }
 
-class _SimpleShiftList extends StatelessWidget {
+class _SimpleShiftList extends StatefulWidget {
   final List<Map<String, dynamic>> shifts;
   final VoidCallback? onOpen;
 
   const _SimpleShiftList({required this.shifts, this.onOpen});
 
   @override
+  State<_SimpleShiftList> createState() => _SimpleShiftListState();
+}
+
+class _SimpleShiftListState extends State<_SimpleShiftList> {
+  final ScrollController _scrollController = ScrollController();
+  final PageController _pageController = PageController(viewportFraction: 0.85);
+  bool _showLeft = false;
+  bool _showRight = false;
+  int _currentPage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+    _pageController.addListener(_onPage);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _updateIndicators());
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    _pageController.removeListener(_onPage);
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() => _updateIndicators();
+  void _onPage() {
+    final p = (_pageController.page ?? 0).round();
+    if (p != _currentPage) setState(() => _currentPage = p);
+    _updateIndicators();
+  }
+
+  void _updateIndicators() {
+    if (!mounted) return;
+    final isNarrow = MediaQuery.of(context).size.width < 420;
+
+    if (isNarrow) {
+      final maxScroll =
+          _scrollController.position.hasContentDimensions ? _scrollController.position.maxScrollExtent : 0.0;
+      final offset = _scrollController.offset;
+      setState(() {
+        _showLeft = offset > 8;
+        _showRight = maxScroll - offset > 8;
+      });
+    } else {
+      // For desktop horizontal scroll, we don't need navigation indicators
+      // The user can just scroll horizontally or use scroll wheel
+      setState(() {
+        _showLeft = false;
+        _showRight = false;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final shifts = widget.shifts;
     if (shifts.isEmpty) {
       return Center(
         child: Column(
@@ -2718,169 +3298,182 @@ class _SimpleShiftList extends StatelessWidget {
       );
     }
 
-    // Show first 6 shifts in a 2x3 grid, then scroll for additional
-    const int visibleShifts = 6;
-    final bool hasMoreShifts = shifts.length > visibleShifts;
-    final displayShifts = shifts.take(visibleShifts).toList();
-    final remainingCount = shifts.length - visibleShifts;
+    final isNarrow = MediaQuery.of(context).size.width < 420;
 
-    return Column(
-      children: [
-        // Grid of shift cards (2 rows of 3)
-        Expanded(
-          child: GridView.builder(
-            padding: const EdgeInsets.only(top: 8),
-            physics: hasMoreShifts ? const AlwaysScrollableScrollPhysics() : const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              childAspectRatio: 1.4, // Slightly wider than square
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
+    // Narrow devices: horizontal scroll similar to mobile
+    if (isNarrow) {
+      return SizedBox(
+        height: 240,
+        child: Stack(
+          children: [
+            ListView.builder(
+              controller: _scrollController,
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+              itemCount: shifts.length,
+              itemBuilder: (context, i) {
+                final shift = shifts[i];
+                return SizedBox(width: 140, child: _WebShiftCard(shift: shift, onOpen: widget.onOpen));
+              },
             ),
-            itemCount: hasMoreShifts ? shifts.length : displayShifts.length,
-            itemBuilder: (context, index) {
-              final shift = shifts[index];
-              final shiftName = shift['shiftName']?.toString() ?? 'Unknown';
-              final timeStatus = shift['timeStatus']?.toString() ?? '';
-              final isLive = timeStatus.contains('remaining');
+            if (_showLeft)
+              Positioned(
+                left: 4,
+                top: 0,
+                bottom: 0,
+                child: Opacity(opacity: 0.35, child: Icon(Icons.arrow_back_ios, color: Colors.white, size: 18)),
+              ),
+            if (_showRight)
+              Positioned(
+                right: 4,
+                top: 0,
+                bottom: 0,
+                child: Opacity(opacity: 0.35, child: Icon(Icons.arrow_forward_ios, color: Colors.white, size: 18)),
+              ),
+          ],
+        ),
+      );
+    }
 
-              // Extract completion data
-              final completionPct = (shift['completionPct'] as double?) ?? 0.0;
-              final completedTasks = (shift['completedTasks'] as int?) ?? 0;
-              final totalTasks = (shift['totalTasks'] as int?) ?? 0;
+    // Desktop/tablet: horizontal scrolling layout that shows all shifts
+    print('SHIFT LIST DEBUG: ${shifts.length} shifts, using horizontal scroll layout');
 
-              return Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: HandsColors.white12,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: isLive ? HandsColors.sageGreen : HandsColors.white30, width: 1),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // Shift name at top
-                    Text(
-                      shiftName,
-                      style: GoogleFonts.comfortaa(color: HandsColors.white, fontSize: 12, fontWeight: FontWeight.w600),
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+    return SizedBox(
+      height: 280,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.all(12),
+        itemCount: shifts.length,
+        itemBuilder: (context, index) {
+          final shift = shifts[index];
+          return Container(
+            width: 280,
+            margin: const EdgeInsets.only(right: 12),
+            child: _WebShiftCard(shift: shift, onOpen: widget.onOpen),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// Small card used in web shift lists
+class _WebShiftCard extends StatelessWidget {
+  final Map<String, dynamic> shift;
+  final VoidCallback? onOpen;
+  const _WebShiftCard({required this.shift, this.onOpen});
+
+  @override
+  Widget build(BuildContext context) {
+    final shiftName = shift['shiftName']?.toString() ?? 'Unknown';
+    final timeStatus = shift['timeStatus']?.toString() ?? '';
+    final isLive = timeStatus.contains('remaining');
+    final completionPct = (shift['completionPct'] as double?) ?? 0.0;
+    final completedTasks = (shift['completedTasks'] as int?) ?? 0;
+    final totalTasks = (shift['totalTasks'] as int?) ?? 0;
+
+    return Material(
+      color: HandsColors.cardTertiary,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      child: InkWell(
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // Responsive sizing based on available space
+              final cardHeight = constraints.maxHeight;
+              final cardWidth = constraints.maxWidth;
+
+              // Calculate dynamic sizes
+              final titleFontSize = (cardWidth * 0.08).clamp(12.0, 16.0);
+              final harveyBallSize = (cardHeight * 0.35).clamp(50.0, 90.0);
+              final taskFontSize = (cardWidth * 0.06).clamp(10.0, 14.0);
+              final statusFontSize = (cardWidth * 0.055).clamp(9.0, 12.0);
+
+              return Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Shift name with responsive typography
+                  Text(
+                    shiftName,
+                    style: GoogleFonts.comfortaa(
+                      color: HandsColors.white,
+                      fontSize: titleFontSize,
+                      fontWeight: FontWeight.w600,
+                      height: 1.2,
                     ),
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
 
-                    // Harvey ball (completion indicator) in center
-                    SizedBox(
-                      width: 50,
-                      height: 50,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          // Background circle
-                          Container(
-                            width: 50,
-                            height: 50,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: HandsColors.white12,
-                              border: Border.all(color: HandsColors.white30, width: 2),
-                            ),
-                          ),
-                          // Completion fill
-                          if (completionPct > 0)
-                            ClipOval(
-                              child: SizedBox(
-                                width: 50,
-                                height: 50,
-                                child: CustomPaint(
-                                  painter: _HarveyBallPainter(
-                                    completionPct: completionPct,
-                                    fillColor: _getCompletionColor(completionPct),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          // Percentage text
-                          Text(
-                            '${(completionPct * 100).round()}%',
-                            style: GoogleFonts.comfortaa(
-                              color: HandsColors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
+                  const SizedBox(height: 12),
+
+                  // Professional Harvey Ball with responsive sizing
+                  Flexible(
+                    child: ProfessionalHarveyBall(
+                      percentage: completionPct,
+                      size: harveyBallSize,
+                      showPercentage: true,
+                      animate: true,
+                      strokeWidth: 3.5,
                     ),
+                  ),
 
-                    // Task completion count and status at bottom
-                    Column(
-                      children: [
-                        Text(
-                          '$completedTasks/$totalTasks tasks',
-                          style: GoogleFonts.comfortaa(
-                            color: HandsColors.white70,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          textAlign: TextAlign.center,
+                  const SizedBox(height: 12),
+
+                  // Task info and status with responsive typography
+                  Column(
+                    children: [
+                      Text(
+                        '$completedTasks/$totalTasks tasks',
+                        style: GoogleFonts.comfortaa(
+                          color: HandsColors.white70,
+                          fontSize: taskFontSize,
+                          fontWeight: FontWeight.w500,
                         ),
-                        if (timeStatus.isNotEmpty) ...[
-                          const SizedBox(height: 2),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Container(
-                                width: 6,
-                                height: 6,
-                                decoration: BoxDecoration(
-                                  color: isLive ? HandsColors.sageGreen : HandsColors.white30,
-                                  shape: BoxShape.circle,
-                                ),
+                      ),
+                      if (timeStatus.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: isLive ? HandsColors.sageGreen : HandsColors.white30,
+                                shape: BoxShape.circle,
                               ),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: Text(
-                                  timeStatus,
-                                  style: GoogleFonts.comfortaa(
-                                    color: isLive ? HandsColors.sageGreen : HandsColors.white70,
-                                    fontSize: 9,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                timeStatus,
+                                style: GoogleFonts.comfortaa(
+                                  color: isLive ? HandsColors.sageGreen : HandsColors.white70,
+                                  fontSize: statusFontSize,
+                                  fontWeight: FontWeight.w500,
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
                               ),
-                            ],
-                          ),
-                        ],
+                            ),
+                          ],
+                        ),
                       ],
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
+                ],
               );
             },
           ),
         ),
-
-        // Show "more shifts" indicator if needed
-        if (hasMoreShifts && displayShifts.length == visibleShifts)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(
-              '+$remainingCount more shifts (scroll to view)',
-              style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 10, fontStyle: FontStyle.italic),
-              textAlign: TextAlign.center,
-            ),
-          ),
-      ],
+      ),
     );
-  }
-
-  // Helper method to get completion color
-  Color _getCompletionColor(double completionPct) {
-    if (completionPct >= 0.9) return HandsColors.sageGreen;
-    if (completionPct >= 0.7) return HandsColors.handsOrange;
-    return HandsColors.error;
   }
 }
 
@@ -2922,42 +3515,5 @@ class _SimpleTopList extends StatelessWidget {
         );
       },
     );
-  }
-}
-
-// Harvey Ball painter for completion indicators
-class _HarveyBallPainter extends CustomPainter {
-  final double completionPct;
-  final Color fillColor;
-
-  _HarveyBallPainter({required this.completionPct, required this.fillColor});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2;
-
-    // Draw filled portion as a circle segment
-    if (completionPct > 0) {
-      final paint =
-          Paint()
-            ..color = fillColor
-            ..style = PaintingStyle.fill;
-
-      final sweepAngle = 2 * math.pi * completionPct;
-      canvas.drawArc(
-        Rect.fromCircle(center: center, radius: radius),
-        -math.pi / 2, // Start at top
-        sweepAngle,
-        true,
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) {
-    return oldDelegate is _HarveyBallPainter &&
-        (oldDelegate.completionPct != completionPct || oldDelegate.fillColor != fillColor);
   }
 }
