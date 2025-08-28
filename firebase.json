@@ -23,33 +23,16 @@
   ],
   "hosting": [
     {
-      "site": "plan-with-hands",
+      "target": "hands-app",
       "public": "build/web",
-      "ignore": [
-        "firebase.json",
-        "**/.*",
-        "**/node_modules/**"
-      ],
-      "rewrites": [
-        {
-          "source": "**",
-          "destination": "/index.html"
-        }
-      ]
+      "ignore": ["**/.*", "**/node_modules/**"],
+      "rewrites": [{ "source": "**", "destination": "/index.html" }]
     },
     {
-      "site": "planwithhands-marketing",
+      "target": "hands-web",
       "public": "website/marketing/dist",
-      "ignore": [
-        "**/.*",
-        "**/node_modules/**"
-      ],
-      "rewrites": [
-        {
-          "source": "**",
-          "destination": "/index.html"
-        }
-      ],
+      "ignore": ["**/.*", "**/node_modules/**"],
+      "rewrites": [{ "source": "**", "destination": "/index.html" }],
       "cleanUrls": true
     }
   ],
