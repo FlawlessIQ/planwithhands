@@ -5,7 +5,7 @@
   "packages": [
     {
       "name": "hands_app",
-      "version": "0.4.2+10",
+      "version": "1.1.1+1",
       "dependencies": [
         "cloud_firestore",
         "cloud_functions",

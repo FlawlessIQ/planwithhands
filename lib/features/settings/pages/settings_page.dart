@@ -1067,73 +1067,180 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
 
             const SizedBox(height: 16),
 
-            // Action buttons
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      final result = await showDialog<int>(
-                        context: context,
-                        builder:
-                            (context) => _SubscriptionManagementDialog(
-                              orgId: _organizationId,
-                              subscriptionId: subscriptionId,
-                              currentQuantity: quantity,
-                              currentUsage: currentUsage,
-                            ),
-                      );
+            // Action buttons (responsive)
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final isNarrow = constraints.maxWidth < 420;
 
-                      if (result != null) {
-                        // Refresh the data after subscription change
-                        await _loadSubscriptionData();
-                        setState(() {});
-                      }
-                    },
-                    icon: const Icon(Icons.tune, size: 18),
-                    label: const Text('Manage Subscription'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Theme.of(context).primaryColor,
-                      side: BorderSide(color: Theme.of(context).primaryColor),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      // First check if organization ID is valid
-                      if (_organizationId.isEmpty) {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('No organization found. Please contact support.'),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
-                        }
-                        return;
-                      }
+                final manageStyle = OutlinedButton.styleFrom(
+                  foregroundColor: Theme.of(context).primaryColor,
+                  side: BorderSide(color: Theme.of(context).primaryColor),
+                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+                  minimumSize: const Size.fromHeight(48),
+                  textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                );
 
-                      try {
-                        await StripeService.openBillingPortal(_organizationId);
-                      } catch (e) {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Failed to open billing portal: $e'), backgroundColor: Colors.red),
+                final billingStyle = OutlinedButton.styleFrom(
+                  foregroundColor: Colors.blue,
+                  side: const BorderSide(color: Colors.blue),
+                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+                  minimumSize: const Size.fromHeight(48),
+                  textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                );
+
+                if (isNarrow) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final result = await showDialog<int>(
+                              context: context,
+                              builder:
+                                  (context) => _SubscriptionManagementDialog(
+                                    orgId: _organizationId,
+                                    subscriptionId: subscriptionId,
+                                    currentQuantity: quantity,
+                                    currentUsage: currentUsage,
+                                  ),
+                            );
+
+                            if (result != null) {
+                              await _loadSubscriptionData();
+                              if (mounted) setState(() {});
+                            }
+                          },
+                          icon: const Icon(Icons.tune, size: 18),
+                          label: Flexible(
+                            child: Text(
+                              'Manage Subscription',
+                              softWrap: true,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          style: manageStyle,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            if (_organizationId.isEmpty) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('No organization found. Please contact support.'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                              return;
+                            }
+
+                            try {
+                              await StripeService.openBillingPortal(_organizationId);
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Failed to open billing portal: $e'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                          icon: const Icon(Icons.receipt_long, size: 18),
+                          label: Flexible(
+                            child: Text('Billing Portal', softWrap: true, maxLines: 2, overflow: TextOverflow.ellipsis),
+                          ),
+                          style: billingStyle,
+                        ),
+                      ),
+                    ],
+                  );
+                }
+
+                // Wide layout: keep side-by-side but make spacing adaptive
+                return Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          final result = await showDialog<int>(
+                            context: context,
+                            builder:
+                                (context) => _SubscriptionManagementDialog(
+                                  orgId: _organizationId,
+                                  subscriptionId: subscriptionId,
+                                  currentQuantity: quantity,
+                                  currentUsage: currentUsage,
+                                ),
                           );
-                        }
-                      }
-                    },
-                    icon: const Icon(Icons.receipt_long, size: 18),
-                    label: const Text('Billing Portal'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.blue,
-                      side: const BorderSide(color: Colors.blue),
+
+                          if (result != null) {
+                            // Refresh the data after subscription change
+                            await _loadSubscriptionData();
+                            if (mounted) setState(() {});
+                          }
+                        },
+                        icon: const Icon(Icons.tune, size: 18),
+                        label: Flexible(
+                          child: Text(
+                            'Manage Subscription',
+                            softWrap: true,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        style: manageStyle,
+                      ),
                     ),
-                  ),
-                ),
-              ],
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          if (_organizationId.isEmpty) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('No organization found. Please contact support.'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                            return;
+                          }
+
+                          try {
+                            await StripeService.openBillingPortal(_organizationId);
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Failed to open billing portal: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
+                        },
+                        icon: const Icon(Icons.receipt_long, size: 18),
+                        label: Flexible(
+                          child: Text('Billing Portal', softWrap: true, maxLines: 2, overflow: TextOverflow.ellipsis),
+                        ),
+                        style: billingStyle,
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ],
         ),

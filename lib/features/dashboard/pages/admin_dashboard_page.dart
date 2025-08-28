@@ -518,48 +518,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
               ),
             ),
           ),
-          // Debug: show current user's firestore doc for permission troubleshooting
-          IconButton(
-            tooltip: 'Debug user doc',
-            icon: const Icon(Icons.bug_report, color: HandsColors.white),
-            onPressed: () async {
-              final current = FirebaseAuth.instance.currentUser;
-              if (current == null) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Not signed in')));
-                }
-                return;
-              }
-              try {
-                final doc = await FirestoreEnforcer.instance.collection('users').doc(current.uid).get();
-                if (!doc.exists) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('User doc not found')));
-                  }
-                  return;
-                }
-                final data = doc.data();
-                final pretty = const JsonEncoder.withIndent('  ').convert(data);
-                if (mounted) {
-                  await showDialog<void>(
-                    context: context,
-                    builder:
-                        (context) => AlertDialog(
-                          title: const Text('User document'),
-                          content: SingleChildScrollView(child: Text(pretty)),
-                          actions: [
-                            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close')),
-                          ],
-                        ),
-                  );
-                }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error reading user doc: $e')));
-                }
-              }
-            },
-          ),
+          // Debug button removed
 
           // Menu button
           UnifiedMenuButton(userRole: userRole),
@@ -689,7 +648,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                             ),
                             const SizedBox(width: 6),
                             Text(
-                              isTight ? 'Users' : 'Users & Locations',
+                              isTight ? 'Staff' : 'Staff & Locations',
                               style: GoogleFonts.comfortaa(
                                 color:
                                     _currentView == AdminView.usersLocations ? HandsColors.white : HandsColors.white70,
@@ -768,7 +727,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
   Widget _buildUsersSection() {
     return _buildGradientSection(
       icon: Icons.group,
-      title: 'Users',
+      title: 'Staff',
       colors: [const Color(0xFF4c63d2), const Color(0xFF5a4dae)], // Darker purple-blue gradient
       onAdd: () => _showUserBottomSheet(),
       child: _buildUsersList(),
@@ -861,9 +820,9 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                   children: [
                     const Icon(Icons.people_outline, size: 36, color: HandsColors.white30),
                     const SizedBox(height: 8),
-                    Text('No users found', style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11)),
+                    Text('No staff found', style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11)),
                     Text(
-                      'Add users to get started',
+                      'Add staff to get started',
                       style: GoogleFonts.comfortaa(color: HandsColors.white30, fontSize: 10),
                     ),
                   ],
@@ -964,15 +923,17 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                     })
                     .toList();
 
-            return users.length > 4
-                ? SizedBox(
-                  height: 300, // Fixed height for scrollable area
-                  child: ListView.builder(
-                    itemCount: usersToShow.length,
-                    itemBuilder: (context, index) => usersToShow[index],
-                  ),
-                )
-                : Column(children: usersToShow);
+            // Use a constrained, shrink-wrapped ListView so the list scrolls when
+            // the content is taller than the available area, but doesn't force
+            // a large empty area for short lists.
+            final usersList = ListView.builder(
+              shrinkWrap: true,
+              physics: const AlwaysScrollableScrollPhysics(),
+              itemCount: usersToShow.length,
+              itemBuilder: (context, index) => usersToShow[index],
+            );
+
+            return ConstrainedBox(constraints: const BoxConstraints(maxHeight: 300), child: usersList);
           },
         );
       },
@@ -1107,15 +1068,14 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                   );
                 }).toList();
 
-            return locations.length > 4
-                ? SizedBox(
-                  height: 300, // Fixed height for scrollable area
-                  child: ListView.builder(
-                    itemCount: locationsToShow.length,
-                    itemBuilder: (context, index) => locationsToShow[index],
-                  ),
-                )
-                : Column(children: locationsToShow);
+            final locationsList = ListView.builder(
+              shrinkWrap: true,
+              physics: const AlwaysScrollableScrollPhysics(),
+              itemCount: locationsToShow.length,
+              itemBuilder: (context, index) => locationsToShow[index],
+            );
+
+            return ConstrainedBox(constraints: const BoxConstraints(maxHeight: 300), child: locationsList);
           },
         );
       },
@@ -1303,15 +1263,14 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                   );
                 }).toList();
 
-            return filteredShifts.length > 4
-                ? SizedBox(
-                  height: 300, // Fixed height for scrollable area
-                  child: ListView.builder(
-                    itemCount: shiftsToShow.length,
-                    itemBuilder: (context, index) => shiftsToShow[index],
-                  ),
-                )
-                : Column(children: shiftsToShow);
+            final shiftsList = ListView.builder(
+              shrinkWrap: true,
+              physics: const AlwaysScrollableScrollPhysics(),
+              itemCount: shiftsToShow.length,
+              itemBuilder: (context, index) => shiftsToShow[index],
+            );
+
+            return ConstrainedBox(constraints: const BoxConstraints(maxHeight: 300), child: shiftsList);
           },
         );
       },
@@ -1421,18 +1380,14 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                   );
                 }).toList();
 
-            final checklistWidget =
-                checklists.length > 4
-                    ? SizedBox(
-                      height: 300, // Fixed height for scrollable area
-                      child: ListView.builder(
-                        itemCount: checklistsToShow.length,
-                        itemBuilder: (context, index) => checklistsToShow[index],
-                      ),
-                    )
-                    : Column(children: checklistsToShow);
+            final checklistsList = ListView.builder(
+              shrinkWrap: true,
+              physics: const AlwaysScrollableScrollPhysics(),
+              itemCount: checklistsToShow.length,
+              itemBuilder: (context, index) => checklistsToShow[index],
+            );
 
-            return checklistWidget;
+            return ConstrainedBox(constraints: const BoxConstraints(maxHeight: 300), child: checklistsList);
           },
         );
       },

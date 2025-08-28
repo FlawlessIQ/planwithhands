@@ -172,7 +172,7 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
           (context) => AlertDialog(
             title: const Text('Delete Job Type'),
             content: Text(
-              'Are you sure you want to delete "$jobTypeName"?\n\nThis action cannot be undone and may affect existing users assigned to this role.',
+              'Are you sure you want to delete "$jobTypeName"?\n\nThis action cannot be undone and may affect existing staff assigned to this role.',
             ),
             actions: [
               TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
@@ -458,7 +458,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      isEditMode ? 'Edit User' : 'Add New User',
+                      isEditMode ? 'Edit Staff' : 'Add New Staff',
                       style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w600),
                     ),
                     IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
@@ -524,11 +524,11 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                 ),
                 const SizedBox(height: 20),
 
-                // User Role Dropdown (0=Employee,1=Manager,2=Admin)
+                // Staff Role Dropdown (0=Employee,1=Manager,2=Admin)
                 DropdownButtonFormField<int>(
                   value: selectedAccessLevel.value,
                   decoration: const InputDecoration(
-                    labelText: 'User Role',
+                    labelText: 'Staff Role',
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.security),
                   ),
@@ -586,10 +586,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'Job Types (Managers/Admins can work shifts)',
-                        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-                      ),
+                      Text('Job Types', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
                       TextButton.icon(
                         onPressed: () => _showJobTypeManagement(context, availableRoles),
                         icon: const Icon(Icons.settings, size: 16),
@@ -600,6 +597,13 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Staff will only see shifts which align with these job types',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.textTheme.bodyMedium?.color?.withOpacity(0.8),
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Container(
@@ -682,7 +686,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
 
                 const SizedBox(height: 20),
 
-                // Additional options for existing users
+                // Additional options for existing staff
                 if (isEditMode) ...[
                   Row(
                     children: [
@@ -782,7 +786,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                                   ),
                                 )
                                 : Text(
-                                  isEditMode ? 'Update User' : 'Create User & Send Invite',
+                                  isEditMode ? 'Update Staff' : 'Create Staff & Send Invite',
                                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                                 ),
                       ),
@@ -1006,7 +1010,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       }
       String errorMsg =
           e is FirebaseFunctionsException && e.code == 'already-exists'
-              ? 'A user with this email already exists.'
+              ? 'A staff member with this email already exists.'
               : 'An error occurred: ${e.toString()}';
       if (context.mounted) _showSnackBar(context, errorMsg, isError: true);
 
@@ -1016,7 +1020,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
           context: context,
           builder:
               (ctx) => AlertDialog(
-                title: Text(isEditMode ? 'Error Updating User' : 'Error Creating User'),
+                title: Text(isEditMode ? 'Error Updating Staff' : 'Error Creating Staff'),
                 content: Text(errorMsg),
                 actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('OK'))],
               ),
@@ -1080,7 +1084,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     await FirestoreEnforcer.instance.collection('users').doc(userId).update(updateData);
 
     if (context.mounted) {
-      _showSnackBar(context, 'User updated successfully');
+      _showSnackBar(context, 'Staff updated successfully');
       Navigator.pop(context, true);
     }
   }
@@ -1183,12 +1187,12 @@ class UserManagementBottomSheet extends HookConsumerWidget {
 
     if (result.data != null && result.data['success'] == true) {
       if (context.mounted) {
-        _showSnackBar(context, 'User created. A welcome email has been sent to $userEmail');
+        _showSnackBar(context, 'Staff created. A welcome email has been sent to $userEmail');
         Navigator.pop(context, true);
       }
     } else {
       if (context.mounted) {
-        _showSnackBar(context, 'User creation failed. Please try again.', isError: true);
+        _showSnackBar(context, 'Staff creation failed. Please try again.', isError: true);
       }
     }
   }

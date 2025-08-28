@@ -60,3 +60,6 @@ export const proxyUpload = proxyUploadModule.proxyUpload as any;
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const proxyDownloadModule = require("./proxyDownload");
 export const proxyDownload = proxyDownloadModule.proxyDownload as any;
+
+// Export messaging notification functions
+export {onMessageCreated, sendMessageNotification} from "./messagingNotifications";

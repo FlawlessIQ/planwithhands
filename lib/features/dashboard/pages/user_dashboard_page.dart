@@ -38,7 +38,7 @@ class UserDashboardPage extends HookConsumerWidget {
     final selectedLocationIds = useState<List<String>>([]);
     final allChecklists = useState<List<List<DailyChecklist>>>([]);
     final hasLoadedOnce = useState(false);
-    final _shouldReload = useState<bool>(false);
+    final shouldReload = useState<bool>(false);
     final userRole = useState<int>(0);
     final organizationId = useState<String?>(null);
     final userJobTypes = useState<List<String>>([]);
@@ -57,11 +57,11 @@ class UserDashboardPage extends HookConsumerWidget {
     final availableLocations = useState<List<Map<String, dynamic>>>([]);
     final isLoadingLocations = useState(true);
     // Global location service - listen for external changes
-    final _locationService = LocationSelectionService.instance;
+    final locationService = LocationSelectionService.instance;
 
     // Seed from global selection if present and listen for changes
     useEffect(() {
-      final global = _locationService.currentLocationId;
+      final global = locationService.currentLocationId;
       if (global != null && global.isNotEmpty && availableLocations.value.isNotEmpty) {
         // Only seed if we don't already have a valid selection
         final currentIsValid =
@@ -79,7 +79,7 @@ class UserDashboardPage extends HookConsumerWidget {
 
       // Listen for global changes and update local state
       void listener() {
-        final g = _locationService.currentLocationId;
+        final g = locationService.currentLocationId;
         if (g == selectedLocationId.value) return;
         selectedLocationId.value = g;
         // Update name if we have locations loaded
@@ -88,13 +88,13 @@ class UserDashboardPage extends HookConsumerWidget {
           if (match.isNotEmpty) selectedLocationName.value = match['name'];
         } catch (_) {}
         // Request a reload via flag (avoids forward reference to local function)
-        _shouldReload.value = true;
+        shouldReload.value = true;
       }
 
-      _locationService.listenable.addListener(listener);
+      locationService.listenable.addListener(listener);
 
       return () {
-        _locationService.listenable.removeListener(listener);
+        locationService.listenable.removeListener(listener);
       };
     }, [availableLocations.value]); // Add availableLocations as dependency
 
@@ -278,7 +278,7 @@ class UserDashboardPage extends HookConsumerWidget {
         // Always start with empty shifts for a fresh daily experience
         // Users must actively select or be assigned shifts each day
         // This ensures expired volunteer shifts don't carry over automatically
-        assignedShifts.value = [];
+//         assignedShifts.value = [];
         allChecklists.value = [];
         selectedLocationIds.value = [];
 
@@ -297,7 +297,7 @@ class UserDashboardPage extends HookConsumerWidget {
                   try {
                     final shiftLocs = coerceToLocationIds(shift.locationIds);
                     // Keep shift only if it matches the selected location
-                    return shiftLocs.contains(selectedLocationId.value);
+                    if (shiftLocs.contains(selectedLocationId.value)) return true; final volunteers = shift.volunteers; if (volunteers.contains(user.uid)) { logger.d("[Dashboard] Preserving volunteer-joined shift ${shift.shiftName} across locations"); return true; } return false;
                   } catch (e) {
                     logger.w('[Dashboard] Error while filtering shifts by location: $e');
                     return false;
@@ -380,7 +380,7 @@ class UserDashboardPage extends HookConsumerWidget {
           // If selected location isn't in availableLocations, pick the primary or first available (if any)
           try {
             final availableIds = availableLocations.value.map((l) => l['id'] as String).toList();
-            if (effectiveLocationId != null && !availableIds.contains(effectiveLocationId)) {
+            if (!availableIds.contains(effectiveLocationId)) {
               effectiveLocationId = null;
             }
             if (effectiveLocationId == null && availableIds.isNotEmpty) {
@@ -515,7 +515,7 @@ class UserDashboardPage extends HookConsumerWidget {
         // Load locations after user role is fetched
         if (organizationId.value != null) {
           // Before loading locations, check if there's a global selection to honor
-          final globalSelection = _locationService.currentLocationId;
+          final globalSelection = locationService.currentLocationId;
           await loadLocations();
 
           // After loading locations, if we have a global selection that's valid, use it
@@ -543,19 +543,19 @@ class UserDashboardPage extends HookConsumerWidget {
     // When reload flag is set by the listener, call the loader.
     // Placed here after the loadDashboardData() declaration to avoid forward-reference.
     useEffect(() {
-      if (_shouldReload.value) {
+      if (shouldReload.value) {
         Future.microtask(() async {
           try {
             await loadDashboardData();
           } catch (e) {
             logger.e('[Dashboard] reload after global location change failed: $e');
           } finally {
-            _shouldReload.value = false;
+            shouldReload.value = false;
           }
         });
       }
       return null;
-    }, [_shouldReload.value]);
+    }, [shouldReload.value]);
 
     // Convenience local closures that delegate to file-level helpers but use current hook state
     bool matchesUserJobTypeLocal(Map<String, dynamic> data) {
@@ -604,7 +604,7 @@ class UserDashboardPage extends HookConsumerWidget {
     }, [organizationId.value, selectedLocationId.value, userRole.value, userJobTypes.value]);
 
     // Missed tasks loader (role-aware) - uses carry-forward query and keeps UI model in sync
-    Future<void> _loadMissedYesterdayRoleAware() async {
+    Future<void> loadMissedYesterdayRoleAware() async {
       if (organizationId.value == null) return;
       loadingMissed.value = true;
       try {
@@ -679,7 +679,7 @@ class UserDashboardPage extends HookConsumerWidget {
         missedTasksSections.value = const [];
         return null;
       }
-      _loadMissedYesterdayRoleAware();
+      loadMissedYesterdayRoleAware();
       return null;
     }, [organizationId.value, selectedLocationId.value, userRole.value, userJobTypes.value, shifts.value.length]);
 
@@ -1304,8 +1304,8 @@ Future<List<ShiftData>> _getAllShiftsForToday(String userId, String todayDayName
         final joinedMarker = vj != null ? vj[userId] : null;
         final joinedToday = joinedMarker == todayString;
 
-        // If the user explicitly joined this volunteer shift today, include it regardless
-        // of the volunteer pre-start window so it persists in the user's assigned list.
+        // For volunteer shifts, only include them if the user explicitly joined *today*.
+        // This prevents yesterday's volunteer shifts from carrying over.
         if (joinedToday) {
           logger.d("[Dashboard][DEBUG] User joined volunteer shift today: ${shift.shiftName} (marker=$joinedMarker)");
           if (!allShifts.any((existingShift) => existingShift.shiftId == shift.shiftId)) {
@@ -1314,25 +1314,10 @@ Future<List<ShiftData>> _getAllShiftsForToday(String userId, String todayDayName
           } else {
             logger.d("[Dashboard][DEBUG] Volunteer shift already in list (joinedToday): ${shift.shiftName}");
           }
-          // move to next volunteer shift
-          continue;
-        }
-
-        // For volunteer shifts the user has not explicitly joined today, preserve the
-        // previous behavior: only include if within the volunteer visibility window.
-        final isActiveToday = await _isShiftActiveForToday(shift, todayDayName, todayString, isVolunteerShift: true);
-        if (isActiveToday) {
-          logger.d(
-            "[Dashboard][DEBUG] Found active volunteer shift for today: ${shift.shiftName} (ID: ${shift.shiftId})",
-          );
-          if (!allShifts.any((existingShift) => existingShift.shiftId == shift.shiftId)) {
-            allShifts.add(shift);
-            logger.d("[Dashboard][DEBUG] Added volunteer shift to list: ${shift.shiftName}");
-          } else {
-            logger.d("[Dashboard][DEBUG] Volunteer shift already in list: ${shift.shiftName}");
-          }
         } else {
-          logger.d("[Dashboard][DEBUG] Volunteer shift ${shift.shiftName} is not active today");
+          logger.d(
+            "[Dashboard][DEBUG] Volunteer shift ${shift.shiftName} was not joined today (marker=$joinedMarker), skipping.",
+          );
         }
       } catch (e, stack) {
         logger.e("[Dashboard][DEBUG] Failed to parse volunteer shift doc ${doc.id}: $e", e, stack);
@@ -1413,95 +1398,6 @@ String _formatSchedule(Map<String, dynamic> s) {
   return range.isEmpty ? names : '$names • $range';
 }
 
-// Helper function to check if a shift is active for today
-Future<bool> _isShiftActiveForToday(
-  ShiftData shift,
-  String todayDayName,
-  String todayString, {
-  bool isVolunteerShift = false,
-}) async {
-  try {
-    logger.d(
-      "[Dashboard] Checking if shift ${shift.shiftName} is active for today ($todayString, $todayDayName), isVolunteerShift: $isVolunteerShift",
-    );
-
-    // Parse today's date
-    final today = DateTime.parse(todayString);
-    final now = DateTime.now();
-
-    // Check if shift is scheduled for today
-    final isScheduledToday = shift.repeatsDaily || shift.days.contains(todayDayName);
-
-    if (!isScheduledToday) {
-      logger.d("[Dashboard] Shift ${shift.shiftName} is not scheduled for $todayDayName");
-      return false;
-    }
-
-    // For volunteer shifts, we do NOT show them all day if the user previously volunteered.
-    // Instead, show volunteer shifts only starting 30 minutes before the shift start and until the shift ends.
-    // This prevents stale volunteer entries from appearing long before the shift.
-
-    // Parse shift times
-    final startTimeParts = shift.startTime.split(':');
-    final endTimeParts = shift.endTime.split(':');
-
-    if (startTimeParts.length != 2 || endTimeParts.length != 2) {
-      logger.e("[Dashboard] Invalid time format for shift ${shift.shiftName}: ${shift.startTime} - ${shift.endTime}");
-      return false;
-    }
-
-    final startHour = int.tryParse(startTimeParts[0]) ?? 0;
-    final startMinute = int.tryParse(startTimeParts[1]) ?? 0;
-    final endHour = int.tryParse(endTimeParts[0]) ?? 0;
-    final endMinute = int.tryParse(endTimeParts[1]) ?? 0;
-
-    // Create DateTime objects for shift start and end
-    var shiftStart = DateTime(today.year, today.month, today.day, startHour, startMinute);
-    var shiftEnd = DateTime(today.year, today.month, today.day, endHour, endMinute);
-
-    // Handle shifts that end after midnight (e.g., 10 PM - 2 AM)
-    if (shiftEnd.isBefore(shiftStart)) {
-      // Shift ends the next day
-      shiftEnd = shiftEnd.add(const Duration(days: 1));
-      logger.d("[Dashboard] Shift ${shift.shiftName} spans midnight: $shiftStart to $shiftEnd");
-    }
-
-    // If current time is within the shift window, always consider it active
-    if (now.isAfter(shiftStart) && now.isBefore(shiftEnd)) {
-      logger.d("[Dashboard] Currently within shift ${shift.shiftName} time window");
-      return true;
-    }
-
-    // Special handling for volunteer shifts: only show them if we're within the pre-start window
-    // (30 minutes before start) or during the shift. This avoids showing volunteer shifts far in
-    // advance when the user signed up previously.
-    if (isVolunteerShift) {
-      final preWindowStart = shiftStart.subtract(const Duration(minutes: 30));
-      final withinVolunteerWindow = now.isAfter(preWindowStart) && now.isBefore(shiftEnd);
-      logger.d(
-        "[Dashboard] Volunteer shift ${shift.shiftName}: preWindowStart=$preWindowStart, now=$now, shiftEnd=$shiftEnd, withinVolunteerWindow=$withinVolunteerWindow",
-      );
-      return withinVolunteerWindow;
-    }
-
-    // Check if shift has ended
-    final hasEnded = now.isAfter(shiftEnd);
-
-    logger.d("[Dashboard] Shift ${shift.shiftName}: start=$shiftStart, end=$shiftEnd, now=$now, hasEnded=$hasEnded");
-
-    // If shift has ended, it's not active
-    if (hasEnded) {
-      logger.d("[Dashboard] Shift ${shift.shiftName} has ended");
-      return false;
-    }
-
-    // Shift is active if it's scheduled for today and hasn't ended yet
-    return !hasEnded;
-  } catch (e, stack) {
-    logger.e("[Dashboard] Error checking if shift is active: $e\n$stack", e, stack);
-    return false;
-  }
-}
 
 // Helper to load checklists for a shift (returns list)
 Future<List<DailyChecklist>> _loadChecklistsForShiftSimple(
@@ -1885,8 +1781,12 @@ class _HelpOutDialog extends StatelessWidget {
 
       // Merge and dedupe by document id
       final Map<String, QueryDocumentSnapshot> docsById = {};
-      for (final d in snapArray.docs) docsById[d.id] = d;
-      for (final d in snapSingle.docs) docsById[d.id] = d;
+      for (final d in snapArray.docs) {
+        docsById[d.id] = d;
+      }
+      for (final d in snapSingle.docs) {
+        docsById[d.id] = d;
+      }
 
       final combinedDocs = docsById.values.toList();
       final shifts = <ShiftData>[];
@@ -3193,6 +3093,57 @@ class _TaskTileFromData extends HookWidget {
     }
 
     try {
+      // If the user is trying to mark as completed but the task requires a photo and none exists,
+      // prompt to add a photo or allow completing without one.
+      if (isCompleted) {
+        final hasPhoto = (taskData.photoUrl ?? '').isNotEmpty || (taskData.proofImageUrl ?? '').isNotEmpty;
+        if (taskData.photoRequired && !hasPhoto) {
+          final choice = await showDialog<String?>(
+            context: context,
+            builder:
+                (ctx) => AlertDialog(
+                  title: const Text('Photo required'),
+                  content: const Text(
+                    'This task requires a photo. Add a photo now, complete without a photo, or cancel.',
+                  ),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.of(ctx).pop('cancel'), child: const Text('Cancel')),
+                    TextButton(
+                      onPressed: () => Navigator.of(ctx).pop('complete_without_photo'),
+                      child: const Text('Complete without photo'),
+                    ),
+                    TextButton(onPressed: () => Navigator.of(ctx).pop('add_photo'), child: const Text('Add photo')),
+                  ],
+                ),
+          );
+
+          if (choice == null || choice == 'cancel') {
+            return; // do nothing
+          }
+
+          if (choice == 'add_photo') {
+            final orgId = taskData.organizationId ?? checklist.organizationId;
+            final locId = taskData.locationId ?? checklist.locationId;
+            final listId = taskData.checklistId ?? checklist.id;
+
+            final updated = await NativePhotoService.showPhotoOptions(
+              context: context,
+              task: taskData,
+              organizationId: orgId,
+              locationId: locId,
+              checklistId: listId,
+            );
+
+            if (updated == null) {
+              // User didn't add a photo
+              return;
+            }
+            // If a photo was added, continue to mark completed below
+          }
+          // if choice == 'complete_without_photo' fall through and complete
+        }
+      }
+
       await DailyChecklistService().updateTaskCompletionInSubcollection(
         taskData,
         isCompleted,
@@ -3465,6 +3416,42 @@ class _MissedTaskInteractionTile extends HookWidget {
       // Use service to update the per-task subcollection when possible
       if (task.organizationId != null && task.locationId != null && task.originalChecklistId != null) {
         try {
+          // If marking a missed task as completed and it requires a photo, prompt first
+          if (isCompleted) {
+            final hasPhoto = (task.photoUrl ?? '').isNotEmpty || (task.proofImageUrl ?? '').isNotEmpty;
+            if (task.photoRequired && !hasPhoto) {
+              final choice = await showDialog<String?>(
+                context: context,
+                builder:
+                    (ctx) => AlertDialog(
+                      title: const Text('Photo required'),
+                      content: const Text(
+                        'This missed task requires a photo. Add a photo now, complete without a photo, or cancel.',
+                      ),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.of(ctx).pop('cancel'), child: const Text('Cancel')),
+                        TextButton(
+                          onPressed: () => Navigator.of(ctx).pop('complete_without_photo'),
+                          child: const Text('Complete without photo'),
+                        ),
+                        TextButton(onPressed: () => Navigator.of(ctx).pop('add_photo'), child: const Text('Add photo')),
+                      ],
+                    ),
+              );
+              if (choice == null || choice == 'cancel') return;
+              if (choice == 'add_photo') {
+                final updated = await NativePhotoService.showPhotoOptions(
+                  context: context,
+                  task: task,
+                  organizationId: task.organizationId,
+                  locationId: task.locationId,
+                  checklistId: task.checklistId,
+                );
+                if (updated == null) return; // no photo added
+              }
+            }
+          }
+
           await DailyChecklistService().updateTaskCompletionInSubcollection(
             task,
             isCompleted,

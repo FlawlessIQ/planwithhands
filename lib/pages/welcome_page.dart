@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import 'package:hands_app/global_widgets/hands_icon.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/utils/jobtype_helper.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
+import 'package:hands_app/theme/theme.dart';
 
 class WelcomePage extends ConsumerStatefulWidget {
   final String? email;
@@ -269,113 +271,152 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
   void _showErrorDialog(String message) {
     if (!mounted) return;
 
-    showDialog(
+    HandsDialog.show(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Error'),
-            content: Text(message),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  context.go('/login');
-                },
-                child: const Text('OK'),
-              ),
-            ],
-          ),
+      title: 'Error',
+      isDismissible: true,
+      child: Text(message, style: const TextStyle(color: HandsColors.white, height: 1.4)),
+      actions: [
+        HandsPrimaryButton(
+          text: 'OK',
+          onPressed: () {
+            Navigator.of(context).pop();
+            context.go('/login');
+          },
+        ),
+      ],
     );
   }
 
   void _showSuccessDialog() {
-    showDialog(
+    HandsDialog.show(
       context: context,
-      barrierDismissible: false,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Account Setup Complete! 🎉'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Your account has been created successfully!',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 16),
-                const Text('Download the Hands app to get started:', style: TextStyle(fontSize: 16)),
-                const SizedBox(height: 20),
+      title: 'Account Setup Complete! 🎉',
+      isDismissible: false,
+      width: MediaQuery.of(context).size.width * 0.9,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Your account has been created successfully!',
+            style: TextStyle(fontWeight: FontWeight.w600, color: HandsColors.white, fontSize: 16),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Download the Hands app to get started:',
+            style: TextStyle(fontSize: 16, color: HandsColors.white),
+          ),
+          const SizedBox(height: 20),
 
-                // App Store buttons
-                Row(
+          // App Store buttons - responsive layout
+          Builder(
+            builder: (context) {
+              final screenWidth = MediaQuery.of(context).size.width;
+              final isVerySmall = screenWidth < 320;
+
+              if (isVerySmall) {
+                // Stack buttons vertically on very small screens
+                return Column(
+                  children: [
+                    _buildAppStoreButton(
+                      onTap: () {
+                        debugPrint('Opening App Store...');
+                        // TODO: Replace with actual App Store URL
+                      },
+                      icon: Icons.phone_iphone,
+                      topText: 'Download on the',
+                      bottomText: 'App Store',
+                    ),
+                    const SizedBox(height: 8),
+                    _buildAppStoreButton(
+                      onTap: () {
+                        debugPrint('Opening Google Play...');
+                        // TODO: Replace with actual Google Play URL
+                      },
+                      icon: Icons.android,
+                      topText: 'Get it on',
+                      bottomText: 'Google Play',
+                    ),
+                  ],
+                );
+              } else {
+                // Side by side layout for normal screens
+                return Row(
                   children: [
                     Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          // TODO: Replace with actual App Store URL
+                      child: _buildAppStoreButton(
+                        onTap: () {
                           debugPrint('Opening App Store...');
-                          // launch('https://apps.apple.com/app/hands-app');
+                          // TODO: Replace with actual App Store URL
                         },
-                        icon: const Icon(Icons.phone_iphone),
-                        label: const Text('App Store'),
-                        style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+                        icon: Icons.phone_iphone,
+                        topText: 'Download on the',
+                        bottomText: 'App Store',
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          // TODO: Replace with actual Google Play URL
+                      child: _buildAppStoreButton(
+                        onTap: () {
                           debugPrint('Opening Google Play...');
-                          // launch('https://play.google.com/store/apps/details?id=com.hands.app');
+                          // TODO: Replace with actual Google Play URL
                         },
-                        icon: const Icon(Icons.android),
-                        label: const Text('Google Play'),
-                        style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+                        icon: Icons.android,
+                        topText: 'Get it on',
+                        bottomText: 'Google Play',
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Use the same email and password you just created to sign in to the mobile app.',
-                  style: TextStyle(color: Colors.grey, fontSize: 14),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  // Stay on the current page instead of navigating away
-                },
-                child: const Text('Done'),
-              ),
-            ],
+                );
+              }
+            },
           ),
+          const SizedBox(height: 16),
+          const Text(
+            'Use the same email and password you just created to sign in to the mobile app.',
+            style: TextStyle(color: HandsColors.white70, fontSize: 14),
+          ),
+        ],
+      ),
+      actions: [
+        HandsPrimaryButton(
+          text: 'Done',
+          onPressed: () {
+            Navigator.of(context).pop();
+            // Stay on the current page instead of navigating away
+          },
+        ),
+      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        backgroundColor: HandsColors.scaffoldBackground,
+        body: Center(child: CircularProgressIndicator()),
+      );
     }
 
     if (_pendingUser == null) {
       return Scaffold(
+        backgroundColor: HandsColors.scaffoldBackground,
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.error_outline, size: 64, color: Colors.red),
+              const Icon(Icons.error_outline, size: 64, color: HandsColors.error),
               const SizedBox(height: 16),
-              const Text('Invalid or expired invite', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const Text(
+                'Invalid or expired invite',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: HandsColors.white),
+              ),
               const SizedBox(height: 8),
-              const Text('This invite link is not valid or has expired.'),
+              const Text('This invite link is not valid or has expired.', style: TextStyle(color: HandsColors.white70)),
               const SizedBox(height: 24),
-              ElevatedButton(onPressed: () => context.go('/login'), child: const Text('Go to Sign In')),
+              HandsPrimaryButton(text: 'Go to Sign In', onPressed: () => context.go('/login')),
             ],
           ),
         ),
@@ -383,7 +424,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
     }
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: HandsColors.scaffoldBackground,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -394,50 +435,46 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Logo
+                  // Logo - Using correct size to match other pages (not condensed)
                   const Center(child: HandsIcon(size: 120)),
                   const SizedBox(height: 32),
 
                   // Welcome text
                   Text(
                     'Welcome to ${_organizationName ?? 'Hands'}!',
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).primaryColor,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold, color: HandsColors.handsOrange),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'You\'ve been invited to join ${_organizationName ?? 'this organization'}. Complete your account setup to get started.',
-                    style: Theme.of(context).textTheme.bodyLarge,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: HandsColors.white),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 32),
 
                   // User info card
-                  Card(
-                    elevation: 2,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Account Details',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 12),
-                          _buildInfoRow('Email', widget.email ?? ''),
-                          _buildInfoRow(
-                            'Name',
-                            '${_pendingUser?['firstName'] ?? ''} ${_pendingUser?['lastName'] ?? ''}',
-                          ),
-                          _buildInfoRow('Role', _getRoleDisplayName(_pendingUser?['userRole'])),
-                          if (_pendingUser?['jobType'] != null && (_pendingUser!['jobType'] as List).isNotEmpty)
-                            _buildInfoRow('Job Types', (_pendingUser!['jobType'] as List).join(', ')),
-                        ],
-                      ),
+                  Container(
+                    decoration: HandsDecorations.primaryBoxDecoration,
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Account Details',
+                          style: Theme.of(
+                            context,
+                          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: HandsColors.white),
+                        ),
+                        const SizedBox(height: 12),
+                        _buildInfoRow('Email', widget.email ?? ''),
+                        _buildInfoRow('Name', '${_pendingUser?['firstName'] ?? ''} ${_pendingUser?['lastName'] ?? ''}'),
+                        _buildInfoRow('Role', _getRoleDisplayName(_pendingUser?['userRole'])),
+                        if (_pendingUser?['jobType'] != null && (_pendingUser!['jobType'] as List).isNotEmpty)
+                          _buildInfoRow('Job Types', (_pendingUser!['jobType'] as List).join(', ')),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -450,12 +487,14 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                       children: [
                         Text(
                           'Complete Your Account Setup',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                          style: Theme.of(
+                            context,
+                          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: HandsColors.white),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           'Enter the temporary password from your email, then set a new password.',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: HandsColors.white70),
                         ),
                         const SizedBox(height: 16),
 
@@ -463,12 +502,31 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                         TextFormField(
                           controller: _tempPasswordController,
                           obscureText: _obscureTempPassword,
+                          style: const TextStyle(color: HandsColors.white),
                           decoration: InputDecoration(
                             labelText: 'Temporary Password',
+                            labelStyle: const TextStyle(color: HandsColors.white70),
                             hintText: 'Enter the password from your email',
-                            border: const OutlineInputBorder(),
+                            hintStyle: const TextStyle(color: HandsColors.white30),
+                            filled: true,
+                            fillColor: HandsColors.secondaryContainer,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12.0),
+                              borderSide: const BorderSide(color: HandsColors.white12),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12.0),
+                              borderSide: const BorderSide(color: HandsColors.white12),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12.0),
+                              borderSide: const BorderSide(color: HandsColors.handsOrange, width: 2),
+                            ),
                             suffixIcon: IconButton(
-                              icon: Icon(_obscureTempPassword ? Icons.visibility : Icons.visibility_off),
+                              icon: Icon(
+                                _obscureTempPassword ? Icons.visibility : Icons.visibility_off,
+                                color: HandsColors.white70,
+                              ),
                               onPressed: () {
                                 setState(() {
                                   _obscureTempPassword = !_obscureTempPassword;
@@ -489,12 +547,31 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                         TextFormField(
                           controller: _passwordController,
                           obscureText: _obscurePassword,
+                          style: const TextStyle(color: HandsColors.white),
                           decoration: InputDecoration(
                             labelText: 'New Password',
+                            labelStyle: const TextStyle(color: HandsColors.white70),
                             hintText: 'Create a new password',
-                            border: const OutlineInputBorder(),
+                            hintStyle: const TextStyle(color: HandsColors.white30),
+                            filled: true,
+                            fillColor: HandsColors.secondaryContainer,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12.0),
+                              borderSide: const BorderSide(color: HandsColors.white12),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12.0),
+                              borderSide: const BorderSide(color: HandsColors.white12),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12.0),
+                              borderSide: const BorderSide(color: HandsColors.handsOrange, width: 2),
+                            ),
                             suffixIcon: IconButton(
-                              icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off),
+                              icon: Icon(
+                                _obscurePassword ? Icons.visibility : Icons.visibility_off,
+                                color: HandsColors.white70,
+                              ),
                               onPressed: () {
                                 setState(() {
                                   _obscurePassword = !_obscurePassword;
@@ -518,12 +595,31 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                         TextFormField(
                           controller: _confirmPasswordController,
                           obscureText: _obscureConfirmPassword,
+                          style: const TextStyle(color: HandsColors.white),
                           decoration: InputDecoration(
                             labelText: 'Confirm New Password',
+                            labelStyle: const TextStyle(color: HandsColors.white70),
                             hintText: 'Confirm your new password',
-                            border: const OutlineInputBorder(),
+                            hintStyle: const TextStyle(color: HandsColors.white30),
+                            filled: true,
+                            fillColor: HandsColors.secondaryContainer,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12.0),
+                              borderSide: const BorderSide(color: HandsColors.white12),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12.0),
+                              borderSide: const BorderSide(color: HandsColors.white12),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12.0),
+                              borderSide: const BorderSide(color: HandsColors.handsOrange, width: 2),
+                            ),
                             suffixIcon: IconButton(
-                              icon: Icon(_obscureConfirmPassword ? Icons.visibility : Icons.visibility_off),
+                              icon: Icon(
+                                _obscureConfirmPassword ? Icons.visibility : Icons.visibility_off,
+                                color: HandsColors.white70,
+                              ),
                               onPressed: () {
                                 setState(() {
                                   _obscureConfirmPassword = !_obscureConfirmPassword;
@@ -544,20 +640,10 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                         const SizedBox(height: 24),
 
                         // Create account button
-                        ElevatedButton(
+                        HandsPrimaryButton(
+                          text: 'Complete Setup',
+                          isLoading: _isLoading,
                           onPressed: _isLoading ? null : _createAccount,
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                          child:
-                              _isLoading
-                                  ? const SizedBox(
-                                    height: 20,
-                                    width: 20,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  )
-                                  : const Text('Complete Setup'),
                         ),
                       ],
                     ),
@@ -577,9 +663,82 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: 60, child: Text('$label:', style: const TextStyle(fontWeight: FontWeight.w500))),
-          Expanded(child: Text(value.isNotEmpty ? value : 'Not specified')),
+          SizedBox(
+            width: 60,
+            child: Text('$label:', style: const TextStyle(fontWeight: FontWeight.w500, color: HandsColors.white)),
+          ),
+          Expanded(
+            child: Text(value.isNotEmpty ? value : 'Not specified', style: const TextStyle(color: HandsColors.white70)),
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAppStoreButton({
+    required VoidCallback onTap,
+    required IconData icon,
+    required String topText,
+    required String bottomText,
+  }) {
+    return Container(
+      height: 48,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.grey[900]!, Colors.black],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: HandsColors.white30, width: 1),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 4, offset: const Offset(0, 2))],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        topText,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w300,
+                          letterSpacing: 0.5,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        bottomText,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.5,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

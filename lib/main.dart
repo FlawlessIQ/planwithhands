@@ -34,7 +34,12 @@ void main() async {
   }
 
   // Initialize Firebase
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    logger.d('[MAIN] Firebase initialized');
+  } else {
+    logger.d('[MAIN] Firebase already initialized');
+  }
 
   // Dev helper: when running the web app on localhost, point Storage to the local emulator
   // This avoids CORS issues during development and lets you test uploads locally.
@@ -119,12 +124,6 @@ void main() async {
       return true;
     };
   }
-
-  // Pass all uncaught asynchronous errors that aren't handled by the Flutter framework to Crashlytics
-  PlatformDispatcher.instance.onError = (error, stack) {
-    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-    return true;
-  };
 
   // Web-specific optimizations
   if (kIsWeb) {

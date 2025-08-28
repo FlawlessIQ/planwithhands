@@ -75,7 +75,9 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
   final LocationSelectionService _locationSelectionService = LocationSelectionService.instance;
 
   @override
+  @override
   void initState() {
+    debugPrint('[ManagerDashboard] initState() CALLED - Manager Dashboard starting up');
     super.initState();
     _todayKey = _dateFormat.format(DateTime.now());
     // Seed from global selection if present before loading
@@ -90,15 +92,20 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
   // Progressive loading strategy for better performance
   Future<void> _initializeDashboard() async {
+    debugPrint('[ManagerDashboard] _initializeDashboard() CALLED');
     // Phase 1: Essential setup (fast)
     try {
+      debugPrint('[ManagerDashboard] Starting Phase 1: Essential setup');
       await Future.wait([_fetchUserRole(), _checkSetupStatus(), _loadLocations()]).timeout(const Duration(seconds: 5));
+      debugPrint('[ManagerDashboard] Phase 1 completed successfully');
     } catch (e) {
+      debugPrint('[ManagerDashboard] Phase 1 initialization FAILED: $e');
       logger.e('[Dashboard] Phase 1 initialization failed: $e');
       // Continue with reduced functionality
     }
 
     // Phase 2: Critical dashboard data (prioritized)
+    debugPrint('[ManagerDashboard] Starting Phase 2: Critical data');
     _loadCriticalData();
 
     // Phase 3: Background data loading (non-blocking)
@@ -109,13 +116,18 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
   // Load essential data that users see first
   Future<void> _loadCriticalData() async {
+    debugPrint('[ManagerDashboard] _loadCriticalData() STARTING');
     try {
       // Load today's shifts first (most important)
+      debugPrint('[ManagerDashboard] About to call _loadLiveShifts()');
       await _loadLiveShifts().timeout(const Duration(seconds: 8));
+      debugPrint('[ManagerDashboard] _loadLiveShifts() completed, now calling _loadYesterdayMissed()');
 
       // Then load yesterday's missed tasks
       await _loadYesterdayMissed().timeout(const Duration(seconds: 8));
+      debugPrint('[ManagerDashboard] _loadYesterdayMissed() completed successfully');
     } catch (e) {
+      debugPrint('[ManagerDashboard] Critical data loading FAILED: $e');
       logger.e('[Dashboard] Critical data loading failed: $e');
       // Show error state or fallback data
     }
@@ -332,23 +344,32 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
       final service = DailyChecklistService();
       final today = DateTime.now();
 
+      debugPrint(
+        '[ManagerDashboard] Starting loadYesterdayMissed - today: $today, selectedLocation: $_selectedLocationId',
+      );
       logger.d(
         '[ManagerDashboard] Starting loadYesterdayMissed - today: $today, selectedLocation: $_selectedLocationId',
       );
 
       // Use the same method as user dashboard to get real-time data from subcollections
+      debugPrint('[ManagerDashboard] About to call loadMissedTasksForToday...');
       final sections = await service.loadMissedTasksForToday(
         organizationId: widget.organizationId,
         targetDate: today,
         locationId: _selectedLocationId,
       );
+      debugPrint('[ManagerDashboard] loadMissedTasksForToday completed with ${sections.length} sections');
+
+      debugPrint('[ManagerDashboard] loadMissedTasksForToday completed with ${sections.length} sections');
 
       logger.d('[ManagerDashboard] loadMissedTasksForToday returned ${sections.length} sections');
 
       // Convert sections to the format expected by the manager dashboard
       final Map<String, Map<String, dynamic>> groupedTasks = {};
+      debugPrint('[ManagerDashboard] Processing ${sections.length} sections...');
       for (final section in sections) {
         logger.d('[ManagerDashboard] Processing section: ${section.shiftName} with ${section.tasks.length} tasks');
+        debugPrint('[ManagerDashboard] Processing section: ${section.shiftName} with ${section.tasks.length} tasks');
         for (final task in section.tasks) {
           final taskName = task.taskName;
           final shiftName = section.shiftName;
@@ -376,6 +397,12 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
       }
 
       _yesterdayMissed = groupedTasks.values.toList();
+      debugPrint(
+        '[ManagerDashboard] Final result: ${_yesterdayMissed.length} carry-forward groups from yesterday (via subcollections)',
+      );
+      debugPrint(
+        '[ManagerDashboard] Groups: ${_yesterdayMissed.map((g) => '${g['taskName']} (${g['shiftName']}): ${g['count']}').join(', ')}',
+      );
       logger.d(
         '[ManagerDashboard] Final result: ${_yesterdayMissed.length} carry-forward groups from yesterday (via subcollections)',
       );
@@ -383,6 +410,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
         '[ManagerDashboard] Groups: ${_yesterdayMissed.map((g) => '${g['taskName']} (${g['shiftName']}): ${g['count']}').join(', ')}',
       );
     } catch (e, st) {
+      debugPrint('[ManagerDashboard] loadMissedTasksForToday error: $e');
+      debugPrint('[ManagerDashboard] Stack trace: $st');
       logger.e('[ManagerDashboard] loadMissedTasksForToday error: $e\n$st');
     } finally {
       if (!mounted) return;
@@ -711,44 +740,61 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
       final Map<String, Map<String, num>> agg = {}; // key: shiftName, values: {'done':x,'total':y}
 
       // Cache to avoid repeated reads for the same shiftId
-      final Map<String, String> shiftNameCache = {};
+      final Map<String, String?> shiftNameCache = {};
 
       for (final d in docs) {
         final dataRaw = d.data();
         final data = (dataRaw is Map<String, dynamic>) ? dataRaw : <String, dynamic>{};
         final shiftId = (data['shiftId'] ?? '').toString();
-        String shiftName = (data['shiftName'] ?? '').toString();
 
-        // Resolve shift name from cache or via lookup when not denormalized
-        if (shiftName.isEmpty || shiftName.toLowerCase().contains('unknown')) {
-          if (shiftId.isNotEmpty) {
-            if (shiftNameCache.containsKey(shiftId)) {
-              shiftName = shiftNameCache[shiftId]!;
-            } else {
-              try {
-                final shiftDoc =
-                    await FirestoreEnforcer.instance
-                        .collection('organizations')
-                        .doc(widget.organizationId)
-                        .collection('shifts')
-                        .doc(shiftId)
-                        .get();
-                if (shiftDoc.exists) {
-                  final sdata = shiftDoc.data();
-                  final resolved = (sdata?['shiftName'] ?? sdata?['name'] ?? '').toString();
-                  if (resolved.isNotEmpty) {
-                    shiftName = resolved;
-                    shiftNameCache[shiftId] = resolved;
-                  }
-                }
-              } catch (e) {
-                logger.w('[ManagerDashboard][DEBUG] Failed to resolve shiftName for shiftId=$shiftId: $e');
+        if (shiftId.isEmpty) {
+          logger.w('[ManagerDashboard][DEBUG] Skipping daily_checklist ${d.id} due to missing shiftId.');
+          continue;
+        }
+
+        String? shiftName;
+
+        // Check cache first
+        if (shiftNameCache.containsKey(shiftId)) {
+          shiftName = shiftNameCache[shiftId];
+        } else {
+          // Fetch from Firestore
+          try {
+            final shiftDoc =
+                await FirestoreEnforcer.instance
+                    .collection('organizations')
+                    .doc(widget.organizationId)
+                    .collection('shifts')
+                    .doc(shiftId)
+                    .get();
+            if (shiftDoc.exists) {
+              final sdata = shiftDoc.data();
+              final resolved = (sdata?['shiftName'] ?? sdata?['name'] ?? '').toString();
+              if (resolved.isNotEmpty) {
+                shiftName = resolved;
+                shiftNameCache[shiftId] = resolved; // Cache the name
+              } else {
+                // Shift exists but has no name, treat as invalid
+                shiftNameCache[shiftId] = null;
               }
+            } else {
+              // Shift is deleted, cache this info so we don't look it up again
+              shiftNameCache[shiftId] = null; // Null indicates deleted
             }
+          } catch (e) {
+            logger.w('[ManagerDashboard][DEBUG] Failed to resolve shiftName for shiftId=$shiftId: $e');
+            shiftNameCache[shiftId] = null; // Also cache failure to avoid retries
           }
         }
 
-        if (shiftName.isEmpty) shiftName = 'Unknown Shift';
+        // If shiftName is null or empty, it means the shift was deleted or invalid. Skip it.
+        if (shiftName == null || shiftName.isEmpty) {
+          logger.i(
+            '[ManagerDashboard][DEBUG] Skipping checklist ${d.id} because shift $shiftId is deleted or invalid.',
+          );
+          continue;
+        }
+
         logger.i('[ManagerDashboard][DEBUG] Processing checklist docId: ${d.id}, shiftName: $shiftName');
 
         // Check if tasks are in subcollection (new way) or in document (old way)
@@ -2730,6 +2776,23 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
   int _currentPage = 0;
   static const int _itemsPerPage = 10;
 
+  // Controls whether the filter panel is visible (collapsible to save vertical space)
+  bool _filtersVisible = true;
+  bool _initialFilterVisibilitySet = false;
+
+  // Count how many filters are currently active (for compact header summary)
+  int _activeFilterCount() {
+    var count = 0;
+    if (_searchCtrl.text.trim().isNotEmpty) count++;
+    if (_selectedShift != 'all') count++;
+    if (_selectedChecklist != 'all') count++;
+    if (_selectedCompletion != 'all') count++;
+    if (_dateRange != null) {
+      if (_dateRange!.start != widget.initialDateRange.start || _dateRange!.end != widget.initialDateRange.end) count++;
+    }
+    return count;
+  }
+
   // User name cache to avoid repeated lookups
   final Map<String, String> _userNameCache = {};
 
@@ -3022,68 +3085,67 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Modern filter controls with dark theme
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          decoration: BoxDecoration(
-            color: HandsColors.cardTertiary,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-            border: Border(bottom: BorderSide(color: HandsColors.white12)),
-          ),
-          child: Column(
-            children: [
-              // Search and date picker row - use Column on very small screens to prevent overflow
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final isVerySmall = constraints.maxWidth < 360;
-                  if (isVerySmall) {
-                    // Stack vertically on very small screens
-                    return Column(
-                      children: [
-                        Container(
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: HandsColors.primaryContainer,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: HandsColors.white12),
-                          ),
-                          child: TextField(
-                            controller: _searchCtrl,
-                            style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
-                            decoration: InputDecoration(
-                              prefixIcon: const Icon(Icons.search, size: 20, color: HandsColors.white70),
-                              hintText: 'Search tasks...',
-                              hintStyle: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white70),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                              border: InputBorder.none,
-                              isDense: true,
-                            ),
-                            onSubmitted: (_) => _load(),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          height: 44,
-                          width: double.infinity,
-                          child: HandsSecondaryButton(
-                            text:
-                                _dateRange == null
-                                    ? 'Date Range'
-                                    : '${DateFormat('M/d').format(_dateRange!.start)} - ${DateFormat('M/d').format(_dateRange!.end)}',
-                            onPressed: _pickRange,
-                            icon: Icons.date_range,
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          ),
-                        ),
-                      ],
-                    );
-                  } else {
-                    // Side by side on larger screens
-                    return Row(
-                      children: [
-                        Expanded(
-                          flex: 3,
-                          child: Container(
+        // Compact header with collapse/expand toggle and active filter count
+        LayoutBuilder(
+          builder: (context, constraints) {
+            // Set default visibility on first build based on available width
+            if (!_initialFilterVisibilitySet) {
+              _filtersVisible = constraints.maxWidth > 480;
+              _initialFilterVisibilitySet = true;
+            }
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.filter_list, color: HandsColors.white70),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Filters',
+                      style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: Text(
+                      '${_activeFilterCount()} active',
+                      style: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white70),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => setState(() => _filtersVisible = !_filtersVisible),
+                    icon: Icon(_filtersVisible ? Icons.expand_less : Icons.expand_more, color: HandsColors.white70),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+
+        // Animated filter panel: collapsible to save vertical real-estate on small screens
+        AnimatedCrossFade(
+          firstChild: const SizedBox.shrink(),
+          secondChild: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            decoration: BoxDecoration(
+              color: HandsColors.cardTertiary,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              border: Border(bottom: BorderSide(color: HandsColors.white12)),
+            ),
+            child: Column(
+              children: [
+                // Search and date picker row - use Column on very small screens to prevent overflow
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isVerySmall = constraints.maxWidth < 360;
+                    if (isVerySmall) {
+                      // Stack vertically on very small screens
+                      return Column(
+                        children: [
+                          Container(
                             height: 44,
                             decoration: BoxDecoration(
                               color: HandsColors.primaryContainer,
@@ -3104,12 +3166,10 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                               onSubmitted: (_) => _load(),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          flex: 2,
-                          child: SizedBox(
+                          const SizedBox(height: 12),
+                          SizedBox(
                             height: 44,
+                            width: double.infinity,
                             child: HandsSecondaryButton(
                               text:
                                   _dateRange == null
@@ -3117,125 +3177,70 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                                       : '${DateFormat('M/d').format(_dateRange!.start)} - ${DateFormat('M/d').format(_dateRange!.end)}',
                               onPressed: _pickRange,
                               icon: Icons.date_range,
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                             ),
                           ),
-                        ),
-                      ],
-                    );
-                  }
-                },
-              ),
-              const SizedBox(height: 12),
-              // Filter dropdowns row - responsive layout
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final isVerySmall = constraints.maxWidth < 360;
-                  if (isVerySmall) {
-                    // Stack vertically on very small screens
-                    return Column(
-                      children: [
-                        Container(
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: HandsColors.primaryContainer,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: HandsColors.white12),
-                          ),
-                          child: DropdownButtonFormField<String>(
-                            value: _selectedShift,
-                            dropdownColor: HandsColors.primaryContainer,
-                            style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
-                            decoration: InputDecoration(
-                              labelText: 'Shift',
-                              labelStyle: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white70),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              border: InputBorder.none,
-                              isDense: true,
+                        ],
+                      );
+                    } else {
+                      // Side by side on larger screens
+                      return Row(
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: Container(
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: HandsColors.primaryContainer,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: HandsColors.white12),
+                              ),
+                              child: TextField(
+                                controller: _searchCtrl,
+                                style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                decoration: InputDecoration(
+                                  prefixIcon: const Icon(Icons.search, size: 20, color: HandsColors.white70),
+                                  hintText: 'Search tasks...',
+                                  hintStyle: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white70),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                ),
+                                onSubmitted: (_) => _load(),
+                              ),
                             ),
-                            items: [
-                              DropdownMenuItem(
-                                value: 'all',
-                                child: Text(
-                                  'All shifts',
-                                  style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
-                                ),
-                              ),
-                              ...widget.shifts.map(
-                                (s) => DropdownMenuItem(
-                                  value: s['id'],
-                                  child: Text(
-                                    s['name'] ?? 'Shift',
-                                    style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ),
-                            ],
-                            onChanged: (v) => setState(() => _selectedShift = v ?? 'all'),
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        Container(
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: HandsColors.primaryContainer,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: HandsColors.white12),
-                          ),
-                          child: DropdownButtonFormField<String>(
-                            value: _selectedCompletion,
-                            dropdownColor: HandsColors.primaryContainer,
-                            style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
-                            decoration: InputDecoration(
-                              labelText: 'Status',
-                              labelStyle: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white70),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              border: InputBorder.none,
-                              isDense: true,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: 2,
+                            child: SizedBox(
+                              height: 44,
+                              child: HandsSecondaryButton(
+                                text:
+                                    _dateRange == null
+                                        ? 'Date Range'
+                                        : '${DateFormat('M/d').format(_dateRange!.start)} - ${DateFormat('M/d').format(_dateRange!.end)}',
+                                onPressed: _pickRange,
+                                icon: Icons.date_range,
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                              ),
                             ),
-                            items: [
-                              DropdownMenuItem(
-                                value: 'all',
-                                child: Text(
-                                  'All',
-                                  style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
-                                ),
-                              ),
-                              DropdownMenuItem(
-                                value: 'completed',
-                                child: Text(
-                                  'Completed',
-                                  style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
-                                ),
-                              ),
-                              DropdownMenuItem(
-                                value: 'incomplete',
-                                child: Text(
-                                  'Missed',
-                                  style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
-                                ),
-                              ),
-                              DropdownMenuItem(
-                                value: 'incomplete_with_reason',
-                                child: Text(
-                                  'Missed w/ reason',
-                                  style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                            onChanged: (v) => setState(() => _selectedCompletion = v ?? 'all'),
                           ),
-                        ),
-                      ],
-                    );
-                  } else {
-                    // Side by side on larger screens
-                    return Row(
-                      children: [
-                        Expanded(
-                          child: Container(
+                        ],
+                      );
+                    }
+                  },
+                ),
+                const SizedBox(height: 12),
+                // Filter dropdowns row - responsive layout
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isVerySmall = constraints.maxWidth < 360;
+                    if (isVerySmall) {
+                      // Stack vertically on very small screens
+                      return Column(
+                        children: [
+                          Container(
                             height: 44,
                             decoration: BoxDecoration(
                               color: HandsColors.primaryContainer,
@@ -3275,10 +3280,8 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                               onChanged: (v) => setState(() => _selectedShift = v ?? 'all'),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Container(
+                          const SizedBox(height: 12),
+                          Container(
                             height: 44,
                             decoration: BoxDecoration(
                               color: HandsColors.primaryContainer,
@@ -3330,112 +3333,217 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                               onChanged: (v) => setState(() => _selectedCompletion = v ?? 'all'),
                             ),
                           ),
-                        ),
-                      ],
-                    );
-                  }
-                },
-              ),
-              const SizedBox(height: 16),
-              // Action buttons row - prevent overflow with flexible layout
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final isVerySmall = constraints.maxWidth < 320;
-                  if (isVerySmall) {
-                    // Stack vertically on very small screens
-                    return Column(
-                      children: [
-                        SizedBox(
-                          width: double.infinity,
-                          child: HandsPrimaryButton(
-                            text: 'Apply Filters',
-                            onPressed: _load,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                        ],
+                      );
+                    } else {
+                      // Side by side on larger screens
+                      return Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: HandsColors.primaryContainer,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: HandsColors.white12),
+                              ),
+                              child: DropdownButtonFormField<String>(
+                                value: _selectedShift,
+                                dropdownColor: HandsColors.primaryContainer,
+                                style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                decoration: InputDecoration(
+                                  labelText: 'Shift',
+                                  labelStyle: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white70),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                ),
+                                items: [
+                                  DropdownMenuItem(
+                                    value: 'all',
+                                    child: Text(
+                                      'All shifts',
+                                      style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                    ),
+                                  ),
+                                  ...widget.shifts.map(
+                                    (s) => DropdownMenuItem(
+                                      value: s['id'],
+                                      child: Text(
+                                        s['name'] ?? 'Shift',
+                                        style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                                onChanged: (v) => setState(() => _selectedShift = v ?? 'all'),
+                              ),
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: HandsSecondaryButton(
-                            text: 'Clear All',
-                            onPressed: () async {
-                              setState(() {
-                                _searchCtrl.clear();
-                                _selectedShift = 'all';
-                                _selectedChecklist = 'all';
-                                _selectedCompletion = 'all';
-                                _currentPage = 0;
-                              });
-                              await _load();
-                            },
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Container(
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: HandsColors.primaryContainer,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: HandsColors.white12),
+                              ),
+                              child: DropdownButtonFormField<String>(
+                                value: _selectedCompletion,
+                                dropdownColor: HandsColors.primaryContainer,
+                                style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                decoration: InputDecoration(
+                                  labelText: 'Status',
+                                  labelStyle: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white70),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                ),
+                                items: [
+                                  DropdownMenuItem(
+                                    value: 'all',
+                                    child: Text(
+                                      'All',
+                                      style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                    ),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'completed',
+                                    child: Text(
+                                      'Completed',
+                                      style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                    ),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'incomplete',
+                                    child: Text(
+                                      'Missed',
+                                      style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                    ),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'incomplete_with_reason',
+                                    child: Text(
+                                      'Missed w/ reason',
+                                      style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                                onChanged: (v) => setState(() => _selectedCompletion = v ?? 'all'),
+                              ),
+                            ),
                           ),
-                        ),
-                      ],
-                    );
-                  } else {
-                    // Side by side on larger screens
-                    return Row(
-                      children: [
-                        Expanded(
-                          child: HandsPrimaryButton(
-                            text: 'Apply Filters',
-                            onPressed: _load,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: HandsSecondaryButton(
-                            text: 'Clear All',
-                            onPressed: () async {
-                              setState(() {
-                                _searchCtrl.clear();
-                                _selectedShift = 'all';
-                                _selectedChecklist = 'all';
-                                _selectedCompletion = 'all';
-                                _currentPage = 0;
-                              });
-                              await _load();
-                            },
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                        ),
-                      ],
-                    );
-                  }
-                },
-              ),
-              // Results summary
-              if (!_loading && _allRows.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: HandsColors.sageGreen.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: HandsColors.sageGreen.withOpacity(0.3)),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.info_outline, size: 16, color: HandsColors.sageGreen),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Showing ${_displayedRows.length} of ${_allRows.length} tasks',
-                          style: GoogleFonts.comfortaa(
-                            fontSize: 12,
-                            color: HandsColors.sageGreen,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                        ],
+                      );
+                    }
+                  },
                 ),
+                const SizedBox(height: 16),
+                // Action buttons row - prevent overflow with flexible layout
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isVerySmall = constraints.maxWidth < 320;
+                    if (isVerySmall) {
+                      // Stack vertically on very small screens
+                      return Column(
+                        children: [
+                          SizedBox(
+                            width: double.infinity,
+                            child: HandsPrimaryButton(
+                              text: 'Apply Filters',
+                              onPressed: _load,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: HandsSecondaryButton(
+                              text: 'Clear All',
+                              onPressed: () async {
+                                setState(() {
+                                  _searchCtrl.clear();
+                                  _selectedShift = 'all';
+                                  _selectedChecklist = 'all';
+                                  _selectedCompletion = 'all';
+                                  _currentPage = 0;
+                                });
+                                await _load();
+                              },
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ],
+                      );
+                    } else {
+                      // Side by side on larger screens
+                      return Row(
+                        children: [
+                          Expanded(
+                            child: HandsPrimaryButton(
+                              text: 'Apply Filters',
+                              onPressed: _load,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: HandsSecondaryButton(
+                              text: 'Clear All',
+                              onPressed: () async {
+                                setState(() {
+                                  _searchCtrl.clear();
+                                  _selectedShift = 'all';
+                                  _selectedChecklist = 'all';
+                                  _selectedCompletion = 'all';
+                                  _currentPage = 0;
+                                });
+                                await _load();
+                              },
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ],
+                      );
+                    }
+                  },
+                ),
+                // Results summary
+                if (!_loading && _allRows.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: HandsColors.sageGreen.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: HandsColors.sageGreen.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, size: 16, color: HandsColors.sageGreen),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Showing ${_displayedRows.length} of ${_allRows.length} tasks',
+                            style: GoogleFonts.comfortaa(
+                              fontSize: 12,
+                              color: HandsColors.sageGreen,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
+          crossFadeState: _filtersVisible ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+          duration: const Duration(milliseconds: 180),
         ),
         // Results with pagination
         Expanded(

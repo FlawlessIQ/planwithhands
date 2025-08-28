@@ -1,4 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/message_thread.dart';
@@ -7,6 +9,7 @@ import '../models/message.dart';
 class MessagingService {
   final _db = FirestoreEnforcer.instance;
   final _auth = FirebaseAuth.instance;
+  final _functions = FirebaseFunctions.instance;
 
   String? get currentUserId => _auth.currentUser?.uid;
 
@@ -33,13 +36,33 @@ class MessagingService {
     return threadRef.id;
   }
 
-  Future<void> sendMessage(String threadId, String text) async {
+  Future<void> sendMessage(String threadId, String text, {bool sendNotifications = true}) async {
     final msgRef = _db.collection('messageThreads').doc(threadId).collection('messages').doc();
     await msgRef.set({'senderId': _auth.currentUser!.uid, 'text': text, 'createdAt': FieldValue.serverTimestamp()});
     await _db.collection('messageThreads').doc(threadId).set({
       'lastMessagePreview': text.substring(0, text.length > 80 ? 80 : text.length),
       'lastMessageAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+
+    // Optionally trigger push notifications via callable function
+    // Note: The Firestore trigger (onMessageCreated) will automatically handle notifications
+    // This callable approach is an alternative if you prefer explicit control
+    if (sendNotifications) {
+      try {
+        // Get thread data to find recipients
+        final threadDoc = await _db.collection('messageThreads').doc(threadId).get();
+        final threadData = threadDoc.data();
+        final recipientUserIds = threadData?['recipientUserIds'] as List<dynamic>?;
+
+        if (recipientUserIds != null && recipientUserIds.isNotEmpty) {
+          final callable = _functions.httpsCallable('sendMessageNotification');
+          await callable.call({'threadId': threadId, 'messageText': text, 'recipientUserIds': recipientUserIds});
+        }
+      } catch (e) {
+        // Don't fail message sending if notification fails
+        debugPrint('Warning: Failed to send message notification: $e');
+      }
+    }
   }
 
   Stream<List<MessageThread>> watchThreads(String orgId, String userId) {
@@ -49,13 +72,12 @@ class MessagingService {
         .orderBy('lastMessageAt', descending: true)
         .snapshots()
         .asyncMap((snap) async {
-          final notifSnap =
-              await _db
-                  .collection('notifications')
-                  .where('orgId', isEqualTo: orgId)
-                  .where('userId', isEqualTo: userId)
-                  .where('read', isEqualTo: false)
-                  .get();
+          final notifSnap = await _db
+              .collection('notifications')
+              .where('orgId', isEqualTo: orgId)
+              .where('userId', isEqualTo: userId)
+              .where('read', isEqualTo: false)
+              .get();
           final unreadByThread = <String, int>{};
           for (final d in notifSnap.docs) {
             final data = d.data();
@@ -81,13 +103,12 @@ class MessagingService {
 
   Future<void> markThreadRead(String threadId, String userId) async {
     final batch = _db.batch();
-    final q =
-        await _db
-            .collection('notifications')
-            .where('threadId', isEqualTo: threadId)
-            .where('userId', isEqualTo: userId)
-            .where('read', isEqualTo: false)
-            .get();
+    final q = await _db
+        .collection('notifications')
+        .where('threadId', isEqualTo: threadId)
+        .where('userId', isEqualTo: userId)
+        .where('read', isEqualTo: false)
+        .get();
     for (final d in q.docs) {
       batch.update(d.reference, {'read': true});
     }

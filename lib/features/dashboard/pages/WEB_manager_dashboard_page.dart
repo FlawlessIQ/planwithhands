@@ -73,6 +73,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
   @override
   void initState() {
+    // WEB variant initialization instrumentation
+    debugPrint('[WEBManagerDashboard] initState CALLED');
     super.initState();
     _todayKey = _dateFormat.format(DateTime.now());
     _selectedLocationId = LocationSelectionService.instance.currentLocationId ?? _selectedLocationId;
@@ -301,56 +303,93 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
       final service = DailyChecklistService();
       final today = DateTime.now();
 
+      logger.d('[WEBManagerDashboard] _loadYesterdayMissed ENTER (today=$today, location=$_selectedLocationId)');
       logger.d(
         '[ManagerDashboard] Starting loadYesterdayMissed - today: $today, selectedLocation: $_selectedLocationId',
       );
-
-      // Use the same method as user dashboard to get real-time data from subcollections
-      final sections = await service.loadMissedTasksForToday(
+      // 1. Direct yesterday computation (does not require carry-forward)
+      final directSections = await service.loadMissedTasksDirectFromYesterday(
         organizationId: widget.organizationId,
-        targetDate: today,
+        today: today,
         locationId: _selectedLocationId,
       );
+      logger.d('[WEBManagerDashboard] Direct yesterday loader returned ${directSections.length} sections');
 
-      logger.d('[ManagerDashboard] loadMissedTasksForToday returned ${sections.length} sections');
-
-      // Convert sections to the format expected by the manager dashboard
-      final Map<String, Map<String, dynamic>> groupedTasks = {};
-      for (final section in sections) {
-        logger.d('[ManagerDashboard] Processing section: ${section.shiftName} with ${section.tasks.length} tasks');
-        for (final task in section.tasks) {
-          final taskName = task.taskName;
-          final shiftName = section.shiftName;
-          final key = '${taskName}_${section.shiftId}';
-
-          logger.d('[ManagerDashboard] Processing task: $taskName, completed: ${task.completed}');
-
-          final group = groupedTasks.putIfAbsent(
-            key,
-            () => {
-              'taskName': taskName,
-              'shiftId': section.shiftId,
-              'shiftName': shiftName,
-              'locationId': section.locationId,
-              'count': 0,
-              'completedToday': false,
-            },
-          );
-
-          group['count'] = (group['count'] as int) + 1;
-          if (task.completed) {
-            group['completedToday'] = true;
+      if (directSections.isNotEmpty) {
+        final Map<String, Map<String, dynamic>> groupedDirect = {};
+        for (final section in directSections) {
+          logger.d('[WEBManagerDashboard] Direct section: ${section.shiftName} tasks=${section.tasks.length}');
+          for (final task in section.tasks) {
+            final key = '${task.taskName}_${section.shiftId}';
+            final g = groupedDirect.putIfAbsent(
+              key,
+              () => {
+                'taskName': task.taskName,
+                'shiftId': section.shiftId,
+                'shiftName': section.shiftName,
+                'locationId': section.locationId,
+                'count': 0,
+                'completedToday': false,
+              },
+            );
+            g['count'] = (g['count'] as int) + 1;
           }
+        }
+        _yesterdayMissed = groupedDirect.values.toList();
+        logger.d('[WEBManagerDashboard] MissedYesterday populated via DIRECT path groups=${_yesterdayMissed.length}');
+      }
+
+      // 2. If still empty, fall back to carry-forward derived path
+      if (_yesterdayMissed.isEmpty) {
+        logger.w('[WEBManagerDashboard] Direct path empty; invoking carry-forward based loader');
+        final cfSections = await service.loadMissedTasksForToday(
+          organizationId: widget.organizationId,
+          targetDate: today,
+          locationId: _selectedLocationId,
+        );
+        logger.d('[WEBManagerDashboard] loadMissedTasksForToday returned ${cfSections.length} sections');
+        final Map<String, Map<String, dynamic>> groupedCF = {};
+        for (final section in cfSections) {
+          for (final task in section.tasks) {
+            final key = '${task.taskName}_${section.shiftId}';
+            final g = groupedCF.putIfAbsent(
+              key,
+              () => {
+                'taskName': task.taskName,
+                'shiftId': section.shiftId,
+                'shiftName': section.shiftName,
+                'locationId': section.locationId,
+                'count': 0,
+                'completedToday': false,
+              },
+            );
+            g['count'] = (g['count'] as int) + 1;
+            if (task.completed) g['completedToday'] = true;
+          }
+        }
+        _yesterdayMissed = groupedCF.values.toList();
+        logger.d('[WEBManagerDashboard] Groups from carry-forward path: ${_yesterdayMissed.length}');
+      }
+
+      // 3. Legacy fallback enumerating today CF tasks (existing helper)
+      if (_yesterdayMissed.isEmpty) {
+        logger.w(
+          '[WEBManagerDashboard] Both direct and CF paths empty; attempting legacy fallback getYesterdayMissedFromTodayCarryForward',
+        );
+        try {
+          final fallback = await service.getYesterdayMissedFromTodayCarryForward(
+            organizationId: widget.organizationId,
+            today: today,
+            locationId: _selectedLocationId,
+          );
+          logger.w('[WEBManagerDashboard] Legacy fallback returned ${fallback.length} groups');
+          if (fallback.isNotEmpty) _yesterdayMissed = fallback;
+        } catch (fe, fst) {
+          logger.e('[WEBManagerDashboard] Legacy fallback failed: $fe\n$fst');
         }
       }
 
-      _yesterdayMissed = groupedTasks.values.toList();
-      logger.d(
-        '[ManagerDashboard] Final result: ${_yesterdayMissed.length} carry-forward groups from yesterday (via subcollections)',
-      );
-      logger.d(
-        '[ManagerDashboard] Groups: ${_yesterdayMissed.map((g) => '${g['taskName']} (${g['shiftName']}): ${g['count']}').join(', ')}',
-      );
+      logger.d('[WEBManagerDashboard] FINAL MissedYesterday groups=${_yesterdayMissed.length}');
     } catch (e, st) {
       logger.e('[ManagerDashboard] loadMissedTasksForToday error: $e\n$st');
     } finally {
@@ -577,9 +616,9 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
           try {
             final raw = shiftData['shiftDate'];
             DateTime? sd;
-            if (raw is DateTime)
+            if (raw is DateTime) {
               sd = raw;
-            else if (raw is Timestamp)
+            } else if (raw is Timestamp)
               sd = raw.toDate();
             else if (raw is String)
               sd = DateTime.tryParse(raw);
@@ -758,44 +797,61 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
       final Map<String, Map<String, num>> agg = {}; // key: shiftName, values: {'done':x,'total':y}
 
       // Cache to avoid repeated reads for the same shiftId
-      final Map<String, String> shiftNameCache = {};
+      final Map<String, String?> shiftNameCache = {};
 
       for (final d in docs) {
         final dataRaw = d.data();
         final data = (dataRaw is Map<String, dynamic>) ? dataRaw : <String, dynamic>{};
         final shiftId = (data['shiftId'] ?? '').toString();
-        String shiftName = (data['shiftName'] ?? '').toString();
 
-        // Resolve shift name from cache or via lookup when not denormalized
-        if (shiftName.isEmpty || shiftName.toLowerCase().contains('unknown')) {
-          if (shiftId.isNotEmpty) {
-            if (shiftNameCache.containsKey(shiftId)) {
-              shiftName = shiftNameCache[shiftId]!;
-            } else {
-              try {
-                final shiftDoc =
-                    await FirestoreEnforcer.instance
-                        .collection('organizations')
-                        .doc(widget.organizationId)
-                        .collection('shifts')
-                        .doc(shiftId)
-                        .get();
-                if (shiftDoc.exists) {
-                  final sdata = shiftDoc.data();
-                  final resolved = (sdata?['shiftName'] ?? sdata?['name'] ?? '').toString();
-                  if (resolved.isNotEmpty) {
-                    shiftName = resolved;
-                    shiftNameCache[shiftId] = resolved;
-                  }
-                }
-              } catch (e) {
-                logger.w('[ManagerDashboard][DEBUG] Failed to resolve shiftName for shiftId=$shiftId: $e');
+        if (shiftId.isEmpty) {
+          logger.w('[ManagerDashboard][DEBUG] Skipping daily_checklist ${d.id} due to missing shiftId.');
+          continue;
+        }
+
+        String? shiftName;
+
+        // Check cache first
+        if (shiftNameCache.containsKey(shiftId)) {
+          shiftName = shiftNameCache[shiftId];
+        } else {
+          // Fetch from Firestore
+          try {
+            final shiftDoc =
+                await FirestoreEnforcer.instance
+                    .collection('organizations')
+                    .doc(widget.organizationId)
+                    .collection('shifts')
+                    .doc(shiftId)
+                    .get();
+            if (shiftDoc.exists) {
+              final sdata = shiftDoc.data();
+              final resolved = (sdata?['shiftName'] ?? sdata?['name'] ?? '').toString();
+              if (resolved.isNotEmpty) {
+                shiftName = resolved;
+                shiftNameCache[shiftId] = resolved; // Cache the name
+              } else {
+                // Shift exists but has no name, treat as invalid
+                shiftNameCache[shiftId] = null;
               }
+            } else {
+              // Shift is deleted, cache this info so we don't look it up again
+              shiftNameCache[shiftId] = null; // Null indicates deleted
             }
+          } catch (e) {
+            logger.w('[ManagerDashboard][DEBUG] Failed to resolve shiftName for shiftId=$shiftId: $e');
+            shiftNameCache[shiftId] = null; // Also cache failure to avoid retries
           }
         }
 
-        if (shiftName.isEmpty) shiftName = 'Unknown Shift';
+        // If shiftName is null or empty, it means the shift was deleted or invalid. Skip it.
+        if (shiftName == null || shiftName.isEmpty) {
+          logger.i(
+            '[ManagerDashboard][DEBUG] Skipping checklist ${d.id} because shift $shiftId is deleted or invalid.',
+          );
+          continue;
+        }
+
         logger.i('[ManagerDashboard][DEBUG] Processing checklist docId: ${d.id}, shiftName: $shiftName');
 
         // Check if tasks are in subcollection (new way) or in document (old way)
@@ -2235,7 +2291,7 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
 
           // Handle photos with multiple possible field names
           List<String> photos = [];
-          print('[TaskHistory] Debug: Checking photo fields for task: ${name}');
+          print('[TaskHistory] Debug: Checking photo fields for task: $name');
           print('[TaskHistory] Debug: Task data keys: ${t.keys.toList()}');
 
           if (t['photoUrls'] != null) {

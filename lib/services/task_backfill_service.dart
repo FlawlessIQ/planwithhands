@@ -48,15 +48,6 @@ class TaskBackfillService {
 
         // Try to derive dateString from parent doc
         String? dateString = data['dateString'];
-        if (dateString == null) {
-          final dynamic d = data['date'];
-          if (d is Timestamp) {
-            dateString = _dateString(d.toDate());
-          } else if (d is String && d.isNotEmpty) {
-            // Acceptable if already stored as yyyy-MM-dd
-            dateString = d;
-          }
-        }
 
         final String? shiftId = (data['shiftId'] ?? data['shift_id'])?.toString();
         final String? templateId =
@@ -96,7 +87,7 @@ class TaskBackfillService {
           if (templateId != null && templateId.isNotEmpty) {
             wants['templateId'] = templateId;
           }
-          if (dateString != null && dateString.isNotEmpty) {
+          if (dateString?.isNotEmpty == true) {
             wants['dateString'] = dateString;
           }
 
