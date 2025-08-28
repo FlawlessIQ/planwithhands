@@ -33,12 +33,28 @@ void main() async {
     logger.d('[MAIN] Setting path URL strategy for web');
   }
 
-  // Initialize Firebase
-  if (Firebase.apps.isEmpty) {
-    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-    logger.d('[MAIN] Firebase initialized');
-  } else {
-    logger.d('[MAIN] Firebase already initialized');
+  // Initialize Firebase safely. Some plugins or native SDKs may configure
+  // Firebase on the native side which can cause a duplicate-app exception
+  // when Dart also calls initializeApp. Wrap in a defensive try/catch so
+  // the app still starts in that case.
+  try {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+      logger.d('[MAIN] Firebase initialized');
+    } else {
+      logger.d('[MAIN] Firebase already initialized');
+    }
+  } on FirebaseException catch (e) {
+    // firebase_core throws a FirebaseException when an app already exists.
+    if (e.code == 'duplicate-app' || (e.message?.contains('already exists') ?? false)) {
+      logger.d('[MAIN] Firebase already configured (caught duplicate-app)');
+    } else {
+      logger.e('[MAIN] Firebase initialization failed: $e', e);
+      rethrow;
+    }
+  } catch (e) {
+    logger.e('[MAIN] Firebase initialization failed: $e', e);
+    rethrow;
   }
 
   // Dev helper: when running the web app on localhost, point Storage to the local emulator
