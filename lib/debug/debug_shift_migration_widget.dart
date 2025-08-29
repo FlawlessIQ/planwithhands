@@ -6,6 +6,7 @@ import 'package:hands_app/services/daily_checklist_service.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/utils/location_helper.dart';
 import 'package:hands_app/utils/jobtype_helper.dart';
+import 'package:hands_app/widgets/responsive_appbar_title.dart';
 
 class DebugShiftMigrationWidget extends StatefulWidget {
   const DebugShiftMigrationWidget({super.key});
@@ -302,7 +303,7 @@ class _DebugShiftMigrationWidgetState extends State<DebugShiftMigrationWidget> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Debug: Shift Migration'), backgroundColor: Colors.orange),
+      appBar: AppBar(title: const ResponsiveAppBarTitle('Debug: Shift Migration'), backgroundColor: Colors.orange),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(

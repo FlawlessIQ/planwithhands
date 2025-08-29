@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
@@ -19,6 +20,7 @@ import 'package:hands_app/services/organization_setup_service.dart';
 import 'package:hands_app/services/location_selection_service.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/widgets/organization_setup_widget.dart';
+import 'package:hands_app/features/dashboard/pages/WEB_manager_dashboard_page.dart' as web_dashboard;
 
 class ManagerDashboardPage extends StatefulWidget {
   final String organizationId;
@@ -152,6 +154,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
     _refreshTimer?.cancel();
     // Remove global listener
     _locationSelectionService.listenable.removeListener(_onGlobalLocationChanged);
+    // Reset orientation when leaving the page
+    _resetOrientation();
     super.dispose();
   }
 
@@ -876,10 +880,49 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
     });
   }
 
+  // ===== TABLET DETECTION =====
+
+  bool _isTablet(BuildContext context) {
+    final mediaQuery = MediaQuery.of(context);
+    final screenWidth = mediaQuery.size.width;
+    final screenHeight = mediaQuery.size.height;
+    final diagonal = sqrt(pow(screenWidth, 2) + pow(screenHeight, 2));
+
+    // Consider it a tablet if:
+    // 1. Diagonal is greater than typical phone size (around 900 logical pixels)
+    // 2. OR width is greater than 768 (typical tablet breakpoint)
+    return diagonal > 900 || screenWidth > 768;
+  }
+
+  void _setTabletLandscapeOrientation() {
+    SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+  }
+
+  void _resetOrientation() {
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+  }
+
   // ===== UI =====
 
   @override
   Widget build(BuildContext context) {
+    // Check if this is a tablet device
+    final isTablet = _isTablet(context);
+
+    // For tablets, force landscape orientation and use web version
+    if (isTablet) {
+      _setTabletLandscapeOrientation();
+      return web_dashboard.ManagerDashboardPage(organizationId: widget.organizationId);
+    } else {
+      // For phones, allow all orientations
+      _resetOrientation();
+    }
+
     if (_isLoadingLocations || _isLoadingUserRole || _isLoadingSetupStatus) {
       return Scaffold(
         backgroundColor: HandsColors.scaffoldBackground,

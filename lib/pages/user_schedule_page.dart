@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hands_app/data/models/shift_data.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/widgets/responsive_appbar_title.dart';
 
 class UserSchedulePage extends StatefulWidget {
   const UserSchedulePage({super.key});
@@ -70,8 +71,7 @@ class _UserSchedulePageState extends State<UserSchedulePage> {
   }
 
   Future<String?> _getUserOrganizationId(String userId) async {
-    final userDoc =
-        await FirestoreEnforcer.instance.collection('users').doc(userId).get();
+    final userDoc = await FirestoreEnforcer.instance.collection('users').doc(userId).get();
     if (!userDoc.exists) return null;
     final data = userDoc.data()!;
     return data['organizationId'] as String?;
@@ -80,7 +80,7 @@ class _UserSchedulePageState extends State<UserSchedulePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('My Schedule'), centerTitle: true),
+      appBar: AppBar(title: const ResponsiveAppBarTitle('My Schedule'), centerTitle: true),
       body:
           _loading
               ? const Center(child: CircularProgressIndicator())
@@ -94,10 +94,7 @@ class _UserSchedulePageState extends State<UserSchedulePage> {
                   final shift = _publishedShifts[index];
                   final isAssigned = shift.assignedUserIds.contains(_userId);
                   return Card(
-                    margin: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
+                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     child: ListTile(
                       leading: Icon(
                         isAssigned ? Icons.check_circle : Icons.group,
@@ -108,22 +105,17 @@ class _UserSchedulePageState extends State<UserSchedulePage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text('${shift.startTime} - ${shift.endTime}'),
-                          if (shift.locationIds.isNotEmpty)
-                            Text('Location: ${shift.locationIds.join(", ")}'),
+                          if (shift.locationIds.isNotEmpty) Text('Location: ${shift.locationIds.join(", ")}'),
                           const SizedBox(height: 4),
                           Text('Assigned: ${shift.assignedUserIds.length}'),
-                          if (shift.assignedUserIds.isNotEmpty)
-                            Text('Users: ${shift.assignedUserIds.join(", ")}'),
+                          if (shift.assignedUserIds.isNotEmpty) Text('Users: ${shift.assignedUserIds.join(", ")}'),
                         ],
                       ),
                       trailing:
                           isAssigned
                               ? const Text(
                                 'Assigned',
-                                style: TextStyle(
-                                  color: Colors.green,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                                style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
                               )
                               : null,
                     ),

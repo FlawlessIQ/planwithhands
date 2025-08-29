@@ -6,6 +6,7 @@ import 'package:hands_app/pages/admin/create_group_sheet.dart';
 import 'package:hands_app/state/user_state.dart';
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/widgets/professional_message_dialog.dart';
+import 'package:hands_app/widgets/responsive_appbar_title.dart';
 
 class MessagesPage extends ConsumerWidget {
   const MessagesPage({super.key});
@@ -16,7 +17,7 @@ class MessagesPage extends ConsumerWidget {
     final userRole = userState.userData?.userRole ?? 0;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Messages'), centerTitle: true),
+      appBar: AppBar(title: const ResponsiveAppBarTitle('Messages'), centerTitle: true),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(

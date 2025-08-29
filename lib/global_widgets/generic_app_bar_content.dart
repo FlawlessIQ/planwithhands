@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:hands_app/widgets/responsive_appbar_title.dart';
 
 class GenericAppBarContent extends StatelessWidget {
   final String appBarTitle;
@@ -31,7 +32,7 @@ class GenericAppBarContent extends StatelessWidget {
             const SizedBox(width: 12),
             // Title - fully responsive, wraps if needed
             Expanded(
-              child: Text(
+              child: ResponsiveAppBarTitle(
                 appBarTitle,
                 style: GoogleFonts.comfortaa(
                   color: HandsColors.white,
@@ -39,10 +40,7 @@ class GenericAppBarContent extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                   letterSpacing: 1.0,
                 ),
-                textAlign: TextAlign.left,
-                softWrap: true,
-                overflow: TextOverflow.visible,
-                maxLines: 3,
+                maxLines: 2,
               ),
             ),
             // Optionally, add userRole or actions here if needed

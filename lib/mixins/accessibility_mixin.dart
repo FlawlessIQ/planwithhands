@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hands_app/utils/accessibility_helper.dart';
+import 'package:hands_app/widgets/responsive_appbar_title.dart';
 
 /// Mixin that provides accessibility-aware widgets and utilities
 /// Use this mixin in your StatefulWidget State classes to get access to accessibility helpers
@@ -37,7 +38,10 @@ mixin AccessibilityMixin<T extends StatefulWidget> on State<T> {
     bool automaticallyImplyLeading = true,
   }) {
     return AppBar(
-      title: AccessibilityHelper.wrapWithHeaderSemantics(label: semanticLabel ?? title, child: Text(title)),
+      title: AccessibilityHelper.wrapWithHeaderSemantics(
+        label: semanticLabel ?? title,
+        child: ResponsiveAppBarTitle(title),
+      ),
       actions:
           actions?.map((action) {
             if (action is IconButton) {

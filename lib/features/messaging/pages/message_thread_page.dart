@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:hands_app/features/messaging/models/message.dart';
 import 'package:hands_app/features/messaging/services/messaging_service.dart';
+import 'package:hands_app/widgets/responsive_appbar_title.dart';
 
 class MessageThreadPage extends StatefulWidget {
   final String orgId;
@@ -29,7 +30,7 @@ class _MessageThreadPageState extends State<MessageThreadPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Thread')),
+      appBar: AppBar(title: const ResponsiveAppBarTitle('Thread')),
       body: Column(
         children: [
           Expanded(

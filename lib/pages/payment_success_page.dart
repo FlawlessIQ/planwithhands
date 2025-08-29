@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hands_app/routing/routes.dart';
 import 'dart:developer';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/widgets/responsive_appbar_title.dart';
 
 class PaymentSuccessPage extends StatefulWidget {
   const PaymentSuccessPage({super.key});
@@ -156,7 +157,11 @@ class _PaymentSuccessPageState extends State<PaymentSuccessPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Payment Status'), backgroundColor: Colors.transparent, elevation: 0),
+      appBar: AppBar(
+        title: const ResponsiveAppBarTitle('Payment Status'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24.0),

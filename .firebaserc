@@ -5,8 +5,11 @@
   "targets": {
     "plan-with-hands": {
       "hosting": {
-        "hands-web": [
+        "hands-app": [
           "plan-with-hands"
+        ],
+        "hands-web": [
+          "planwithhands-marketing"
         ]
       }
     }

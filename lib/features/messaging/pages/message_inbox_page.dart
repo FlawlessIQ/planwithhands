@@ -4,6 +4,7 @@ import 'package:hands_app/features/messaging/models/message_thread.dart';
 import 'package:hands_app/features/messaging/pages/message_thread_page.dart';
 import 'package:hands_app/features/messaging/services/messaging_service.dart';
 import 'package:hands_app/features/messaging/widgets/thread_composer.dart';
+import 'package:hands_app/widgets/responsive_appbar_title.dart';
 
 class MessageInboxPage extends StatelessWidget {
   final String orgId;
@@ -13,7 +14,7 @@ class MessageInboxPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final svc = MessagingService();
     return Scaffold(
-      appBar: AppBar(title: const Text('Messages')),
+      appBar: AppBar(title: const ResponsiveAppBarTitle('Messages')),
       body: StreamBuilder<List<MessageThread>>(
         stream: svc.watchThreads(orgId, FirebaseAuth.instance.currentUser!.uid),
         builder: (context, snap) {

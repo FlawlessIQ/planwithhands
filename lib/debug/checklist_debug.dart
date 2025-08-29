@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/widgets/responsive_appbar_title.dart';
 
 class ChecklistDebugHelper {
   static final FirebaseFirestore _firestore = FirestoreEnforcer.instance;
@@ -251,7 +252,7 @@ class ChecklistDebugWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Checklist Debug Tools')),
+      appBar: AppBar(title: const ResponsiveAppBarTitle('Checklist Debug Tools')),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(

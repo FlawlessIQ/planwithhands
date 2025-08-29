@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hands_app/routing/routes.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/widgets/responsive_appbar_title.dart';
 
 class InvitationPage extends StatefulWidget {
   final String? token;
@@ -26,11 +27,7 @@ class _InvitationPageState extends State<InvitationPage> {
 
   Future<DocumentSnapshot?> _verifyToken(String token) async {
     try {
-      final doc =
-          await FirestoreEnforcer.instance
-              .collection('invites')
-              .doc(token)
-              .get();
+      final doc = await FirestoreEnforcer.instance.collection('invites').doc(token).get();
       if (doc.exists) {
         final data = doc.data() as Map<String, dynamic>;
         final expiresAt = (data['expiresAt'] as Timestamp).toDate();
@@ -55,15 +52,11 @@ class _InvitationPageState extends State<InvitationPage> {
       future: _invitationFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
         if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
-          return _buildErrorScaffold(
-            'This invitation is invalid or has expired.',
-          );
+          return _buildErrorScaffold('This invitation is invalid or has expired.');
         }
 
         // If the token is valid, redirect to the sign-up page
@@ -88,11 +81,7 @@ class _InvitationPageState extends State<InvitationPage> {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           context.go(
             AppRoutes.accountCreationPage.path,
-            extra: {
-              'email': email,
-              'organizationId': organizationId,
-              'token': widget.token,
-            },
+            extra: {'email': email, 'organizationId': organizationId, 'token': widget.token},
           );
         });
 
@@ -104,7 +93,7 @@ class _InvitationPageState extends State<InvitationPage> {
 
   Widget _buildErrorScaffold(String message) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Invitation Error')),
+      appBar: AppBar(title: const ResponsiveAppBarTitle('Invitation Error')),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -113,10 +102,7 @@ class _InvitationPageState extends State<InvitationPage> {
             const SizedBox(height: 20),
             Text(message, style: const TextStyle(fontSize: 16)),
             const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () => context.go(AppRoutes.loginPage.path),
-              child: const Text('Go to Login'),
-            ),
+            ElevatedButton(onPressed: () => context.go(AppRoutes.loginPage.path), child: const Text('Go to Login')),
           ],
         ),
       ),

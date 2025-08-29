@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:hands_app/ui/location_bottom_sheet_new.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/widgets/responsive_appbar_title.dart';
 
 class ManageLocationsPage extends StatefulWidget {
   final String organizationId;
@@ -130,7 +131,7 @@ class _ManageLocationsPageState extends State<ManageLocationsPage> {
     final locsRef = orgRef.collection('locations').orderBy('createdAt', descending: false);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Manage Locations')),
+      appBar: AppBar(title: const ResponsiveAppBarTitle('Manage Locations')),
       body: StreamBuilder<QuerySnapshot>(
         stream: locsRef.snapshots(),
         builder: (context, snap) {

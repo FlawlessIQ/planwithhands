@@ -10,6 +10,7 @@ import 'package:hands_app/services/stripe_service.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:hands_app/widgets/responsive_appbar_title.dart';
 import 'package:hands_app/firebase_options.dart';
 import 'package:hands_app/ui/upgrade_location_sheet.dart';
 
@@ -239,7 +240,7 @@ class _LocationWizardState extends State<LocationWizard> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.locationId != null ? 'Edit Location' : 'Add Location')),
+      appBar: AppBar(title: ResponsiveAppBarTitle(widget.locationId != null ? 'Edit Location' : 'Add Location')),
       body:
           !_initialized || _loading
               ? const Center(child: CircularProgressIndicator())
