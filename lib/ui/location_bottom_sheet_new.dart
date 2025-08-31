@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:hands_app/config/feature_flags.dart';
 import 'package:hands_app/services/stripe_service.dart';
+import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -707,8 +708,8 @@ class _LocationRowState extends State<_LocationRow> {
               Container(
                 margin: const EdgeInsets.only(top: 6),
                 decoration: BoxDecoration(
-                  color: Colors.grey[50],
-                  border: Border.all(color: Colors.grey[300]!),
+                  color: HandsColors.secondaryContainer,
+                  border: Border.all(color: HandsColors.white12),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Column(

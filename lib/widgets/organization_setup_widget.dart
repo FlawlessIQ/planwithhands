@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hands_app/services/organization_setup_service.dart';
 import 'package:hands_app/core/logging/logger.dart';
+import 'package:hands_app/theme/theme.dart';
 
 /// Widget that displays organization setup progress and allows enabling metrics tracking
 ///
@@ -33,6 +34,7 @@ class _OrganizationSetupWidgetState extends State<OrganizationSetupWidget> {
 
     try {
       final status = await _setupService.getSetupStatus(widget.organizationId);
+      logger.d('[OrganizationSetupWidget] Setup status loaded: $status');
       setState(() {
         _setupStatus = status;
         _isLoading = false;
@@ -106,16 +108,26 @@ class _OrganizationSetupWidgetState extends State<OrganizationSetupWidget> {
     final allRequirementsMet = _setupStatus['allRequirementsMet'] as bool? ?? false;
     final requirements = _setupStatus['requirements'] as Map<String, dynamic>? ?? {};
 
+    logger.d(
+      '[OrganizationSetupWidget] Building widget - completion: $completionPercentage, allMet: $allRequirementsMet, requirements: ${requirements.keys}',
+    );
+
     return Card(
       margin: const EdgeInsets.all(16),
       elevation: 4,
+      color: HandsColors.primaryContainer, // Use dark card background
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(8),
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Theme.of(context).primaryColor.withValues(alpha: 0.1), Colors.white],
+            colors: [
+              Theme.of(context).primaryColor.withValues(alpha: 0.4),
+              Theme.of(context).primaryColor.withValues(alpha: 0.25),
+              Theme.of(context).primaryColor.withValues(alpha: 0.15),
+            ],
+            stops: const [0.0, 0.7, 1.0],
           ),
         ),
         child: Padding(
@@ -148,7 +160,7 @@ class _OrganizationSetupWidgetState extends State<OrganizationSetupWidget> {
                         ),
                         Text(
                           'Finish setting up your organization to start tracking metrics',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[700]),
                         ),
                       ],
                     ),
@@ -215,8 +227,6 @@ class _OrganizationSetupWidgetState extends State<OrganizationSetupWidget> {
                   logger.w('[OrganizationSetupWidget] Skipping malformed requirement entry ${entry.key}: $e');
                 }
                 final isComplete = requirement['met'] as bool? ?? false;
-                final count = requirement['count'] as int? ?? 0;
-                final required = requirement['required'] as int? ?? 1;
                 final name = requirement['name'] as String? ?? 'Unknown';
                 final description = requirement['description'] as String? ?? '';
                 final icon = requirement['icon'] as String? ?? '📋';
@@ -253,15 +263,8 @@ class _OrganizationSetupWidgetState extends State<OrganizationSetupWidget> {
                             ),
                             Text(
                               description,
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
                             ),
-                            if (!isComplete && required > 1)
-                              Text(
-                                'Current: $count / Required: $required',
-                                style: Theme.of(
-                                  context,
-                                ).textTheme.bodySmall?.copyWith(color: Colors.orange[700], fontWeight: FontWeight.w500),
-                              ),
                           ],
                         ),
                       ),
@@ -272,92 +275,70 @@ class _OrganizationSetupWidgetState extends State<OrganizationSetupWidget> {
 
               const SizedBox(height: 24),
 
-              // Action section
-              if (allRequirementsMet) ...[
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+              // Action section - Always show option to begin tracking
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: allRequirementsMet ? Colors.green.withValues(alpha: 0.1) : Colors.blue.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color:
+                        allRequirementsMet ? Colors.green.withValues(alpha: 0.3) : Colors.blue.withValues(alpha: 0.3),
                   ),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.celebration, color: Colors.green),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Setup Complete!',
-                              style: Theme.of(
-                                context,
-                              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.green[700]),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          allRequirementsMet ? Icons.celebration : Icons.trending_up,
+                          color: allRequirementsMet ? Colors.green : Colors.blue,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            allRequirementsMet ? 'Setup Complete!' : 'Ready to Track Performance',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: allRequirementsMet ? Colors.green[700] : Colors.blue[700],
                             ),
                           ),
-                        ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      allRequirementsMet
+                          ? 'Your organization is ready to start tracking daily metrics, completion rates, and operational insights.'
+                          : 'Start tracking performance data now. You can complete remaining setup steps later.',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: allRequirementsMet ? Colors.green[700] : Colors.blue[700],
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Your organization is ready to start tracking daily metrics, completion rates, and operational insights.',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.green[700]),
-                      ),
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: _isEnabling ? null : _enableMetricsTracking,
-                          icon:
-                              _isEnabling
-                                  ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  )
-                                  : const Icon(Icons.analytics),
-                          label: Text(_isEnabling ? 'Enabling...' : 'Start Tracking Metrics'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _isEnabling ? null : _enableMetricsTracking,
+                        icon:
+                            _isEnabling
+                                ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                                : const Icon(Icons.analytics),
+                        label: Text(_isEnabling ? 'Enabling...' : 'Begin Tracking Performance'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: allRequirementsMet ? Colors.green : Colors.blue,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ] else ...[
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.info_outline, color: Colors.orange),
-                          const SizedBox(width: 12),
-                          Text(
-                            'Complete remaining steps',
-                            style: Theme.of(
-                              context,
-                            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.orange[700]),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Finish setting up the items above to enable metrics tracking. This ensures you have meaningful data to analyze.',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.orange[700]),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+              ),
             ],
           ),
         ),

@@ -24,6 +24,7 @@ import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/services/location_selection_service.dart';
 import 'package:hands_app/services/native_photo_service.dart';
+import 'package:hands_app/services/shift_assignment_service.dart';
 
 // --- MAIN DASHBOARD PAGE ---
 
@@ -45,6 +46,8 @@ class UserDashboardPage extends HookConsumerWidget {
     final missedTasksSections = useState<List<MissedTasksSection>>([]);
     final missedTasksLoading = useState(false);
     final lastLoadedDate = useState<String?>(null);
+    // Store the location used for missed tasks to prevent them disappearing when shifts are joined
+    final missedTasksLocationId = useState<String?>(null);
 
     // Local hook state for role-aware shifts & missed tasks (kept separate from the older missedTasksSections)
     final shifts = useState<List<Map<String, dynamic>>>(const []);
@@ -87,6 +90,8 @@ class UserDashboardPage extends HookConsumerWidget {
           final match = availableLocations.value.firstWhere((l) => l['id'] == g, orElse: () => {});
           if (match.isNotEmpty) selectedLocationName.value = match['name'];
         } catch (_) {}
+        // Reset missed tasks location so they reload for the new location
+        missedTasksLocationId.value = null;
         // Request a reload via flag (avoids forward reference to local function)
         shouldReload.value = true;
       }
@@ -266,19 +271,23 @@ class UserDashboardPage extends HookConsumerWidget {
           return;
         }
 
-        // Perform daily volunteer cleanup to remove expired volunteer assignments
-        // This ensures users don't see shifts from yesterday that have already ended
-        // Only run cleanup once per day to avoid interfering with active work
-        // DISABLED: Cleanup is too aggressive and removes users from active shifts
-        // TODO: Implement a more conservative cleanup that only runs overnight
-        logger.d("[Dashboard] ===== DAILY SHIFT CLEANUP DISABLED =====");
-        // await _performDailyVolunteerCleanupIfNeeded(organizationId.value!, lastCleanupDate, todayString);
-        logger.d("[Dashboard] ===== DAILY SHIFT CLEANUP SKIPPED =====");
+        // Perform daily volunteer cleanup and consistency repair
+        // This ensures users don't see shifts from yesterday and fixes any data inconsistencies
+        logger.d("[Dashboard] ===== DAILY SHIFT CLEANUP & REPAIR =====");
+        try {
+          final shiftAssignmentService = ShiftAssignmentService();
+          await shiftAssignmentService.cleanupExpiredVolunteerJoins(organizationId: organizationId.value!);
+          await shiftAssignmentService.repairShiftAssignmentConsistency(organizationId: organizationId.value!);
+          logger.d("[Dashboard] Daily cleanup and repair completed successfully");
+        } catch (e) {
+          logger.e("[Dashboard] Daily cleanup failed: $e");
+        }
+        logger.d("[Dashboard] ===== DAILY SHIFT CLEANUP & REPAIR COMPLETE =====");
 
         // Always start with empty shifts for a fresh daily experience
         // Users must actively select or be assigned shifts each day
         // This ensures expired volunteer shifts don't carry over automatically
-//         assignedShifts.value = [];
+        //         assignedShifts.value = [];
         allChecklists.value = [];
         selectedLocationIds.value = [];
 
@@ -297,7 +306,13 @@ class UserDashboardPage extends HookConsumerWidget {
                   try {
                     final shiftLocs = coerceToLocationIds(shift.locationIds);
                     // Keep shift only if it matches the selected location
-                    if (shiftLocs.contains(selectedLocationId.value)) return true; final volunteers = shift.volunteers; if (volunteers.contains(user.uid)) { logger.d("[Dashboard] Preserving volunteer-joined shift ${shift.shiftName} across locations"); return true; } return false;
+                    if (shiftLocs.contains(selectedLocationId.value)) return true;
+                    final volunteers = shift.volunteers;
+                    if (volunteers.contains(user.uid)) {
+                      logger.d("[Dashboard] Preserving volunteer-joined shift ${shift.shiftName} across locations");
+                      return true;
+                    }
+                    return false;
                   } catch (e) {
                     logger.w('[Dashboard] Error while filtering shifts by location: $e');
                     return false;
@@ -374,33 +389,43 @@ class UserDashboardPage extends HookConsumerWidget {
 
           // Use the new collectionGroup-backed stream/loader for missed tasks in subcollections
           // Harden access: ensure we only request missed tasks for a location the user actually has access to.
-          // Determine an effectiveLocationId from the UI-selected location or fallback to a primary/first location
-          String? effectiveLocationId = selectedLocationId.value;
+          // Use a stable location ID for missed tasks to prevent them disappearing when joining new shifts
+          String? effectiveLocationId = missedTasksLocationId.value ?? selectedLocationId.value;
 
-          // If selected location isn't in availableLocations, pick the primary or first available (if any)
-          try {
-            final availableIds = availableLocations.value.map((l) => l['id'] as String).toList();
-            if (!availableIds.contains(effectiveLocationId)) {
-              effectiveLocationId = null;
-            }
-            if (effectiveLocationId == null && availableIds.isNotEmpty) {
-              // For non-admin users we must always filter by a location; admins may leave it null.
-              if (userRole.value == 2) {
-                // Keep null for admins to allow org-wide view
+          // If missed tasks location hasn't been set yet, determine it from available locations
+          if (missedTasksLocationId.value == null) {
+            // If selected location isn't in availableLocations, pick the primary or first available (if any)
+            try {
+              final availableIds = availableLocations.value.map((l) => l['id'] as String).toList();
+              if (!availableIds.contains(effectiveLocationId)) {
                 effectiveLocationId = null;
-              } else {
-                // Choose the primary or first available location
-                final primary = availableLocations.value.firstWhere(
-                  (l) => l['isPrimary'] == true,
-                  orElse: () => availableLocations.value.first,
-                );
-                effectiveLocationId = primary['id'] as String;
               }
+              if (effectiveLocationId == null && availableIds.isNotEmpty) {
+                // For non-admin users we must always filter by a location; admins may leave it null.
+                if (userRole.value == 2) {
+                  // Keep null for admins to allow org-wide view
+                  effectiveLocationId = null;
+                } else {
+                  // Choose the primary or first available location
+                  final primary = availableLocations.value.firstWhere(
+                    (l) => l['isPrimary'] == true,
+                    orElse: () => availableLocations.value.first,
+                  );
+                  effectiveLocationId = primary['id'] as String;
+                }
+              }
+              // Store this location for missed tasks to prevent it changing when shifts are joined
+              missedTasksLocationId.value = effectiveLocationId;
+            } catch (e) {
+              logger.e('[Dashboard] Error resolving effectiveLocationId for missed tasks: $e', e);
+              effectiveLocationId = selectedLocationId.value;
+              missedTasksLocationId.value = effectiveLocationId;
             }
-          } catch (e) {
-            logger.e('[Dashboard] Error resolving effectiveLocationId for missed tasks: $e', e);
-            effectiveLocationId = selectedLocationId.value;
           }
+
+          logger.i(
+            '[Dashboard] Loading missed tasks for location: $effectiveLocationId (stable: ${missedTasksLocationId.value}, selected: ${selectedLocationId.value})',
+          );
 
           var sections = await DailyChecklistService().loadMissedTasksForToday(
             organizationId: organizationId.value!,
@@ -730,6 +755,8 @@ class UserDashboardPage extends HookConsumerWidget {
                   orElse: () => <String, String>{'name': 'Unknown Location'},
                 );
                 selectedLocationName.value = selected['name'];
+                // Reset missed tasks location so they reload for the new location
+                missedTasksLocationId.value = null;
                 // Persist globally so other pages adopt the change
                 try {
                   LocationSelectionService.instance.setLocation(value);
@@ -867,12 +894,20 @@ class UserDashboardPage extends HookConsumerWidget {
                                     "[Dashboard] User chose to help with shift '${shift.shiftName}' at location '$locationId'",
                                   );
 
-                                  // Add user to shift's volunteers array
+                                  // Add user to shift's volunteers array using centralized service
                                   final user = FirebaseAuth.instance.currentUser;
                                   if (user != null) {
                                     try {
-                                      // If the shift already lists this user as a volunteer, don't attempt to re-add.
-                                      if (shift.volunteers.contains(user.uid)) {
+                                      final shiftAssignmentService = ShiftAssignmentService();
+
+                                      // Check if already assigned to avoid duplicate operations
+                                      final alreadyAssigned = await shiftAssignmentService.isUserAssignedToShift(
+                                        organizationId: organizationId.value!,
+                                        shiftId: shift.shiftId,
+                                        userId: user.uid,
+                                      );
+
+                                      if (alreadyAssigned) {
                                         ScaffoldMessenger.of(context).showSnackBar(
                                           SnackBar(
                                             content: Text('You are already signed up for ${shift.shiftName}.'),
@@ -880,28 +915,27 @@ class UserDashboardPage extends HookConsumerWidget {
                                             duration: const Duration(seconds: 2),
                                           ),
                                         );
-                                        logger.d("[Dashboard] User already in volunteers for shift ${shift.shiftId}");
+                                        logger.d("[Dashboard] User already assigned to shift ${shift.shiftId}");
                                       } else {
-                                        await FirestoreEnforcer.instance
-                                            .collection('organizations')
-                                            .doc(organizationId.value!)
-                                            .collection('shifts')
-                                            .doc(shift.shiftId)
-                                            .update({
-                                              'volunteers': FieldValue.arrayUnion([user.uid]),
-                                              // Track that this user explicitly joined this shift for TODAY only
-                                              'volunteerJoins.${user.uid}': todayString,
-                                            });
-
-                                        // Show success message
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: Text('Successfully joined ${shift.shiftName}!'),
-                                            backgroundColor: Colors.green,
-                                            duration: const Duration(seconds: 2),
-                                          ),
+                                        final success = await shiftAssignmentService.joinShift(
+                                          organizationId: organizationId.value!,
+                                          shiftId: shift.shiftId,
+                                          userId: user.uid,
                                         );
-                                        logger.d("[Dashboard] Successfully added user to shift volunteers");
+
+                                        if (success) {
+                                          // Show success message
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text('Successfully joined ${shift.shiftName}!'),
+                                              backgroundColor: Colors.green,
+                                              duration: const Duration(seconds: 2),
+                                            ),
+                                          );
+                                          logger.d("[Dashboard] Successfully joined shift using centralized service");
+                                        } else {
+                                          throw Exception('Failed to join shift');
+                                        }
                                       }
 
                                       // Optimistically ensure the joined shift appears immediately in the UI for the current session.
@@ -1284,47 +1318,23 @@ Future<List<ShiftData>> _getAllShiftsForToday(String userId, String todayDayName
 
   // 3. Also include volunteer shifts the user joined (if active today)
   try {
-    logger.d("[Dashboard][DEBUG] Checking for volunteer shifts...");
-    final volunteeredShiftsSnapshot =
-        await FirestoreEnforcer.instance
-            .collection('organizations')
-            .doc(organizationId)
-            .collection('shifts')
-            .where('volunteers', arrayContains: userId)
-            .get();
+    logger.d("[Dashboard][DEBUG] Getting assigned shifts using centralized service...");
+    final shiftAssignmentService = ShiftAssignmentService();
+    final assignedVolunteerShifts = await shiftAssignmentService.getAssignedShifts(
+      organizationId: organizationId,
+      userId: userId,
+      targetDate: DateTime.tryParse('${todayString}T00:00:00Z'),
+    );
 
-    logger.d("[Dashboard][DEBUG] Found ${volunteeredShiftsSnapshot.docs.length} volunteer shifts");
-    for (final doc in volunteeredShiftsSnapshot.docs) {
-      try {
-        final data = doc.data();
-        logger.d("[Dashboard][DEBUG] Volunteer shift doc.id=${doc.id}, data=$data");
-        final shift = ShiftData.fromJson(data).copyWith(shiftId: doc.id);
-
-        final vj = (data['volunteerJoins'] as Map?)?.cast<String, dynamic>();
-        final joinedMarker = vj != null ? vj[userId] : null;
-        final joinedToday = joinedMarker == todayString;
-
-        // For volunteer shifts, only include them if the user explicitly joined *today*.
-        // This prevents yesterday's volunteer shifts from carrying over.
-        if (joinedToday) {
-          logger.d("[Dashboard][DEBUG] User joined volunteer shift today: ${shift.shiftName} (marker=$joinedMarker)");
-          if (!allShifts.any((existingShift) => existingShift.shiftId == shift.shiftId)) {
-            allShifts.add(shift);
-            logger.d("[Dashboard][DEBUG] Added volunteer shift to list (joinedToday): ${shift.shiftName}");
-          } else {
-            logger.d("[Dashboard][DEBUG] Volunteer shift already in list (joinedToday): ${shift.shiftName}");
-          }
-        } else {
-          logger.d(
-            "[Dashboard][DEBUG] Volunteer shift ${shift.shiftName} was not joined today (marker=$joinedMarker), skipping.",
-          );
-        }
-      } catch (e, stack) {
-        logger.e("[Dashboard][DEBUG] Failed to parse volunteer shift doc ${doc.id}: $e", e, stack);
+    logger.d("[Dashboard][DEBUG] Found ${assignedVolunteerShifts.length} assigned volunteer shifts");
+    for (final shift in assignedVolunteerShifts) {
+      if (!allShifts.any((existingShift) => existingShift.shiftId == shift.shiftId)) {
+        allShifts.add(shift);
+        logger.d("[Dashboard][DEBUG] Added assigned volunteer shift: ${shift.shiftName}");
       }
     }
   } catch (e, stack) {
-    logger.e("[Dashboard][DEBUG] Error checking volunteer shifts: $e", e, stack);
+    logger.e("[Dashboard][DEBUG] Error getting assigned volunteer shifts: $e", e, stack);
   }
 
   // 4. Role-based filtering: employees (userRole 0) should only see shifts matching their jobTypes
@@ -1397,7 +1407,6 @@ String _formatSchedule(Map<String, dynamic> s) {
   final names = days.map(mapDay).join(' ');
   return range.isEmpty ? names : '$names • $range';
 }
-
 
 // Helper to load checklists for a shift (returns list)
 Future<List<DailyChecklist>> _loadChecklistsForShiftSimple(
@@ -1525,18 +1534,19 @@ Future<void> _leaveVolunteerShift(
   if (confirmed != true) return;
 
   try {
-    // Remove user from volunteers array and their dated join marker
-    await FirestoreEnforcer.instance
-        .collection('organizations')
-        .doc(organizationId)
-        .collection('shifts')
-        .doc(shift.shiftId)
-        .update({
-          'volunteers': FieldValue.arrayRemove([user.uid]),
-          'volunteerJoins.${user.uid}': FieldValue.delete(),
-        });
+    // Remove user from shift using centralized service
+    final shiftAssignmentService = ShiftAssignmentService();
+    final success = await shiftAssignmentService.leaveShift(
+      organizationId: organizationId,
+      shiftId: shift.shiftId,
+      userId: user.uid,
+    );
 
-    logger.d("[Dashboard] Successfully removed user from shift volunteers");
+    if (!success) {
+      throw Exception('Failed to leave shift');
+    }
+
+    logger.d("[Dashboard] Successfully removed user from shift using centralized service");
 
     // Refresh the dashboard to remove the shift from display
     logger.d("[Dashboard] Refreshing dashboard after leaving volunteer shift...");
@@ -1759,9 +1769,6 @@ class _HelpOutDialog extends StatelessWidget {
 
   Future<List<ShiftData>> _getAvailableShifts() async {
     try {
-      final now = DateTime.now();
-      final todayString = DateFormat('yyyy-MM-dd').format(now);
-
       if (selectedLocationId == null) return [];
 
       // Get all shifts for the organization that apply to this location.
@@ -1894,35 +1901,25 @@ class _HelpOutDialog extends StatelessWidget {
           debugPrint('[HelpOutSheet] Shift ${shift.shiftName} within time window: $withinWindow');
           if (!withinWindow) continue;
 
-          // Skip if user already joined this shift today (volunteerJoins.{uid} == todayString)
+          // Skip if user already joined this shift today using centralized check
           try {
             final currentUser = FirebaseAuth.instance.currentUser;
-            // Only hide already-joined shifts for general users (userRole == 0).
             if (currentUser != null && userRole == 0) {
-              final vj = (raw['volunteerJoins'] as Map?)?.cast<String, dynamic>();
-              final joinedMarker = vj != null ? vj[currentUser.uid] : null;
-              if (joinedMarker == todayString) {
-                debugPrint(
-                  '[HelpOutSheet] Skipping shift ${shift.shiftName} because user already joined today (marker=$joinedMarker)',
-                );
-                continue;
-              }
+              final shiftAssignmentService = ShiftAssignmentService();
+              final alreadyAssigned = await shiftAssignmentService.isUserAssignedToShift(
+                organizationId: this.organizationId,
+                shiftId: shift.shiftId,
+                userId: currentUser.uid,
+              );
 
-              // Also skip if the user is already listed in the shift's volunteers array
-              try {
-                final rawVols = (raw['volunteers'] as List?)?.map((e) => e.toString()).toList() ?? [];
-                if (rawVols.contains(currentUser.uid)) {
-                  debugPrint(
-                    '[HelpOutSheet] Skipping shift ${shift.shiftName} because user is already in volunteers array',
-                  );
-                  continue;
-                }
-              } catch (e) {
-                // ignore volunteers parsing errors
+              if (alreadyAssigned) {
+                debugPrint('[HelpOutSheet] Skipping shift ${shift.shiftName} because user is already assigned');
+                continue;
               }
             }
           } catch (e) {
-            // ignore join-check errors and proceed
+            // ignore assignment check errors and proceed
+            debugPrint('[HelpOutSheet] Error checking assignment status: $e');
           }
 
           // Role-based visibility:
@@ -2560,6 +2557,12 @@ class _ConsolidatedMissedTasksCard extends HookWidget {
       (sum, section) => sum + section.tasks.where((task) => task.completed).length,
     );
     final progress = totalTasks > 0 ? completedTasks / totalTasks : 0.0;
+
+    // Debug logging for count verification
+    print(
+      'USER DASHBOARD COUNT DEBUG: $totalTasks total tasks across ${sections.length} shifts (completed: $completedTasks)',
+    );
+    debugPrint('[UserDashboard] DISPLAY: $totalTasks tasks across ${sections.length} shifts');
 
     return Card(
       elevation: 2,

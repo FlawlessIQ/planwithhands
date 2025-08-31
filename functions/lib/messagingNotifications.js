@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendMessageNotification = exports.onMessageCreated = void 0;
+exports.onGeneralNotificationCreated = exports.sendMessageNotification = exports.onMessageCreated = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 /**
@@ -79,7 +79,7 @@ exports.onMessageCreated = functions.firestore
                 .where("userId", "==", userId)
                 .where("isActive", "==", true)
                 .get();
-            const tokens = tokenSnap.docs.map((doc) => doc.data().token);
+            const tokens = tokenSnap.docs.map((doc) => doc.data().fcmToken);
             return { userId, tokens };
         });
         const userTokens = await Promise.all(tokenPromises);
@@ -199,7 +199,7 @@ exports.sendMessageNotification = functions.https.onCall(async (data, context) =
                 .where("userId", "==", userId)
                 .where("isActive", "==", true)
                 .get();
-            return tokenSnap.docs.map((doc) => doc.data().token);
+            return tokenSnap.docs.map((doc) => doc.data().fcmToken);
         });
         const userTokenArrays = await Promise.all(tokenPromises);
         const allTokens = userTokenArrays.flat();
@@ -284,3 +284,148 @@ async function cleanupInvalidTokens(invalidTokens) {
         console.error("Error cleaning up invalid tokens:", error);
     }
 }
+/**
+ * Trigger when a new general notification is created
+ * Sends push notifications to targeted recipients based on notification type
+ */
+exports.onGeneralNotificationCreated = functions.firestore
+    .document("organizations/{orgId}/notifications/{notifId}")
+    .onCreate(async (snap, context) => {
+    const notification = snap.data();
+    const notifId = context.params.notifId;
+    const orgId = context.params.orgId;
+    try {
+        console.log(`Processing general notification: ${notifId} in org: ${orgId}`);
+        // Skip if this is a user-specific notification (already has userId)
+        if (notification.userId) {
+            console.log("Skipping user-specific notification - already processed");
+            return;
+        }
+        const targetType = notification.targetType;
+        const targetId = notification.targetId;
+        let recipientUserIds = [];
+        // Determine recipients based on target type
+        switch (targetType) {
+            case 'all':
+                // Get all active users in the organization
+                const allUsersSnap = await admin.firestore()
+                    .collection("users")
+                    .where("organizationId", "==", orgId)
+                    .where("isActive", "==", true)
+                    .get();
+                recipientUserIds = allUsersSnap.docs.map(doc => doc.id);
+                break;
+            case 'group':
+                // Get users in the specified group
+                const groupDoc = await admin.firestore()
+                    .collection("organizations")
+                    .doc(orgId)
+                    .collection("groups")
+                    .doc(targetId)
+                    .get();
+                if (groupDoc.exists) {
+                    const groupData = groupDoc.data();
+                    recipientUserIds = groupData?.userIds || [];
+                }
+                break;
+            case 'location':
+                // Get users assigned to the specified location
+                const locationUsersSnap = await admin.firestore()
+                    .collection("users")
+                    .where("organizationId", "==", orgId)
+                    .where("isActive", "==", true)
+                    .where("locationIds", "array-contains", targetId)
+                    .get();
+                recipientUserIds = locationUsersSnap.docs.map(doc => doc.id);
+                break;
+            default:
+                console.log(`Unknown target type: ${targetType}`);
+                return;
+        }
+        if (recipientUserIds.length === 0) {
+            console.log("No recipients found for notification");
+            return;
+        }
+        console.log(`Notifying ${recipientUserIds.length} recipients for ${targetType} notification`);
+        // Get FCM tokens for recipients
+        const tokenPromises = recipientUserIds.map(async (userId) => {
+            const tokenSnap = await admin.firestore()
+                .collection("deviceTokens")
+                .where("userId", "==", userId)
+                .where("isActive", "==", true)
+                .get();
+            const tokens = tokenSnap.docs.map((doc) => doc.data().fcmToken);
+            return { userId, tokens };
+        });
+        const userTokens = await Promise.all(tokenPromises);
+        const allTokens = [];
+        userTokens.forEach(({ tokens }) => {
+            allTokens.push(...tokens);
+        });
+        if (allTokens.length === 0) {
+            console.log("No FCM tokens found for recipients");
+            return;
+        }
+        // Create notification documents for each recipient
+        const batch = admin.firestore().batch();
+        const timestamp = admin.firestore.FieldValue.serverTimestamp();
+        for (const userId of recipientUserIds) {
+            const userNotificationRef = admin.firestore()
+                .collection("organizations")
+                .doc(orgId)
+                .collection("notifications")
+                .doc();
+            batch.set(userNotificationRef, {
+                userId: userId,
+                orgId: orgId,
+                type: "general",
+                title: notification.title || "Notification",
+                message: notification.message || "",
+                read: false,
+                createdAt: timestamp,
+                targetType: targetType,
+                targetId: targetId,
+                // Add TTL - notifications expire after 30 days
+                expiresAt: new Date(Date.now() + (30 * 24 * 60 * 60 * 1000)),
+            });
+        }
+        await batch.commit();
+        // Prepare FCM message
+        const fcmMessage = {
+            notification: {
+                title: notification.title || "Hands App",
+                body: notification.message || "",
+            },
+            data: {
+                type: "general",
+                notificationId: notifId,
+                orgId: orgId,
+                targetType: targetType,
+                targetId: targetId || "",
+            },
+            tokens: allTokens,
+        };
+        // Send push notifications
+        const response = await admin.messaging().sendMulticast(fcmMessage);
+        console.log(`General push notifications sent: ${response.successCount} successful, ${response.failureCount} failed`);
+        // Clean up invalid tokens
+        if (response.responses) {
+            const invalidTokens = [];
+            response.responses.forEach((resp, index) => {
+                if (!resp.success &&
+                    (resp.error?.code === "messaging/registration-token-not-registered" ||
+                        resp.error?.code === "messaging/invalid-registration-token")) {
+                    invalidTokens.push(allTokens[index]);
+                }
+            });
+            if (invalidTokens.length > 0) {
+                console.log(`Cleaning up ${invalidTokens.length} invalid tokens`);
+                await cleanupInvalidTokens(invalidTokens);
+            }
+        }
+    }
+    catch (error) {
+        console.error("Error processing general notification:", error);
+        throw error;
+    }
+});

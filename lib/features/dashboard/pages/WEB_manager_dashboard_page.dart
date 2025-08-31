@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/theme/theme.dart';
+import 'package:hands_app/data/models/missed_tasks_section.dart';
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
@@ -28,7 +29,7 @@ class ManagerDashboardPage extends StatefulWidget {
   State<ManagerDashboardPage> createState() => _ManagerDashboardPageState();
 }
 
-class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
+class _ManagerDashboardPageState extends State<ManagerDashboardPage> with WidgetsBindingObserver {
   // User / setup
   int? userRole;
   bool _isLoadingUserRole = true;
@@ -48,6 +49,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
   // Missed yesterday
   List<Map<String, dynamic>> _yesterdayMissed = [];
+  List<MissedTasksSection> _yesterdayMissedSections = []; // Add raw sections for accurate counting
   bool _loadingYesterday = true;
 
   // 7d trend for missed
@@ -76,10 +78,23 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
     // WEB variant initialization instrumentation
     debugPrint('[WEBManagerDashboard] initState CALLED');
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _todayKey = _dateFormat.format(DateTime.now());
     _selectedLocationId = LocationSelectionService.instance.currentLocationId ?? _selectedLocationId;
     LocationSelectionService.instance.listenable.addListener(_onGlobalLocationChanged);
     _initializeDashboard();
+  }
+
+  // Handle app lifecycle changes to refresh data when user returns
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed && mounted) {
+      // User returned to app - refresh missed tasks data
+      _loadYesterdayMissed().catchError((e) {
+        debugPrint('[ManagerDashboard] Error refreshing data on app resume: $e');
+      });
+    }
   }
 
   void _onGlobalLocationChanged() {
@@ -137,8 +152,10 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
   }
 
   @override
+  @override
   void dispose() {
     _refreshTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     LocationSelectionService.instance.listenable.removeListener(_onGlobalLocationChanged);
     super.dispose();
   }
@@ -302,94 +319,65 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
     try {
       final service = DailyChecklistService();
       final today = DateTime.now();
-
       logger.d('[WEBManagerDashboard] _loadYesterdayMissed ENTER (today=$today, location=$_selectedLocationId)');
       logger.d(
-        '[ManagerDashboard] Starting loadYesterdayMissed - today: $today, selectedLocation: $_selectedLocationId',
+        '[WEBManagerDashboard] Using ONLY carry-forward tasks for Missed Yesterday (disabling supplemental enumeration)',
       );
-      // 1. Direct yesterday computation (does not require carry-forward)
-      final directSections = await service.loadMissedTasksDirectFromYesterday(
+
+      // Load carry-forward based sections (authoritative). Matches user dashboard logic exactly.
+      final cfSections = await service.loadMissedTasksForToday(
         organizationId: widget.organizationId,
-        today: today,
+        targetDate: today,
         locationId: _selectedLocationId,
       );
-      logger.d('[WEBManagerDashboard] Direct yesterday loader returned ${directSections.length} sections');
+      logger.d('[WEBManagerDashboard] CF loader returned ${cfSections.length} sections');
 
-      if (directSections.isNotEmpty) {
-        final Map<String, Map<String, dynamic>> groupedDirect = {};
-        for (final section in directSections) {
-          logger.d('[WEBManagerDashboard] Direct section: ${section.shiftName} tasks=${section.tasks.length}');
-          for (final task in section.tasks) {
-            final key = '${task.taskName}_${section.shiftId}';
-            final g = groupedDirect.putIfAbsent(
-              key,
-              () => {
-                'taskName': task.taskName,
-                'shiftId': section.shiftId,
-                'shiftName': section.shiftName,
-                'locationId': section.locationId,
-                'count': 0,
-                'completedToday': false,
-              },
-            );
-            g['count'] = (g['count'] as int) + 1;
-          }
+      // Build grouped representation (taskName+shiftId) for display while retaining raw sections for accurate counting
+      final Map<String, Map<String, dynamic>> groupedCF = {};
+      for (final section in cfSections) {
+        for (final task in section.tasks) {
+          final key = '${task.taskName}_${section.shiftId}';
+          final g = groupedCF.putIfAbsent(
+            key,
+            () => {
+              'taskName': task.taskName,
+              'shiftId': section.shiftId,
+              'shiftName': section.shiftName,
+              'locationId': section.locationId,
+              'count': 0,
+              // Track whether at least one instance was completed today (boolean)
+              'completedToday': false,
+            },
+          );
+          g['count'] = (g['count'] as int) + 1;
+          if (task.completed) g['completedToday'] = true;
         }
-        _yesterdayMissed = groupedDirect.values.toList();
-        logger.d('[WEBManagerDashboard] MissedYesterday populated via DIRECT path groups=${_yesterdayMissed.length}');
       }
+      _yesterdayMissedSections = cfSections;
+      _yesterdayMissed = groupedCF.values.toList();
 
-      // 2. If still empty, fall back to carry-forward derived path
-      if (_yesterdayMissed.isEmpty) {
-        logger.w('[WEBManagerDashboard] Direct path empty; invoking carry-forward based loader');
-        final cfSections = await service.loadMissedTasksForToday(
-          organizationId: widget.organizationId,
-          targetDate: today,
-          locationId: _selectedLocationId,
-        );
-        logger.d('[WEBManagerDashboard] loadMissedTasksForToday returned ${cfSections.length} sections');
-        final Map<String, Map<String, dynamic>> groupedCF = {};
-        for (final section in cfSections) {
-          for (final task in section.tasks) {
-            final key = '${task.taskName}_${section.shiftId}';
-            final g = groupedCF.putIfAbsent(
-              key,
-              () => {
-                'taskName': task.taskName,
-                'shiftId': section.shiftId,
-                'shiftName': section.shiftName,
-                'locationId': section.locationId,
-                'count': 0,
-                'completedToday': false,
-              },
-            );
-            g['count'] = (g['count'] as int) + 1;
-            if (task.completed) g['completedToday'] = true;
-          }
-        }
-        _yesterdayMissed = groupedCF.values.toList();
-        logger.d('[WEBManagerDashboard] Groups from carry-forward path: ${_yesterdayMissed.length}');
-      }
-
-      // 3. Legacy fallback enumerating today CF tasks (existing helper)
-      if (_yesterdayMissed.isEmpty) {
-        logger.w(
-          '[WEBManagerDashboard] Both direct and CF paths empty; attempting legacy fallback getYesterdayMissedFromTodayCarryForward',
-        );
+      if (_yesterdayMissedSections.isEmpty) {
+        // As a safety, if CF failed to produce anything, fall back to legacy grouped method.
+        logger.w('[WEBManagerDashboard] CF baseline empty; invoking legacy fallback (no direct enumeration)');
         try {
           final fallback = await service.getYesterdayMissedFromTodayCarryForward(
             organizationId: widget.organizationId,
             today: today,
             locationId: _selectedLocationId,
           );
-          logger.w('[WEBManagerDashboard] Legacy fallback returned ${fallback.length} groups');
-          if (fallback.isNotEmpty) _yesterdayMissed = fallback;
+          if (fallback.isNotEmpty) {
+            _yesterdayMissed = fallback;
+            logger.w('[WEBManagerDashboard] Legacy fallback supplied ${fallback.length} grouped entries');
+          }
         } catch (fe, fst) {
           logger.e('[WEBManagerDashboard] Legacy fallback failed: $fe\n$fst');
         }
       }
 
-      logger.d('[WEBManagerDashboard] FINAL MissedYesterday groups=${_yesterdayMissed.length}');
+      final finalRaw = _yesterdayMissedSections.fold<int>(0, (s, sec) => s + sec.tasks.length);
+      logger.d(
+        '[WEBManagerDashboard] FINAL MissedYesterday (CF-only) groups=${_yesterdayMissed.length} rawTasks=$finalRaw',
+      );
     } catch (e, st) {
       logger.e('[ManagerDashboard] loadMissedTasksForToday error: $e\n$st');
     } finally {
@@ -397,6 +385,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
       setState(() => _loadingYesterday = false);
     }
   }
+
+  // _missedSignature removed after simplifying logic to CF-only (no merging step required).
 
   Future<void> _loadMissedTrend7d() async {
     try {
@@ -929,8 +919,28 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
   void _startAutoRefresh() {
     _refreshTimer = Timer.periodic(const Duration(minutes: 2), (timer) async {
       if (!mounted || _selectedLocationId == null) return;
-      await _loadLiveShifts();
+      // Refresh both live shifts and missed tasks to keep data synchronized
+      await Future.wait([_loadLiveShifts(), _loadYesterdayMissed()]);
     });
+  }
+
+  // Manual refresh method for when data needs immediate update
+  Future<void> _refreshAllData() async {
+    setState(() {
+      _loadingLive = true;
+    });
+
+    try {
+      await Future.wait([_loadLiveShifts(), _loadYesterdayMissed()]);
+    } catch (e) {
+      logger.w('[ManagerDashboard] Error during manual refresh: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingLive = false;
+        });
+      }
+    }
   }
 
   // ===== UI =====
@@ -1135,13 +1145,49 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                     accentColor: HandsColors.error,
                     loading: _loadingYesterday,
                     onTap: _openAllMissedYesterday,
+                    actions: [
+                      IconButton(
+                        onPressed: () async {
+                          setState(() => _loadingYesterday = true);
+                          await _loadYesterdayMissed();
+                          setState(() => _loadingYesterday = false);
+                        },
+                        icon: const Icon(Icons.refresh, color: HandsColors.white70),
+                        tooltip: 'Refresh Missed Tasks',
+                      ),
+                    ],
                     content: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const SizedBox(height: 20),
-                        // Main metric
+                        // Main metric - use raw sections if available, otherwise fall back to grouped count
                         Text(
-                          '${_yesterdayMissed.fold<int>(0, (sum, e) => sum + (e['count'] as int? ?? 1))}',
+                          () {
+                            // Always use raw task count for consistency with user dashboard
+                            final rawTaskCount =
+                                _yesterdayMissedSections.isNotEmpty
+                                    ? _yesterdayMissedSections.fold<int>(
+                                      0,
+                                      (sum, section) => sum + section.tasks.length,
+                                    )
+                                    : _yesterdayMissed.fold<int>(0, (sum, e) => sum + (e['count'] as int? ?? 1));
+
+                            // Debug logging to track counting method
+                            final countingMethod = _yesterdayMissedSections.isNotEmpty ? 'sections' : 'grouped';
+                            final shiftCount =
+                                _yesterdayMissedSections.isNotEmpty
+                                    ? _yesterdayMissedSections.length
+                                    : _yesterdayMissed.map((e) => e['shiftId'] ?? e['shiftName'] ?? '').toSet().length;
+
+                            logger.d(
+                              '[ManagerDashboard] DISPLAY: $rawTaskCount tasks via $countingMethod method across $shiftCount shifts',
+                            );
+                            print(
+                              'MANAGER DASHBOARD COUNT DEBUG: $rawTaskCount tasks ($countingMethod method), $shiftCount shifts',
+                            );
+
+                            return '$rawTaskCount';
+                          }(),
                           style: GoogleFonts.comfortaa(
                             fontSize: 48,
                             fontWeight: FontWeight.bold,
@@ -1151,7 +1197,15 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'missed tasks across ${_yesterdayMissed.map((e) => e['shiftId'] ?? e['shiftName'] ?? '').toSet().length} shifts',
+                          () {
+                            // Use actual shift count for consistency with user dashboard
+                            final actualShiftCount =
+                                _yesterdayMissedSections.isNotEmpty
+                                    ? _yesterdayMissedSections.length
+                                    : _yesterdayMissed.map((e) => e['shiftId'] ?? e['shiftName'] ?? '').toSet().length;
+
+                            return 'missed tasks across $actualShiftCount shifts';
+                          }(),
                           style: GoogleFonts.comfortaa(
                             fontSize: 16,
                             fontWeight: FontWeight.w500,
@@ -2346,6 +2400,9 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
           if (_selectedCompletion == 'completed' && !completed) continue;
           if (_selectedCompletion == 'incomplete' && completed) continue;
           if (_selectedCompletion == 'incomplete_with_reason' && (completed || reason.isEmpty)) continue;
+          if (_selectedCompletion == 'photo_added' && photos.isEmpty) continue;
+          if (_selectedCompletion == 'notes_added' && note.isEmpty) continue;
+          if (_selectedCompletion == 'photo_required' && !photoRequired) continue;
 
           // Search filter
           final q = _searchCtrl.text.trim().toLowerCase();
@@ -2563,6 +2620,27 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                           value: 'incomplete_with_reason',
                           child: Text(
                             'Missed w/ reason',
+                            style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                          ),
+                        ),
+                        DropdownMenuItem(
+                          value: 'photo_added',
+                          child: Text(
+                            'Photo added',
+                            style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                          ),
+                        ),
+                        DropdownMenuItem(
+                          value: 'notes_added',
+                          child: Text(
+                            'Notes added',
+                            style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                          ),
+                        ),
+                        DropdownMenuItem(
+                          value: 'photo_required',
+                          child: Text(
+                            'Photo required',
                             style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
                           ),
                         ),

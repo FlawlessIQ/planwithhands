@@ -724,17 +724,6 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
   }
 
   Widget _buildShiftsTable() {
-    // Only wait for checklists to load - locations might be empty
-    // Don't block on locations being empty since that's a valid state
-    if (_checklistNameById.isEmpty) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [CircularProgressIndicator(), SizedBox(height: 16), Text('Loading checklist data...')],
-        ),
-      );
-    }
-
     return StreamBuilder<QuerySnapshot>(
       stream:
           FirestoreEnforcer.instance
@@ -1658,11 +1647,109 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
     );
   }
 
+  Widget _buildEmptyState() {
+    String title;
+    String description;
+    String actionText;
+    IconData icon;
+
+    switch (_currentTab) {
+      case WebAdminTab.shifts:
+        title = 'No Shifts Created Yet';
+        description =
+            'Create your first shift to define work schedules, assign staff, and manage daily operations. Shifts help organize your team\'s workflow by time, location, and required tasks.';
+        actionText = 'Create Your First Shift';
+        icon = Icons.schedule;
+        break;
+      case WebAdminTab.checklists:
+        title = 'No Checklists Created Yet';
+        description =
+            'Build checklists to standardize tasks and ensure consistent quality. Create detailed task lists with step-by-step instructions that can be assigned to specific shifts and completed by your team.';
+        actionText = 'Create Your First Checklist';
+        icon = Icons.checklist;
+        break;
+      case WebAdminTab.users:
+        title = 'No Staff Members Added Yet';
+        description =
+            'Invite team members to join your organization. You can assign different roles (Admin, Manager, Staff) and control access to specific locations and shifts.';
+        actionText = 'Add Your First Staff Member';
+        icon = Icons.people;
+        break;
+      case WebAdminTab.locations:
+        title = 'No Locations Added Yet';
+        description =
+            'Set up your business locations to organize shifts, assign staff, and track operations. Each location can have its own shifts, checklists, and team members.';
+        actionText = 'Add Your First Location';
+        icon = Icons.location_on;
+        break;
+    }
+
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.all(48),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                color: HandsColors.handsOrange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(60),
+                border: Border.all(color: HandsColors.handsOrange.withOpacity(0.3), width: 2),
+              ),
+              child: Icon(icon, size: 56, color: HandsColors.handsOrange),
+            ),
+            const SizedBox(height: 32),
+            Text(
+              title,
+              style: GoogleFonts.comfortaa(fontSize: 24, fontWeight: FontWeight.bold, color: HandsColors.white),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 600),
+              child: Text(
+                description,
+                style: GoogleFonts.comfortaa(fontSize: 16, color: HandsColors.white70, height: 1.6),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 32),
+            ElevatedButton.icon(
+              onPressed: () => _showCreateDialog(),
+              icon: const Icon(Icons.add, size: 20),
+              label: Text(actionText, style: GoogleFonts.comfortaa(fontWeight: FontWeight.w600, fontSize: 16)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: HandsColors.handsOrange,
+                foregroundColor: HandsColors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 2,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Need help getting started? Check out our setup guide or contact support.',
+              style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white30, fontStyle: FontStyle.italic),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildDataTable({
     required List<DataColumn> columns,
     required List<Map<String, dynamic>> rows,
     required DataRow Function(Map<String, dynamic>) buildRow,
   }) {
+    // If no data, show helpful empty state instead of empty table
+    if (rows.isEmpty) {
+      return _buildEmptyState();
+    }
+
     final paginatedRows = _paginateRows(rows);
 
     return Column(

@@ -13,6 +13,7 @@ class TokenRegistrationService {
       await FirestoreEnforcer.instance.collection('deviceTokens').doc(docId).set({
         'userId': userId,
         'fcmToken': token,
+        'isActive': true,
         'platform':
             kIsWeb
                 ? 'web'

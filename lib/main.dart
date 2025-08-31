@@ -1,212 +1,127 @@
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_web_plugins/url_strategy.dart';
-import 'package:responsive_framework/responsive_framework.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:hands_app/firebase_options.dart';
-import 'package:hands_app/routing/routes.dart';
-import 'package:hands_app/theme/theme.dart';
-import 'package:hands_app/services/web_asset_service.dart';
-import 'package:hands_app/services/stripe_service.dart';
+import 'package:hands_app/core/providers/crashlytics_provider.dart';
+import 'package:hands_app/routing/router_provider.dart';
+import 'package:hands_app/services/local_storage_service.dart';
 import 'package:hands_app/services/daily_background_service.dart';
-import 'package:hands_app/services/push_notification_service.dart';
-import 'package:hands_app/services/location_selection_service.dart';
-import 'package:hands_app/debug/functions_connection_debug.dart';
+import 'package:hands_app/theme/theme.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
+import 'package:stack_trace/stack_trace.dart' as stack_trace;
 import 'package:timezone/data/latest.dart' as tz;
-import 'package:hands_app/core/logging/logger.dart';
+import 'dart:async';
 
-// Global provider for Crashlytics availability
-final crashlyticsEnabledProvider = StateProvider<bool>((ref) => false);
+import 'firebase_options.dart';
+import 'config/release_config.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  // Initialize time zone database once at startup
-  tz.initializeTimeZones();
+  // Run the app inside a guarded zone and ensure the Flutter binding is
+  // initialized inside that same zone to avoid the "Zone mismatch" error.
+  runZonedGuarded<Future<void>>(
+    () async {
+      // Ensure the Widgets binding is initialized before using any
+      // platform channels or WidgetsBinding.instance.
+      WidgetsFlutterBinding.ensureInitialized();
+      tz.initializeTimeZones();
 
-  // Set URL strategy for web to use path-based URLs
-  if (kIsWeb) {
-    usePathUrlStrategy();
-    logger.d('[MAIN] Setting path URL strategy for web');
-  }
+      // Wrap critical startup in a try/catch so we can show a friendly
+      // error UI if something fails during initialization.
+      try {
+        // Initialize our "safe" local storage service and Firebase.
+        await LocalStorageService.init();
+        await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // Initialize Firebase safely. Some plugins or native SDKs may configure
-  // Firebase on the native side which can cause a duplicate-app exception
-  // when Dart also calls initializeApp. Wrap in a defensive try/catch so
-  // the app still starts in that case.
-  try {
-    if (Firebase.apps.isEmpty) {
-      await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-      logger.d('[MAIN] Firebase initialized');
-    } else {
-      logger.d('[MAIN] Firebase already initialized');
-    }
-  } on FirebaseException catch (e) {
-    // firebase_core throws a FirebaseException when an app already exists.
-    if (e.code == 'duplicate-app' || (e.message?.contains('already exists') ?? false)) {
-      logger.d('[MAIN] Firebase already configured (caught duplicate-app)');
-    } else {
-      logger.e('[MAIN] Firebase initialization failed: $e', e);
-      rethrow;
-    }
-  } catch (e) {
-    logger.e('[MAIN] Firebase initialization failed: $e', e);
-    rethrow;
-  }
+        // Initialize daily background service for automated summaries
+        DailyBackgroundService.initialize();
 
-  // Dev helper: when running the web app on localhost, point Storage to the local emulator
-  // This avoids CORS issues during development and lets you test uploads locally.
-  try {
-    if (kIsWeb && (Uri.base.host.contains('localhost') || Uri.base.host.contains('127.0.0.1'))) {
-      // Use explicit 127.0.0.1 so web SDK requests match the emulator binding
-      FirebaseStorage.instance.useStorageEmulator('127.0.0.1', 9199);
-      logger.d('[MAIN] Using Firebase Storage emulator at 127.0.0.1:9199');
-    }
-  } catch (e) {
-    logger.e('[MAIN] Failed to configure Storage emulator: $e', e);
-  }
-
-  // Initialize push notifications on mobile platforms
-  if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.android)) {
-    // Set up background message handler
-    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-
-    // Initialize push notification service
-    await PushNotificationService().initialize();
-  }
-
-  // In debug, connect Functions to local emulator so Places proxy works on web locally
-  await connectFunctionsEmulatorIfNeeded();
-
-  // Initialize Stripe only on supported platforms (iOS/Android)
-  if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.android)) {
-    StripeService.initStripe();
-  }
-
-  // Initialize Crashlytics with a more defensive approach
-  bool crashlyticsEnabled = false;
-
-  try {
-    // Only try to enable crashlytics in production mode
-    if (!kDebugMode) {
-      if (!kIsWeb) {
-        // On mobile platforms, this should work reliably
-        await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
-        crashlyticsEnabled = true;
-      } else {
-        // On web, we need to be more careful as the plugin might not be fully initialized
-        try {
-          // Delay slightly to allow Firebase to initialize
-          await Future.delayed(const Duration(milliseconds: 500));
-          // Don't call setCrashlyticsCollectionEnabled on web as it's prone to race conditions
-          // Instead just check if it's available without trying to set it
-          if (Firebase.apps.isNotEmpty) {
-            crashlyticsEnabled = true;
-            logger.d('Crashlytics should be available on web');
-          }
-        } catch (webError) {
-          logger.w('Could not initialize Crashlytics on web: $webError');
-          // Just continue without Crashlytics on web
-        }
+        // Set up app lifecycle observer for proper cleanup
+        final lifecycleObserver = _AppLifecycleObserver();
+        WidgetsBinding.instance.addObserver(lifecycleObserver);
+      } catch (e, st) {
+        // If any of the above critical services fail, show an error UI and stop.
+        print('Critical startup error: $e\n$st');
+        runApp(
+          MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text(
+                    'A critical error occurred during app initialization:\n\n$e',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        return; // Halt execution of the zone callback.
       }
-    } else {
-      logger.d('Debug mode detected, disabling Crashlytics');
-    }
-  } catch (e) {
-    logger.e('Error during Crashlytics initialization: $e', e);
-  }
 
-  // Set up error handlers based on Crashlytics availability
-  if (crashlyticsEnabled) {
-    // Use Crashlytics handlers on all platforms
-    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+      if (kIsWeb) {
+        usePathUrlStrategy();
+      }
 
-    PlatformDispatcher.instance.onError = (error, stack) {
-      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-      return true;
-    };
-  } else {
-    // Use console logging for errors when Crashlytics is disabled
-    FlutterError.onError = (FlutterErrorDetails details) {
-      FlutterError.presentError(details);
-      logger.e('Flutter error: ${details.exception}', details.exception);
-    };
+      bool crashlyticsEnabled = false;
+      // Allow RELEASE_SCREENSHOTS to behave like a non-debug release for
+      // privacy / overlay disabling when capturing store screenshots.
+      final bool treatAsRelease = !kDebugMode || RELEASE_SCREENSHOTS;
+      if (!kIsWeb && treatAsRelease) {
+        await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
+        FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+        crashlyticsEnabled = true;
+      }
 
-    PlatformDispatcher.instance.onError = (error, stack) {
-      logger.e('Uncaught platform error: $error', error, stack);
-      return true;
-    };
-  }
-
-  // Web-specific optimizations
-  if (kIsWeb) {
-    // Configure web renderer for better performance
-    logger.d('Running on web - applying performance optimizations');
-  }
-
-  // Initialize background services
-  _initializeBackgroundServices();
-
-  // Initialize location selection service to load saved location
-  try {
-    await LocationSelectionService.instance.initialize();
-  } catch (e) {
-    logger.e('Failed to initialize LocationSelectionService: $e', e);
-  }
-
-  runApp(
-    ProviderScope(
-      overrides: [
-        // Make Crashlytics availability status globally accessible
-        crashlyticsEnabledProvider.overrideWith((ref) => crashlyticsEnabled),
-      ],
-      child: const MyApp(),
-    ),
+      runApp(
+        ProviderScope(
+          overrides: [crashlyticsEnabledProvider.overrideWith((_) => crashlyticsEnabled)],
+          child: const HandsApp(),
+        ),
+      );
+    },
+    (error, stack) {
+      if (!kIsWeb && !kDebugMode) {
+        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      }
+      print('Caught error in runZonedGuarded: $error');
+    },
   );
+
+  FlutterError.demangleStackTrace = (StackTrace stack) {
+    if (stack is stack_trace.Trace) {
+      return stack.vmTrace;
+    }
+    if (stack is stack_trace.Chain) {
+      return stack.toTrace().vmTrace;
+    }
+    return stack;
+  };
 }
 
-/// Initialize background services
-void _initializeBackgroundServices() {
-  try {
-    logger.d('[MAIN] Initializing background services');
-
-    // Initialize daily summary monitoring
-    DailyBackgroundService.initialize();
-
-    logger.d('[MAIN] Background services initialized successfully');
-  } catch (e) {
-    logger.e('[MAIN] Error initializing background services: $e', e);
-  }
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class HandsApp extends ConsumerWidget {
+  const HandsApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final router = ref.watch(routerProvider);
+
     return MaterialApp.router(
-      title: 'Hands App',
+      title: 'Hands',
       theme: handsTheme,
       routerConfig: router,
-      debugShowCheckedModeBanner: kDebugMode,
-      builder: (context, child) {
-        // Preload critical assets for web performance
-        Widget wrapped = child ?? const SizedBox.shrink();
-        if (kIsWeb) {
-          WebAssetService.preloadCriticalAssets(context);
-        }
-        return ResponsiveBreakpoints.builder(
-          child: wrapped,
-          breakpoints: [
-            const Breakpoint(start: 0, end: 450, name: MOBILE),
-            const Breakpoint(start: 451, end: 800, name: TABLET),
-            const Breakpoint(start: 801, end: double.infinity, name: DESKTOP),
-          ],
-        );
-      },
+      debugShowCheckedModeBanner: false,
     );
+  }
+}
+
+// Add app lifecycle observer to properly dispose services
+class _AppLifecycleObserver extends WidgetsBindingObserver {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.detached) {
+      DailyBackgroundService.dispose();
+    }
   }
 }

@@ -26,6 +26,11 @@
       "target": "hands-app",
       "public": "build/web",
       "ignore": ["**/.*", "**/node_modules/**"],
+      "headers": [
+        {"source": "/index.html", "headers": [{"key": "Cache-Control", "value": "no-store"}]},
+        {"source": "/flutter_bootstrap.js", "headers": [{"key": "Cache-Control", "value": "no-store"}]},
+        {"source": "/main.dart.js", "headers": [{"key": "Cache-Control", "value": "no-store"}]}
+      ],
       "rewrites": [{ "source": "**", "destination": "/index.html" }]
     },
     {

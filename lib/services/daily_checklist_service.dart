@@ -2444,10 +2444,33 @@ class DailyChecklistService {
           }
 
           debugPrint(
-            '[DailyChecklistService] Processing checklist ${doc.id} for date $docDate, shift $shiftId with ${tasksList.length} tasks',
+            '[DailyChecklistService] Processing checklist ${doc.id} for date $docDate, shift $shiftId with ${tasksList.length} raw tasks',
           );
 
-          for (final taskData in tasksList) {
+          // Deduplicate tasks to prevent double-counting from legacy and new systems
+          final seenKeys = <String>{};
+          final List<Map<String, dynamic>> finalTasks = [];
+          for (final raw in tasksList) {
+            try {
+              final t = Map<String, dynamic>.from(raw.cast<String, dynamic>());
+              var key =
+                  (t['taskId'] ?? t['id'] ?? t['templateTaskId'] ?? t['taskName'] ?? t['name'] ?? t['description'])
+                      ?.toString() ??
+                  '';
+              key = key.trim();
+              if (key.isEmpty) {
+                key = jsonEncode(t); // Fallback for safety
+              }
+              if (seenKeys.contains(key)) continue;
+              seenKeys.add(key);
+              finalTasks.add(t);
+            } catch (e) {
+              debugPrint('[DailyChecklistService] Skipping invalid task element while deduping: $e');
+            }
+          }
+          debugPrint('[DailyChecklistService] Processing ${finalTasks.length} unique tasks for checklist ${doc.id}');
+
+          for (final taskData in finalTasks) {
             try {
               final completed = taskData['completed'] as bool? ?? taskData['isCompleted'] as bool? ?? false;
               final isCarryForward = taskData['isCarryForward'] as bool? ?? false;
@@ -2480,7 +2503,7 @@ class DailyChecklistService {
               }
 
               // Count missed
-              if (!completed && !isCarryForward) {
+              if (!completed) {
                 taskStats[taskName]!['missedCount'] = (taskStats[taskName]!['missedCount'] ?? 0) + 1;
                 debugPrint(
                   '[DailyChecklistService] Found missed task: "$taskName" on $docDate in shift: $shiftName (missedCount now: ${taskStats[taskName]!['missedCount']})',

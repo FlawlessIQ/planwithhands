@@ -11,6 +11,7 @@ import 'package:intl/intl.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/theme/theme.dart';
+import 'package:hands_app/data/models/missed_tasks_section.dart';
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/global_widgets/professional_harvey_ball.dart';
@@ -30,7 +31,7 @@ class ManagerDashboardPage extends StatefulWidget {
   State<ManagerDashboardPage> createState() => _ManagerDashboardPageState();
 }
 
-class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
+class _ManagerDashboardPageState extends State<ManagerDashboardPage> with WidgetsBindingObserver {
   // User / setup
   int? userRole;
   bool _isLoadingUserRole = true;
@@ -50,6 +51,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
   // Missed yesterday
   List<Map<String, dynamic>> _yesterdayMissed = [];
+  List<MissedTasksSection> _yesterdayMissedSections = []; // Add raw sections for accurate counting
   bool _loadingYesterday = true;
 
   // 7d trend for missed
@@ -78,9 +80,11 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
   @override
   @override
+  @override
   void initState() {
     debugPrint('[ManagerDashboard] initState() CALLED - Manager Dashboard starting up');
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _todayKey = _dateFormat.format(DateTime.now());
     // Seed from global selection if present before loading
     final globalLoc = _locationSelectionService.currentLocationId;
@@ -90,6 +94,18 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
     // Listen for global selection changes
     _locationSelectionService.listenable.addListener(_onGlobalLocationChanged);
     _initializeDashboard();
+  }
+
+  // Handle app lifecycle changes to refresh data when user returns
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed && mounted) {
+      // User returned to app - refresh missed tasks data
+      _loadYesterdayMissed().catchError((e) {
+        debugPrint('[ManagerDashboard] Error refreshing data on app resume: $e');
+      });
+    }
   }
 
   // Progressive loading strategy for better performance
@@ -150,8 +166,10 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
   }
 
   @override
+  @override
   void dispose() {
     _refreshTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     // Remove global listener
     _locationSelectionService.listenable.removeListener(_onGlobalLocationChanged);
     // Reset orientation when leaving the page
@@ -401,8 +419,12 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
       }
 
       _yesterdayMissed = groupedTasks.values.toList();
+      _yesterdayMissedSections = sections; // Store raw sections for accurate counting
       debugPrint(
         '[ManagerDashboard] Final result: ${_yesterdayMissed.length} carry-forward groups from yesterday (via subcollections)',
+      );
+      debugPrint(
+        '[ManagerDashboard] Raw sections: ${_yesterdayMissedSections.length} sections with ${_yesterdayMissedSections.fold<int>(0, (sum, section) => sum + section.tasks.length)} total tasks',
       );
       debugPrint(
         '[ManagerDashboard] Groups: ${_yesterdayMissed.map((g) => '${g['taskName']} (${g['shiftName']}): ${g['count']}').join(', ')}',
@@ -876,7 +898,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
   void _startAutoRefresh() {
     _refreshTimer = Timer.periodic(const Duration(minutes: 2), (timer) async {
       if (!mounted || _selectedLocationId == null) return;
-      await _loadLiveShifts();
+      // Refresh both live shifts and missed tasks to keep data synchronized
+      await Future.wait([_loadLiveShifts(), _loadYesterdayMissed()]);
     });
   }
 
@@ -884,14 +907,10 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
   bool _isTablet(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
-    final screenWidth = mediaQuery.size.width;
-    final screenHeight = mediaQuery.size.height;
-    final diagonal = sqrt(pow(screenWidth, 2) + pow(screenHeight, 2));
-
-    // Consider it a tablet if:
-    // 1. Diagonal is greater than typical phone size (around 900 logical pixels)
-    // 2. OR width is greater than 768 (typical tablet breakpoint)
-    return diagonal > 900 || screenWidth > 768;
+    // Use shortestSide breakpoint which is a common, reliable way to detect tablets
+    // Phones (even large ones) typically have a shortestSide < 600 logical pixels
+    final shortestSide = mediaQuery.size.shortestSide;
+    return shortestSide >= 600;
   }
 
   void _setTabletLandscapeOrientation() {
@@ -1085,20 +1104,20 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
         final compact = constraints.maxHeight < 700;
 
         // Responsive gap and column width
-        final gap = compact ? 8.0 : 12.0;
+        final gap = compact ? 6.0 : 10.0; // Reduced from 8.0:12.0
         final colW = (width - gap * 3) / 2;
 
         // Top row: larger, show missed + live shifts
         // Bottom row: smaller, show frequent misses + poor shifts + button
         return Padding(
-          padding: EdgeInsets.all(compact ? gap * 0.5 : gap * 0.75),
+          padding: EdgeInsets.all(compact ? gap * 0.4 : gap * 0.6), // Reduced padding multiplier
           child: Column(
             children: [
               // Top area - stack in mobile/condensed mode so live view remains visible
               Expanded(
                 flex:
                     isMobile
-                        ? 6 // Reduced from 7 to make room for bottom content
+                        ? 6 // Reduced from 7 to balance with bottom sections
                         : isCondensed
                         ? 6
                         : 6,
@@ -1107,21 +1126,30 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                         ? Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            // Missed Yesterday (full width) - allow to size naturally but keep flexible
+                            // Missed Yesterday (full width) - balanced flex for proper proportions
                             Flexible(
-                              flex: 2,
+                              flex: 2, // Reduced from 3 to rebalance with Today's Shifts at flex: 3
                               child: _SummaryCard(
                                 title: 'Missed Yesterday',
                                 icon: Icons.report_gmailerrorred,
                                 accentColor: HandsColors.error, // Red for missed tasks
                                 valueBuilder: () {
-                                  final count = _yesterdayMissed.fold<int>(
-                                    0,
-                                    (sum, e) => sum + (e['count'] as int? ?? 1),
-                                  );
-                                  // Count unique shifts, not task entries
+                                  // Count total tasks using raw sections if available, otherwise fall back to grouped count
+                                  final count =
+                                      _yesterdayMissedSections.isNotEmpty
+                                          ? _yesterdayMissedSections.fold<int>(
+                                            0,
+                                            (sum, section) => sum + section.tasks.length,
+                                          )
+                                          : _yesterdayMissed.fold<int>(0, (sum, e) => sum + (e['count'] as int? ?? 1));
+                                  // Count shifts using raw sections if available, otherwise fall back to grouped unique shifts
                                   final uniqueShifts =
-                                      _yesterdayMissed.map((e) => e['shiftId'] ?? e['shiftName'] ?? '').toSet().length;
+                                      _yesterdayMissedSections.isNotEmpty
+                                          ? _yesterdayMissedSections.length
+                                          : _yesterdayMissed
+                                              .map((e) => e['shiftId'] ?? e['shiftName'] ?? '')
+                                              .toSet()
+                                              .length;
                                   return Text(
                                     '$count missed tasks across $uniqueShifts shifts',
                                     style: GoogleFonts.comfortaa(
@@ -1137,19 +1165,29 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                                 trailing: MiniSparkBars(values: _missedTrend7d, height: 60),
                                 loading: _loadingYesterday,
                                 onTap: _openAllMissedYesterday,
-                                footer:
+                                topRightWidget:
                                     _selectedLocationName == null
                                         ? null
-                                        : Text(
-                                          '📍 $_selectedLocationName',
-                                          style: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white70),
+                                        : Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                          decoration: BoxDecoration(
+                                            color: HandsColors.scaffoldBackground.withOpacity(0.9),
+                                            borderRadius: BorderRadius.circular(6),
+                                            border: Border.all(color: HandsColors.white30, width: 1),
+                                          ),
+                                          child: Text(
+                                            '📍 $_selectedLocationName',
+                                            style: GoogleFonts.comfortaa(fontSize: 10, color: HandsColors.white70),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
                                         ),
                               ),
                             ),
-                            SizedBox(height: compact ? 3 : 4),
-                            // Today's Shifts (full width) - constrain height to prevent overflow
+                            SizedBox(height: compact ? 4 : 6), // Increased spacing to prevent footer overlap
+                            // Today's Shifts (full width) - increased flex to use available space properly
                             Flexible(
-                              flex: 3, // Give it reasonable space but not unlimited
+                              flex: 3, // Increased back to 3 to prevent overflow and use space between sections
                               child: _SummaryCard(
                                 title: "Today's Shifts",
                                 icon: Icons.live_tv,
@@ -1253,13 +1291,22 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                                 icon: Icons.report_gmailerrorred,
                                 accentColor: Colors.orange,
                                 valueBuilder: () {
-                                  final count = _yesterdayMissed.fold<int>(
-                                    0,
-                                    (sum, e) => sum + (e['count'] as int? ?? 1),
-                                  );
-                                  // Count unique shifts, not task entries
+                                  // Count total tasks using raw sections if available, otherwise fall back to grouped count
+                                  final count =
+                                      _yesterdayMissedSections.isNotEmpty
+                                          ? _yesterdayMissedSections.fold<int>(
+                                            0,
+                                            (sum, section) => sum + section.tasks.length,
+                                          )
+                                          : _yesterdayMissed.fold<int>(0, (sum, e) => sum + (e['count'] as int? ?? 1));
+                                  // Count shifts using raw sections if available, otherwise fall back to grouped unique shifts
                                   final uniqueShifts =
-                                      _yesterdayMissed.map((e) => e['shiftId'] ?? e['shiftName'] ?? '').toSet().length;
+                                      _yesterdayMissedSections.isNotEmpty
+                                          ? _yesterdayMissedSections.length
+                                          : _yesterdayMissed
+                                              .map((e) => e['shiftId'] ?? e['shiftName'] ?? '')
+                                              .toSet()
+                                              .length;
                                   return Text(
                                     '$count missed tasks across $uniqueShifts shifts',
                                     style: _kMetricTextStyle(context).copyWith(fontSize: 12, color: HandsColors.white),
@@ -1375,13 +1422,12 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                         ),
               ),
 
-              SizedBox(height: compact ? 3 : 4),
-
+              SizedBox(height: compact ? 2 : 3), // Reduced spacing between main sections
               // Bottom area
               Expanded(
                 flex:
                     isMobile
-                        ? 4 // Increased flex for mobile to give more space
+                        ? 4 // Increased from 3 to provide more space for bottom sections
                         : isCondensed
                         ? 4
                         : 4,
@@ -1397,8 +1443,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                                 // Mobile: show two metric cards side-by-side, Task History below
                                 Column(
                                   children: [
-                                    // Row with the two metric cards
-                                    Expanded(
+                                    // Row with the two metric cards - use Flexible to prevent excessive height
+                                    Flexible(
                                       child: Row(
                                         children: [
                                           Expanded(
@@ -1568,23 +1614,42 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                       ),
                     ),
 
-                    SizedBox(height: compact ? 4 : 6),
-
+                    SizedBox(height: compact ? 3 : 4), // Reduced gap
                     // Task History button - separate from the cards to prevent overlap
                     Padding(
-                      // Increase bottom padding to account for browser chrome / safe area
+                      // Reduced padding to reclaim more space for content above
                       padding: EdgeInsets.only(
                         left: isMobile ? 4 : 8,
                         right: isMobile ? 4 : 8,
-                        bottom: MediaQuery.of(context).padding.bottom + (compact ? 16 : 20) + 8,
+                        // Further reduced bottom padding to create more space for sections above
+                        bottom: MediaQuery.of(context).padding.bottom + (compact ? 4 : 6),
                       ),
                       child: SizedBox(
-                        height: compact ? 44 : 52, // Slightly taller to improve tap target and avoid overlap
-                        child: HandsPrimaryButton(
-                          text: 'Task History',
+                        // Increased button height to prevent text cutoff on mobile
+                        height: compact ? 40 : 46, // Increased from 36:42 to ensure text fits
+                        child: ElevatedButton.icon(
                           onPressed: _openTaskHistorySheet,
-                          icon: Icons.analytics,
-                          width: double.infinity,
+                          icon: Icon(Icons.analytics, size: 16, color: HandsColors.white),
+                          label: Text(
+                            'Task History',
+                            style: GoogleFonts.comfortaa(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12, // Reduced from default 14 to prevent cutoff
+                              letterSpacing: 1.2,
+                              color: HandsColors.white,
+                            ),
+                          ),
+                          style: ButtonStyle(
+                            backgroundColor: WidgetStateProperty.all<Color>(HandsColors.handsOrange),
+                            foregroundColor: WidgetStateProperty.all<Color>(HandsColors.white),
+                            shape: WidgetStateProperty.all<RoundedRectangleBorder>(
+                              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+                            ),
+                            overlayColor: WidgetStateProperty.all<Color>(HandsColors.white.withOpacity(0.1)),
+                            padding: WidgetStateProperty.all<EdgeInsets>(
+                              const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -2094,6 +2159,7 @@ class _SummaryCard extends StatelessWidget {
   final bool loading;
   final VoidCallback? onTap;
   final Widget? footer;
+  final Widget? topRightWidget; // New parameter for top-right positioned widget
 
   const _SummaryCard({
     required this.title,
@@ -2107,6 +2173,7 @@ class _SummaryCard extends StatelessWidget {
     this.loading = false,
     this.onTap,
     this.footer,
+    this.topRightWidget,
   });
 
   @override
@@ -2116,76 +2183,82 @@ class _SummaryCard extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(12), // Reduced from 16 to save space
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      color: accentColor.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    padding: const EdgeInsets.all(8),
-                    child: Icon(icon, color: accentColor, size: 20),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            title.toUpperCase(),
-                            style: GoogleFonts.comfortaa(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: HandsColors.white,
-                              letterSpacing: 0.5,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                  Row(
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          color: accentColor.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        if (titleSuffix != null) ...[
-                          const SizedBox(width: 8),
-                          titleSuffix!(),
-                          const SizedBox(width: 8),
-                        ],
+                        padding: const EdgeInsets.all(6), // Reduced from 8 to save space
+                        child: Icon(icon, color: accentColor, size: 18), // Reduced from 20
+                      ),
+                      const SizedBox(width: 10), // Reduced from 12
+                      Expanded(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                title.toUpperCase(),
+                                style: GoogleFonts.comfortaa(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: HandsColors.white,
+                                  letterSpacing: 0.5,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (titleSuffix != null) ...[
+                              const SizedBox(width: 8),
+                              titleSuffix!(),
+                              const SizedBox(width: 8),
+                            ],
+                          ],
+                        ),
+                      ),
+                      if (actions != null) ...actions!,
+                    ],
+                  ),
+                  const SizedBox(height: 12), // Reduced from 16
+                  if (loading)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6), // Reduced from 8
+                      child: LinearProgressIndicator(
+                        minHeight: 4,
+                        backgroundColor: HandsColors.white12,
+                        valueColor: AlwaysStoppedAnimation<Color>(accentColor),
+                      ),
+                    )
+                  else
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        if (valueBuilder != null) valueBuilder!(),
+                        const Spacer(),
+                        if (trailing != null) trailing!,
                       ],
                     ),
-                  ),
-                  if (actions != null) ...actions!,
+                  if (child != null) ...[const SizedBox(height: 12), Flexible(child: child!)], // Reduced from 16
+                  if (footer != null) ...[
+                    const SizedBox(height: 12), // Reduced from 16
+                    Align(alignment: Alignment.centerLeft, child: footer!),
+                  ],
                 ],
               ),
-              const SizedBox(height: 16),
-              if (loading)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: LinearProgressIndicator(
-                    minHeight: 4,
-                    backgroundColor: HandsColors.white12,
-                    valueColor: AlwaysStoppedAnimation<Color>(accentColor),
-                  ),
-                )
-              else
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    if (valueBuilder != null) valueBuilder!(),
-                    const Spacer(),
-                    if (trailing != null) trailing!,
-                  ],
-                ),
-              if (child != null) ...[const SizedBox(height: 16), Flexible(child: child!)],
-              if (footer != null) ...[
-                const SizedBox(height: 16),
-                Align(alignment: Alignment.centerLeft, child: footer!),
-              ],
-            ],
-          ),
+            ),
+            // Position the topRightWidget in the top-right corner
+            if (topRightWidget != null) Positioned(top: 8, right: 8, child: topRightWidget!),
+          ],
         ),
       ),
     );
@@ -2688,14 +2761,14 @@ class _TopListPreview extends StatelessWidget {
       );
     }
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), // Reduced padding
       child: Column(
         children:
             items
                 .map(
                   (s) => Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.only(bottom: 6),
+                    padding: const EdgeInsets.only(bottom: 4), // Reduced from 6
                     child: Text(
                       '• $s',
                       style: GoogleFonts.comfortaa(
@@ -3068,6 +3141,9 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
           if (_selectedCompletion == 'completed' && !completed) continue;
           if (_selectedCompletion == 'incomplete' && completed) continue;
           if (_selectedCompletion == 'incomplete_with_reason' && (completed || reason.isEmpty)) continue;
+          if (_selectedCompletion == 'photo_added' && photos.isEmpty) continue;
+          if (_selectedCompletion == 'notes_added' && note.isEmpty) continue;
+          if (_selectedCompletion == 'photo_required' && !photoRequired) continue;
 
           // Search filter
           final q = _searchCtrl.text.trim().toLowerCase();
@@ -3372,6 +3448,27 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
+                                DropdownMenuItem(
+                                  value: 'photo_added',
+                                  child: Text(
+                                    'Photo added',
+                                    style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                  ),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'notes_added',
+                                  child: Text(
+                                    'Notes added',
+                                    style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                  ),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'photo_required',
+                                  child: Text(
+                                    'Photo required',
+                                    style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                  ),
+                                ),
                               ],
                               onChanged: (v) => setState(() => _selectedCompletion = v ?? 'all'),
                             ),
@@ -3472,6 +3569,27 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                                       'Missed w/ reason',
                                       style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
                                       overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'photo_added',
+                                    child: Text(
+                                      'Photo added',
+                                      style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                    ),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'notes_added',
+                                    child: Text(
+                                      'Notes added',
+                                      style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                                    ),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'photo_required',
+                                    child: Text(
+                                      'Photo required',
+                                      style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
                                     ),
                                   ),
                                 ],

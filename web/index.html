@@ -20,6 +20,9 @@
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="A new Flutter project.">
 
+  <!-- Force attempt to use HTML renderer (diagnostic) -->
+  <meta name="flutter-renderer" content="html">
+
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
@@ -33,6 +36,57 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
-  <script src="flutter_bootstrap.js" async></script>
+  <!-- Diagnostic instrumentation: logs progress & surfaces errors directly on page.
+       Note: this is now opt-in. Append `?diag=1` to the URL to enable the pane during
+       debugging (e.g. http://localhost:49749/?diag=1). This prevents the overlay
+       from appearing on every local run. -->
+  <script>
+    (function(){
+      // Opt-in: only run the diagnostic pane when the query param diag=1 is present.
+      if (!window.location.search || window.location.search.indexOf('diag=1') === -1) {
+        return;
+      }
+      function ensurePane(){
+        if(!document.getElementById('diag')){
+          const pre=document.createElement('pre');
+          pre.id='diag';
+          pre.style.cssText='font:12px monospace;white-space:pre-wrap;padding:8px;margin:0;background:#111;color:#0f0;max-height:50vh;overflow:auto';
+          document.body.prepend(pre);
+        }
+        return document.getElementById('diag');
+      }
+      function log(msg){
+        const el=ensurePane();
+        const ts=new Date().toISOString().split('T')[1].replace('Z','');
+        el.textContent += '['+ts+'] '+msg+'\n';
+        console.log('[DIAG]',msg);
+      }
+      window.onerror=function(m,src,l,c,e){
+        log('ERROR: '+m+' @'+src+':'+l+':'+c+'\n'+(e&&e.stack||''));
+      };
+      window.addEventListener('unhandledrejection',e=>{log('UNHANDLED PROMISE: '+e.reason);});
+      log('Inline diagnostic start');
+      log('UserAgent: '+navigator.userAgent);
+      log('Platform: '+navigator.platform+' | Vendor: '+navigator.vendor);
+      log('CookiesEnabled: '+navigator.cookieEnabled+' | SW: '+('serviceWorker' in navigator));
+      // Periodically check for Flutter attaching a glass pane
+      let checks=0; const iv=setInterval(()=>{
+        checks++;
+  // Fixed selector (removed stray closing parenthesis) and narrowed canvas match to avoid SyntaxError spam on Safari.
+  const pane=document.querySelector('flt-glass-pane,#flt-glass-pane,meta[name=flutter],body > canvas');
+        if(pane){
+          log('Detected Flutter root element: '+pane.tagName);
+          clearInterval(iv);
+        } else if(checks===10){
+          log('Still no Flutter root after ~5s');
+        } else if(checks===30){
+          log('No Flutter root after ~15s — likely renderer/init failure');
+          clearInterval(iv);
+        }
+      },500);
+    })();
+  </script>
+  <!-- Cache-busting query param to defeat any stale intermediate caches -->
+  <script src="flutter_bootstrap.js?v=diag1" async></script>
 </body>
 </html>

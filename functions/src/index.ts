@@ -63,3 +63,4 @@ export const proxyDownload = proxyDownloadModule.proxyDownload as any;
 
 // Export messaging notification functions
 export {onMessageCreated, sendMessageNotification} from "./messagingNotifications";
+export {onGeneralNotificationCreated} from "./messagingNotifications";

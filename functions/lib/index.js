@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendMessageNotification = exports.onMessageCreated = exports.proxyDownload = exports.proxyUpload = exports.getSignedUploadUrl = exports.placeDetailsHttp = exports.placesAutocompleteHttp = exports.createBillingPortalSession = exports.updateSubscription = exports.cancelSubscription = exports.stripeWebhook = exports.createCheckoutSession = exports.deleteUser = exports.createUser = exports.repairTaskTitlesFromCsv = exports.repairTemplateTaskTitles = exports.migrateChecklistTemplates = exports.syncTodayOnShiftChange = exports.syncTodayOnTemplateChange = void 0;
+exports.onGeneralNotificationCreated = exports.sendMessageNotification = exports.onMessageCreated = exports.proxyDownload = exports.proxyUpload = exports.getSignedUploadUrl = exports.placeDetailsHttp = exports.placesAutocompleteHttp = exports.createBillingPortalSession = exports.updateSubscription = exports.cancelSubscription = exports.stripeWebhook = exports.createCheckoutSession = exports.deleteUser = exports.createUser = exports.repairTaskTitlesFromCsv = exports.repairTemplateTaskTitles = exports.migrateChecklistTemplates = exports.syncTodayOnShiftChange = exports.syncTodayOnTemplateChange = void 0;
 /* eslint-disable @typescript-eslint/no-require-imports */
 const admin = __importStar(require("firebase-admin"));
 // Ensure admin is initialized (idempotent)
@@ -87,3 +87,5 @@ exports.proxyDownload = proxyDownloadModule.proxyDownload;
 var messagingNotifications_1 = require("./messagingNotifications");
 Object.defineProperty(exports, "onMessageCreated", { enumerable: true, get: function () { return messagingNotifications_1.onMessageCreated; } });
 Object.defineProperty(exports, "sendMessageNotification", { enumerable: true, get: function () { return messagingNotifications_1.sendMessageNotification; } });
+var messagingNotifications_2 = require("./messagingNotifications");
+Object.defineProperty(exports, "onGeneralNotificationCreated", { enumerable: true, get: function () { return messagingNotifications_2.onGeneralNotificationCreated; } });

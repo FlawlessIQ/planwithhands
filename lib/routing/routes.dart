@@ -419,7 +419,15 @@ class AuthGateForAdminSetup extends ConsumerWidget {
   }
 }
 
-final router = GoRouter(
+GoRouter? _cachedRouter;
+
+GoRouter buildAppRouter(Ref ref) {
+  if (_cachedRouter != null) {
+    return _cachedRouter!;
+  }
+  logger.d('[ROUTER_INIT] Building GoRouter lazily');
+  try {
+    _cachedRouter = GoRouter(
   navigatorKey: PushNotificationService.navigatorKey,
   redirect: (context, state) {
     // Debug logging for ALL routing
@@ -539,4 +547,10 @@ final router = GoRouter(
     GoRoute(path: AppRoutes.paymentSuccessPage.path, builder: (context, state) => const PaymentSuccessPage()),
     GoRoute(path: AppRoutes.paymentCancelledPage.path, builder: (context, state) => const PaymentCancelledPage()),
   ],
-);
+  );
+  } catch (e, st) {
+    logger.e('[ROUTER_INIT] Exception constructing GoRouter: $e', e, st);
+    rethrow;
+  }
+  return _cachedRouter!;
+}

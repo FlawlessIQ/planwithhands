@@ -6,7 +6,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:uuid/uuid.dart';
-import 'package:hands_app/main.dart';
+import 'package:hands_app/core/providers/crashlytics_provider.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/utils/firestore_ttl_helper.dart';
 import 'package:hands_app/utils/jobtype_helper.dart';
