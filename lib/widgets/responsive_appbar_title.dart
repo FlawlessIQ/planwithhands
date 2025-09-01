@@ -7,7 +7,7 @@ class ResponsiveAppBarTitle extends StatelessWidget {
   final TextStyle? style;
   final int maxLines;
 
-  const ResponsiveAppBarTitle(this.text, {Key? key, this.style, this.maxLines = 1}) : super(key: key);
+  const ResponsiveAppBarTitle(this.text, {super.key, this.style, this.maxLines = 1});
 
   @override
   Widget build(BuildContext context) {

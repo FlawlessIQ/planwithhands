@@ -22,7 +22,7 @@ class DailyBackgroundService {
 
   /// Start monitoring for end-of-day summary triggers
   void startDailySummaryMonitoring() {
-  logger.d('[DailyBackgroundService] Starting daily summary monitoring');
+    logger.d('[DailyBackgroundService] Starting daily summary monitoring');
 
     // Check every 30 minutes if it's time to send daily summaries
     _dailySummaryTimer = Timer.periodic(const Duration(minutes: 30), (timer) {
@@ -35,7 +35,7 @@ class DailyBackgroundService {
 
   /// Stop monitoring
   void stopDailySummaryMonitoring() {
-  logger.d('[DailyBackgroundService] Stopping daily summary monitoring');
+    logger.d('[DailyBackgroundService] Stopping daily summary monitoring');
     _dailySummaryTimer?.cancel();
     _dailySummaryTimer = null;
   }
@@ -43,7 +43,7 @@ class DailyBackgroundService {
   /// Check all organizations and send daily summaries if appropriate
   Future<void> _checkAndSendDailySummaries() async {
     try {
-  logger.d('[DailyBackgroundService] Checking for organizations that need daily summaries');
+      logger.d('[DailyBackgroundService] Checking for organizations that need daily summaries');
 
       // Get all organizations that might need daily summaries
       final orgIds = await _getActiveOrganizations();
@@ -77,10 +77,10 @@ class DailyBackgroundService {
         }
       }
 
-  logger.d('[DailyBackgroundService] Found ${orgIds.length} active organizations with admin users');
+      logger.d('[DailyBackgroundService] Found ${orgIds.length} active organizations with admin users');
       return orgIds.toList();
     } catch (e) {
-  logger.e('[DailyBackgroundService] Error getting active organizations', e);
+      logger.e('[DailyBackgroundService] Error getting active organizations', e);
       return [];
     }
   }
@@ -97,13 +97,13 @@ class DailyBackgroundService {
         return; // Already checked today
       }
 
-  logger.d('[DailyBackgroundService] Checking organization $organizationId for daily summary');
+      logger.d('[DailyBackgroundService] Checking organization $organizationId for daily summary');
 
       // Determine if it's an appropriate time to send the daily summary
       final shouldSend = await _shouldSendDailySummary(organizationId, now);
 
       if (shouldSend) {
-  logger.d('[DailyBackgroundService] Sending daily summary for organization $organizationId');
+        logger.d('[DailyBackgroundService] Sending daily summary for organization $organizationId');
         await _summaryService.scheduleDailySummary(organizationId: organizationId);
 
         // Mark as checked for today
@@ -120,8 +120,8 @@ class DailyBackgroundService {
       // Time-based check: only send between 8 PM and 11:59 PM
       final hour = now.hour;
       if (hour < 20) {
-  // Before 8 PM
-  logger.d('[DailyBackgroundService] Too early for daily summary ($hour:${now.minute})');
+        // Before 8 PM
+        logger.d('[DailyBackgroundService] Too early for daily summary ($hour:${now.minute})');
         return false;
       }
 
@@ -136,9 +136,7 @@ class DailyBackgroundService {
       final allShiftsEnded = await _summaryService.areAllShiftsEndedForDay(organizationId: organizationId);
 
       if (allShiftsEnded) {
-        logger.d(
-          '[DailyBackgroundService] All shifts ended for organization $organizationId - ready to send summary',
-        );
+        logger.d('[DailyBackgroundService] All shifts ended for organization $organizationId - ready to send summary');
         return true;
       }
 
@@ -164,10 +162,26 @@ class DailyBackgroundService {
   /// This can be called from the UI or when a specific event occurs
   Future<void> triggerDailySummary({required String organizationId, DateTime? targetDate}) async {
     try {
-  logger.d('[DailyBackgroundService] Manually triggering daily summary for organization $organizationId');
+      logger.d('[DailyBackgroundService] Manually triggering daily summary for organization $organizationId');
       await _summaryService.generateAndSendDailySummary(organizationId: organizationId, targetDate: targetDate);
     } catch (e, stackTrace) {
       logger.e('[DailyBackgroundService] Error manually triggering daily summary', e, stackTrace);
+      rethrow;
+    }
+  }
+
+  /// Manually trigger daily summary for testing (bypasses time restrictions)
+  /// This can be called from debug tools or admin interface
+  Future<void> triggerDailySummaryForTesting({required String organizationId, DateTime? targetDate}) async {
+    try {
+      logger.d('[DailyBackgroundService] Manually triggering daily summary for testing - organization $organizationId');
+
+      // Force send the summary regardless of time restrictions
+      await _summaryService.generateAndSendDailySummary(organizationId: organizationId, targetDate: targetDate);
+
+      logger.d('[DailyBackgroundService] Daily summary sent successfully for testing');
+    } catch (e, stackTrace) {
+      logger.e('[DailyBackgroundService] Error in manual daily summary trigger', e, stackTrace);
       rethrow;
     }
   }
@@ -176,7 +190,7 @@ class DailyBackgroundService {
   /// This can be called from shift monitoring logic
   Future<void> onShiftEnded({required String organizationId, required String shiftId}) async {
     try {
-  logger.d('[DailyBackgroundService] Shift $shiftId ended in organization $organizationId');
+      logger.d('[DailyBackgroundService] Shift $shiftId ended in organization $organizationId');
 
       // Check if this was the last shift for the day
       final allShiftsEnded = await _summaryService.areAllShiftsEndedForDay(organizationId: organizationId);
@@ -198,14 +212,14 @@ class DailyBackgroundService {
   /// Initialize the background service
   /// This should be called when the app starts
   static void initialize() {
-  logger.d('[DailyBackgroundService] Initializing daily background service');
+    logger.d('[DailyBackgroundService] Initializing daily background service');
     instance.startDailySummaryMonitoring();
   }
 
   /// Dispose the background service
   /// This should be called when the app is disposed
   static void dispose() {
-  logger.d('[DailyBackgroundService] Disposing daily background service');
+    logger.d('[DailyBackgroundService] Disposing daily background service');
     instance.stopDailySummaryMonitoring();
     _instance = null;
   }

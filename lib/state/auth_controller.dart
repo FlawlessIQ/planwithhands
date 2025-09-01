@@ -13,6 +13,7 @@ import 'package:hands_app/state/user_state.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/features/messaging/services/token_registration_service.dart';
+import 'package:hands_app/services/push_notification_service.dart';
 import 'package:hands_app/utils/location_helper.dart';
 import 'package:hands_app/utils/jobtype_helper.dart';
 
@@ -164,6 +165,14 @@ class AuthController extends _$AuthController {
           await TokenRegistrationService.registerCurrentDevice(userId);
         } catch (e) {
           debugPrint('[AUTH_CONTROLLER] Token registration failed: $e');
+        }
+
+        // Request notification permissions (best-effort, non-blocking)
+        try {
+          final permissionResult = await PushNotificationService().requestPermission();
+          debugPrint('[AUTH_CONTROLLER] Notification permission result: ${permissionResult.name}');
+        } catch (e) {
+          debugPrint('[AUTH_CONTROLLER] Notification permission request failed: $e');
         }
 
         log('starting data fetch timer');

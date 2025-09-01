@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Route Testing - Plan With Hands</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex items-center justify-center">
+    <div class="max-w-2xl mx-auto p-8">
+        <h1 class="text-4xl font-bold mb-8 text-center">🧪 Route Testing</h1>
+        
+        <div class="bg-gray-800 rounded-lg p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Marketing Website Routes</h2>
+            <div class="grid grid-cols-2 gap-2 text-sm">
+                <a href="/" class="p-2 bg-blue-600 rounded hover:bg-blue-700 transition-colors text-center">Homepage</a>
+                <a href="/about" class="p-2 bg-blue-600 rounded hover:bg-blue-700 transition-colors text-center">About</a>
+                <a href="/pricing" class="p-2 bg-blue-600 rounded hover:bg-blue-700 transition-colors text-center">Pricing</a>
+                <a href="/contact" class="p-2 bg-blue-600 rounded hover:bg-blue-700 transition-colors text-center">Contact</a>
+            </div>
+        </div>
+
+        <div class="bg-gray-800 rounded-lg p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Flutter App Routes</h2>
+            <div class="grid grid-cols-2 gap-2 text-sm">
+                <a href="/login" class="p-2 bg-green-600 rounded hover:bg-green-700 transition-colors text-center">Login</a>
+                <a href="/create_account" class="p-2 bg-green-600 rounded hover:bg-green-700 transition-colors text-center">Sign Up</a>
+                <a href="/sign_in" class="p-2 bg-green-600 rounded hover:bg-green-700 transition-colors text-center">Sign In</a>
+                <a href="/app/dashboard" class="p-2 bg-green-600 rounded hover:bg-green-700 transition-colors text-center">Dashboard</a>
+            </div>
+        </div>
+
+        <div class="bg-gray-800 rounded-lg p-6">
+            <h2 class="text-xl font-semibold mb-4">Current Status</h2>
+            <div class="space-y-2 text-sm">
+                <p><span class="text-green-400">✅</span> Marketing site deployed to: planwithhands-marketing.web.app</p>
+                <p><span class="text-green-400">✅</span> Flutter app deployed to: plan-with-hands.web.app</p>
+                <p><span class="text-yellow-400">⏳</span> Custom domain: planwithhands.com (pending DNS setup)</p>
+            </div>
+        </div>
+
+        <div class="mt-8 text-center text-sm text-gray-400">
+            <p>This page helps verify routing works correctly between marketing site and app.</p>
+        </div>
+    </div>
+
+    <script>
+        // Simple route testing
+        document.addEventListener('DOMContentLoaded', function() {
+            const currentUrl = window.location.href;
+            console.log('Current URL:', currentUrl);
+            console.log('Testing route configuration...');
+        });
+    </script>
+</body>
+</html>

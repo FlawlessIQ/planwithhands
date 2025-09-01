@@ -5,7 +5,17 @@ class FirestoreEnforcer {
   static FirebaseFirestore? _instance;
 
   static FirebaseFirestore get instance {
-    _instance ??= FirebaseFirestore.instanceFor(app: Firebase.app(), databaseId: 'planwithhands');
+    if (_instance == null) {
+      try {
+        // Try to get the existing Firebase app
+        final app = Firebase.app();
+        _instance = FirebaseFirestore.instanceFor(app: app, databaseId: 'planwithhands');
+      } catch (e) {
+        // If Firebase app doesn't exist yet, use the default instance
+        // This will work once Firebase is initialized in main()
+        _instance = FirebaseFirestore.instance;
+      }
+    }
     return _instance!;
   }
 

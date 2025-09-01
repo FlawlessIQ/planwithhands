@@ -6,13 +6,12 @@ import 'package:hands_app/state/auth_controller.dart';
 import 'package:hands_app/global_widgets/generic_text_field.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:hands_app/routing/routes.dart';
 import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/global_widgets/hands_icon.dart';
 import 'package:hands_app/state/user_state.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 class LoginPage extends HookConsumerWidget {
   const LoginPage({super.key});
@@ -196,7 +195,7 @@ class LoginPage extends HookConsumerWidget {
         return;
       }
       debugPrint('[LOGIN] Starting login process...');
-      if (!formKey.currentState!.validate()) {
+      if (formKey.currentState?.validate() != true) {
         debugPrint('[LOGIN] Form validation failed');
         return;
       }
@@ -224,11 +223,7 @@ class LoginPage extends HookConsumerWidget {
           try {
             final uid = FirebaseAuth.instance.currentUser?.uid;
             if (uid != null) {
-              final snap =
-                  await FirebaseFirestore.instanceFor(
-                    app: Firebase.app(),
-                    databaseId: 'planwithhands',
-                  ).collection('users').doc(uid).get();
+              final snap = await FirestoreEnforcer.instance.collection('users').doc(uid).get();
               final data = snap.data();
               if (data != null) {
                 final redacted = Map<String, dynamic>.from(data)

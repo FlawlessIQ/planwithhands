@@ -614,12 +614,14 @@ class DailySummaryService {
         final notificationData = {
           'title': title,
           'message': content,
-          'recipientId': admin['userId'],
-          'type': 'daily_summary',
+          'userId': admin['userId'], // Changed from recipientId to userId for trigger compatibility
+          'type': 'general', // Changed from 'daily_summary' to 'general' for trigger compatibility
           'createdAt': timestamp,
           'readBy': <String>[],
           'archivedBy': <String>[],
-          // Add targets for filtering if needed
+          'targetType': 'user', // Added for trigger compatibility
+          'targetId': admin['userId'], // Added for trigger compatibility
+          // Keep targets for backward compatibility with existing UI
           'targets': {
             'userRole': [2], // Target admins only
             'userId': [admin['userId']],

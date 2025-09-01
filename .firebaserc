@@ -7,9 +7,6 @@
       "hosting": {
         "hands-app": [
           "plan-with-hands"
-        ],
-        "hands-web": [
-          "planwithhands-marketing"
         ]
       }
     }

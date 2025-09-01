@@ -1,6 +1,8 @@
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:html' as html;
 import 'package:flutter/foundation.dart';
+
+// Conditional import for web-specific functionality
+import 'local_storage_service_stub.dart' if (dart.library.html) 'local_storage_service_web.dart';
 
 class LocalStorageService {
   static SharedPreferences? _preferences;
@@ -10,7 +12,7 @@ class LocalStorageService {
       try {
         // Probe IndexedDB availability by trying to open a dummy database.
         // This will fail in environments where IndexedDB is disabled, like Safari private mode.
-        await html.window.indexedDB!.open('test');
+        await probeIndexedDB();
       } catch (e) {
         // If it fails, log the error and, most importantly, return without
         // trying to initialize SharedPreferences.

@@ -15,11 +15,9 @@ final unreadNotificationsCountProvider = StreamProvider<int>((ref) {
   }
   // Defensive: Wait for userData to be loaded
   if (userState.userData == null) {
-    debugPrint(
-      '[unreadNotificationsCountProvider] userData not loaded yet for user ${user.uid}. Returning loading stream.',
-    );
-    // Return a stream that never emits, so the UI stays loading
-    return const Stream<int>.empty();
+    debugPrint('[unreadNotificationsCountProvider] userData not loaded yet for user ${user.uid}. Returning 0 unread.');
+    // Return 0 unread messages while user data loads
+    return Stream.value(0);
   }
   final orgId = userState.userData!.organizationId;
   if (orgId.isEmpty) {

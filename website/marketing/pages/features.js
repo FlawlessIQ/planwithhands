@@ -1,3 +1,5 @@
+import PhoneMockup from '../components/PhoneMockup'
+
 export default function Features() {
   return (
     <div className="py-20">
@@ -6,57 +8,121 @@ export default function Features() {
         <p className="text-white/80">Daily checklists, documents & training, team messaging, and live insights. No more missed tasks.</p>
       </header>
 
-      <div className="max-w-6xl mx-auto px-4 space-y-16 mt-16">
+      <div className="max-w-6xl mx-auto px-4 space-y-20 mt-16">
         {/* Checklists */}
-        <div className="grid md:grid-cols-2 gap-10 items-center">
-          <div className="bg-surface text-white p-10 rounded-2xl shadow">[Checklist screenshot]</div>
-          <div>
-            <h2 className="text-3xl font-semibold mb-3">Daily Checklists</h2>
-            <ul className="text-white/80 list-disc list-inside space-y-2">
-              <li>Ordered tasks with required photos</li>
-              <li>Audit history and missed task insights</li>
-              <li>Notes and reasons for incomplete items</li>
+        <div className="grid lg:grid-cols-3 gap-8 items-center">
+          <PhoneMockup 
+            src="/images/Checklist.png" 
+            alt="Daily Checklists feature screenshot"
+            className="max-w-[200px] mx-auto lg:mx-0"
+          />
+          <div className="lg:col-span-2 space-y-4">
+            <h2 className="text-3xl lg:text-4xl font-semibold text-white">Daily Checklists</h2>
+            <p className="text-white/70 text-lg leading-relaxed">
+              Keep your team on track with structured daily tasks and accountability.
+            </p>
+            <ul className="text-white/80 space-y-3">
+              <li className="flex items-start gap-3">
+                <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
+                <span>Ordered tasks with required photos</span>
+              </li>
+              <li className="flex items-start gap-3">
+                <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
+                <span>Audit history and missed task insights</span>
+              </li>
+              <li className="flex items-start gap-3">
+                <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
+                <span>Notes and reasons for incomplete items</span>
+              </li>
             </ul>
           </div>
         </div>
 
         {/* Documents */}
-        <div className="grid md:grid-cols-2 gap-10 items-center">
-          <div className="order-2 md:order-1">
-            <h2 className="text-3xl font-semibold mb-3">Documents & Training</h2>
-            <ul className="text-white/80 list-disc list-inside space-y-2">
-              <li>Centralize SOPs, recipes, and procedures</li>
-              <li>Keep everyone on the latest version</li>
-              <li>Available on mobile — no binders needed</li>
+        <div className="grid lg:grid-cols-3 gap-8 items-center">
+          <div className="lg:col-span-2 space-y-4 order-2 lg:order-1">
+            <h2 className="text-3xl lg:text-4xl font-semibold text-white">Documents & Training</h2>
+            <p className="text-white/70 text-lg leading-relaxed">
+              Centralize all your operational knowledge and keep everyone aligned.
+            </p>
+            <ul className="text-white/80 space-y-3">
+              <li className="flex items-start gap-3">
+                <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
+                <span>Centralize SOPs, recipes, and procedures</span>
+              </li>
+              <li className="flex items-start gap-3">
+                <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
+                <span>Keep everyone on the latest version</span>
+              </li>
+              <li className="flex items-start gap-3">
+                <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
+                <span>Available on mobile — no binders needed</span>
+              </li>
             </ul>
           </div>
-          <div className="order-1 md:order-2 bg-surface text-white p-10 rounded-2xl shadow">[Documents screenshot]</div>
+          <PhoneMockup 
+            src="/images/Training.png" 
+            alt="Documents & Training feature screenshot"
+            className="order-1 lg:order-2 max-w-[200px] mx-auto lg:mx-0"
+          />
         </div>
 
         {/* Messaging */}
-        <div className="grid md:grid-cols-2 gap-10 items-center">
-          <div className="bg-surface text-white p-10 rounded-2xl shadow">[Messaging screenshot]</div>
-          <div>
-            <h2 className="text-3xl font-semibold mb-3">Team Messaging</h2>
-            <ul className="text-white/80 list-disc list-inside space-y-2">
-              <li>Notify all staff, specific roles, or locations</li>
-              <li>Push notifications to devices (if enabled)</li>
-              <li>Keep everyone aligned on updates and standards</li>
+        <div className="grid lg:grid-cols-3 gap-8 items-center">
+          <PhoneMockup 
+            src="/images/Messages.png" 
+            alt="Team Messaging feature screenshot"
+            className="max-w-[200px] mx-auto lg:mx-0"
+          />
+          <div className="lg:col-span-2 space-y-4">
+            <h2 className="text-3xl lg:text-4xl font-semibold text-white">Team Messaging</h2>
+            <p className="text-white/70 text-lg leading-relaxed">
+              Keep your entire team connected with instant updates and announcements.
+            </p>
+            <ul className="text-white/80 space-y-3">
+              <li className="flex items-start gap-3">
+                <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
+                <span>Notify all staff, specific roles, or locations</span>
+              </li>
+              <li className="flex items-start gap-3">
+                <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
+                <span>Push notifications to devices (if enabled)</span>
+              </li>
+              <li className="flex items-start gap-3">
+                <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
+                <span>Keep everyone aligned on updates and standards</span>
+              </li>
             </ul>
           </div>
         </div>
 
         {/* Insights */}
-        <div className="grid md:grid-cols-2 gap-10 items-center">
-          <div className="order-2 md:order-1">
-            <h2 className="text-3xl font-semibold mb-3">Insights & Analytics</h2>
-            <ul className="text-white/80 list-disc list-inside space-y-2">
-              <li>See real-time completion and misses</li>
-              <li>Identify coaching opportunities before peak hours</li>
-              <li>Compare trends across locations</li>
+        <div className="grid lg:grid-cols-3 gap-8 items-center">
+          <div className="lg:col-span-2 space-y-4 order-2 lg:order-1">
+            <h2 className="text-3xl lg:text-4xl font-semibold text-white">Insights & Analytics</h2>
+            <p className="text-white/70 text-lg leading-relaxed">
+              Make data-driven decisions with real-time operational insights.
+            </p>
+            <ul className="text-white/80 space-y-3">
+              <li className="flex items-start gap-3">
+                <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
+                <span>See real-time completion and misses</span>
+              </li>
+              <li className="flex items-start gap-3">
+                <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
+                <span>Identify coaching opportunities before peak hours</span>
+              </li>
+              <li className="flex items-start gap-3">
+                <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
+                <span>Compare trends across locations</span>
+              </li>
             </ul>
           </div>
-          <div className="order-1 md:order-2 bg-surface text-white p-10 rounded-2xl shadow">[Insights screenshot]</div>
+          <PhoneMockup 
+            src="/images/Metrics.png" 
+            alt="Insights & Analytics feature screenshot"
+            className="order-1 lg:order-2 max-w-[200px] mx-auto lg:mx-0"
+          />
         </div>
       </div>
     </div>

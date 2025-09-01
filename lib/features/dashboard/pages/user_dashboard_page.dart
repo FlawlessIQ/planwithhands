@@ -1907,7 +1907,7 @@ class _HelpOutDialog extends StatelessWidget {
             if (currentUser != null && userRole == 0) {
               final shiftAssignmentService = ShiftAssignmentService();
               final alreadyAssigned = await shiftAssignmentService.isUserAssignedToShift(
-                organizationId: this.organizationId,
+                organizationId: organizationId,
                 shiftId: shift.shiftId,
                 userId: currentUser.uid,
               );

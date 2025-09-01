@@ -23,22 +23,32 @@
   ],
   "hosting": [
     {
-      "target": "hands-app",
+      "site": "planwithhands-marketing",
+      "public": "website/marketing/dist",
+      "ignore": ["**/.*", "**/node_modules/**"],
+      "headers": [
+        {"source": "**/*.@(js|css)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]},
+        {"source": "**/*.@(jpg|jpeg|gif|png|svg|webp)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]},
+        {"source": "/index.html", "headers": [{"key": "Cache-Control", "value": "no-store"}]}
+      ],
+      "rewrites": [
+        {"source": "**", "destination": "/index.html"}
+      ],
+      "cleanUrls": true
+    },
+    {
+      "target": "hands-app", 
       "public": "build/web",
       "ignore": ["**/.*", "**/node_modules/**"],
       "headers": [
         {"source": "/index.html", "headers": [{"key": "Cache-Control", "value": "no-store"}]},
         {"source": "/flutter_bootstrap.js", "headers": [{"key": "Cache-Control", "value": "no-store"}]},
-        {"source": "/main.dart.js", "headers": [{"key": "Cache-Control", "value": "no-store"}]}
+        {"source": "/main.dart.js", "headers": [{"key": "Cache-Control", "value": "no-store"}]},
+        {"source": "**/*.@(js|wasm)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]}
       ],
-      "rewrites": [{ "source": "**", "destination": "/index.html" }]
-    },
-    {
-      "target": "hands-web",
-      "public": "website/marketing/dist",
-      "ignore": ["**/.*", "**/node_modules/**"],
-      "rewrites": [{ "source": "**", "destination": "/index.html" }],
-      "cleanUrls": true
+      "rewrites": [
+        { "source": "**", "destination": "/index.html" }
+      ]
     }
   ],
   "storage": {

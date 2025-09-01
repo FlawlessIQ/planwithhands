@@ -13,8 +13,6 @@ void main() async {
   // Test organization ID - replace with your actual org ID for testing
   const organizationId = 'vnE0olvi1Tswjtdb19MI';
 
-  final service = DailySummaryService();
-
   print('📊 Testing comprehensive daily summary generation...');
   print('Organization ID: $organizationId');
   print('Target Date: ${DateTime.now().toString().split(' ')[0]}');
@@ -22,6 +20,7 @@ void main() async {
 
   try {
     // Test the enhanced daily summary generation
+    final service = DailySummaryService();
     await service.generateAndSendDailySummary(organizationId: organizationId, targetDate: DateTime.now());
 
     print('✅ Daily summary test completed successfully!');

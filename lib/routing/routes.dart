@@ -165,11 +165,11 @@ class AuthGateWithOrg extends ConsumerWidget {
             if (snap.connectionState != ConnectionState.done) {
               return const Scaffold(body: Center(child: CircularProgressIndicator()));
             }
-            if (!snap.hasData || !snap.data!.exists) {
+            if (!snap.hasData || !(snap.data?.exists ?? false)) {
               return const LoginPage();
             }
 
-            final userData = snap.data!.data() as Map<String, dynamic>?;
+            final userData = snap.data?.data() as Map<String, dynamic>?;
             if (userData == null) {
               return const LoginPage();
             }
@@ -223,10 +223,10 @@ class AuthGateWithOrgForManager extends ConsumerWidget {
             if (snap.connectionState != ConnectionState.done) {
               return const Scaffold(body: Center(child: CircularProgressIndicator()));
             }
-            if (!snap.hasData || !snap.data!.exists) {
+            if (!snap.hasData || !(snap.data?.exists ?? false)) {
               return const LoginPage();
             }
-            final userData = snap.data!.data() as Map<String, dynamic>?;
+            final userData = snap.data?.data() as Map<String, dynamic>?;
             if (userData == null) {
               return const LoginPage();
             }
@@ -278,12 +278,12 @@ class AuthGateWithOrgForAdmin extends ConsumerWidget {
             if (snap.connectionState != ConnectionState.done) {
               return const Scaffold(body: Center(child: CircularProgressIndicator()));
             }
-            if (!snap.hasData || !snap.data!.exists) {
+            if (!snap.hasData || !(snap.data?.exists ?? false)) {
               logger.d('[AUTH_GATE_ADMIN] Missing user doc -> LoginPage');
               return const LoginPage();
             }
 
-            final userData = snap.data!.data() as Map<String, dynamic>?;
+            final userData = snap.data?.data() as Map<String, dynamic>?;
             if (userData == null) {
               logger.d('[AUTH_GATE_ADMIN] Null userData -> LoginPage');
               return const LoginPage();
@@ -336,8 +336,8 @@ class _ThreadRouteGate extends ConsumerWidget {
         if (snap.connectionState != ConnectionState.done) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
-        if (!snap.hasData || !snap.data!.exists) return const LoginPage();
-        final data = snap.data!.data() as Map<String, dynamic>?;
+        if (!snap.hasData || !(snap.data?.exists ?? false)) return const LoginPage();
+        final data = snap.data?.data() as Map<String, dynamic>?;
         final orgId = data?['organizationId'] as String?;
         if (orgId == null) return const LoginPage();
         return MessageThreadPage(orgId: orgId, threadId: threadId);
@@ -378,12 +378,12 @@ class AuthGateForAdminSetup extends ConsumerWidget {
             if (snap.connectionState != ConnectionState.done) {
               return const Scaffold(body: Center(child: CircularProgressIndicator()));
             }
-            if (!snap.hasData || !snap.data!.exists) {
+            if (!snap.hasData || !(snap.data?.exists ?? false)) {
               logger.d('[AUTH_GATE_ADMIN_SETUP] Missing user doc -> LoginPage');
               return const LoginPage();
             }
 
-            final userData = snap.data!.data() as Map<String, dynamic>?;
+            final userData = snap.data?.data() as Map<String, dynamic>?;
             if (userData == null) {
               logger.d('[AUTH_GATE_ADMIN_SETUP] Null userData -> LoginPage');
               return const LoginPage();
@@ -428,126 +428,132 @@ GoRouter buildAppRouter(Ref ref) {
   logger.d('[ROUTER_INIT] Building GoRouter lazily');
   try {
     _cachedRouter = GoRouter(
-  navigatorKey: PushNotificationService.navigatorKey,
-  redirect: (context, state) {
-    // Debug logging for ALL routing
-    logger.d('[ROUTER] ===============================');
-    logger.d('[ROUTER] TESTING - Current path: ${state.matchedLocation}');
-    logger.d('[ROUTER] TESTING - URI path: ${state.uri.path}');
-    logger.d('[ROUTER] TESTING - Full path: ${state.fullPath}');
-    logger.d('[ROUTER] TESTING - Query params: ${state.uri.queryParameters}');
-    logger.d('[ROUTER] TESTING - Raw URI: ${state.uri.toString()}');
-    logger.d('[ROUTER] TESTING - Browser URL: ${Uri.base.toString()}');
-    logger.d('[ROUTER] ===============================');
+      navigatorKey: PushNotificationService.navigatorKey,
+      redirect: (context, state) {
+        // Debug logging for ALL routing
+        logger.d('[ROUTER] ===============================');
+        logger.d('[ROUTER] TESTING - Current path: ${state.matchedLocation}');
+        logger.d('[ROUTER] TESTING - URI path: ${state.uri.path}');
+        logger.d('[ROUTER] TESTING - Full path: ${state.fullPath}');
+        logger.d('[ROUTER] TESTING - Query params: ${state.uri.queryParameters}');
+        logger.d('[ROUTER] TESTING - Raw URI: ${state.uri.toString()}');
+        logger.d('[ROUTER] TESTING - Browser URL: ${Uri.base.toString()}');
+        logger.d('[ROUTER] ===============================');
 
-    // AGGRESSIVE BROWSER URL PARSING
-    final browserUri = Uri.base;
-    final routerPath = state.uri.path;
+        // AGGRESSIVE BROWSER URL PARSING
+        final browserUri = Uri.base;
+        final routerPath = state.uri.path;
 
-    logger.d('[ROUTER] Browser path: ${browserUri.path}');
-    logger.d('[ROUTER] Router path: $routerPath');
+        logger.d('[ROUTER] Browser path: ${browserUri.path}');
+        logger.d('[ROUTER] Router path: $routerPath');
 
-    // If browser shows welcome but router doesn't, force welcome navigation
-    if (browserUri.path == '/welcome' && routerPath != '/welcome') {
-      logger.d('[ROUTER] *** FORCING WELCOME NAVIGATION ***');
-      final email = browserUri.queryParameters['email'];
-      final orgId = browserUri.queryParameters['orgId'];
-      final inviteId = browserUri.queryParameters['inviteId'];
+        // If browser shows welcome but router doesn't, force welcome navigation
+        if (browserUri.path == '/welcome' && routerPath != '/welcome') {
+          logger.d('[ROUTER] *** FORCING WELCOME NAVIGATION ***');
+          final email = browserUri.queryParameters['email'];
+          final orgId = browserUri.queryParameters['orgId'];
+          final inviteId = browserUri.queryParameters['inviteId'];
 
-      if (email != null && orgId != null) {
-        final welcomeUrl = '/welcome?email=$email&orgId=$orgId&inviteId=${inviteId ?? ''}';
-        logger.d('[ROUTER] Redirecting to: $welcomeUrl');
-        return welcomeUrl;
-      }
-    }
+          if (email != null && orgId != null) {
+            final welcomeUrl = '/welcome?email=$email&orgId=$orgId&inviteId=${inviteId ?? ''}';
+            logger.d('[ROUTER] Redirecting to: $welcomeUrl');
+            return welcomeUrl;
+          }
+        }
 
-    // Stripe return/cancel legacy links: /dashboard?payment=success or /dashboard?payment=cancel
-    if (routerPath == '/dashboard') {
-      final paymentParam = state.uri.queryParameters['payment'];
-      if (paymentParam == 'success') {
-        return AppRoutes.paymentSuccessPage.path;
-      } else if (paymentParam == 'cancel') {
-        return AppRoutes.paymentCancelledPage.path;
-      }
-    }
+        // Stripe return/cancel legacy links: /dashboard?payment=success or /dashboard?payment=cancel
+        if (routerPath == '/dashboard') {
+          final paymentParam = state.uri.queryParameters['payment'];
+          if (paymentParam == 'success') {
+            return AppRoutes.paymentSuccessPage.path;
+          } else if (paymentParam == 'cancel') {
+            return AppRoutes.paymentCancelledPage.path;
+          }
+        }
 
-    return null;
-  },
-  // Default to home, which will redirect to the appropriate dashboard
-  initialLocation: AppRoutes.homePage.path,
-  routes: [
-    GoRoute(path: AppRoutes.homePage.path, builder: (context, state) => const AuthGateWithOrg()),
-    // Invite route removed
-    GoRoute(
-      path: AppRoutes.accountCreationPage.path,
-      builder: (context, state) {
-        return const branded.SimpleSignUpPage();
+        return null;
       },
-    ),
-    GoRoute(path: AppRoutes.loginPage.path, builder: (context, state) => const LoginPage()),
-    GoRoute(path: AppRoutes.signInPage.path, builder: (context, state) => const SignInPage()),
-    GoRoute(
-      path: AppRoutes.welcomePage.path,
-      builder:
-          (context, state) => WelcomePage(
-            email: state.uri.queryParameters['email'],
-            organizationId: state.uri.queryParameters['orgId'],
-            inviteId: state.uri.queryParameters['inviteId'],
-            mode: state.uri.queryParameters['mode'],
-          ),
-    ),
-    GoRoute(path: AppRoutes.settingsPage.path, builder: (context, state) => const AuthGate(child: HandsSettingsPage())),
-    GoRoute(
-      path: AppRoutes.userDashboardPage.path,
-      // Simple auth gate so admins and managers can navigate here directly
-      builder: (context, state) => const AuthGate(child: UserDashboardPage()),
-    ),
-    GoRoute(
-      path: AppRoutes.adminDashboardPage.path,
-      builder: (context, state) {
-        final tab = state.uri.queryParameters['tab'];
-        return AuthGateForAdminSetup(initialTab: tab);
-      },
-    ),
-    GoRoute(
-      path: AppRoutes.adminPage.path,
-      builder: (context, state) {
-        final tab = state.uri.queryParameters['tab'];
-        return AuthGateForAdminSetup(initialTab: tab);
-      },
-    ),
-    GoRoute(
-      path: AppRoutes.setupPage.path,
-      builder: (context, state) {
-        final tab = state.uri.queryParameters['tab']; // 'shifts' | 'checklists' | 'users' | 'locations'
-        return AuthGateForAdminSetup(initialTab: tab);
-      },
-    ),
-    GoRoute(path: AppRoutes.managerDashboardPage.path, builder: (context, state) => const AuthGateWithOrgForManager()),
-    GoRoute(path: AppRoutes.schedulePage.path, builder: (context, state) => const AuthGate(child: SchedulePage())),
-    GoRoute(path: AppRoutes.messagesPage.path, builder: (context, state) => const AuthGate(child: MessagesPage())),
-    GoRoute(
-      path: AppRoutes.threadPage.path,
-      builder: (context, state) {
-        final threadId = state.pathParameters['threadId']!;
-        return _ThreadRouteGate(threadId: threadId);
-      },
-    ),
-    GoRoute(
-      path: AppRoutes.notificationsPage.path,
-      builder: (context, state) => const AuthGate(child: NotificationsPage()),
-    ),
-    GoRoute(
-      path: AppRoutes.trainingMaterialsPage.path,
-      builder: (context, state) {
-        // Pass any extra data (like userRole) to the page
-        return const AuthGate(child: ViewDocumentsPage());
-      },
-    ),
-    GoRoute(path: AppRoutes.paymentSuccessPage.path, builder: (context, state) => const PaymentSuccessPage()),
-    GoRoute(path: AppRoutes.paymentCancelledPage.path, builder: (context, state) => const PaymentCancelledPage()),
-  ],
-  );
+      // Default to home, which will redirect to the appropriate dashboard
+      initialLocation: AppRoutes.homePage.path,
+      routes: [
+        GoRoute(path: AppRoutes.homePage.path, builder: (context, state) => const AuthGateWithOrg()),
+        // Invite route removed
+        GoRoute(
+          path: AppRoutes.accountCreationPage.path,
+          builder: (context, state) {
+            return const branded.SimpleSignUpPage();
+          },
+        ),
+        GoRoute(path: AppRoutes.loginPage.path, builder: (context, state) => const LoginPage()),
+        GoRoute(path: AppRoutes.signInPage.path, builder: (context, state) => const SignInPage()),
+        GoRoute(
+          path: AppRoutes.welcomePage.path,
+          builder:
+              (context, state) => WelcomePage(
+                email: state.uri.queryParameters['email'],
+                organizationId: state.uri.queryParameters['orgId'],
+                inviteId: state.uri.queryParameters['inviteId'],
+                mode: state.uri.queryParameters['mode'],
+              ),
+        ),
+        GoRoute(
+          path: AppRoutes.settingsPage.path,
+          builder: (context, state) => const AuthGate(child: HandsSettingsPage()),
+        ),
+        GoRoute(
+          path: AppRoutes.userDashboardPage.path,
+          // Simple auth gate so admins and managers can navigate here directly
+          builder: (context, state) => const AuthGate(child: UserDashboardPage()),
+        ),
+        GoRoute(
+          path: AppRoutes.adminDashboardPage.path,
+          builder: (context, state) {
+            final tab = state.uri.queryParameters['tab'];
+            return AuthGateForAdminSetup(initialTab: tab);
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.adminPage.path,
+          builder: (context, state) {
+            final tab = state.uri.queryParameters['tab'];
+            return AuthGateForAdminSetup(initialTab: tab);
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.setupPage.path,
+          builder: (context, state) {
+            final tab = state.uri.queryParameters['tab']; // 'shifts' | 'checklists' | 'users' | 'locations'
+            return AuthGateForAdminSetup(initialTab: tab);
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.managerDashboardPage.path,
+          builder: (context, state) => const AuthGateWithOrgForManager(),
+        ),
+        GoRoute(path: AppRoutes.schedulePage.path, builder: (context, state) => const AuthGate(child: SchedulePage())),
+        GoRoute(path: AppRoutes.messagesPage.path, builder: (context, state) => const AuthGate(child: MessagesPage())),
+        GoRoute(
+          path: AppRoutes.threadPage.path,
+          builder: (context, state) {
+            final threadId = state.pathParameters['threadId']!;
+            return _ThreadRouteGate(threadId: threadId);
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.notificationsPage.path,
+          builder: (context, state) => const AuthGate(child: NotificationsPage()),
+        ),
+        GoRoute(
+          path: AppRoutes.trainingMaterialsPage.path,
+          builder: (context, state) {
+            // Pass any extra data (like userRole) to the page
+            return const AuthGate(child: ViewDocumentsPage());
+          },
+        ),
+        GoRoute(path: AppRoutes.paymentSuccessPage.path, builder: (context, state) => const PaymentSuccessPage()),
+        GoRoute(path: AppRoutes.paymentCancelledPage.path, builder: (context, state) => const PaymentCancelledPage()),
+      ],
+    );
   } catch (e, st) {
     logger.e('[ROUTER_INIT] Exception constructing GoRouter: $e', e, st);
     rethrow;

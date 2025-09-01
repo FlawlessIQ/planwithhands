@@ -40,8 +40,8 @@
 	<string>This app needs access to your photo library to upload task completion photos and document proof of work.</string>
 	<key>NSDocumentsFolderUsageDescription</key>
 	<string>This app needs access to your documents to upload files and manage work-related documents.</string>
-	<key>NSUserTrackingUsageDescription</key>
-	<string>This app would like to access your device's advertising identifier to provide personalized content and improve your experience.</string>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>This app needs permission to send you notifications about messages, schedule updates, and important announcements.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>

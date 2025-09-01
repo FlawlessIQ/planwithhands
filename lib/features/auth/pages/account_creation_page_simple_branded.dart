@@ -119,7 +119,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
     super.initState();
     // Pre-fill email if provided from invitation
     if (widget.email != null) {
-      emailController.text = widget.email!;
+      emailController.text = widget.email ?? '';
     }
     // Listen to locations input changes
     _locCtrl.addListener(() {
@@ -146,7 +146,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
   // Removed legacy pricing UI helpers
 
   Future<void> _createAccount() async {
-    if (!_formKey.currentState!.validate()) {
+    if (_formKey.currentState?.validate() != true) {
       return;
     }
 
@@ -188,7 +188,8 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
       email: emailController.text.trim(),
       password: passwordController.text,
     );
-    final user = credential.user!;
+    final user = credential.user;
+    if (user == null) throw Exception('Failed to create user');
 
     // Update user profile
     await user.updateDisplayName('${firstNameController.text} ${lastNameController.text}');
@@ -236,7 +237,8 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
         password: passwordController.text,
       );
 
-      final user = credential.user!;
+      final user = credential.user;
+      if (user == null) throw Exception('Failed to create user');
       logger.d('Firebase Auth user created: ${user.uid}');
 
       // Update user profile
@@ -375,7 +377,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                 margin: const EdgeInsets.only(bottom: 24),
                 decoration: BoxDecoration(
                   color: Colors.green[50],
-                  border: Border.all(color: Colors.green[200]!),
+                  border: Border.all(color: Colors.green[200] ?? Colors.green),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Column(
@@ -403,7 +405,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                       controller: businessNameController,
                       decoration: const InputDecoration(labelText: 'Business/LLC Name', border: OutlineInputBorder()),
                       textCapitalization: TextCapitalization.words,
-                      validator: (v) => v!.isEmpty ? 'Enter business name' : null,
+                      validator: (v) => (v?.isEmpty ?? true) ? 'Enter business name' : null,
                     ),
                     const SizedBox(height: 16),
 
@@ -532,7 +534,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                           controller: firstNameController,
                           decoration: const InputDecoration(labelText: 'First Name', border: OutlineInputBorder()),
                           textCapitalization: TextCapitalization.words,
-                          validator: (v) => v!.isEmpty ? 'Enter first name' : null,
+                          validator: (v) => (v?.isEmpty ?? true) ? 'Enter first name' : null,
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -541,7 +543,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                           controller: lastNameController,
                           decoration: const InputDecoration(labelText: 'Last Name', border: OutlineInputBorder()),
                           textCapitalization: TextCapitalization.words,
-                          validator: (v) => v!.isEmpty ? 'Enter last name' : null,
+                          validator: (v) => (v?.isEmpty ?? true) ? 'Enter last name' : null,
                         ),
                       ),
                     ],
@@ -554,8 +556,8 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                     keyboardType: TextInputType.emailAddress,
                     enabled: !isInvitedUser,
                     validator: (v) {
-                      if (v!.isEmpty) return 'Enter email address';
-                      if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(v)) {
+                      if (v?.isEmpty ?? true) return 'Enter email address';
+                      if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(v!)) {
                         return 'Enter valid email address';
                       }
                       return null;
@@ -589,8 +591,8 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                     ),
                     obscureText: !passwordVisible,
                     validator: (v) {
-                      if (v!.isEmpty) return 'Enter password';
-                      if (v.length < 6) {
+                      if (v?.isEmpty ?? true) return 'Enter password';
+                      if (v!.length < 6) {
                         return 'Password must be at least 6 characters';
                       }
                       return null;
@@ -614,7 +616,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                   if (!isInvitedUser)
                     Row(
                       children: [
-                        Checkbox(value: agreeTerms, onChanged: (value) => setState(() => agreeTerms = value!)),
+                        Checkbox(value: agreeTerms, onChanged: (value) => setState(() => agreeTerms = value ?? false)),
                         const Expanded(child: Text('I agree to the Terms of Service and Privacy Policy.')),
                       ],
                     ),

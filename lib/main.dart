@@ -6,14 +6,14 @@ import 'package:hands_app/routing/router_provider.dart';
 import 'package:hands_app/services/local_storage_service.dart';
 import 'package:hands_app/services/daily_background_service.dart';
 import 'package:hands_app/theme/theme.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:stack_trace/stack_trace.dart' as stack_trace;
 import 'package:timezone/data/latest.dart' as tz;
 import 'dart:async';
 
-import 'firebase_options.dart';
+import 'package:hands_app/services/firebase_initializer.dart';
+import 'package:hands_app/services/push_notification_service.dart';
 import 'config/release_config.dart';
 
 void main() async {
@@ -30,11 +30,30 @@ void main() async {
       // error UI if something fails during initialization.
       try {
         // Initialize our "safe" local storage service and Firebase.
-        await LocalStorageService.init();
-        await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+        try {
+          await LocalStorageService.init();
+        } catch (e) {
+          print('LocalStorage init failed (non-critical): $e');
+          // Continue without local storage - the app can still function
+        }
+
+        await FirebaseInitializer().initialize();
+
+        // Initialize push notifications (may fail on web in some browsers)
+        try {
+          await PushNotificationService().initialize();
+        } catch (e) {
+          print('Push notification init failed (non-critical): $e');
+          // Continue without push notifications
+        }
 
         // Initialize daily background service for automated summaries
-        DailyBackgroundService.initialize();
+        try {
+          DailyBackgroundService.initialize();
+        } catch (e) {
+          print('Background service init failed (non-critical): $e');
+          // Continue without background service
+        }
 
         // Set up app lifecycle observer for proper cleanup
         final lifecycleObserver = _AppLifecycleObserver();
@@ -44,13 +63,35 @@ void main() async {
         print('Critical startup error: $e\n$st');
         runApp(
           MaterialApp(
+            debugShowCheckedModeBanner: false,
             home: Scaffold(
               body: Center(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
-                  child: Text(
-                    'A critical error occurred during app initialization:\n\n$e',
-                    textAlign: TextAlign.center,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error, color: Colors.red, size: 48),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'App Initialization Error',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      Text('Please refresh the page to try again.\n\nError: $e', textAlign: TextAlign.center),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: () {
+                          // On web, we can reload. On other platforms, this button won't appear anyway
+                          if (kIsWeb) {
+                            // Use JavaScript to reload the page
+                            // ignore: avoid_web_libraries_in_flutter
+                            //dart:html.window.location.reload();
+                          }
+                        },
+                        child: const Text('Refresh Page'),
+                      ),
+                    ],
                   ),
                 ),
               ),
