@@ -1,4 +1,11 @@
 const functions = require("firebase-functions");
+const admin = require("firebase-admin");
+const sgMail = require('@sendgrid/mail');
+
+// Initialize SendGrid
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+}
 
 // Uses Node 20 global fetch
 const GOOGLE_PLACES_ROOT = "https://places.googleapis.com/v1";
@@ -106,6 +113,61 @@ exports.placesAutocompleteHttp = functions
     if (req.method !== 'POST') {
       return res.status(405).json({ error: 'Method Not Allowed' });
     }
+    
+    // Check if this is a help request
+    if (req.body && req.body.requestType === 'help') {
+      try {
+        const {email, subject, message} = req.body;
+
+        if (!email || !subject || !message) {
+          return res.status(400).json({ error: "Missing required fields" });
+        }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+          return res.status(400).json({ error: "Invalid email format" });
+        }
+
+        if (message.trim().length < 10) {
+          return res.status(400).json({ error: "Message too short" });
+        }
+
+        const db = admin.firestore();
+        const helpRequestRef = await db.collection("help_requests").add({
+          email: email.trim(),
+          subject: subject.trim(),
+          message: message.trim(),
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          status: "new",
+          source: "app_help_form",
+        });
+        
+        // Try to send email if SendGrid is configured
+        if (process.env.SENDGRID_API_KEY && sgMail) {
+          try {
+            await sgMail.send({
+              to: 'support@planwithhands.com',
+              from: 'noreply@planwithhands.com',
+              subject: `Help Request: ${subject}`,
+              html: `<h3>New Help Request</h3><p><strong>From:</strong> ${email}</p><p><strong>Subject:</strong> ${subject}</p><p><strong>Message:</strong></p><p>${message.replace(/\n/g, '<br>')}</p><p><strong>Request ID:</strong> ${helpRequestRef.id}</p>`,
+            });
+          } catch (emailError) {
+            console.warn("Email failed:", emailError);
+          }
+        }
+        
+        return res.status(200).json({
+          success: true,
+          message: "Help request submitted successfully!",
+          requestId: helpRequestRef.id,
+        });
+      } catch (error) {
+        console.error("Help request error:", error);
+        return res.status(500).json({ error: "Internal server error" });
+      }
+    }
+    
+    // Original places logic
     try {
       const { input, sessionToken, languageCode, regionCode } = req.body || {};
       if (!input || typeof input !== 'string') {
@@ -179,5 +241,58 @@ exports.placeDetailsHttp = functions
       }
     } catch (e) {
       return res.status(500).json({ error: (e && e.message) || String(e) });
+    }
+  });
+
+// Help request function
+exports.sendHelpRequest = functions
+  .region("us-central1")
+  .https.onRequest(async (req, res) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    if (req.method === 'OPTIONS') {
+      return res.status(204).send('');
+    }
+
+    if (req.method !== 'POST') {
+      return res.status(405).json({ error: 'Method not allowed' });
+    }
+
+    try {
+      const {email, subject, message} = req.body || {};
+
+      if (!email || !subject || !message) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ error: "Invalid email format" });
+      }
+
+      if (message.trim().length < 10) {
+        return res.status(400).json({ error: "Message too short" });
+      }
+
+      const db = admin.firestore();
+      const helpRequestRef = await db.collection("help_requests").add({
+        email: email.trim(),
+        subject: subject.trim(),
+        message: message.trim(),
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        status: "new",
+        source: "app_help_form",
+      });
+      
+      return res.status(200).json({
+        success: true,
+        message: "Help request submitted successfully!",
+        requestId: helpRequestRef.id,
+      });
+    } catch (error) {
+      console.error("Help request error:", error);
+      return res.status(500).json({ error: "Internal server error" });
     }
   });
