@@ -1,7 +1,19 @@
 import Link from 'next/link'
 import Image from 'next/image'
+import { useState, useEffect } from 'react'
 
 export default function Layout({ children }) {
+  const [mobileOpen, setMobileOpen] = useState(false)
+
+  // Lock body scroll when mobile menu is open
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    document.body.style.overflow = mobileOpen ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [mobileOpen])
+
+  const closeMobile = () => setMobileOpen(false)
+
   return (
     <div className="min-h-screen bg-black text-white flex flex-col">
       {/* Header */}
@@ -18,6 +30,7 @@ export default function Layout({ children }) {
             />
             <span className="font-semibold tracking-tight text-lg sm:text-xl md:text-2xl">Plan With Hands</span>
           </Link>
+
           <nav className="hidden lg:flex items-center gap-6 text-sm">
             <Link href="/how-it-works" className="hover:text-accent transition-colors">How it works</Link>
             <Link href="/features" className="hover:text-accent transition-colors">Features</Link>
@@ -25,26 +38,48 @@ export default function Layout({ children }) {
             <Link href="/about" className="hover:text-accent transition-colors">About</Link>
             <Link href="/contact" className="hover:text-accent transition-colors">Contact</Link>
           </nav>
+
           <div className="hidden sm:flex items-center gap-2">
             <a href="https://plan-with-hands.web.app/login" className="px-3 py-2 rounded-xl bg-white/0 hover:bg-white/10 transition-colors text-sm">Login</a>
             <a href="https://plan-with-hands.web.app/create_account" className="px-3 sm:px-4 py-2 rounded-xl bg-accent text-primary font-semibold hover:opacity-90 transition-opacity text-sm">Sign up</a>
           </div>
-          {/* Mobile menu button - we'll add this later if needed */}
-        </div>
-      </header>
 
-      {/* Mobile nav */}
-      <div className="lg:hidden bg-primary/95 border-b border-white/10 safe-area-inset">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex gap-3 text-sm overflow-x-auto scrollbar-hide">
-          <Link href="/how-it-works" className="whitespace-nowrap px-3 py-1 rounded-lg hover:bg-white/10 transition-colors">How it works</Link>
-          <Link href="/features" className="whitespace-nowrap px-3 py-1 rounded-lg hover:bg-white/10 transition-colors">Features</Link>
-          <Link href="/pricing" className="whitespace-nowrap px-3 py-1 rounded-lg hover:bg-white/10 transition-colors">Pricing</Link>
-          <Link href="/about" className="whitespace-nowrap px-3 py-1 rounded-lg hover:bg-white/10 transition-colors">About</Link>
-          <Link href="/contact" className="whitespace-nowrap px-3 py-1 rounded-lg hover:bg-white/10 transition-colors">Contact</Link>
-          <a href="https://plan-with-hands.web.app/login" className="whitespace-nowrap px-3 py-1 rounded-lg hover:bg-white/10 transition-colors">Login</a>
-          <a href="https://plan-with-hands.web.app/create_account" className="whitespace-nowrap px-3 py-1 rounded-lg bg-accent text-primary font-semibold hover:opacity-90 transition-opacity ml-auto">Sign up</a>
+          {/* Mobile hamburger */}
+          <button
+            onClick={() => setMobileOpen(v => !v)}
+            aria-label="Toggle menu"
+            aria-expanded={mobileOpen}
+            className="lg:hidden inline-flex items-center justify-center p-2 rounded-md hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            {mobileOpen ? (
+              <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+            ) : (
+              <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12h18M3 6h18M3 18h18" /></svg>
+            )}
+          </button>
         </div>
-      </div>
+
+        {/* Mobile dropdown overlay */}
+        {mobileOpen && (
+          <div className="lg:hidden">
+            <div className="fixed inset-0 bg-black/40 z-30" onClick={closeMobile} aria-hidden />
+            <div className="fixed top-full left-0 right-0 mt-0 bg-primary/95 border-t border-white/10 shadow-xl z-40 safe-area-inset">
+              <div className="max-w-6xl mx-auto px-4 py-4 space-y-3">
+                <Link href="/how-it-works" onClick={closeMobile} className="block px-3 py-2 rounded-lg hover:bg-white/5 transition-colors">How it works</Link>
+                <Link href="/features" onClick={closeMobile} className="block px-3 py-2 rounded-lg hover:bg-white/5 transition-colors">Features</Link>
+                <Link href="/pricing" onClick={closeMobile} className="block px-3 py-2 rounded-lg hover:bg-white/5 transition-colors">Pricing</Link>
+                <Link href="/about" onClick={closeMobile} className="block px-3 py-2 rounded-lg hover:bg-white/5 transition-colors">About</Link>
+                <Link href="/contact" onClick={closeMobile} className="block px-3 py-2 rounded-lg hover:bg-white/5 transition-colors">Contact</Link>
+
+                <div className="pt-2 border-t border-white/5 flex gap-2">
+                  <a onClick={closeMobile} href="https://plan-with-hands.web.app/login" className="flex-1 text-center px-3 py-2 rounded-lg hover:bg-white/5 transition-colors">Login</a>
+                  <a onClick={closeMobile} href="https://plan-with-hands.web.app/create_account" className="flex-1 text-center px-3 py-2 rounded-lg bg-accent text-primary font-semibold hover:opacity-90 transition-opacity">Sign up</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </header>
 
       <main className="flex-1">{children}</main>
 

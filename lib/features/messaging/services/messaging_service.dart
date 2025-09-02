@@ -22,9 +22,11 @@ class MessagingService {
     bool pushOnLogin = false,
   }) async {
     final threadRef = _db.collection('messageThreads').doc();
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) throw Exception('User not signed in');
     await threadRef.set({
       'orgId': orgId,
-      'createdBy': _auth.currentUser!.uid,
+      'createdBy': uid,
       'createdAt': FieldValue.serverTimestamp(),
       'targetType': targetType,
       'targetRef': targetRef,
@@ -37,8 +39,10 @@ class MessagingService {
   }
 
   Future<void> sendMessage(String threadId, String text, {bool sendNotifications = true}) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) throw Exception('User not signed in');
     final msgRef = _db.collection('messageThreads').doc(threadId).collection('messages').doc();
-    await msgRef.set({'senderId': _auth.currentUser!.uid, 'text': text, 'createdAt': FieldValue.serverTimestamp()});
+    await msgRef.set({'senderId': uid, 'text': text, 'createdAt': FieldValue.serverTimestamp()});
     await _db.collection('messageThreads').doc(threadId).set({
       'lastMessagePreview': text.substring(0, text.length > 80 ? 80 : text.length),
       'lastMessageAt': FieldValue.serverTimestamp(),
@@ -72,12 +76,13 @@ class MessagingService {
         .orderBy('lastMessageAt', descending: true)
         .snapshots()
         .asyncMap((snap) async {
-          final notifSnap = await _db
-              .collection('notifications')
-              .where('orgId', isEqualTo: orgId)
-              .where('userId', isEqualTo: userId)
-              .where('read', isEqualTo: false)
-              .get();
+          final notifSnap =
+              await _db
+                  .collection('notifications')
+                  .where('orgId', isEqualTo: orgId)
+                  .where('userId', isEqualTo: userId)
+                  .where('read', isEqualTo: false)
+                  .get();
           final unreadByThread = <String, int>{};
           for (final d in notifSnap.docs) {
             final data = d.data();
@@ -103,12 +108,13 @@ class MessagingService {
 
   Future<void> markThreadRead(String threadId, String userId) async {
     final batch = _db.batch();
-    final q = await _db
-        .collection('notifications')
-        .where('threadId', isEqualTo: threadId)
-        .where('userId', isEqualTo: userId)
-        .where('read', isEqualTo: false)
-        .get();
+    final q =
+        await _db
+            .collection('notifications')
+            .where('threadId', isEqualTo: threadId)
+            .where('userId', isEqualTo: userId)
+            .where('read', isEqualTo: false)
+            .get();
     for (final d in q.docs) {
       batch.update(d.reference, {'read': true});
     }

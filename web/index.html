@@ -20,8 +20,22 @@
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="A new Flutter project.">
 
-  <!-- Force attempt to use HTML renderer (diagnostic) -->
-  <meta name="flutter-renderer" content="html">
+  <!-- Renderer: default (auto). Use ?r=html or ?r=ck to force. -->
+  <script>
+    (function(){
+      var params = new URLSearchParams(location.search);
+      var r = params.get('r');
+      if (r === 'html' || r === 'ck' || r === 'canvaskit') {
+        var m = document.createElement('meta');
+        m.name = 'flutter-renderer';
+        m.content = (r === 'ck' ? 'canvaskit' : r);
+        document.head.appendChild(m);
+        console.log('[BOOT] Forcing renderer = '+m.content);
+      } else {
+        console.log('[BOOT] Renderer auto');
+      }
+    })();
+  </script>
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -36,10 +50,36 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <!-- Lightweight always-on environment probe (non-intrusive) -->
+  <div id="env-probe" style="position:fixed;bottom:6px;right:6px;font:11px/1.2 monospace;background:#000;border:1px solid #2f2;padding:4px 6px;color:#ccf;z-index:9999;border-radius:4px;box-shadow:0 0 4px rgba(0,0,0,.6);cursor:pointer;max-width:40vw;opacity:0.85" aria-label="Environment probe (tap to expand)"></div>
+  <script>
+    (function(){
+      try {
+        const el = document.getElementById('env-probe');
+        const ua = navigator.userAgent;
+        const safari = ua.includes('Safari') && !ua.includes('Chrome');
+        const idb = !!window.indexedDB;
+        const lsState = (function(){try{return window.localStorage? 'ok:'+window.localStorage.length:'none';}catch(e){return 'error';}})();
+        const ts = new Date().toISOString().split('T')[1].replace('Z','');
+        el.textContent = (safari? 'Safari ':'') + 'IDB=' + idb + ' LS=' + lsState;
+        el.dataset.compact = '1';
+        el.addEventListener('click', function(){
+          if (el.dataset.compact === '1') {
+            el.dataset.compact = '0';
+            el.style.maxWidth = '80vw';
+            el.style.whiteSpace = 'pre-wrap';
+            el.textContent = '[Env '+ts+']' + '\nUA: ' + ua + '\nIndexedDB: ' + idb + '\nLocalStorage: ' + lsState + '\nCookies: ' + navigator.cookieEnabled + '\nSW: ' + ('serviceWorker' in navigator) + '\nTap to collapse';
+          } else {
+            el.dataset.compact = '1';
+            el.style.whiteSpace = 'normal';
+            el.textContent = (safari? 'Safari ':'') + 'IDB=' + idb + ' LS=' + lsState;
+          }
+        });
+      } catch(_) {}
+    })();
+  </script>
   <!-- Diagnostic instrumentation: logs progress & surfaces errors directly on page.
-       Note: this is now opt-in. Append `?diag=1` to the URL to enable the pane during
-       debugging (e.g. http://localhost:49749/?diag=1). This prevents the overlay
-       from appearing on every local run. -->
+       Opt-in with ?diag=1 so normal users are unaffected. -->
   <script>
     (function(){
       // Opt-in: only run the diagnostic pane when the query param diag=1 is present.
@@ -61,6 +101,18 @@
         el.textContent += '['+ts+'] '+msg+'\n';
         console.log('[DIAG]',msg);
       }
+      // Expose for Dart code (optional) and mirror selected console logs.
+      window.__pushDiag = log;
+      (function wrapConsole(){
+        const orig = console.log;
+        console.log = function(){
+          try {
+            const msg = Array.from(arguments).join(' ');
+            if (/\[(APP|FirebaseInitializer)/.test(msg)) { log(msg); }
+          } catch(_) {}
+          return orig.apply(this, arguments);
+        };
+      })();
       window.onerror=function(m,src,l,c,e){
         log('ERROR: '+m+' @'+src+':'+l+':'+c+'\n'+(e&&e.stack||''));
       };
@@ -88,5 +140,31 @@
   </script>
   <!-- Cache-busting query param to defeat any stale intermediate caches -->
   <script src="flutter_bootstrap.js?v=diag1" async></script>
+  <script>
+    // Watchdog: if Flutter hasn't added a root element within 20s, inject a minimal fallback UI.
+    (function(){
+      var start = Date.now();
+      var fired = false;
+      function hasFlutter(){
+        return document.querySelector('flt-glass-pane,#flt-glass-pane,body > canvas');
+      }
+      function tick(){
+        if (fired) return;
+        if (hasFlutter()) { fired = true; return; }
+        if (Date.now() - start > 20000) {
+          fired = true;
+          var div = document.createElement('div');
+          div.style.cssText='position:fixed;top:0;left:0;right:0;padding:12px;background:#600;color:#fff;font:14px sans-serif;z-index:9998';
+          div.innerHTML = 'App failed to load (startup watchdog). Tap to retry.';
+          div.onclick = function(){ location.reload(); };
+          document.body.appendChild(div);
+          console.log('[WATCHDOG] Injected fallback banner');
+        } else {
+          setTimeout(tick, 500);
+        }
+      }
+      setTimeout(tick, 500);
+    })();
+  </script>
 </body>
 </html>

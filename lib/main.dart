@@ -14,9 +14,18 @@ import 'dart:async';
 
 import 'package:hands_app/services/firebase_initializer.dart';
 import 'package:hands_app/services/push_notification_service.dart';
+import 'package:hands_app/pages/web_platform_page.dart';
 import 'config/release_config.dart';
 
 void main() async {
+  // On web, show simplified app without Firebase complexity
+  if (kIsWeb) {
+    WidgetsFlutterBinding.ensureInitialized();
+    usePathUrlStrategy();
+    runApp(const WebHandsApp());
+    return;
+  }
+
   // Run the app inside a guarded zone and ensure the Flutter binding is
   // initialized inside that same zone to avoid the "Zone mismatch" error.
   runZonedGuarded<Future<void>>(
@@ -29,38 +38,61 @@ void main() async {
       // Wrap critical startup in a try/catch so we can show a friendly
       // error UI if something fails during initialization.
       try {
-        // Initialize our "safe" local storage service and Firebase.
-        try {
-          await LocalStorageService.init();
-        } catch (e) {
-          print('LocalStorage init failed (non-critical): $e');
-          // Continue without local storage - the app can still function
+        Future<void> runStep(String name, FutureOr<void> Function() fn) async {
+          debugPrint('== Startup STEP BEGIN: ' + name);
+          try {
+            await fn();
+            debugPrint('== Startup STEP OK: ' + name);
+          } catch (e) {
+            debugPrint('== Startup STEP FAIL: ' + name + ' -> ' + e.toString());
+            // Re-throw so outer catch can show unified error UI tagged with step name.
+            throw Exception('[STEP ' + name + '] ' + e.toString());
+          }
         }
 
-        await FirebaseInitializer().initialize();
+        // Initialize our "safe" local storage service.
+        await runStep('localStorage', () async {
+          try {
+            await LocalStorageService.init();
+          } catch (e) {
+            // Non-critical; log and continue (do NOT wrap in Exception to avoid halting app)
+            debugPrint('LocalStorage init failed (non-critical): $e');
+          }
+        });
 
-        // Initialize push notifications (may fail on web in some browsers)
-        try {
-          await PushNotificationService().initialize();
-        } catch (e) {
-          print('Push notification init failed (non-critical): $e');
-          // Continue without push notifications
-        }
+        // Firebase core initialization
+        await runStep('firebaseCore', () async {
+          await FirebaseInitializer().initialize();
+        });
 
-        // Initialize daily background service for automated summaries
-        try {
-          DailyBackgroundService.initialize();
-        } catch (e) {
-          print('Background service init failed (non-critical): $e');
-          // Continue without background service
-        }
+        // Push notifications (tolerated failure on web)
+        await runStep('pushNotifications', () async {
+          try {
+            await PushNotificationService().initialize();
+          } catch (e) {
+            debugPrint('Push notification init failed (non-critical): $e');
+          }
+        });
 
-        // Set up app lifecycle observer for proper cleanup
-        final lifecycleObserver = _AppLifecycleObserver();
-        WidgetsBinding.instance.addObserver(lifecycleObserver);
+        // Daily background service (non-critical)
+        await runStep('dailyBackgroundService', () async {
+          try {
+            DailyBackgroundService.initialize();
+          } catch (e) {
+            debugPrint('Background service init failed (non-critical): $e');
+          }
+        });
+
+        // Add lifecycle observer
+        await runStep('lifecycleObserver', () async {
+          final lifecycleObserver = _AppLifecycleObserver();
+          WidgetsBinding.instance.addObserver(lifecycleObserver);
+        });
       } catch (e, st) {
         // If any of the above critical services fail, show an error UI and stop.
-        print('Critical startup error: $e\n$st');
+        // Log full stack trace for debugging.
+        debugPrint('Critical startup error: $e');
+        debugPrint('Stack trace:\n${st.toString()}');
         runApp(
           MaterialApp(
             debugShowCheckedModeBanner: false,
@@ -68,30 +100,36 @@ void main() async {
               body: Center(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.error, color: Colors.red, size: 48),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'App Initialization Error',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 8),
-                      Text('Please refresh the page to try again.\n\nError: $e', textAlign: TextAlign.center),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: () {
-                          // On web, we can reload. On other platforms, this button won't appear anyway
-                          if (kIsWeb) {
-                            // Use JavaScript to reload the page
-                            // ignore: avoid_web_libraries_in_flutter
-                            //dart:html.window.location.reload();
-                          }
-                        },
-                        child: const Text('Refresh Page'),
-                      ),
-                    ],
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.error, color: Colors.red, size: 48),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'App Initialization Error',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        SelectableText('Error: ' + e.toString(), textAlign: TextAlign.center),
+                        const SizedBox(height: 4),
+                        const Text('If this persists, screenshot & report.'),
+                        const SizedBox(height: 12),
+                        SizedBox(height: 300, child: SingleChildScrollView(child: SelectableText(st.toString()))),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: () {
+                            // On web, we can reload. On other platforms, this button won't appear anyway
+                            if (kIsWeb) {
+                              // Use JavaScript to reload the page
+                              // ignore: avoid_web_libraries_in_flutter
+                              //dart:html.window.location.reload();
+                            }
+                          },
+                          child: const Text('Refresh Page'),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -99,10 +137,6 @@ void main() async {
           ),
         );
         return; // Halt execution of the zone callback.
-      }
-
-      if (kIsWeb) {
-        usePathUrlStrategy();
       }
 
       bool crashlyticsEnabled = false;
@@ -139,6 +173,20 @@ void main() async {
     }
     return stack;
   };
+}
+
+class WebHandsApp extends StatelessWidget {
+  const WebHandsApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Plan with Hands',
+      theme: handsTheme,
+      debugShowCheckedModeBanner: false,
+      home: const WebPlatformPage(),
+    );
+  }
 }
 
 class HandsApp extends ConsumerWidget {

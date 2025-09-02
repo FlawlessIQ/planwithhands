@@ -216,19 +216,17 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
       // We need to sign them in with their temporary password and update to new password
 
       // First, try to sign in with the temporary password
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: widget.email!,
-        password: _tempPasswordController.text,
-      );
+      final email = widget.email;
+      if (email == null) throw Exception('Missing email for account creation');
+      await FirebaseAuth.instance.signInWithEmailAndPassword(email: email, password: _tempPasswordController.text);
 
       // Update the password to the new one
       final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        await user.updatePassword(_passwordController.text);
-      }
+      if (user == null) throw Exception('Signed-in user unexpectedly null');
+      await user.updatePassword(_passwordController.text);
 
       // Update user document in Firestore to mark setup as completed
-      await FirestoreEnforcer.instance.collection('users').doc(user!.uid).update({
+      await FirestoreEnforcer.instance.collection('users').doc(user.uid).update({
         'setupCompleted': true,
         'onboardingComplete': true, // Add this flag for consistency with admin dashboard
         'isActive': true,

@@ -118,7 +118,13 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
   // Old _saveProfile removed in favor of per-section edit dialogs.
 
   Future<void> _showEditProfileDialog() async {
-    final user = FirebaseAuth.instance.currentUser!;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please sign in to edit profile')));
+      }
+      return;
+    }
     final originalEmail = user.email;
 
     final firstNameCtrl = TextEditingController(text: _firstNameController.text);

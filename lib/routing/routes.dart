@@ -556,7 +556,15 @@ GoRouter buildAppRouter(Ref ref) {
     );
   } catch (e, st) {
     logger.e('[ROUTER_INIT] Exception constructing GoRouter: $e', e, st);
-    rethrow;
+    // Fall through to return any partially constructed router or rethrow if none
   }
+
+  if (_cachedRouter != null) {
+    return _cachedRouter!;
+  }
+
+  // If we reach here, router construction failed in a non-throwing way. Create a minimal fallback router
+  logger.w('[ROUTER_INIT] Router construction failed; returning fallback GoRouter to avoid null exception');
+  _cachedRouter = GoRouter(routes: [GoRoute(path: AppRoutes.homePage.path, builder: (c, s) => const LoginPage())]);
   return _cachedRouter!;
 }

@@ -48,10 +48,16 @@ class _SignInPageState extends State<SignInPage> {
       // Check if this is a pending invite
       if (inviteId != null) {
         // Look for pending user data
+        final emailNorm = email?.toLowerCase();
+        if (emailNorm == null) {
+          _showError('Invalid sign-in link. Missing email parameter.');
+          return;
+        }
+
         final pendingUserQuery =
             await FirestoreEnforcer.instance
                 .collection('pendingUsers')
-                .where('emailAddress', isEqualTo: email!.toLowerCase())
+                .where('emailAddress', isEqualTo: emailNorm)
                 .where('inviteId', isEqualTo: inviteId)
                 .limit(1)
                 .get();
@@ -123,11 +129,22 @@ class _SignInPageState extends State<SignInPage> {
     });
 
     try {
+      // Defensive: ensure we have an email from the link
+      if (email == null || email!.isEmpty) {
+        _showError('Missing email information from sign-in link.');
+        return;
+      }
+
       // Sign in with email link using the current URL
       await FirebaseAuth.instance.signInWithEmailLink(email: email!, emailLink: Uri.base.toString());
 
       // Now update the password
-      final user = FirebaseAuth.instance.currentUser!;
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        // This can happen if the sign-in link failed to authenticate the user
+        _showError('Sign-in failed. No authenticated user found. Please try again or contact support.');
+        return;
+      }
       await user.updatePassword(_passwordController.text);
 
       // Get query parameters to check for invite
@@ -136,10 +153,16 @@ class _SignInPageState extends State<SignInPage> {
 
       if (inviteId != null) {
         // This is a new invite - move pending user data to users collection
+        final emailNorm = email?.toLowerCase();
+        if (emailNorm == null) {
+          _showError('Missing email information from sign-in link.');
+          return;
+        }
+
         final pendingUserQuery =
             await FirestoreEnforcer.instance
                 .collection('pendingUsers')
-                .where('emailAddress', isEqualTo: email!.toLowerCase())
+                .where('emailAddress', isEqualTo: emailNorm)
                 .where('inviteId', isEqualTo: inviteId)
                 .limit(1)
                 .get();

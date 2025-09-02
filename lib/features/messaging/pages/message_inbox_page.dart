@@ -13,10 +13,27 @@ class MessageInboxPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final svc = MessagingService();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      return Scaffold(
+        appBar: AppBar(title: const ResponsiveAppBarTitle('Messages')),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Please sign in to view messages.'),
+              const SizedBox(height: 12),
+              ElevatedButton(onPressed: () => Navigator.pushNamed(context, '/login'), child: const Text('Sign in')),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(title: const ResponsiveAppBarTitle('Messages')),
       body: StreamBuilder<List<MessageThread>>(
-        stream: svc.watchThreads(orgId, FirebaseAuth.instance.currentUser!.uid),
+        stream: svc.watchThreads(orgId, uid),
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());

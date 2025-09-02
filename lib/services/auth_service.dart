@@ -39,10 +39,7 @@ class AuthService {
   }
 
   /// Centralized account deletion function
-  static Future<void> deleteAccount(
-    BuildContext context,
-    String password,
-  ) async {
+  static Future<void> deleteAccount(BuildContext context, String password) async {
     try {
       final user = _auth.currentUser;
       if (user == null) {
@@ -50,20 +47,16 @@ class AuthService {
       }
 
       // Re-authenticate user before deletion
-      final credential = EmailAuthProvider.credential(
-        email: user.email!,
-        password: password,
-      );
+      final email = user.email;
+      if (email == null) throw Exception('User email missing for reauthentication');
+      final credential = EmailAuthProvider.credential(email: email, password: password);
       await user.reauthenticateWithCredential(credential);
 
       // Clear any local caches
       WebOptimizedFirestoreService.clearCache();
 
       // Delete user document from Firestore first
-      await FirestoreEnforcer.instance
-          .collection('users')
-          .doc(user.uid)
-          .delete();
+      await FirestoreEnforcer.instance.collection('users').doc(user.uid).delete();
 
       // Delete user authentication account
       await user.delete();
