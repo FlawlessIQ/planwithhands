@@ -40,17 +40,21 @@ class _HelpPageState extends State<HelpPage> {
       final functions = FirebaseFunctions.instanceFor(region: 'us-central1');
       final callable = functions.httpsCallable('sendHelpRequest');
 
-      await callable.call({
+      final result = await callable.call({
         'email': _emailController.text.trim(),
         'subject': _subjectController.text.trim(),
         'message': _messageController.text.trim(),
       });
 
       if (mounted) {
+        final data = result.data as Map<String, dynamic>?;
+        final successMessage = data?['message'] ?? 'Help request sent successfully! We\'ll get back to you soon.';
+        
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Help request sent successfully! We\'ll get back to you soon.'),
+          SnackBar(
+            content: Text(successMessage),
             backgroundColor: HandsColors.sageGreen,
+            duration: const Duration(seconds: 4),
           ),
         );
 
@@ -59,13 +63,40 @@ class _HelpPageState extends State<HelpPage> {
         _messageController.clear();
         _emailController.clear();
       }
-    } catch (e) {
-      logger.e('[HelpPage] Error sending help request: $e');
+    } on FirebaseFunctionsException catch (e) {
+      logger.e('[HelpPage] Firebase Functions error: ${e.code} - ${e.message}');
       if (mounted) {
+        String errorMessage = 'Failed to send help request. ';
+        switch (e.code) {
+          case 'invalid-argument':
+            errorMessage += e.message ?? 'Please check your input and try again.';
+            break;
+          case 'unauthenticated':
+            errorMessage += 'Please log in and try again.';
+            break;
+          case 'internal':
+            errorMessage += 'Server error. Please try again later.';
+            break;
+          default:
+            errorMessage += 'Please try again or contact support directly.';
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to send help request: $e'),
+            content: Text(errorMessage),
             backgroundColor: HandsColors.error,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } catch (e) {
+      logger.e('[HelpPage] Unexpected error sending help request: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Network error. Please check your connection and try again.'),
+            backgroundColor: HandsColors.error,
+            duration: Duration(seconds: 4),
           ),
         );
       }

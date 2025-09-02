@@ -5,6 +5,7 @@ module.exports = {
   ...require("./stripe_functions"),
   ...require("./user_functions"),
   ...require("./places_functions"),
+  ...require("./help_functions"),
 };
 
 module.exports.migrateChecklistTemplates =
