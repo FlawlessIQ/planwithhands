@@ -3,38 +3,25 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:hands_app/theme/theme.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:hands_app/state/user_state.dart';
+
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/core/logging/logger.dart';
 
-class HelpPage extends ConsumerStatefulWidget {
+class HelpPage extends StatefulWidget {
   final int? userRole;
 
   const HelpPage({super.key, this.userRole});
 
   @override
-  ConsumerState<HelpPage> createState() => _HelpPageState();
+  State<HelpPage> createState() => _HelpPageState();
 }
 
-class _HelpPageState extends ConsumerState<HelpPage> {
+class _HelpPageState extends State<HelpPage> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _subjectController = TextEditingController();
   final _messageController = TextEditingController();
   bool _isLoading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    // Auto-populate user email on page load
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final userState = ref.read(userStateProvider);
-      if (userState.userData?.userEmail != null) {
-        _emailController.text = userState.userData!.userEmail;
-      }
-    });
-  }
 
   @override
   void dispose() {

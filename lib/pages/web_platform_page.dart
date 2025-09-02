@@ -3,7 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:hands_app/theme/theme.dart';
 
 class WebPlatformPage extends StatelessWidget {
-  const WebPlatformPage({Key? key}) : super(key: key);
+  const WebPlatformPage({super.key});
 
   @override
   Widget build(BuildContext context) {

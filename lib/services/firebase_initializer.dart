@@ -2,7 +2,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:hands_app/platform/user_agent_stub.dart'
-  if (dart.library.html) 'package:hands_app/platform/user_agent_web.dart';
+    if (dart.library.html) 'package:hands_app/platform/user_agent_web.dart';
 import 'package:hands_app/firebase_options.dart';
 import 'package:hands_app/services/push_notification_service.dart';
 
@@ -21,7 +21,8 @@ class FirebaseInitializer {
     if (kIsWeb) {
       final ua = getUserAgent().toLowerCase();
       final isIOS = ua.contains('iphone') || ua.contains('ipad') || ua.contains('ipod');
-      final isSafari = ua.contains('safari') && !ua.contains('crios') && !ua.contains('chrome') && !ua.contains('fxios');
+      final isSafari =
+          ua.contains('safari') && !ua.contains('crios') && !ua.contains('chrome') && !ua.contains('fxios');
       final forceApp = Uri.base.queryParameters.containsKey('forceApp');
       if (isIOS && isSafari && !forceApp) {
         // Bypass Firebase only in this problematic environment

@@ -2,9 +2,18 @@ const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const sgMail = require('@sendgrid/mail');
 
-// Initialize SendGrid
-if (process.env.SENDGRID_API_KEY) {
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+// Initialize SendGrid - use same approach as working user functions
+let sendgridApiKey;
+try {
+  sendgridApiKey = functions.config().sendgrid && functions.config().sendgrid.key;
+  if (!sendgridApiKey) {
+    console.warn("SendGrid API key is not configured. Email sending will be skipped.");
+  } else {
+    sgMail.setApiKey(sendgridApiKey);
+    console.info("SendGrid API key configured successfully");
+  }
+} catch (error) {
+  console.warn("Error configuring SendGrid:", error.message);
 }
 
 // Uses Node 20 global fetch
@@ -141,19 +150,26 @@ exports.placesAutocompleteHttp = functions
           status: "new",
           source: "app_help_form",
         });
-        
         // Try to send email if SendGrid is configured
-        if (process.env.SENDGRID_API_KEY && sgMail) {
+        if (sendgridApiKey && sgMail) {
           try {
-            await sgMail.send({
-              to: 'support@planwithhands.com',
-              from: 'noreply@planwithhands.com',
+            const emailData = {
+              to: 'conor@planwithhands.com', // Switch to main domain email
+              from: 'noreply@em5998.planwithhands.com', // Using verified SendGrid domain like user functions
               subject: `Help Request: ${subject}`,
-              html: `<h3>New Help Request</h3><p><strong>From:</strong> ${email}</p><p><strong>Subject:</strong> ${subject}</p><p><strong>Message:</strong></p><p>${message.replace(/\n/g, '<br>')}</p><p><strong>Request ID:</strong> ${helpRequestRef.id}</p>`,
-            });
+              html: `<h3>New Help Request</h3><p><strong>From:</strong> ${email}</p><p><strong>Subject:</strong> ${subject}</p><p><strong>Message:</strong></p><p>${message.replace(/\n/g, '<br>')}</p><p><strong>Request ID:</strong> ${helpRequestRef.id}</p><p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>`,
+            };
+            console.log('Attempting to send email with SendGrid...');
+            await sgMail.send(emailData);
+            console.log('Email sent successfully to support@planwithhands.com');
           } catch (emailError) {
-            console.warn("Email failed:", emailError);
+            console.error("Email failed:", emailError);
+            console.error("SendGrid error details:", emailError.response?.body || 'No additional details');
+            // Still return success since the request was saved to Firestore
+            console.log('Help request saved to Firestore despite email failure');
           }
+        } else {
+          console.warn("SendGrid not properly configured - email not sent, but help request saved to Firestore");
         }
         
         return res.status(200).json({

@@ -1308,16 +1308,17 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
             final allChecklistDocs = snapshot.data?.docs ?? [];
             // Filter by selected location if the template has explicit locationIds stored.
             // If a checklist has no locationIds field, we treat it as global and always show it.
-            final filteredChecklistDocs = allChecklistDocs.where((doc) {
-              if (_selectedLocationId == null) return true; // no filter
-              final data = doc.data() as Map<String, dynamic>;
-              final rawLocs = data['locationIds'];
-              if (rawLocs == null) return true; // global template (legacy) -> show
-              if (rawLocs is Iterable) {
-                return rawLocs.map((e) => e.toString()).contains(_selectedLocationId);
-              }
-              return true; // unexpected type -> don't hide
-            }).toList();
+            final filteredChecklistDocs =
+                allChecklistDocs.where((doc) {
+                  if (_selectedLocationId == null) return true; // no filter
+                  final data = doc.data() as Map<String, dynamic>;
+                  final rawLocs = data['locationIds'];
+                  if (rawLocs == null) return true; // global template (legacy) -> show
+                  if (rawLocs is Iterable) {
+                    return rawLocs.map((e) => e.toString()).contains(_selectedLocationId);
+                  }
+                  return true; // unexpected type -> don't hide
+                }).toList();
 
             if (filteredChecklistDocs.isEmpty) {
               return Padding(

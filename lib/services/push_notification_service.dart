@@ -50,8 +50,8 @@ class PushNotificationService {
 
   /// Initialize the push notification service
   Future<void> initialize() async {
-  // Web push notifications: keep disabled for now only on mobile Safari; allow desktop web attempts later.
-  if (kIsWeb) {
+    // Web push notifications: keep disabled for now only on mobile Safari; allow desktop web attempts later.
+    if (kIsWeb) {
       logger.w('[PushNotificationService] Web platform detected, skipping initialization.');
       _isInitialized = true;
       return;

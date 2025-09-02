@@ -16,8 +16,7 @@ import 'package:hands_app/services/firebase_initializer.dart';
 import 'package:hands_app/services/push_notification_service.dart';
 import 'package:hands_app/pages/web_platform_page.dart';
 // Conditional user agent import (web vs other)
-import 'platform/user_agent_stub.dart'
-  if (dart.library.html) 'platform/user_agent_web.dart';
+import 'platform/user_agent_stub.dart' if (dart.library.html) 'platform/user_agent_web.dart';
 import 'config/release_config.dart';
 
 bool _isBlockedMobileSafari() {
@@ -40,7 +39,9 @@ void main() async {
   if (_isBlockedMobileSafari() && !forceApp) {
     WidgetsFlutterBinding.ensureInitialized();
     usePathUrlStrategy();
-    debugPrint('[MAIN] Detected mobile Safari. Showing fallback web platform page. Add ?forceApp=1 to attempt full app.');
+    debugPrint(
+      '[MAIN] Detected mobile Safari. Showing fallback web platform page. Add ?forceApp=1 to attempt full app.',
+    );
     runApp(const WebHandsApp());
     return;
   }

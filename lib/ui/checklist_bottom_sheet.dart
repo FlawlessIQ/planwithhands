@@ -67,9 +67,9 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
       if (rawLocIds is Iterable) {
         for (final loc in rawLocIds) {
           final id = loc.toString();
-            if (id.isNotEmpty && id != widget.locationId) {
-              _selectedLocationIds.add(id);
-            }
+          if (id.isNotEmpty && id != widget.locationId) {
+            _selectedLocationIds.add(id);
+          }
         }
       }
     } catch (_) {}

@@ -15,10 +15,7 @@ class UnifiedMenuButton extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final unreadCountAsync = ref.watch(unreadNotificationsCountProvider);
 
-    final hasUnread = unreadCountAsync.maybeWhen(
-      data: (count) => count > 0,
-      orElse: () => false,
-    );
+    final hasUnread = unreadCountAsync.maybeWhen(data: (count) => count > 0, orElse: () => false);
     return PopupMenuButton<_MenuAction>(
       icon: Stack(
         children: [
@@ -30,10 +27,7 @@ class UnifiedMenuButton extends ConsumerWidget {
               child: Container(
                 width: 10,
                 height: 10,
-                decoration: BoxDecoration(
-                  color: Colors.red,
-                  shape: BoxShape.circle,
-                ),
+                decoration: BoxDecoration(color: Colors.red, shape: BoxShape.circle),
               ),
             ),
         ],
@@ -61,11 +55,7 @@ class UnifiedMenuButton extends ConsumerWidget {
             GoRouter.of(context).push(AppRoutes.settingsPage.path);
             break;
           case _MenuAction.help:
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => HelpPage(userRole: userRole),
-              ),
-            );
+            Navigator.of(context).push(MaterialPageRoute(builder: (context) => HelpPage(userRole: userRole)));
             break;
         }
       },
@@ -74,12 +64,7 @@ class UnifiedMenuButton extends ConsumerWidget {
         final items = <PopupMenuEntry<_MenuAction>>[];
 
         // Always available for all users (role 0, 1, 2)
-        items.add(
-          const PopupMenuItem(
-            value: _MenuAction.viewMessages,
-            child: Text('View messages'),
-          ),
-        );
+        items.add(const PopupMenuItem(value: _MenuAction.viewMessages, child: Text('View messages')));
 
         // Manager and Admin features (role >= 1)
         if (role >= 1) {
@@ -89,27 +74,15 @@ class UnifiedMenuButton extends ConsumerWidget {
         // Admin-only features (role >= 2)
         if (role >= 2) {
           items.addAll([
-            const PopupMenuItem(
-              value: _MenuAction.sendNotification,
-              child: Text('Send notification'),
-            ),
-            const PopupMenuItem(
-              value: _MenuAction.createGroup,
-              child: Text('Create notification group'),
-            ),
+            const PopupMenuItem(value: _MenuAction.sendNotification, child: Text('Send notification')),
+            const PopupMenuItem(value: _MenuAction.createGroup, child: Text('Create notification group')),
           ]);
         }
 
         // Always available for all users
         items.addAll([
-          const PopupMenuItem(
-            value: _MenuAction.settings,
-            child: Text('Settings'),
-          ),
-          const PopupMenuItem(
-            value: _MenuAction.help,
-            child: Text('Help'),
-          ),
+          const PopupMenuItem(value: _MenuAction.settings, child: Text('Settings')),
+          const PopupMenuItem(value: _MenuAction.help, child: Text('Help')),
         ]);
 
         return items;
@@ -118,10 +91,4 @@ class UnifiedMenuButton extends ConsumerWidget {
   }
 }
 
-enum _MenuAction {
-  viewMessages,
-  sendNotification,
-  createGroup,
-  settings,
-  help,
-}
+enum _MenuAction { viewMessages, sendNotification, createGroup, settings, help }

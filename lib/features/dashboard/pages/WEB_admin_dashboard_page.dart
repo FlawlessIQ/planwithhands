@@ -2264,9 +2264,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
     // Newly added: location scoping. The bottom sheet provides selectedLocationIds (additional)
     // and the active location passed as widget.locationId when opened. Persist union as locationIds.
     final additionalLocIds =
-        (result['selectedLocationIds'] is Iterable)
-            ? List<String>.from(result['selectedLocationIds'])
-            : <String>[];
+        (result['selectedLocationIds'] is Iterable) ? List<String>.from(result['selectedLocationIds']) : <String>[];
     final Set<String> unionLocs = {
       if (_selectedLocationId != null && _selectedLocationId!.isNotEmpty) _selectedLocationId!,
       ...additionalLocIds.where((e) => e.isNotEmpty),
@@ -2290,7 +2288,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
       ...checklistData,
       'taskCount': tasksArray.length,
       'updatedAt': FieldValue.serverTimestamp(),
-  if (unionLocs.isNotEmpty) 'locationIds': unionLocs.toList(),
+      if (unionLocs.isNotEmpty) 'locationIds': unionLocs.toList(),
       if (existingChecklistId == null) 'createdAt': FieldValue.serverTimestamp(),
     };
 
