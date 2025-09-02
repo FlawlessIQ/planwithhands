@@ -15,13 +15,32 @@ import 'dart:async';
 import 'package:hands_app/services/firebase_initializer.dart';
 import 'package:hands_app/services/push_notification_service.dart';
 import 'package:hands_app/pages/web_platform_page.dart';
+// Conditional user agent import (web vs other)
+import 'platform/user_agent_stub.dart'
+  if (dart.library.html) 'platform/user_agent_web.dart';
 import 'config/release_config.dart';
 
+bool _isBlockedMobileSafari() {
+  if (!kIsWeb) return false;
+  try {
+    final ua = getUserAgent().toLowerCase();
+    final isIOSDevice = ua.contains('iphone') || ua.contains('ipad') || ua.contains('ipod');
+    // Safari user agent contains 'safari' but not 'chrome' nor 'crios' nor 'fxios'
+    final isSafari = ua.contains('safari') && !ua.contains('crios') && !ua.contains('chrome') && !ua.contains('fxios');
+    return isIOSDevice && isSafari;
+  } catch (_) {
+    return false;
+  }
+}
+
 void main() async {
-  // On web, show simplified app without Firebase complexity
-  if (kIsWeb) {
+  // Allow override to force full app even on blocked platform
+  final forceApp = kIsWeb && Uri.base.queryParameters.containsKey('forceApp');
+  // On mobile Safari (known crash) show fallback unless forced
+  if (_isBlockedMobileSafari() && !forceApp) {
     WidgetsFlutterBinding.ensureInitialized();
     usePathUrlStrategy();
+    debugPrint('[MAIN] Detected mobile Safari. Showing fallback web platform page. Add ?forceApp=1 to attempt full app.');
     runApp(const WebHandsApp());
     return;
   }
@@ -39,14 +58,14 @@ void main() async {
       // error UI if something fails during initialization.
       try {
         Future<void> runStep(String name, FutureOr<void> Function() fn) async {
-          debugPrint('== Startup STEP BEGIN: ' + name);
+          debugPrint('== Startup STEP BEGIN: $name');
           try {
             await fn();
-            debugPrint('== Startup STEP OK: ' + name);
+            debugPrint('== Startup STEP OK: $name');
           } catch (e) {
-            debugPrint('== Startup STEP FAIL: ' + name + ' -> ' + e.toString());
+            debugPrint('== Startup STEP FAIL: $name -> $e');
             // Re-throw so outer catch can show unified error UI tagged with step name.
-            throw Exception('[STEP ' + name + '] ' + e.toString());
+            throw Exception('[STEP $name] $e');
           }
         }
 
@@ -111,7 +130,7 @@ void main() async {
                           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 8),
-                        SelectableText('Error: ' + e.toString(), textAlign: TextAlign.center),
+                        SelectableText('Error: $e', textAlign: TextAlign.center),
                         const SizedBox(height: 4),
                         const Text('If this persists, screenshot & report.'),
                         const SizedBox(height: 12),

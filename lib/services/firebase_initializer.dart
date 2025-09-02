@@ -1,6 +1,8 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:hands_app/platform/user_agent_stub.dart'
+  if (dart.library.html) 'package:hands_app/platform/user_agent_web.dart';
 import 'package:hands_app/firebase_options.dart';
 import 'package:hands_app/services/push_notification_service.dart';
 
@@ -15,10 +17,17 @@ class FirebaseInitializer {
   Future<void> initialize() async {
     if (_isInitialized) return;
 
-    // Skip Firebase initialization entirely on web to prevent Safari crashes
+    // Skip only for mobile Safari (identified by UA) unless query param forceApp present
     if (kIsWeb) {
-      _isInitialized = true;
-      return;
+      final ua = getUserAgent().toLowerCase();
+      final isIOS = ua.contains('iphone') || ua.contains('ipad') || ua.contains('ipod');
+      final isSafari = ua.contains('safari') && !ua.contains('crios') && !ua.contains('chrome') && !ua.contains('fxios');
+      final forceApp = Uri.base.queryParameters.containsKey('forceApp');
+      if (isIOS && isSafari && !forceApp) {
+        // Bypass Firebase only in this problematic environment
+        _isInitialized = true;
+        return;
+      }
     }
 
     try {

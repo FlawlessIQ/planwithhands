@@ -50,9 +50,8 @@ class PushNotificationService {
 
   /// Initialize the push notification service
   Future<void> initialize() async {
-    // Web push notifications are not supported/fully stable, especially on mobile Safari.
-    // To prevent crashes, we will completely disable this service on web.
-    if (kIsWeb) {
+  // Web push notifications: keep disabled for now only on mobile Safari; allow desktop web attempts later.
+  if (kIsWeb) {
       logger.w('[PushNotificationService] Web platform detected, skipping initialization.');
       _isInitialized = true;
       return;
