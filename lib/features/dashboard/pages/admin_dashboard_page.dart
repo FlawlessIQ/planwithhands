@@ -1305,9 +1305,21 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
               return const Padding(padding: EdgeInsets.all(16.0), child: Center(child: CircularProgressIndicator()));
             }
 
-            final checklists = snapshot.data?.docs ?? [];
+            final allChecklistDocs = snapshot.data?.docs ?? [];
+            // Filter by selected location if the template has explicit locationIds stored.
+            // If a checklist has no locationIds field, we treat it as global and always show it.
+            final filteredChecklistDocs = allChecklistDocs.where((doc) {
+              if (_selectedLocationId == null) return true; // no filter
+              final data = doc.data() as Map<String, dynamic>;
+              final rawLocs = data['locationIds'];
+              if (rawLocs == null) return true; // global template (legacy) -> show
+              if (rawLocs is Iterable) {
+                return rawLocs.map((e) => e.toString()).contains(_selectedLocationId);
+              }
+              return true; // unexpected type -> don't hide
+            }).toList();
 
-            if (checklists.isEmpty) {
+            if (filteredChecklistDocs.isEmpty) {
               return Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
@@ -1331,12 +1343,17 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
 
             // Show all checklists with scrolling if more than 4
             final checklistsToShow =
-                checklists.map((doc) {
+                filteredChecklistDocs.map((doc) {
                   final checklistData = doc.data() as Map<String, dynamic>;
                   final name = checklistData['name'] ?? 'Unnamed Checklist';
                   final description = checklistData['description'] ?? 'No description';
                   final tasksList = checklistData['tasks'] as List<dynamic>? ?? [];
                   final taskCount = tasksList.length;
+                  final locIdsRaw = checklistData['locationIds'];
+                  List<String> locIds = [];
+                  if (locIdsRaw is Iterable) {
+                    locIds = locIdsRaw.map((e) => e.toString()).toList();
+                  }
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 8),
@@ -1351,9 +1368,19 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                           fontWeight: FontWeight.w400,
                         ),
                       ),
-                      subtitle: Text(
-                        '$description • $taskCount tasks',
-                        style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '$description • $taskCount tasks',
+                            style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11),
+                          ),
+                          if (locIds.isNotEmpty)
+                            Text(
+                              'Locations: ${locIds.length}',
+                              style: GoogleFonts.comfortaa(color: HandsColors.white30, fontSize: 10),
+                            ),
+                        ],
                       ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,

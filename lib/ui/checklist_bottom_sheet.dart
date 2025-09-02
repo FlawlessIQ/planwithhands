@@ -59,6 +59,20 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
     } else {
       _tasks = [];
     }
+    // Pre-select additional locations if editing an existing checklist that already
+    // has explicit locationIds stored. We exclude the primary (current) locationId
+    // passed in so it is not duplicated in the additional set.
+    try {
+      final rawLocIds = widget.initialData?['locationIds'];
+      if (rawLocIds is Iterable) {
+        for (final loc in rawLocIds) {
+          final id = loc.toString();
+            if (id.isNotEmpty && id != widget.locationId) {
+              _selectedLocationIds.add(id);
+            }
+        }
+      }
+    } catch (_) {}
     _syncTaskControllersWithTasks();
 
     _loadShiftsForCurrentLocation();

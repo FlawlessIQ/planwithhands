@@ -2261,6 +2261,16 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
     final checklistData = (result['checklistData'] ?? {}) as Map<String, dynamic>;
     final selectedShiftIds =
         (result['selectedShiftIds'] is Iterable) ? List<String>.from(result['selectedShiftIds']) : <String>[];
+    // Newly added: location scoping. The bottom sheet provides selectedLocationIds (additional)
+    // and the active location passed as widget.locationId when opened. Persist union as locationIds.
+    final additionalLocIds =
+        (result['selectedLocationIds'] is Iterable)
+            ? List<String>.from(result['selectedLocationIds'])
+            : <String>[];
+    final Set<String> unionLocs = {
+      if (_selectedLocationId != null && _selectedLocationId!.isNotEmpty) _selectedLocationId!,
+      ...additionalLocIds.where((e) => e.isNotEmpty),
+    };
 
     final batch = FirestoreEnforcer.instance.batch();
 
@@ -2280,6 +2290,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
       ...checklistData,
       'taskCount': tasksArray.length,
       'updatedAt': FieldValue.serverTimestamp(),
+  if (unionLocs.isNotEmpty) 'locationIds': unionLocs.toList(),
       if (existingChecklistId == null) 'createdAt': FieldValue.serverTimestamp(),
     };
 
