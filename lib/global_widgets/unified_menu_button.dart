@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hands_app/routing/routes.dart';
 import 'package:hands_app/pages/admin/send_notification_sheet.dart';
 import 'package:hands_app/pages/admin/create_group_sheet.dart';
+import 'package:hands_app/pages/help/help_page.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hands_app/state/notification_state.dart';
 
@@ -59,6 +60,13 @@ class UnifiedMenuButton extends ConsumerWidget {
           case _MenuAction.settings:
             GoRouter.of(context).push(AppRoutes.settingsPage.path);
             break;
+          case _MenuAction.help:
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => HelpPage(userRole: userRole),
+              ),
+            );
+            break;
         }
       },
       itemBuilder: (context) {
@@ -98,6 +106,10 @@ class UnifiedMenuButton extends ConsumerWidget {
             value: _MenuAction.settings,
             child: Text('Settings'),
           ),
+          const PopupMenuItem(
+            value: _MenuAction.help,
+            child: Text('Help'),
+          ),
         ]);
 
         return items;
@@ -111,4 +123,5 @@ enum _MenuAction {
   sendNotification,
   createGroup,
   settings,
+  help,
 }
