@@ -50,34 +50,7 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
-  <!-- Lightweight always-on environment probe (non-intrusive) -->
-  <div id="env-probe" style="position:fixed;bottom:6px;right:6px;font:11px/1.2 monospace;background:#000;border:1px solid #2f2;padding:4px 6px;color:#ccf;z-index:9999;border-radius:4px;box-shadow:0 0 4px rgba(0,0,0,.6);cursor:pointer;max-width:40vw;opacity:0.85" aria-label="Environment probe (tap to expand)"></div>
-  <script>
-    (function(){
-      try {
-        const el = document.getElementById('env-probe');
-        const ua = navigator.userAgent;
-        const safari = ua.includes('Safari') && !ua.includes('Chrome');
-        const idb = !!window.indexedDB;
-        const lsState = (function(){try{return window.localStorage? 'ok:'+window.localStorage.length:'none';}catch(e){return 'error';}})();
-        const ts = new Date().toISOString().split('T')[1].replace('Z','');
-        el.textContent = (safari? 'Safari ':'') + 'IDB=' + idb + ' LS=' + lsState;
-        el.dataset.compact = '1';
-        el.addEventListener('click', function(){
-          if (el.dataset.compact === '1') {
-            el.dataset.compact = '0';
-            el.style.maxWidth = '80vw';
-            el.style.whiteSpace = 'pre-wrap';
-            el.textContent = '[Env '+ts+']' + '\nUA: ' + ua + '\nIndexedDB: ' + idb + '\nLocalStorage: ' + lsState + '\nCookies: ' + navigator.cookieEnabled + '\nSW: ' + ('serviceWorker' in navigator) + '\nTap to collapse';
-          } else {
-            el.dataset.compact = '1';
-            el.style.whiteSpace = 'normal';
-            el.textContent = (safari? 'Safari ':'') + 'IDB=' + idb + ' LS=' + lsState;
-          }
-        });
-      } catch(_) {}
-    })();
-  </script>
+  <!-- Removed always-on env probe box (was here) to clean up UI -->
   <!-- Diagnostic instrumentation: logs progress & surfaces errors directly on page.
        Opt-in with ?diag=1 so normal users are unaffected. -->
   <script>
