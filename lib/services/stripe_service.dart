@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/config/feature_flags.dart';
 
 class StripeService {
   // Injectable dependencies for testing
@@ -91,6 +92,15 @@ class StripeService {
   }
 
   /// Start Stripe Checkout for per-location price, returning the session URL.
+  ///
+  /// Use the tiered pricing price IDs:
+  /// - Monthly: kStripePriceMonthly (price_1S2zhQFzroJ5o7DAEj914UgN)
+  /// - Annual: kStripePriceAnnual (price_1S2ziQFzroJ5o7DANERaDZ9r)
+  ///
+  /// The quantity parameter should be the number of locations.
+  /// Stripe will automatically apply tiered pricing:
+  /// - $69.99 for first location, $49.99 for each additional (monthly)
+  /// - $755.90 for first location, $539.90 for each additional (annual)
   static Future<String> startCheckout({
     required String orgId,
     required String email,
@@ -112,6 +122,16 @@ class StripeService {
   }
 
   /// Convenience wrapper that both creates and launches the Checkout URL.
+  ///
+  /// Example usage:
+  /// ```dart
+  /// await StripeService.startCheckoutAndLaunch(
+  ///   orgId: orgId,
+  ///   email: userEmail,
+  ///   priceId: isAnnual ? kStripePriceAnnual : kStripePriceMonthly,
+  ///   quantity: locationCount,
+  /// );
+  /// ```
   static Future<void> startCheckoutAndLaunch({
     required String orgId,
     required String email,
@@ -202,26 +222,23 @@ class StripeService {
     }
   }
 
-  /// Start Stripe Checkout for employee count change
+  @Deprecated('Use startCheckoutAndLaunch with priceId and quantity (locations) instead')
   static Future<void> redirectToStripeCheckout({
     required String orgId,
     required String email,
     required int employeeCount,
   }) async {
+    // Legacy method - redirects to the new per-location pricing
+    debugPrint('[StripeService] WARNING: Using deprecated redirectToStripeCheckout method');
     try {
-      final response = await _call('createCheckoutSession', {
-        'orgId': orgId,
-        'email': email,
-        'employeeCount': employeeCount,
-      });
-      final sessionUrl = response['url'];
-      if (sessionUrl != null) {
-        await _openUrlExternal(sessionUrl);
-      } else {
-        throw Exception('No session URL returned from backend');
-      }
+      await startCheckoutAndLaunch(
+        orgId: orgId,
+        email: email,
+        priceId: kStripePriceMonthly, // Default to monthly tiered pricing
+        quantity: 1, // Default to 1 location for legacy calls
+      );
     } catch (e) {
-      debugPrint('Error starting Stripe checkout: $e');
+      debugPrint('Error in legacy checkout redirect: $e');
       rethrow;
     }
   }
@@ -231,7 +248,6 @@ class StripeService {
     try {
       await FirestoreEnforcer.instance.collection('organizations').doc(orgId).update({
         'subscriptionStatus': 'active',
-        'employeeCount': 0,
         'updatedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {

@@ -23,9 +23,9 @@ export default function Layout({ children }) {
             <Image
               src="/images/hands_icon.png"
               alt="Hands logo"
-              width={56}
+              width={80}
               height={56}
-              className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-lg sm:rounded-xl"
+              className="w-14 sm:w-16 md:w-20 h-10 sm:h-12 md:h-14 rounded-lg sm:rounded-xl object-contain"
               priority
             />
             <span className="font-semibold tracking-tight text-lg sm:text-xl md:text-2xl">Plan With Hands</span>

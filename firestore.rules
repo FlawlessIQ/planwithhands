@@ -74,6 +74,11 @@ service cloud.firestore {
 
       // Signup flow: allow authenticated creation (server-side sign-up also exists)
       allow create: if request.auth != null;
+
+      // User preferences subcollection - allow users to manage their own preferences
+      match /preferences/{preferencesId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
 
     // -------------------------------------------------------------------

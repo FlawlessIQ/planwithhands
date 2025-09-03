@@ -19,7 +19,6 @@ import 'package:hands_app/services/daily_checklist_service.dart';
 import 'package:hands_app/services/organization_setup_service.dart';
 import 'package:hands_app/services/location_selection_service.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
-import 'package:hands_app/widgets/organization_setup_widget.dart';
 
 class ManagerDashboardPage extends StatefulWidget {
   final String organizationId;
@@ -973,106 +972,104 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
         title: GenericAppBarContent(appBarTitle: 'Manager Dashboard', userRole: userRole),
         automaticallyImplyLeading: false,
         actions: [
-          if (_metricsEnabled)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: PopupMenuButton<String>(
-                enabled: _availableLocations.isNotEmpty,
-                onSelected: (value) async {
-                  logger.i('[ManagerDashboard][DEBUG] Location selected from header: $value');
-                  setState(() {
-                    _selectedLocationId = value;
-                    final matches = _availableLocations.where((loc) => loc['id'] == value).toList();
-                    _selectedLocationName =
-                        matches.isNotEmpty ? (matches.first['name'] as String?) : 'Unknown Location';
-                  });
-                  // Persist globally
-                  LocationSelectionService.instance.setLocation(value);
-                  logger.i(
-                    '[ManagerDashboard][DEBUG] Updated _selectedLocationId: $_selectedLocationId, name: $_selectedLocationName',
-                  );
-                  await _loadFilterOptions();
-                  await _loadAll();
-                },
-                itemBuilder:
-                    (context) =>
-                        _availableLocations.map((loc) {
-                          final selected = loc['id'] == _selectedLocationId;
-                          return PopupMenuItem<String>(
-                            value: loc['id'],
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.location_on,
-                                  size: 16,
-                                  color: selected ? HandsColors.handsOrange : HandsColors.white70,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    '${loc['name']}',
-                                    overflow: TextOverflow.ellipsis,
-                                    style: GoogleFonts.comfortaa(
-                                      fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-                                      color: selected ? HandsColors.handsOrange : HandsColors.white,
-                                    ),
-                                  ),
-                                ),
-                                if (selected)
-                                  const Padding(
-                                    padding: EdgeInsets.only(left: 8),
-                                    child: Icon(Icons.check, size: 16, color: HandsColors.handsOrange),
-                                  ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                child: Builder(
-                  builder: (context) {
-                    final screenWidth = MediaQuery.of(context).size.width;
-                    final isNarrowScreen = screenWidth < 400;
-
-                    if (isNarrowScreen) {
-                      // Compact mobile version - just location icon
-                      return Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: HandsColors.handsOrange.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(Icons.location_on, color: HandsColors.white, size: 20),
-                      );
-                    } else {
-                      // Full desktop version
-                      return Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: HandsColors.handsOrange.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.location_on, color: HandsColors.white, size: 18),
-                            const SizedBox(width: 6),
-                            Text(
-                              _selectedLocationName?.isNotEmpty == true ? _selectedLocationName! : 'Select Location',
-                              style: GoogleFonts.comfortaa(
-                                color: HandsColors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: PopupMenuButton<String>(
+              enabled: _availableLocations.isNotEmpty,
+              onSelected: (value) async {
+                logger.i('[ManagerDashboard][DEBUG] Location selected from header: $value');
+                setState(() {
+                  _selectedLocationId = value;
+                  final matches = _availableLocations.where((loc) => loc['id'] == value).toList();
+                  _selectedLocationName = matches.isNotEmpty ? (matches.first['name'] as String?) : 'Unknown Location';
+                });
+                // Persist globally
+                LocationSelectionService.instance.setLocation(value);
+                logger.i(
+                  '[ManagerDashboard][DEBUG] Updated _selectedLocationId: $_selectedLocationId, name: $_selectedLocationName',
+                );
+                await _loadFilterOptions();
+                await _loadAll();
+              },
+              itemBuilder:
+                  (context) =>
+                      _availableLocations.map((loc) {
+                        final selected = loc['id'] == _selectedLocationId;
+                        return PopupMenuItem<String>(
+                          value: loc['id'],
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.location_on,
+                                size: 16,
+                                color: selected ? HandsColors.handsOrange : HandsColors.white70,
                               ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '${loc['name']}',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.comfortaa(
+                                    fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                                    color: selected ? HandsColors.handsOrange : HandsColors.white,
+                                  ),
+                                ),
+                              ),
+                              if (selected)
+                                const Padding(
+                                  padding: EdgeInsets.only(left: 8),
+                                  child: Icon(Icons.check, size: 16, color: HandsColors.handsOrange),
+                                ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+              child: Builder(
+                builder: (context) {
+                  final screenWidth = MediaQuery.of(context).size.width;
+                  final isNarrowScreen = screenWidth < 400;
+
+                  if (isNarrowScreen) {
+                    // Compact mobile version - just location icon
+                    return Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: HandsColors.handsOrange.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.location_on, color: HandsColors.white, size: 20),
+                    );
+                  } else {
+                    // Full desktop version
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: HandsColors.handsOrange.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.location_on, color: HandsColors.white, size: 18),
+                          const SizedBox(width: 6),
+                          Text(
+                            _selectedLocationName?.isNotEmpty == true ? _selectedLocationName! : 'Select Location',
+                            style: GoogleFonts.comfortaa(
+                              color: HandsColors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
                             ),
-                            const SizedBox(width: 4),
-                            const Icon(Icons.arrow_drop_down, color: HandsColors.white, size: 16),
-                          ],
-                        ),
-                      );
-                    }
-                  },
-                ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.arrow_drop_down, color: HandsColors.white, size: 16),
+                        ],
+                      ),
+                    );
+                  }
+                },
               ),
             ),
+          ),
           UnifiedMenuButton(userRole: userRole),
         ],
       ),
@@ -1080,7 +1077,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
       body: Builder(
         builder: (context) {
           try {
-            return _metricsEnabled ? _buildDashboardGrid() : _buildSetupView();
+            return _buildDashboardGrid();
           } catch (e) {
             logger.e('[ManagerDashboard] Error building dashboard: $e');
             return Center(
@@ -1113,15 +1110,6 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
         },
       ),
     );
-  }
-
-  Widget _buildSetupView() =>
-      OrganizationSetupWidget(organizationId: widget.organizationId, onMetricsEnabled: _onMetricsEnabled);
-
-  void _onMetricsEnabled() async {
-    setState(() => _metricsEnabled = true);
-    await _ensureDailyChecklistsExist();
-    await _loadAll();
   }
 
   Widget _buildDashboardGrid() {

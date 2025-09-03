@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hands_app/routing/routes.dart';
 import 'package:hands_app/services/stripe_service.dart';
+import 'package:hands_app/services/pricing_service.dart';
 import 'package:hands_app/config/feature_flags.dart';
 import 'package:flutter/services.dart';
 import 'package:hands_app/global_widgets/hands_icon.dart';
@@ -458,7 +459,11 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                     // Live pricing tile based on number of locations and billing period
                     Builder(
                       builder: (_) {
-                        final monthly = _locations * 49.99;
+                        final monthly = PricingService.calcMonthly(_locations);
+                        final annual = PricingService.calcAnnual(_locations);
+                        final displayPrice = _isAnnual ? annual : monthly;
+                        final period = _isAnnual ? 'year' : 'month';
+
                         return Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
@@ -477,7 +482,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                                     style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                                   ),
                                   Text(
-                                    '\$${monthly.toStringAsFixed(2)} / month',
+                                    '\$${displayPrice.toStringAsFixed(2)} / $period',
                                     style: const TextStyle(
                                       fontSize: 16,
                                       color: Colors.green,
@@ -486,10 +491,17 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                                   ),
                                 ],
                               ),
+                              const SizedBox(height: 8),
+                              Text(
+                                _locations == 1
+                                    ? '\$69.99 for the first location'
+                                    : '\$69.99 for the first location, \$49.99 for ${_locations - 1} additional location${_locations > 2 ? 's' : ''}',
+                                style: TextStyle(fontSize: 12, color: Colors.white70),
+                              ),
                               if (_isAnnual) ...[
-                                const SizedBox(height: 8),
+                                const SizedBox(height: 4),
                                 Text(
-                                  'Annual billing selected \u2014 billed annually at checkout',
+                                  'Annual billing selected — billed annually at checkout',
                                   style: TextStyle(fontSize: 12, color: Colors.white70),
                                 ),
                               ],

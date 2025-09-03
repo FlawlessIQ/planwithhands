@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:hands_app/services/auth_service.dart';
 import 'package:hands_app/services/stripe_service.dart';
+import 'package:hands_app/services/pricing_service.dart';
+import 'package:hands_app/services/dashboard_data_service.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
@@ -46,6 +49,11 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
   int _currentEmployeeCount = 0;
   Map<String, dynamic>? _subscriptionData;
   bool _isLoadingSubscription = false;
+
+  // User preferences
+  bool _dailySummaryEnabled = true;
+  TimeOfDay _dailySummaryTime = const TimeOfDay(hour: 20, minute: 0); // Default to 8:00 PM
+  bool _isLoadingPreferences = false;
 
   @override
   @override
@@ -104,6 +112,9 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
               // debug: organization data loaded
             }
           }
+
+          // Load user preferences
+          await _loadUserPreferences(user.uid);
         }
       }
     } catch (e) {
@@ -112,6 +123,302 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  /// Load user preferences from Firestore
+  Future<void> _loadUserPreferences(String userId) async {
+    try {
+      setState(() => _isLoadingPreferences = true);
+
+      final prefsDoc =
+          await FirestoreEnforcer.instance
+              .collection('users')
+              .doc(userId)
+              .collection('preferences')
+              .doc('notifications')
+              .get();
+
+      if (prefsDoc.exists) {
+        final data = prefsDoc.data()!;
+        setState(() {
+          _dailySummaryEnabled = data['dailySummaryEnabled'] ?? true;
+
+          // Load time preference
+          if (data['dailySummaryTime'] != null) {
+            final timeData = data['dailySummaryTime'] as Map<String, dynamic>;
+            _dailySummaryTime = TimeOfDay(hour: timeData['hour'] ?? 20, minute: timeData['minute'] ?? 0);
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading user preferences: $e');
+    } finally {
+      if (mounted) setState(() => _isLoadingPreferences = false);
+    }
+  }
+
+  /// Save user preferences to Firestore
+  Future<void> _saveUserPreferences() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      await FirestoreEnforcer.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('preferences')
+          .doc('notifications')
+          .set({
+            'dailySummaryEnabled': _dailySummaryEnabled,
+            'dailySummaryTime': {'hour': _dailySummaryTime.hour, 'minute': _dailySummaryTime.minute},
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Preferences saved successfully!'), backgroundColor: Colors.green));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to save preferences: $e'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
+  /// Show Cupertino time picker for daily summary
+  Future<void> _selectDailySummaryTime() async {
+    DateTime initialDateTime = DateTime(2024, 1, 1, _dailySummaryTime.hour, _dailySummaryTime.minute);
+
+    await showCupertinoModalPopup<void>(
+      context: context,
+      builder: (BuildContext context) {
+        DateTime tempDateTime = initialDateTime;
+
+        return Container(
+          height: 280,
+          padding: const EdgeInsets.only(top: 6.0),
+          margin: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          color: CupertinoColors.systemBackground.resolveFrom(context),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              children: [
+                // Header with cancel and done buttons
+                Container(
+                  decoration: const BoxDecoration(
+                    border: Border(bottom: BorderSide(color: CupertinoColors.inactiveGray, width: 0.0)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      CupertinoButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+                      Text(
+                        'Select daily summary time',
+                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: HandsColors.white),
+                      ),
+                      CupertinoButton(
+                        onPressed: () async {
+                          final newTime = TimeOfDay(hour: tempDateTime.hour, minute: tempDateTime.minute);
+
+                          if (newTime != _dailySummaryTime) {
+                            setState(() {
+                              _dailySummaryTime = newTime;
+                            });
+                            await _saveUserPreferences();
+                          }
+
+                          if (context.mounted) {
+                            Navigator.of(context).pop();
+                          }
+                        },
+                        child: const Text('OK'),
+                      ),
+                    ],
+                  ),
+                ),
+                // Time picker
+                Expanded(
+                  child: CupertinoDatePicker(
+                    mode: CupertinoDatePickerMode.time,
+                    initialDateTime: initialDateTime,
+                    onDateTimeChanged: (DateTime newDateTime) {
+                      tempDateTime = newDateTime;
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Refresh dashboard metrics with confirmation
+  Future<void> _refreshDashboardMetrics() async {
+    // First confirmation - general warning
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            backgroundColor: HandsColors.cardPrimary,
+            title: Row(
+              children: [
+                const Icon(Icons.refresh, color: Colors.orange),
+                const SizedBox(width: 8),
+                Text('Refresh Dashboard Metrics?', style: TextStyle(color: HandsColors.white)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'This will recalculate all dashboard metrics starting from today.',
+                  style: TextStyle(color: HandsColors.white),
+                ),
+                const SizedBox(height: 12),
+                Text('This action will:', style: TextStyle(fontWeight: FontWeight.w600, color: HandsColors.white)),
+                const SizedBox(height: 8),
+                Text(
+                  '• Clear cached dashboard data\n'
+                  '• Force recalculation of all metrics\n'
+                  '• May take a few moments to complete\n'
+                  '• Is irreversible',
+                  style: TextStyle(color: HandsColors.white.withOpacity(0.8)),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text('Cancel', style: TextStyle(color: HandsColors.white.withOpacity(0.7))),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: Colors.orange),
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Continue'),
+              ),
+            ],
+          ),
+    );
+
+    if (confirmed != true) return;
+
+    // Second confirmation - more serious warning
+    final finalConfirmed = await showDialog<bool>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            backgroundColor: HandsColors.cardPrimary,
+            title: Row(
+              children: [
+                const Icon(Icons.warning, color: Colors.red),
+                const SizedBox(width: 8),
+                Text('Are you sure?', style: TextStyle(color: HandsColors.white)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'This will permanently reset your dashboard metrics calculation.',
+                  style: TextStyle(fontWeight: FontWeight.w600, color: Colors.red),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'All historical dashboard calculations will be cleared and recalculated from today forward.',
+                  style: TextStyle(color: HandsColors.white.withOpacity(0.8)),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'This cannot be undone. Are you absolutely sure?',
+                  style: TextStyle(fontWeight: FontWeight.w600, color: HandsColors.white),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text('Cancel', style: TextStyle(color: HandsColors.white.withOpacity(0.7))),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Yes, Refresh Metrics'),
+              ),
+            ],
+          ),
+    );
+
+    if (finalConfirmed != true) return;
+
+    // Perform the metrics refresh
+    try {
+      // Show loading indicator
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                SizedBox(width: 16),
+                Text('Refreshing dashboard metrics...'),
+              ],
+            ),
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
+
+      // Clear dashboard cache
+      final dashboardService = DashboardDataService();
+      dashboardService.clearCache();
+
+      // TODO: Add specific method to reset metrics calculation start date
+      // This would involve updating the organization's metrics start date
+      await FirestoreEnforcer.instance.collection('organizations').doc(_organizationId).update({
+        'metricsCalculationStartDate': FieldValue.serverTimestamp(),
+        'dashboardCacheCleared': FieldValue.serverTimestamp(),
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 8),
+                Text('Dashboard metrics refreshed successfully!'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(child: Text('Failed to refresh metrics: $e')),
+              ],
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -794,6 +1101,134 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
     }
   }
 
+  /// Build preferences card for daily summary and dashboard controls
+  Widget _buildPreferencesCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Preferences', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+
+            // Daily Summary Toggle
+            if (_isLoadingPreferences)
+              const Center(child: CircularProgressIndicator())
+            else ...[
+              Row(
+                children: [
+                  Icon(Icons.mail_outline, color: Theme.of(context).primaryColor),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Daily Summary Email', style: TextStyle(fontWeight: FontWeight.w600)),
+                        Text(
+                          'Receive daily task completion summaries',
+                          style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                        ),
+                      ],
+                    ),
+                  ),
+                  CupertinoSwitch(
+                    value: _dailySummaryEnabled,
+                    onChanged: (value) async {
+                      setState(() => _dailySummaryEnabled = value);
+                      await _saveUserPreferences();
+                    },
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 16),
+
+              // Daily Summary Time Picker
+              if (_dailySummaryEnabled) ...[
+                Row(
+                  children: [
+                    Icon(Icons.schedule, color: Theme.of(context).primaryColor),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Daily Summary Time', style: TextStyle(fontWeight: FontWeight.w600)),
+                          Text(
+                            'When to receive your daily summary',
+                            style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                          ),
+                        ],
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: _selectDailySummaryTime,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey[400]!, width: 1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _dailySummaryTime.format(context),
+                              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                            ),
+                            const SizedBox(width: 2),
+                            const Icon(Icons.keyboard_arrow_down, size: 14),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              // Dashboard Metrics Refresh Button (Admin/Manager only)
+              if (_userRole != null && _userRole! >= 2) ...[
+                const Divider(),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Icon(Icons.refresh, color: Colors.orange),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Dashboard Metrics', style: TextStyle(fontWeight: FontWeight.w600)),
+                          Text(
+                            'Recalculate dashboard metrics from today',
+                            style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                          ),
+                        ],
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _refreshDashboardMetrics,
+                      icon: const Icon(Icons.refresh, size: 14),
+                      label: const Text('Refresh', style: TextStyle(fontSize: 12)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.orange,
+                        side: const BorderSide(color: Colors.orange, width: 1),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        minimumSize: const Size(0, 28),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildSubscriptionStatusCard() {
     if (_isLoadingSubscription) {
       return Card(
@@ -959,7 +1394,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
       );
     }
 
-    final monthlyTotal = quantity * 49.99; // kLocationPrice equivalent
+    final monthlyTotal = PricingService.calcMonthly(quantity);
     final isOverUsage = currentUsage > quantity;
 
     return Card(
@@ -1121,13 +1556,11 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                             }
                           },
                           icon: const Icon(Icons.tune, size: 18),
-                          label: Flexible(
-                            child: Text(
-                              'Manage Subscription',
-                              softWrap: true,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                          label: Text(
+                            'Manage Subscription',
+                            softWrap: true,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                           style: manageStyle,
                         ),
@@ -1163,9 +1596,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                             }
                           },
                           icon: const Icon(Icons.receipt_long, size: 18),
-                          label: Flexible(
-                            child: Text('Billing Portal', softWrap: true, maxLines: 2, overflow: TextOverflow.ellipsis),
-                          ),
+                          label: Text('Billing Portal', softWrap: true, maxLines: 2, overflow: TextOverflow.ellipsis),
                           style: billingStyle,
                         ),
                       ),
@@ -1197,13 +1628,11 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                           }
                         },
                         icon: const Icon(Icons.tune, size: 18),
-                        label: Flexible(
-                          child: Text(
-                            'Manage Subscription',
-                            softWrap: true,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                        label: Text(
+                          'Manage Subscription',
+                          softWrap: true,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         style: manageStyle,
                       ),
@@ -1238,9 +1667,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                           }
                         },
                         icon: const Icon(Icons.receipt_long, size: 18),
-                        label: Flexible(
-                          child: Text('Billing Portal', softWrap: true, maxLines: 2, overflow: TextOverflow.ellipsis),
-                        ),
+                        label: Text('Billing Portal', softWrap: true, maxLines: 2, overflow: TextOverflow.ellipsis),
                         style: billingStyle,
                       ),
                     ),
@@ -1380,6 +1807,9 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                           ),
                         ),
                       ),
+                      // Preferences Card
+                      const SizedBox(height: 16),
+                      _buildPreferencesCard(),
                       // Business Information Card - Only visible to admin users
                       if (_isAdmin) ...[
                         const SizedBox(height: 16),
@@ -1555,7 +1985,8 @@ class _SubscriptionManagementDialogState extends State<_SubscriptionManagementDi
   }
 
   int get _delta => _newQuantity - widget.currentQuantity;
-  double get _monthlyChange => _delta * 49.99; // kLocationPrice equivalent
+  double get _monthlyChange =>
+      PricingService.calcMonthly(_newQuantity) - PricingService.calcMonthly(widget.currentQuantity);
   bool get _canDecrease => _newQuantity > widget.currentUsage && _newQuantity > 1;
   bool get _canIncrease => _newQuantity < 100;
 

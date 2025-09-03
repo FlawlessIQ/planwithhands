@@ -1,6 +1,10 @@
 /// Pricing constants for subscriptions
-/// Replace kPricePerLocation with your actual Stripe Price ID for the per-location plan.
-const String kPricePerLocation = 'price_PER_LOCATION_REPLACE_ME';
+/// Tiered pricing: $69.99 for first location, $49.99 for additional locations
+const String kPricePerLocation = 'price_1S2zhQFzroJ5o7DAEj914UgN'; // Monthly tiered pricing
 
-/// Display-only unit price used for the estimate tile.
+/// Tiered pricing constants (for display/estimates)
+const double kFirstLocationUsd = 69.99;
+const double kAdditionalLocationUsd = 49.99;
+
+@Deprecated('Use PricingService.calcMonthly() for tiered pricing calculations')
 const double kPerLocationUsd = 49.99;

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:hands_app/config/feature_flags.dart';
 import 'package:hands_app/services/stripe_service.dart';
+import 'package:hands_app/services/pricing_service.dart';
 
 class UpgradeLocationSheet extends StatefulWidget {
   final String orgId;
@@ -22,7 +22,8 @@ class _UpgradeLocationSheetState extends State<UpgradeLocationSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final totalPrice = (_delta * kLocationPrice);
+    final newQuantity = widget.currentQuantity + _delta;
+    final totalPrice = PricingService.calcMonthly(newQuantity) - PricingService.calcMonthly(widget.currentQuantity);
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(16.0),

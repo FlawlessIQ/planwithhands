@@ -1055,6 +1055,20 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               }).toList();
         }
 
+        // Filter by selected location if one is selected
+        if (_selectedLocationId != null) {
+          checklists =
+              checklists.where((checklist) {
+                final data = checklist;
+                final rawLocs = data['locationIds'];
+                if (rawLocs == null) return true; // global template (legacy) -> show
+                if (rawLocs is Iterable) {
+                  return rawLocs.map((e) => e.toString()).contains(_selectedLocationId);
+                }
+                return true; // unexpected type -> don't hide
+              }).toList();
+        }
+
         // Sort
         if (_sortColumnIndex != null) {
           checklists.sort((a, b) {
@@ -1992,7 +2006,9 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
   }
 
   bool _shouldShowLocationFilter() {
-    return _currentTab == WebAdminTab.shifts || _currentTab == WebAdminTab.users;
+    return _currentTab == WebAdminTab.shifts ||
+        _currentTab == WebAdminTab.checklists ||
+        _currentTab == WebAdminTab.users;
   }
 
   ShiftData? _mapToShiftData(Map<String, dynamic> shiftMap) {

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:hands_app/config/feature_flags.dart';
 import 'package:hands_app/services/stripe_service.dart';
+import 'package:hands_app/services/pricing_service.dart';
 
 class SubscriptionManagementSheet extends StatefulWidget {
   final String orgId;
@@ -31,7 +31,8 @@ class _SubscriptionManagementSheetState extends State<SubscriptionManagementShee
   }
 
   int get _delta => _newQuantity - widget.currentQuantity;
-  double get _monthlyChange => _delta * kLocationPrice;
+  double get _monthlyChange =>
+      PricingService.calcMonthly(_newQuantity) - PricingService.calcMonthly(widget.currentQuantity);
   bool get _canDecrease => _newQuantity > widget.currentUsage && _newQuantity > 1;
   bool get _canIncrease => _newQuantity < 100; // reasonable upper limit
 
@@ -237,7 +238,7 @@ class _SubscriptionManagementSheetState extends State<SubscriptionManagementShee
                       children: [
                         const Text('Monthly cost:'),
                         Text(
-                          '\$${(widget.currentQuantity * kLocationPrice).toStringAsFixed(2)}',
+                          '\$${PricingService.calcMonthly(widget.currentQuantity).toStringAsFixed(2)}',
                           style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
                       ],
@@ -356,7 +357,7 @@ class _SubscriptionManagementSheetState extends State<SubscriptionManagementShee
                         children: [
                           Text('New monthly total:'),
                           Text(
-                            '\$${(_newQuantity * kLocationPrice).toStringAsFixed(2)}',
+                            '\$${PricingService.calcMonthly(_newQuantity).toStringAsFixed(2)}',
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ],

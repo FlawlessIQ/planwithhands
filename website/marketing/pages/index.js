@@ -25,9 +25,17 @@ export default function Home() {
             <Link href="/pricing" className="px-6 sm:px-8 py-3 sm:py-4 bg-accent text-primary font-semibold rounded-2xl shadow-2xl hover:shadow-accent/25 transition-all duration-300 text-base sm:text-lg">
               Start free trial
             </Link>
-            <Link href="/how-it-works" className="px-6 sm:px-8 py-3 sm:py-4 bg-white/10 text-white rounded-2xl hover:bg-white/20 transition-all duration-300 text-base sm:text-lg backdrop-blur">
+            <button
+              onClick={() => {
+                if (typeof document !== 'undefined') {
+                  const el = document.getElementById('hero-demo-video');
+                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+              }}
+              className="px-6 sm:px-8 py-3 sm:py-4 bg-white/10 text-white rounded-2xl hover:bg-white/20 transition-all duration-300 text-base sm:text-lg backdrop-blur"
+            >
               Watch demo
-            </Link>
+            </button>
           </div>
           <div className="flex flex-wrap justify-center gap-4 sm:gap-6 text-white/60 text-xs sm:text-sm px-4">
             <div className="flex items-center gap-2">
@@ -53,7 +61,7 @@ export default function Home() {
       </section>
 
       {/* Hero Image/Demo */}
-      <section className="px-4 sm:px-6 -mt-8 sm:-mt-10 mb-16 sm:mb-20">
+  <section id="hero-demo-video" className="px-4 sm:px-6 -mt-8 sm:-mt-10 mb-16 sm:mb-20">
         <div className="max-w-3xl mx-auto">
           <div className="bg-surface rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-2xl border border-white/10">
             <div className="bg-primary rounded-xl sm:rounded-2xl overflow-hidden" style={{ aspectRatio: '1450/1502' }}>

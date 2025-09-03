@@ -33,6 +33,12 @@ class UnifiedMenuButton extends ConsumerWidget {
         ],
       ),
       onSelected: (action) async {
+        // Add a small delay to ensure the popup menu is fully closed
+        await Future.delayed(const Duration(milliseconds: 50));
+
+        // Check if the widget is still mounted before navigation
+        if (!context.mounted) return;
+
         switch (action) {
           case _MenuAction.viewMessages:
             GoRouter.of(context).push(AppRoutes.notificationsPage.path);

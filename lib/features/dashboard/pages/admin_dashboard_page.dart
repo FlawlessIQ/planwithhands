@@ -1472,6 +1472,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
               _saveChecklist(
                 checklistData: result['checklistData'],
                 selectedShiftIds: List<String>.from(result['selectedShiftIds'] ?? []),
+                selectedLocationIds: List<String>.from(result['selectedLocationIds'] ?? []),
                 duplicateToAll: result['duplicateToAll'] ?? false,
                 existingChecklistId: checklistId,
               );
@@ -1555,6 +1556,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
   Future<void> _saveChecklist({
     required Map<String, dynamic> checklistData,
     required List<String> selectedShiftIds,
+    required List<String> selectedLocationIds,
     required bool duplicateToAll,
     String? existingChecklistId,
   }) async {
@@ -1586,6 +1588,8 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
       'taskCount': tasksArray.length,
       'updatedAt': FieldValue.serverTimestamp(),
       if (existingChecklistId == null) 'createdAt': FieldValue.serverTimestamp(),
+      'locationIds':
+          [_selectedLocationId, ...selectedLocationIds].where((id) => id != null && id != 'no-location').toList(),
     };
 
     batch.set(mainChecklistRef, checklistDocPayload, SetOptions(merge: true));
@@ -1720,19 +1724,20 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
         final dateStr =
             '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
-        final locsSnap =
-            await FirestoreEnforcer.instance
-                .collection('organizations')
-                .doc(organizationId)
-                .collection('locations')
-                .get();
-        for (final locDoc in locsSnap.docs) {
+        // Only reseed in locations where this checklist is assigned
+        final checklistLocationIds =
+            [
+              _selectedLocationId,
+              ...selectedLocationIds,
+            ].where((id) => id != null && id != 'no-location').cast<String>().toList();
+
+        for (final locationId in checklistLocationIds) {
           final existingDaily =
               await FirestoreEnforcer.instance
                   .collection('organizations')
                   .doc(organizationId)
                   .collection('locations')
-                  .doc(locDoc.id)
+                  .doc(locationId)
                   .collection('daily_checklists')
                   .where('date', isEqualTo: dateStr)
                   .where('checklistTemplateId', isEqualTo: mainChecklistId)
@@ -1741,7 +1746,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
             try {
               await dcs.reseedChecklistTasksFromTemplate(
                 organizationId: organizationId!,
-                locationId: locDoc.id,
+                locationId: locationId,
                 checklistId: cd.id,
               );
             } catch (e) {

@@ -117,14 +117,6 @@ class DailyBackgroundService {
   /// Determine if daily summary should be sent
   Future<bool> _shouldSendDailySummary(String organizationId, DateTime now) async {
     try {
-      // Time-based check: only send between 8 PM and 11:59 PM
-      final hour = now.hour;
-      if (hour < 20) {
-        // Before 8 PM
-        logger.d('[DailyBackgroundService] Too early for daily summary ($hour:${now.minute})');
-        return false;
-      }
-
       // Check if summary already sent today
       final alreadySent = await _summaryService.hasDailySummaryBeenSent(organizationId, now);
       if (alreadySent) {
@@ -132,26 +124,62 @@ class DailyBackgroundService {
         return false;
       }
 
-      // Check if all shifts have ended (optional - we can send regardless)
-      final allShiftsEnded = await _summaryService.areAllShiftsEndedForDay(organizationId: organizationId);
+      // Get admin users for this organization to check their preferred time
+      final adminUsers = await _getAdminUsersWithPreferences(organizationId);
 
+      if (adminUsers.isEmpty) {
+        logger.w('[DailyBackgroundService] No admin users found for organization $organizationId');
+        return false;
+      }
+
+      // Check if any admin has daily summary enabled and it's time to send
+      bool shouldSend = false;
+      final currentHour = now.hour;
+      final currentMinute = now.minute;
+
+      for (final admin in adminUsers) {
+        final enabled = admin['dailySummaryEnabled'] as bool? ?? true;
+        if (!enabled) continue;
+
+        final preferredHour = admin['dailySummaryHour'] as int? ?? 20; // Default 8 PM
+        final preferredMinute = admin['dailySummaryMinute'] as int? ?? 0;
+
+        // Check if current time matches or is past the preferred time (within 30 minutes)
+        final preferredTimeInMinutes = preferredHour * 60 + preferredMinute;
+        final currentTimeInMinutes = currentHour * 60 + currentMinute;
+
+        // Send if current time is within 30 minutes after the preferred time
+        if (currentTimeInMinutes >= preferredTimeInMinutes && currentTimeInMinutes <= preferredTimeInMinutes + 30) {
+          logger.d(
+            '[DailyBackgroundService] Time matches admin ${admin['firstName']} ${admin['lastName']} preference: $preferredHour:${preferredMinute.toString().padLeft(2, '0')}',
+          );
+          shouldSend = true;
+          break;
+        }
+      }
+
+      if (!shouldSend) {
+        // Fallback: if it's after 10 PM, send regardless (to ensure summaries don't get missed)
+        if (currentHour >= 22) {
+          logger.d('[DailyBackgroundService] After 10 PM fallback - sending summary for org $organizationId');
+          shouldSend = true;
+        } else {
+          logger.d(
+            '[DailyBackgroundService] Not time to send daily summary yet for org $organizationId (current: $currentHour:${currentMinute.toString().padLeft(2, '0')})',
+          );
+          return false;
+        }
+      }
+
+      // Check if all shifts have ended (optional check)
+      final allShiftsEnded = await _summaryService.areAllShiftsEndedForDay(organizationId: organizationId);
       if (allShiftsEnded) {
         logger.d('[DailyBackgroundService] All shifts ended for organization $organizationId - ready to send summary');
         return true;
       }
 
-      // If it's after 10 PM, send regardless of shift status
-      if (hour >= 22) {
-        logger.d(
-          '[DailyBackgroundService] After 10 PM - sending summary regardless of shift status for org $organizationId',
-        );
-        return true;
-      }
-
-      logger.d(
-        '[DailyBackgroundService] Not ready to send daily summary for organization $organizationId (shifts still active, time: $hour:${now.minute})',
-      );
-      return false;
+      // Send anyway if it's the right time, even if some shifts are still active
+      return shouldSend;
     } catch (e) {
       logger.e('[DailyBackgroundService] Error determining if should send daily summary', e);
       return false;
@@ -222,5 +250,58 @@ class DailyBackgroundService {
     logger.d('[DailyBackgroundService] Disposing daily background service');
     instance.stopDailySummaryMonitoring();
     _instance = null;
+  }
+
+  /// Get admin users for an organization with their daily summary preferences
+  Future<List<Map<String, dynamic>>> _getAdminUsersWithPreferences(String organizationId) async {
+    try {
+      final usersQuery =
+          await _firestore
+              .collection('users')
+              .where('organizationId', isEqualTo: organizationId)
+              .where('userRole', isEqualTo: 2) // Admin users only
+              .get();
+
+      final adminUsers = <Map<String, dynamic>>[];
+
+      for (final userDoc in usersQuery.docs) {
+        final userData = userDoc.data();
+        final userId = userDoc.id;
+
+        // Get user's daily summary preferences
+        try {
+          final prefsDoc =
+              await _firestore.collection('users').doc(userId).collection('preferences').doc('notifications').get();
+
+          final prefs = prefsDoc.exists ? prefsDoc.data() ?? {} : {};
+          final timeData = prefs['dailySummaryTime'] as Map<String, dynamic>?;
+
+          adminUsers.add({
+            'userId': userId,
+            'firstName': userData['firstName'] ?? '',
+            'lastName': userData['lastName'] ?? '',
+            'dailySummaryEnabled': prefs['dailySummaryEnabled'] ?? true,
+            'dailySummaryHour': timeData?['hour'] ?? 20, // Default 8 PM
+            'dailySummaryMinute': timeData?['minute'] ?? 0,
+          });
+        } catch (e) {
+          logger.w('[DailyBackgroundService] Error loading preferences for user $userId: $e');
+          // Add user with default preferences if we can't load their prefs
+          adminUsers.add({
+            'userId': userId,
+            'firstName': userData['firstName'] ?? '',
+            'lastName': userData['lastName'] ?? '',
+            'dailySummaryEnabled': true,
+            'dailySummaryHour': 20, // Default 8 PM
+            'dailySummaryMinute': 0,
+          });
+        }
+      }
+
+      return adminUsers;
+    } catch (e) {
+      logger.e('[DailyBackgroundService] Error getting admin users with preferences', e);
+      return [];
+    }
   }
 }
