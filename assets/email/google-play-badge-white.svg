@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg width="155" height="60" viewBox="0 0 155 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Badge Background with rounded corners -->
+  <rect width="155" height="60" rx="7" fill="transparent" stroke="white" stroke-width="1"/>
+  
+  <!-- Google Play Icon -->
+  <g transform="translate(15, 15)">
+    <!-- Play button icon paths (white version) -->
+    <path d="M2 4.5L12 10.5L12 19.5L2 25.5V4.5Z" fill="white"/>
+    <path d="M12 10.5L17.5 8L12 15L12 10.5Z" fill="white" opacity="0.9"/>
+    <path d="M12 15L17.5 22L12 19.5V15Z" fill="white" opacity="0.8"/>
+    <path d="M2 25.5L7.5 20L12 19.5L17.5 22L7.5 27L2 25.5Z" fill="white" opacity="0.7"/>
+    <path d="M7.5 10L12 10.5L17.5 8L7.5 3L2 4.5L7.5 10Z" fill="white" opacity="0.85"/>
+  </g>
+  
+  <!-- Text content -->
+  <g transform="translate(48, 0)">
+    <!-- "GET IT ON" text -->
+    <text x="0" y="18" font-family="Roboto, Arial, sans-serif" font-size="7" font-weight="400" fill="white" opacity="0.8">GET IT ON</text>
+    
+    <!-- "Google Play" text -->
+    <text x="0" y="38" font-family="Roboto, Arial, sans-serif" font-size="16" font-weight="400" fill="white">Google Play</text>
+  </g>
+</svg>

@@ -8,6 +8,7 @@ import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/utils/jobtype_helper.dart';
 import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/theme/theme.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class WelcomePage extends ConsumerStatefulWidget {
   final String? email;
@@ -320,7 +321,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                     _buildAppStoreButton(
                       onTap: () {
                         debugPrint('Opening App Store...');
-                        // TODO: Replace with actual App Store URL
+                        _launchUrl('https://apps.apple.com/us/app/plan-with-hands/id6751581141');
                       },
                       icon: Icons.phone_iphone,
                       topText: 'Download on the',
@@ -346,7 +347,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                       child: _buildAppStoreButton(
                         onTap: () {
                           debugPrint('Opening App Store...');
-                          // TODO: Replace with actual App Store URL
+                          _launchUrl('https://apps.apple.com/us/app/plan-with-hands/id6751581141');
                         },
                         icon: Icons.phone_iphone,
                         topText: 'Download on the',
@@ -387,6 +388,13 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
         ),
       ],
     );
+  }
+
+  Future<void> _launchUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   @override

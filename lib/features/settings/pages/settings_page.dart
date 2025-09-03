@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -1535,36 +1537,47 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            final result = await showDialog<int>(
-                              context: context,
-                              builder:
-                                  (context) => _SubscriptionManagementDialog(
-                                    orgId: _organizationId,
-                                    subscriptionId: subscriptionId,
-                                    currentQuantity: quantity,
-                                    currentUsage: currentUsage,
-                                  ),
-                            );
-
-                            if (result != null) {
-                              await _loadSubscriptionData();
-                              if (mounted) setState(() {});
-                            }
-                          },
-                          icon: const Icon(Icons.tune, size: 18),
-                          label: Text(
-                            'Manage Subscription',
-                            softWrap: true,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
+                      // iOS platform check - show message instead of manage subscription button
+                      if (!kIsWeb && Platform.isIOS) ...[
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                          child: Text(
+                            'To manage your subscription, please visit https://planwithhands.com and click "Login" on the top right. Subscriptions must be managed via the web portal.',
+                            style: Theme.of(context).textTheme.bodyMedium,
                           ),
-                          style: manageStyle,
                         ),
-                      ),
+                      ] else ...[
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              final result = await showDialog<int>(
+                                context: context,
+                                builder:
+                                    (context) => _SubscriptionManagementDialog(
+                                      orgId: _organizationId,
+                                      subscriptionId: subscriptionId,
+                                      currentQuantity: quantity,
+                                      currentUsage: currentUsage,
+                                    ),
+                              );
+
+                              if (result != null) {
+                                await _loadSubscriptionData();
+                                if (mounted) setState(() {});
+                              }
+                            },
+                            icon: const Icon(Icons.tune, size: 18),
+                            label: Text(
+                              'Manage Subscription',
+                              softWrap: true,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            style: manageStyle,
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 10),
                       SizedBox(
                         width: double.infinity,
@@ -1605,6 +1618,16 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                 }
 
                 // Wide layout: keep side-by-side but make spacing adaptive
+                if (!kIsWeb && Platform.isIOS) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                    child: Text(
+                      'To manage your subscription, please visit https://planwithhands.com and click "Login" on the top right. Subscriptions must be managed via the web portal.',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  );
+                }
+
                 return Row(
                   children: [
                     Expanded(

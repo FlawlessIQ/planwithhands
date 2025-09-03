@@ -23,7 +23,7 @@ class _MessageThreadPageState extends State<MessageThreadPage> {
     _svc = MessagingService();
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != null) {
-      Future.delayed(const Duration(milliseconds: 400), () => _svc.markThreadRead(widget.threadId, uid));
+      Future.delayed(const Duration(milliseconds: 400), () => _svc.markThreadRead(widget.threadId, uid, widget.orgId));
     }
   }
 

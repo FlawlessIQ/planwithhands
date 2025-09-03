@@ -319,7 +319,7 @@ class _SignInPageState extends State<SignInPage> {
   }
 
   Future<void> _launchAppStore() async {
-    const url = 'https://apps.apple.com/app/hands-app/id123456789'; // Replace with actual App Store URL
+    const url = 'https://apps.apple.com/us/app/plan-with-hands/id6751581141';
     if (await canLaunchUrl(Uri.parse(url))) {
       await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     } else {

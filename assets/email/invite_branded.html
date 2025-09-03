@@ -25,8 +25,8 @@
 
     /* Header */
     .header { text-align:center; padding:22px 20px; background:linear-gradient(180deg,var(--card),var(--charcoal)); }
-    .logo-circle { width:72px; height:72px; background:var(--white); border-radius:50%; display:inline-flex; align-items:center; justify-content:center; box-shadow:0 2px 8px rgba(0,0,0,0.4); }
-    .logo-circle img { width:48px; height:48px; object-fit:contain; }
+    .logo-circle { width:120px; height:96px; display:inline-flex; align-items:center; justify-content:center; }
+    .logo-circle img { width:120px; height:96px; object-fit:contain; }
     .title { color:var(--white); font-size:20px; font-weight:700; margin:12px 0 0; }
 
     /* Body */
@@ -69,7 +69,8 @@
     /* Responsive */
     @media screen and (max-width:420px) {
       .container { border-radius:8px; }
-      .logo-circle { width:60px; height:60px; }
+      .logo-circle { width:100px; height:80px; }
+      .logo-circle img { width:100px; height:80px; }
       .title { font-size:18px; }
       .badges img { width:120px; max-width:120px; }
     }
@@ -111,7 +112,8 @@
                 <li><strong style="color:var(--white)">Step-by-Step Checklists</strong> – Guided tasks you can finish in seconds.</li>
                 <li><strong style="color:var(--white)">Photo Verification</strong> – Snap a quick photo for proof of completion.</li>
                 <li><strong style="color:var(--white)">Mobile & Web</strong> – Use Hands on your phone or desktop, anywhere.</li>
-                <li><strong style="color:var(--white)">Smart Scheduling</strong> – View your schedule and get auto-assigned checklists for your shifts.</li>
+                <li><strong style="color:var(--white)">Management Communications</strong> – Receive important updates and messages from your team leaders.</li>
+                <li><strong style="color:var(--white)">Training & Documentation</strong> – Access training materials and procedural documents anytime.</li>
               </ul>
 
               <div style="margin-top:6px;">Ready to get started? Click below to complete your account setup:</div>
@@ -126,13 +128,13 @@
               </div>
 
               <div style="margin-top:16px; font-weight:700; color:var(--hands-orange);">Download the App</div>
-              <div class="badges">
-                <a href="https://apps.apple.com/" target="_blank" rel="noopener">
-                  <img src="assets/email/appstore-badge.png" srcset="assets/email/appstore-badge@2x.png 2x" alt="Download on the App Store" />
-                </a>
-                <a href="https://play.google.com/store/apps/details?id=com.planwithhands.app" target="_blank" rel="noopener">
-                  <img src="assets/email/playstore-badge.png" srcset="assets/email/playstore-badge@2x.png 2x" alt="Get it on Google Play" />
-                </a>
+              <div style="text-align:center; margin:16px 0 14px;">
+                <div style="margin:8px 0;">
+                  <a href="https://apps.apple.com/us/app/plan-with-hands/id6751581141" target="_blank" rel="noopener" style="display:inline-block; background:var(--hands-orange); color:var(--white); padding:10px 20px; border-radius:8px; font-weight:600; margin:0 8px; text-decoration:none;">📱 Download on App Store</a>
+                </div>
+                <div style="margin:8px 0;">
+                  <a href="https://play.google.com/store/apps/details?id=com.planwithhands.app" target="_blank" rel="noopener" style="display:inline-block; background:var(--hands-orange); color:var(--white); padding:10px 20px; border-radius:8px; font-weight:600; margin:0 8px; text-decoration:none;">📲 Get it on Google Play</a>
+                </div>
               </div>
 
               <div style="margin-top:6px; color:var(--muted);">

@@ -24,6 +24,66 @@ class MessagingService {
     final threadRef = _db.collection('messageThreads').doc();
     final uid = _auth.currentUser?.uid;
     if (uid == null) throw Exception('User not signed in');
+
+    // Resolve recipients based on targetType
+    List<String> recipientUserIds = [];
+    try {
+      switch (targetType) {
+        case 'all_users':
+        case 'all':
+          // Get all active users in the organization
+          final allUsersSnap =
+              await _db
+                  .collection('users')
+                  .where('organizationId', isEqualTo: orgId)
+                  .where('isActive', isEqualTo: true)
+                  .get();
+          recipientUserIds = allUsersSnap.docs.map((doc) => doc.id).toList();
+          break;
+        case 'custom':
+          // Use provided customUserIds
+          recipientUserIds = customUserIds ?? [];
+          break;
+        case 'location':
+          // Get users assigned to the specified location
+          if (targetRef != null) {
+            final locationUsersSnap =
+                await _db
+                    .collection('users')
+                    .where('organizationId', isEqualTo: orgId)
+                    .where('isActive', isEqualTo: true)
+                    .where('locationIds', arrayContains: targetRef)
+                    .get();
+            recipientUserIds = locationUsersSnap.docs.map((doc) => doc.id).toList();
+          } else {
+            recipientUserIds = [];
+          }
+          break;
+        case 'group':
+          // Get users in the specified group
+          if (targetRef != null) {
+            final groupDoc = await _db.collection('organizations').doc(orgId).collection('groups').doc(targetRef).get();
+            if (groupDoc.exists) {
+              final groupData = groupDoc.data();
+              recipientUserIds = List<String>.from(groupData?['userIds'] ?? []);
+            } else {
+              recipientUserIds = [];
+            }
+          } else {
+            recipientUserIds = [];
+          }
+          break;
+        default:
+          // For unknown target types, fall back to empty list
+          debugPrint('Warning: Unknown targetType: $targetType, using empty recipient list');
+          recipientUserIds = [];
+          break;
+      }
+    } catch (e) {
+      debugPrint('Warning: Failed to resolve recipients for targetType $targetType: $e');
+      recipientUserIds = [];
+    }
+
     await threadRef.set({
       'orgId': orgId,
       'createdBy': uid,
@@ -31,7 +91,7 @@ class MessagingService {
       'targetType': targetType,
       'targetRef': targetRef,
       'customUserIds': customUserIds ?? [],
-      'recipientUserIds': [],
+      'recipientUserIds': recipientUserIds,
       'pushOnLogin': pushOnLogin,
       'title': title ?? 'Message',
     });
@@ -78,8 +138,9 @@ class MessagingService {
         .asyncMap((snap) async {
           final notifSnap =
               await _db
+                  .collection('organizations')
+                  .doc(orgId)
                   .collection('notifications')
-                  .where('orgId', isEqualTo: orgId)
                   .where('userId', isEqualTo: userId)
                   .where('read', isEqualTo: false)
                   .get();
@@ -106,10 +167,12 @@ class MessagingService {
         .map((snap) => snap.docs.map(ThreadMessage.fromDoc).toList());
   }
 
-  Future<void> markThreadRead(String threadId, String userId) async {
+  Future<void> markThreadRead(String threadId, String userId, String orgId) async {
     final batch = _db.batch();
     final q =
         await _db
+            .collection('organizations')
+            .doc(orgId)
             .collection('notifications')
             .where('threadId', isEqualTo: threadId)
             .where('userId', isEqualTo: userId)

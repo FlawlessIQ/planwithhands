@@ -77,7 +77,7 @@ class WebPlatformPage extends StatelessWidget {
                       context,
                       'Download for iOS',
                       Icons.apple,
-                      'https://apps.apple.com/app/plan-with-hands', // Replace with actual URL
+                      'https://apps.apple.com/us/app/plan-with-hands/id6751581141',
                     ),
                     const SizedBox(height: 16),
                     _buildDownloadButton(

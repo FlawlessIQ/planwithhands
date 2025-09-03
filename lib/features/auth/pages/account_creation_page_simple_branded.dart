@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -12,6 +14,7 @@ import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/theme/theme.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SimpleSignUpPage extends StatefulWidget {
   final String? email;
@@ -318,6 +321,46 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
 
   @override
   Widget build(BuildContext context) {
+    // iOS platform check - redirect to website for new organization sign-ups
+    if (!kIsWeb && Platform.isIOS) {
+      return Scaffold(
+        appBar: AppBar(leading: BackButton(), title: Text('Sign Up')),
+        body: Padding(
+          padding: EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'To sign up a new organization, please visit:',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+              SizedBox(height: 8),
+              GestureDetector(
+                onTap: () async {
+                  final url = Uri.parse('https://planwithhands.com');
+                  if (await canLaunchUrl(url)) {
+                    await launchUrl(url, mode: LaunchMode.externalApplication);
+                  }
+                },
+                child: SelectableText(
+                  'https://planwithhands.com',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.blue, decoration: TextDecoration.underline),
+                ),
+              ),
+              SizedBox(height: 16),
+              Text(
+                'If you are a new user joining an existing organization, please contact your administrator to receive an invite.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final isInvitedUser = widget.organizationId != null;
 
     return Scaffold(
@@ -629,7 +672,40 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                     Row(
                       children: [
                         Checkbox(value: agreeTerms, onChanged: (value) => setState(() => agreeTerms = value ?? false)),
-                        const Expanded(child: Text('I agree to the Terms of Service and Privacy Policy.')),
+                        Expanded(
+                          child: Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              const Text('I agree to the '),
+                              TextButton(
+                                style: TextButton.styleFrom(
+                                  padding: EdgeInsets.zero,
+                                  minimumSize: const Size(0, 0),
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                onPressed: () => showDialog(context: context, builder: (_) => const TermsDialog()),
+                                child: const Text(
+                                  'Terms of Service',
+                                  style: TextStyle(decoration: TextDecoration.underline),
+                                ),
+                              ),
+                              const Text(' and '),
+                              TextButton(
+                                style: TextButton.styleFrom(
+                                  padding: EdgeInsets.zero,
+                                  minimumSize: const Size(0, 0),
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                onPressed: () => showDialog(context: context, builder: (_) => const PrivacyDialog()),
+                                child: const Text(
+                                  'Privacy Policy',
+                                  style: TextStyle(decoration: TextDecoration.underline),
+                                ),
+                              ),
+                              const Text('.'),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   const SizedBox(height: 24),
@@ -679,6 +755,128 @@ class ContactSalesDialog extends StatelessWidget {
       title: const Text('Contact Sales'),
       content: const Text(
         'For organizations with 5 or more locations, please contact our sales team to set up a custom plan.',
+      ),
+      actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close'))],
+    );
+  }
+}
+
+/// Full Terms of Service dialog (content matches website pages)
+class TermsDialog extends StatelessWidget {
+  const TermsDialog({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Terms of Service'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: const [
+              Text(
+                'Welcome to Plan With Hands ("Hands"). By accessing or using our website, mobile applications, or services, you agree to these Terms of Service.',
+              ),
+              SizedBox(height: 12),
+              Text('Use of Services', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 6),
+              Text(
+                'You may use Hands only in compliance with applicable laws and these Terms. You are responsible for the activities of your organization and users you invite.',
+              ),
+              SizedBox(height: 12),
+              Text('Accounts', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 6),
+              Text(
+                'You must provide accurate information when creating an account. You are responsible for maintaining the confidentiality of your login credentials.',
+              ),
+              SizedBox(height: 12),
+              Text('Subscriptions & Payments', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 6),
+              Text(
+                'Hands is offered on a subscription basis. Pricing is published on our website and may change from time to time. Payments are billed in advance per billing cycle. Annual billing includes a discount as specified in our pricing page.',
+              ),
+              SizedBox(height: 12),
+              Text('Termination', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 6),
+              Text(
+                'We may suspend or terminate accounts that violate these Terms or are used for unlawful purposes. You may cancel your subscription at any time.',
+              ),
+              SizedBox(height: 12),
+              Text('Liability', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 6),
+              Text(
+                'To the fullest extent permitted by law, Hands is not liable for indirect, incidental, or consequential damages. Our total liability is limited to the subscription fees you have paid for the service.',
+              ),
+              SizedBox(height: 12),
+              Text('Changes', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 6),
+              Text(
+                'We may update these Terms periodically. Continued use of the service after changes indicates your acceptance of the updated Terms.',
+              ),
+              SizedBox(height: 12),
+              Text('Contact Us', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 6),
+              Text('If you have any questions about these Terms, please contact us at support@planwithhands.com.'),
+            ],
+          ),
+        ),
+      ),
+      actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close'))],
+    );
+  }
+}
+
+/// Full Privacy Policy dialog (content matches website pages)
+class PrivacyDialog extends StatelessWidget {
+  const PrivacyDialog({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Privacy Policy'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: const [
+              Text(
+                'At Plan With Hands ("Hands"), your privacy is important to us. This Privacy Policy explains how we collect, use, and protect your information when you use our website, mobile applications, and services.',
+              ),
+              SizedBox(height: 12),
+              Text('Information We Collect', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 6),
+              Text(
+                '• Personal information you provide (such as name, email, role, organization).\n• Information about how you use the app, including checklists, tasks, and uploads.\n• Device and log information to help us improve performance and security.',
+              ),
+              SizedBox(height: 12),
+              Text('How We Use Information', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 6),
+              Text(
+                '• To provide and improve our services.\n• To communicate with you about product updates, changes, or support.\n• To maintain security and prevent misuse of the platform.',
+              ),
+              SizedBox(height: 12),
+              Text('Sharing of Information', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 6),
+              Text(
+                'We do not sell your personal data. We may share limited information with trusted service providers (e.g., cloud hosting, analytics) to operate our services.',
+              ),
+              SizedBox(height: 12),
+              Text('Your Choices', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 6),
+              Text(
+                'You may request access, updates, or deletion of your personal information at any time by contacting support@planwithhands.com.',
+              ),
+              SizedBox(height: 12),
+              Text('Contact Us', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 6),
+              Text(
+                'If you have any questions about this Privacy Policy, please reach out to us at support@planwithhands.com.',
+              ),
+            ],
+          ),
+        ),
       ),
       actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close'))],
     );
