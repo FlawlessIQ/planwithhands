@@ -62,6 +62,9 @@ class UserDashboardPage extends HookConsumerWidget {
     // Global location service - listen for external changes
     final locationService = LocationSelectionService.instance;
 
+    // Debounce timer for template/shift changes to prevent excessive refreshes
+    final refreshDebounceTimer = useState<Timer?>(null);
+
     // Seed from global selection if present and listen for changes
     useEffect(() {
       final global = locationService.currentLocationId;
@@ -334,7 +337,14 @@ class UserDashboardPage extends HookConsumerWidget {
           logger.w('[Dashboard] Failed merging optimistic assigned shifts: $e');
         }
 
-        foundShifts.sort((a, b) => a.startTime.compareTo(b.startTime));
+        // Order shifts alphabetically by name for the UI (case-insensitive). Fall back to startTime
+        // when names are identical to keep a deterministic order.
+        foundShifts.sort((a, b) {
+          final na = a.shiftName.toLowerCase();
+          final nb = b.shiftName.toLowerCase();
+          final cmp = na.compareTo(nb);
+          return cmp != 0 ? cmp : a.startTime.compareTo(b.startTime);
+        });
         logger.d("[Dashboard][DEBUG] Setting ${foundShifts.length} shifts to assignedShifts");
         assignedShifts.value = foundShifts;
 
@@ -535,6 +545,17 @@ class UserDashboardPage extends HookConsumerWidget {
       }
     }
 
+    // Debounced refresh function to prevent excessive dashboard reloads
+    void debouncedRefresh(String reason, {Duration delay = const Duration(seconds: 2)}) {
+      refreshDebounceTimer.value?.cancel();
+      refreshDebounceTimer.value = Timer(delay, () {
+        if (hasLoadedOnce.value) {
+          logger.d('[Dashboard] Debounced refresh triggered: $reason');
+          loadDashboardData();
+        }
+      });
+    }
+
     useEffect(() {
       fetchUserRole().then((_) async {
         // Load locations after user role is fetched
@@ -623,10 +644,113 @@ class UserDashboardPage extends HookConsumerWidget {
           if (isAdminMgr || matchesUserJobTypeLocal(data)) out.add(data);
         }
         shifts.value = out;
+
+        // Auto-refresh dashboard when shifts change to pick up new/updated shifts
+        if (hasLoadedOnce.value) {
+          logger.d('[Dashboard] Shifts changed, scheduling refresh');
+          debouncedRefresh('shifts changed');
+        }
       });
 
       return sub.cancel;
     }, [organizationId.value, selectedLocationId.value, userRole.value, userJobTypes.value]);
+
+    // Template changes listener: regenerate daily checklists when templates are created/edited
+    useEffect(() {
+      if (organizationId.value == null || selectedLocationId.value == null) {
+        return null;
+      }
+
+      // Listen to checklist templates changes
+      final templatesSub = FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(organizationId.value!)
+          .collection('checklist_templates')
+          .snapshots()
+          .listen((snap) {
+            if (hasLoadedOnce.value) {
+              logger.d('[Dashboard] Checklist templates changed, scheduling regeneration');
+              debouncedRefresh('template changes', delay: const Duration(seconds: 1));
+            }
+          });
+
+      return templatesSub.cancel;
+    }, [organizationId.value, selectedLocationId.value]);
+
+    // Location-specific template changes listener: handle location-specific templates
+    useEffect(() {
+      if (organizationId.value == null || selectedLocationId.value == null) {
+        return null;
+      }
+
+      // Listen to location-specific checklist templates (if they exist)
+      final locationTemplatesSub = FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(organizationId.value!)
+          .collection('locations')
+          .doc(selectedLocationId.value!)
+          .collection('checklist_templates')
+          .snapshots()
+          .listen((snap) {
+            if (hasLoadedOnce.value && snap.docs.isNotEmpty) {
+              logger.d('[Dashboard] Location-specific templates changed, scheduling regeneration');
+              debouncedRefresh('location template changes', delay: const Duration(seconds: 1));
+            }
+          });
+
+      return locationTemplatesSub.cancel;
+    }, [organizationId.value, selectedLocationId.value]);
+
+    // Daily checklists listener: update when daily checklists are created/modified
+    useEffect(() {
+      if (organizationId.value == null || selectedLocationId.value == null || !hasLoadedOnce.value) {
+        return null;
+      }
+
+      // Listen to daily checklists for today
+      final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final dailyChecklistsSub = FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(organizationId.value!)
+          .collection('locations')
+          .doc(selectedLocationId.value!)
+          .collection('daily_checklists')
+          .where('date', isEqualTo: today)
+          .snapshots()
+          .listen((snap) {
+            // Refresh checklists when daily checklists change (created/updated/deleted)
+            logger.d(
+              '[Dashboard] Daily checklists changed (${snap.docs.length} checklists for $today), refreshing assigned work',
+            );
+            Future.microtask(() async {
+              try {
+                // Reload checklists for current assigned shifts
+                if (assignedShifts.value.isNotEmpty) {
+                  List<List<DailyChecklist>> checklistGroups = [];
+                  for (int i = 0; i < assignedShifts.value.length; i++) {
+                    final shift = assignedShifts.value[i];
+                    final locationId = selectedLocationIds.value[i];
+                    final checklists = await _loadChecklistsForShiftSimple(
+                      shift,
+                      locationId,
+                      today,
+                      organizationId.value!,
+                    );
+                    checklistGroups.add(checklists);
+                  }
+                  allChecklists.value = checklistGroups;
+                  logger.d(
+                    '[Dashboard] Updated ${checklistGroups.length} checklist groups after daily checklist changes',
+                  );
+                }
+              } catch (e) {
+                logger.e('[Dashboard] Error refreshing checklists after daily checklist changes: $e', e);
+              }
+            });
+          });
+
+      return dailyChecklistsSub.cancel;
+    }, [organizationId.value, selectedLocationId.value, hasLoadedOnce.value, assignedShifts.value.length]);
 
     // Missed tasks loader (role-aware) - uses carry-forward query and keeps UI model in sync
     Future<void> loadMissedYesterdayRoleAware() async {
@@ -1041,7 +1165,13 @@ class UserDashboardPage extends HookConsumerWidget {
                               itemCount: assignedShifts.value.length,
                               itemBuilder: (context, shiftIndex) {
                                 final shift = assignedShifts.value[shiftIndex];
-                                final locationId = selectedLocationIds.value[shiftIndex];
+                                // Guard against transient mismatch between assignedShifts and selectedLocationIds
+                                // (listeners may update these lists at different times). Use the per-page
+                                // selectedLocationId as a safe fallback when per-shift ids are not yet available.
+                                final locationId =
+                                    (selectedLocationIds.value.length > shiftIndex)
+                                        ? selectedLocationIds.value[shiftIndex]
+                                        : (selectedLocationId.value ?? '');
                                 final checklists =
                                     allChecklists.value.length > shiftIndex ? allChecklists.value[shiftIndex] : [];
                                 return Column(
@@ -1949,7 +2079,25 @@ class _HelpOutDialog extends StatelessWidget {
         }
       }
 
-      shifts.sort((a, b) => a.startTime.compareTo(b.startTime));
+      // Sort shifts chronologically by parsed start time (HH:mm). Use shiftName as a tiebreaker.
+      int _minutesFromStart(String s) {
+        try {
+          final parts = s.split(':');
+          final h = int.tryParse(parts[0]) ?? 0;
+          final m = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
+          return h * 60 + m;
+        } catch (_) {
+          return 0;
+        }
+      }
+
+      shifts.sort((a, b) {
+        final ma = _minutesFromStart(a.startTime);
+        final mb = _minutesFromStart(b.startTime);
+        final cmp = ma.compareTo(mb);
+        if (cmp != 0) return cmp;
+        return a.shiftName.toLowerCase().compareTo(b.shiftName.toLowerCase());
+      });
       debugPrint('[HelpOutSheet] Returning ${shifts.length} available shifts');
       return shifts;
     } catch (e) {

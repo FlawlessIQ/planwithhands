@@ -91,11 +91,12 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
 
   void _loadAvailableJobTypes() async {
     try {
-      final snapshot = await FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(widget.organizationId)
-          .collection('jobTypes')
-          .get();
+      final snapshot =
+          await FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(widget.organizationId)
+              .collection('jobTypes')
+              .get();
 
       if (mounted) {
         setState(() {
@@ -134,11 +135,12 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
     final batch = FirestoreEnforcer.instance.batch();
 
     for (final jobType in defaultJobTypes) {
-      final docRef = FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(widget.organizationId)
-          .collection('jobTypes')
-          .doc();
+      final docRef =
+          FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(widget.organizationId)
+              .collection('jobTypes')
+              .doc();
 
       batch.set(docRef, {
         'name': jobType,
@@ -178,35 +180,40 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
 
   // Helper to pick time using CupertinoDatePicker
   Future<void> _pickTime(TextEditingController controller) async {
-    final initial = controller.text.isNotEmpty
-        ? TimeOfDay(hour: int.parse(controller.text.split(':')[0]), minute: int.parse(controller.text.split(':')[1]))
-        : TimeOfDay.now();
+    final initial =
+        controller.text.isNotEmpty
+            ? TimeOfDay(
+              hour: int.parse(controller.text.split(':')[0]),
+              minute: int.parse(controller.text.split(':')[1]),
+            )
+            : TimeOfDay.now();
     await showCupertinoModalPopup(
       context: context,
-      builder: (_) => Container(
-        // Slightly smaller picker height for mobile
-        height: 220,
-        decoration: BoxDecoration(
-          color: HandsColors.primaryContainer,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-        ),
-        child: CupertinoDatePicker(
-          mode: CupertinoDatePickerMode.time,
-          initialDateTime: DateTime(
-            DateTime.now().year,
-            DateTime.now().month,
-            DateTime.now().day,
-            initial.hour,
-            initial.minute,
+      builder:
+          (_) => Container(
+            // Slightly smaller picker height for mobile
+            height: 220,
+            decoration: BoxDecoration(
+              color: HandsColors.primaryContainer,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+            ),
+            child: CupertinoDatePicker(
+              mode: CupertinoDatePickerMode.time,
+              initialDateTime: DateTime(
+                DateTime.now().year,
+                DateTime.now().month,
+                DateTime.now().day,
+                initial.hour,
+                initial.minute,
+              ),
+              onDateTimeChanged: (dt) {
+                final formatted =
+                    '${dt.hour.toString().padLeft(2, '0')}:'
+                    '${dt.minute.toString().padLeft(2, '0')}';
+                setState(() => controller.text = formatted);
+              },
+            ),
           ),
-          onDateTimeChanged: (dt) {
-            final formatted =
-                '${dt.hour.toString().padLeft(2, '0')}:'
-                '${dt.minute.toString().padLeft(2, '0')}';
-            setState(() => controller.text = formatted);
-          },
-        ),
-      ),
     );
   }
 
@@ -253,9 +260,10 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
       'endTime': _endTimeController.text.trim(),
       'days': _selectedDays.toList(),
       'repeatsDaily': _repeatsDaily,
-      'locationIds': selectedLocationIds.isNotEmpty
-          ? selectedLocationIds
-          : widget.availableLocations.map((l) => l['id'] as String).toList(),
+      'locationIds':
+          selectedLocationIds.isNotEmpty
+              ? selectedLocationIds
+              : widget.availableLocations.map((l) => l['id'] as String).toList(),
       'jobTypes': selectedJobTypes,
       'jobType': selectedJobTypes.isNotEmpty ? selectedJobTypes : [],
       'staffingLevels': staffingLevels,
@@ -453,12 +461,7 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
       return Material(
         color: HandsColors.cardPrimary,
         borderRadius: BorderRadius.circular(12),
-        child: Column(
-          children: [
-            header(showHandle: false),
-            Expanded(child: buildStepper()),
-          ],
-        ),
+        child: Column(children: [header(showHandle: false), Expanded(child: buildStepper())]),
       );
     }
 
@@ -542,29 +545,31 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
             return Wrap(
               spacing: 6,
               runSpacing: 4,
-              children: _weekDays.map((d) {
-                final bool selected = _repeatsDaily || _selectedDays.contains(d);
-                final bool greenFill = _repeatsDaily; // repeatsDaily uses sageGreen
-                return ChoiceChip(
-                  label: Text(
-                    isNarrow ? d.substring(0, 3) : d,
-                    style: GoogleFonts.comfortaa(
-                      color: selected ? (greenFill ? Colors.black : HandsColors.white) : HandsColors.white70,
-                      fontWeight: FontWeight.w500,
-                      fontSize: isNarrow ? 12 : 14,
-                    ),
-                  ),
-                  selected: selected,
-                  selectedColor: greenFill ? HandsColors.sageGreen : HandsColors.handsOrange,
-                  backgroundColor: HandsColors.secondaryContainer,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  onSelected: _repeatsDaily
-                      ? null
-                      : (s) {
-                          setState(() => s ? _selectedDays.add(d) : _selectedDays.remove(d));
-                        },
-                );
-              }).toList(),
+              children:
+                  _weekDays.map((d) {
+                    final bool selected = _repeatsDaily || _selectedDays.contains(d);
+                    final bool greenFill = _repeatsDaily; // repeatsDaily uses sageGreen
+                    return ChoiceChip(
+                      label: Text(
+                        isNarrow ? d.substring(0, 3) : d,
+                        style: GoogleFonts.comfortaa(
+                          color: selected ? (greenFill ? Colors.black : HandsColors.white) : HandsColors.white70,
+                          fontWeight: FontWeight.w500,
+                          fontSize: isNarrow ? 12 : 14,
+                        ),
+                      ),
+                      selected: selected,
+                      selectedColor: greenFill ? HandsColors.sageGreen : HandsColors.handsOrange,
+                      backgroundColor: HandsColors.secondaryContainer,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      onSelected:
+                          _repeatsDaily
+                              ? null
+                              : (s) {
+                                setState(() => s ? _selectedDays.add(d) : _selectedDays.remove(d));
+                              },
+                    );
+                  }).toList(),
             );
           },
         ),
@@ -579,32 +584,33 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: widget.availableLocations.map((loc) {
-        final bool checked = selectedLocationIds.contains(loc['id']);
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 6.0),
-          child: CheckboxListTile(
-            dense: true,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 8.0),
-            title: Text(
-              loc['name'] as String,
-              style: GoogleFonts.comfortaa(color: HandsColors.white, fontWeight: FontWeight.w500, fontSize: 14),
-            ),
-            value: checked,
-            checkColor: HandsColors.white,
-            activeColor: HandsColors.sageGreen,
-            onChanged: (v) {
-              setState(() {
-                if (v!) {
-                  selectedLocationIds.add(loc['id']);
-                } else {
-                  selectedLocationIds.remove(loc['id']);
-                }
-              });
-            },
-          ),
-        );
-      }).toList(),
+      children:
+          widget.availableLocations.map((loc) {
+            final bool checked = selectedLocationIds.contains(loc['id']);
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 6.0),
+              child: CheckboxListTile(
+                dense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 8.0),
+                title: Text(
+                  loc['name'] as String,
+                  style: GoogleFonts.comfortaa(color: HandsColors.white, fontWeight: FontWeight.w500, fontSize: 14),
+                ),
+                value: checked,
+                checkColor: HandsColors.white,
+                activeColor: HandsColors.sageGreen,
+                onChanged: (v) {
+                  setState(() {
+                    if (v!) {
+                      selectedLocationIds.add(loc['id']);
+                    } else {
+                      selectedLocationIds.remove(loc['id']);
+                    }
+                  });
+                },
+              ),
+            );
+          }).toList(),
     );
   }
 
@@ -620,18 +626,19 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
             Wrap(
               spacing: 8.0,
               runSpacing: 4.0,
-              children: selectedJobTypes.map((jt) {
-                return Chip(
-                  label: Text(jt),
-                  deleteIcon: const Icon(Icons.close, size: 18),
-                  onDeleted: () {
-                    setState(() {
-                      selectedJobTypes.remove(jt);
-                      staffingLevels.remove(jt);
-                    });
-                  },
-                );
-              }).toList(),
+              children:
+                  selectedJobTypes.map((jt) {
+                    return Chip(
+                      label: Text(jt),
+                      deleteIcon: const Icon(Icons.close, size: 18),
+                      onDeleted: () {
+                        setState(() {
+                          selectedJobTypes.remove(jt);
+                          staffingLevels.remove(jt);
+                        });
+                      },
+                    );
+                  }).toList(),
             ),
             const Divider(),
             const SizedBox(height: 12),
@@ -644,22 +651,23 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
             Wrap(
               spacing: 8.0,
               runSpacing: 4.0,
-              children: availableJobTypes
-                  .where((jt) => !selectedJobTypes.contains(jt))
-                  .map(
-                    (jt) => FilterChip(
-                      label: Text(jt),
-                      selected: false,
-                      onSelected: (selected) {
-                        if (selected) {
-                          setState(() {
-                            selectedJobTypes.add(jt);
-                          });
-                        }
-                      },
-                    ),
-                  )
-                  .toList(),
+              children:
+                  availableJobTypes
+                      .where((jt) => !selectedJobTypes.contains(jt))
+                      .map(
+                        (jt) => FilterChip(
+                          label: Text(jt),
+                          selected: false,
+                          onSelected: (selected) {
+                            if (selected) {
+                              setState(() {
+                                selectedJobTypes.add(jt);
+                              });
+                            }
+                          },
+                        ),
+                      )
+                      .toList(),
             ),
             const Divider(),
             const SizedBox(height: 12),
@@ -679,12 +687,39 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
   }
 
   Widget _buildChecklistStep() {
+    // Determine which location(s) to show templates for. Prefer user-selected
+    // locations from the Locations step. If none selected and there is a single
+    // available location, use that one. If multiple locations exist and none
+    // are selected, prompt the user to select a location first.
+    final locationIdsToFilter = <String>[];
+    if (selectedLocationIds.isNotEmpty) {
+      locationIdsToFilter.addAll(selectedLocationIds);
+    } else if (widget.availableLocations.length == 1) {
+      locationIdsToFilter.add(widget.availableLocations.first['id'] as String);
+    }
+
+    if (widget.availableLocations.length > 1 && locationIdsToFilter.isEmpty) {
+      return const Center(child: Text('Select a location in the Locations step to view available checklists.'));
+    }
+
+    // Build a Firestore query that filters checklist templates by the chosen
+    // location(s). Use array-contains for a single id and array-contains-any
+    // when multiple locations are selected.
+    Query templatesQuery = FirestoreEnforcer.instance
+        .collection('organizations')
+        .doc(widget.organizationId)
+        .collection('checklist_templates');
+
+    if (locationIdsToFilter.isNotEmpty) {
+      if (locationIdsToFilter.length == 1) {
+        templatesQuery = templatesQuery.where('locationIds', arrayContains: locationIdsToFilter.first);
+      } else {
+        templatesQuery = templatesQuery.where('locationIds', arrayContainsAny: locationIdsToFilter);
+      }
+    }
+
     return FutureBuilder<QuerySnapshot>(
-      future: FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(widget.organizationId)
-          .collection('checklist_templates')
-          .get(),
+      future: templatesQuery.get(),
       builder: (context, s) {
         if (s.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -694,32 +729,33 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
         }
         final snap = s.data;
         if (snap == null || snap.docs.isEmpty) {
-          return const Center(child: Text('No checklists available'));
+          return const Center(child: Text('No checklists available for the selected location'));
         }
         final docs = snap.docs;
         return Column(
-          children: docs.map((d) {
-            final data = d.data() as Map<String, dynamic>;
-            final name = data['name'] ?? 'Unnamed';
-            final desc = data['description'] ?? '';
-            final isSelected = selectedChecklistTemplateIds.contains(d.id);
-            return CheckboxListTile(
-              title: Text(name, style: const TextStyle(color: HandsColors.white)),
-              subtitle: desc.isNotEmpty ? Text(desc, style: const TextStyle(color: HandsColors.white70)) : null,
-              value: isSelected,
-              checkColor: HandsColors.white,
-              activeColor: HandsColors.handsOrange,
-              onChanged: (v) {
-                setState(() {
-                  if (v!) {
-                    selectedChecklistTemplateIds.add(d.id);
-                  } else {
-                    selectedChecklistTemplateIds.remove(d.id);
-                  }
-                });
-              },
-            );
-          }).toList(),
+          children:
+              docs.map((d) {
+                final data = d.data() as Map<String, dynamic>;
+                final name = data['name'] ?? 'Unnamed';
+                final desc = data['description'] ?? '';
+                final isSelected = selectedChecklistTemplateIds.contains(d.id);
+                return CheckboxListTile(
+                  title: Text(name, style: const TextStyle(color: HandsColors.white)),
+                  subtitle: desc.isNotEmpty ? Text(desc, style: const TextStyle(color: HandsColors.white70)) : null,
+                  value: isSelected,
+                  checkColor: HandsColors.white,
+                  activeColor: HandsColors.handsOrange,
+                  onChanged: (v) {
+                    setState(() {
+                      if (v!) {
+                        selectedChecklistTemplateIds.add(d.id);
+                      } else {
+                        selectedChecklistTemplateIds.remove(d.id);
+                      }
+                    });
+                  },
+                );
+              }).toList(),
         );
       },
     );

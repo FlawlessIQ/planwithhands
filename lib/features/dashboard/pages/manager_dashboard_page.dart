@@ -3084,6 +3084,12 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
           final reason = (t['reason'] ?? t['reasonNotCompleted'] ?? t['reasonForNotCompleting'] ?? '').toString();
           final note = (t['note'] ?? t['notes'] ?? t['taskNote'] ?? '').toString();
 
+          print('[TaskHistory] Debug: Processing task: $name');
+          print('[TaskHistory] Debug: Task data keys: ${t.keys.toList()}');
+          if (name.toLowerCase().contains('photo') || t['photoRequired'] == true) {
+            print('[TaskHistory] Debug: PHOTO-RELATED TASK - Full data: $t');
+          }
+
           // Handle photos with multiple possible field names
           List<String> photos = [];
           print('[TaskHistory] Debug: Checking photo fields for task: $name');
@@ -3132,6 +3138,49 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
 
           final photoRequired = t['photoRequired'] == true || t['requiresPhoto'] == true || t['requirePhoto'] == true;
 
+          print('[TaskHistory] Debug: Checking photoRequired for task: $name');
+          print('[TaskHistory] Debug: Organization ID: ${widget.organizationId}');
+          print('[TaskHistory] Debug: Checklist Template ID: ${data['checklistTemplateId'] ?? data['templateId']}');
+          print(
+            '[TaskHistory] Debug: Task photoRequired fields - photoRequired: ${t['photoRequired']}, requiresPhoto: ${t['requiresPhoto']}, requirePhoto: ${t['requirePhoto']}',
+          );
+          print('[TaskHistory] Debug: Raw task data: ${t.toString()}');
+          print('[TaskHistory] Debug: Final photoRequired value: $photoRequired');
+
+          // If photoRequired is false but we have templateTaskId, try to get it from the template
+          bool finalPhotoRequired = photoRequired;
+          if (!photoRequired) {
+            final templateTaskId = t['templateTaskId']?.toString();
+            final templateId = data['checklistTemplateId']?.toString() ?? data['templateId']?.toString();
+
+            print('[TaskHistory] Debug: templateTaskId: $templateTaskId, templateId: $templateId');
+
+            if (templateTaskId != null && templateId != null && templateId.isNotEmpty) {
+              try {
+                // Get template task to check photoRequired
+                final templateTaskDoc =
+                    await FirestoreEnforcer.instance
+                        .collection('organizations')
+                        .doc(widget.organizationId)
+                        .collection('checklist_templates')
+                        .doc(templateId)
+                        .collection('tasks')
+                        .doc(templateTaskId)
+                        .get();
+
+                if (templateTaskDoc.exists) {
+                  final templateTaskData = templateTaskDoc.data()!;
+                  finalPhotoRequired = templateTaskData['photoRequired'] == true;
+                  print('[TaskHistory] Debug: Got photoRequired from template: $finalPhotoRequired');
+                } else {
+                  print('[TaskHistory] Debug: Template task not found: $templateTaskId');
+                }
+              } catch (e) {
+                print('[TaskHistory] Debug: Error getting template task: $e');
+              }
+            }
+          }
+
           // Checklist filter (best-effort, some data models store checklistId on parent)
           if (_selectedChecklist != 'all' && (data['templateId'] ?? data['checklistId']) != _selectedChecklist) {
             continue;
@@ -3143,7 +3192,15 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
           if (_selectedCompletion == 'incomplete_with_reason' && (completed || reason.isEmpty)) continue;
           if (_selectedCompletion == 'photo_added' && photos.isEmpty) continue;
           if (_selectedCompletion == 'notes_added' && note.isEmpty) continue;
-          if (_selectedCompletion == 'photo_required' && !photoRequired) continue;
+          if (_selectedCompletion == 'photo_required' && !finalPhotoRequired) {
+            print('[TaskHistory] Debug: FILTERED OUT task "$name" - finalPhotoRequired: $finalPhotoRequired');
+            continue;
+          }
+          if (_selectedCompletion == 'photo_required') {
+            print(
+              '[TaskHistory] Debug: INCLUDED task "$name" for photo_required filter - finalPhotoRequired: $finalPhotoRequired',
+            );
+          }
 
           // Search filter
           final q = _searchCtrl.text.trim().toLowerCase();
@@ -3165,7 +3222,7 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
               photoUrls: photos,
               completedBy: completedByName,
               timeCompleted: formattedTime,
-              photoRequired: photoRequired,
+              photoRequired: finalPhotoRequired,
             ),
           );
         }

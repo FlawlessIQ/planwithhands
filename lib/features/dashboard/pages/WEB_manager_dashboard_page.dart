@@ -2379,6 +2379,35 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
 
           final photoRequired = t['photoRequired'] == true || t['requiresPhoto'] == true || t['requirePhoto'] == true;
 
+          // If photoRequired is false but we have templateTaskId, try to get it from the template
+          bool finalPhotoRequired = photoRequired;
+          if (!photoRequired) {
+            final templateTaskId = t['templateTaskId']?.toString();
+            final templateId = data['checklistTemplateId']?.toString() ?? data['templateId']?.toString();
+
+            if (templateTaskId != null && templateId != null && templateId.isNotEmpty) {
+              try {
+                // Get template task to check photoRequired
+                final templateTaskDoc =
+                    await FirestoreEnforcer.instance
+                        .collection('organizations')
+                        .doc(widget.organizationId)
+                        .collection('checklist_templates')
+                        .doc(templateId)
+                        .collection('tasks')
+                        .doc(templateTaskId)
+                        .get();
+
+                if (templateTaskDoc.exists) {
+                  final templateTaskData = templateTaskDoc.data()!;
+                  finalPhotoRequired = templateTaskData['photoRequired'] == true;
+                }
+              } catch (e) {
+                // Ignore template lookup errors
+              }
+            }
+          }
+
           // Checklist filter (best-effort, some data models store checklistId on parent)
           if (_selectedChecklist != 'all' && (data['templateId'] ?? data['checklistId']) != _selectedChecklist) {
             continue;
@@ -2390,7 +2419,7 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
           if (_selectedCompletion == 'incomplete_with_reason' && (completed || reason.isEmpty)) continue;
           if (_selectedCompletion == 'photo_added' && photos.isEmpty) continue;
           if (_selectedCompletion == 'notes_added' && note.isEmpty) continue;
-          if (_selectedCompletion == 'photo_required' && !photoRequired) continue;
+          if (_selectedCompletion == 'photo_required' && !finalPhotoRequired) continue;
 
           // Search filter
           final q = _searchCtrl.text.trim().toLowerCase();
@@ -2412,7 +2441,7 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
               photoUrls: photos,
               completedBy: completedByName,
               timeCompleted: formattedTime,
-              photoRequired: photoRequired,
+              photoRequired: finalPhotoRequired,
             ),
           );
         }

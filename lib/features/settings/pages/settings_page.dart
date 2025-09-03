@@ -1830,9 +1830,8 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                           ),
                         ),
                       ),
-                      // Preferences Card
-                      const SizedBox(height: 16),
-                      _buildPreferencesCard(),
+                      // Preferences Card - only visible to userRole 2
+                      if (_userRole != null && _userRole == 2) ...[const SizedBox(height: 16), _buildPreferencesCard()],
                       // Business Information Card - Only visible to admin users
                       if (_isAdmin) ...[
                         const SizedBox(height: 16),

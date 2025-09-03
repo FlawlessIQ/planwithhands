@@ -87,7 +87,7 @@ class TaskBackfillService {
           if (templateId != null && templateId.isNotEmpty) {
             wants['templateId'] = templateId;
           }
-          if (dateString?.isNotEmpty == true) {
+          if (dateString.isNotEmpty == true) {
             wants['dateString'] = dateString;
           }
 
