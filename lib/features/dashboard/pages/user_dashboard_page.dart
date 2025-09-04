@@ -34,6 +34,8 @@ class UserDashboardPage extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isLoading = useState(true);
+    // New: differentiate between the very first load (full screen spinner) and later background refreshes
+    final isRefreshing = useState(false);
     final errorMessage = useState<String?>(null);
     final assignedShifts = useState<List<ShiftData>>([]);
     final selectedLocationIds = useState<List<String>>([]);
@@ -226,15 +228,27 @@ class UserDashboardPage extends HookConsumerWidget {
       }
     }
 
-    Future<void> loadDashboardData() async {
-      logger.d('[Dashboard] loadDashboardData() called - isLoading: ${isLoading.value}');
-      isLoading.value = true;
+    Future<void> loadDashboardData({bool resetData = false}) async {
+      logger.d(
+        '[Dashboard] loadDashboardData() called - isLoading: ${isLoading.value}, isRefreshing: ${isRefreshing.value}, resetData=$resetData',
+      );
+      final initial = !hasLoadedOnce.value;
+      if (initial || resetData) {
+        isLoading.value = true; // show full screen spinner only for first load or explicit resets
+      } else {
+        // Subsequent reloads keep existing UI visible to prevent flicker
+        isRefreshing.value = true;
+      }
       errorMessage.value = null;
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         logger.d('[Dashboard] No user logged in');
         errorMessage.value = "You must be logged in to view the dashboard.";
-        isLoading.value = false;
+        if (initial || resetData) {
+          isLoading.value = false;
+        } else {
+          isRefreshing.value = false;
+        }
         return;
       }
 
@@ -254,7 +268,11 @@ class UserDashboardPage extends HookConsumerWidget {
 
       if (organizationId.value == null) {
         errorMessage.value = "Unable to load organization data.";
-        isLoading.value = false;
+        if (initial || resetData) {
+          isLoading.value = false;
+        } else {
+          isRefreshing.value = false;
+        }
         return;
       }
 
@@ -287,12 +305,12 @@ class UserDashboardPage extends HookConsumerWidget {
         }
         logger.d("[Dashboard] ===== DAILY SHIFT CLEANUP & REPAIR COMPLETE =====");
 
-        // Always start with empty shifts for a fresh daily experience
-        // Users must actively select or be assigned shifts each day
-        // This ensures expired volunteer shifts don't carry over automatically
-        //         assignedShifts.value = [];
-        allChecklists.value = [];
-        selectedLocationIds.value = [];
+        // Only clear existing checklist data on true initial load, explicit reset, or after day rollover.
+        // This prevents the UI from "blanking" during background refreshes which was causing flicker.
+        if (initial || resetData) {
+          allChecklists.value = [];
+          selectedLocationIds.value = [];
+        }
 
         // Get today's shifts with proper time-based validation
         // This will automatically clean up expired volunteer shifts
@@ -541,7 +559,11 @@ class UserDashboardPage extends HookConsumerWidget {
         logger.e("[Dashboard] Error loading dashboard data: $e", e, stack);
         errorMessage.value = "An error occurred while loading your dashboard.";
       } finally {
-        isLoading.value = false;
+        if (initial || resetData) {
+          isLoading.value = false;
+        } else {
+          isRefreshing.value = false;
+        }
       }
     }
 
@@ -580,7 +602,7 @@ class UserDashboardPage extends HookConsumerWidget {
         }
       });
       if (!hasLoadedOnce.value) {
-        loadDashboardData();
+        loadDashboardData(resetData: true);
         hasLoadedOnce.value = true;
       }
       return null;
@@ -718,33 +740,112 @@ class UserDashboardPage extends HookConsumerWidget {
           .where('date', isEqualTo: today)
           .snapshots()
           .listen((snap) {
-            // Refresh checklists when daily checklists change (created/updated/deleted)
+            // Determine which shifts actually changed
+            final changedShiftIds = <String>{};
+            for (final dc in snap.docChanges) {
+              try {
+                final data = dc.doc.data();
+                final sid = (data?['shiftId'] ?? '').toString();
+                if (sid.isNotEmpty) changedShiftIds.add(sid);
+              } catch (_) {}
+            }
+
+            // If Firestore didn't provide docChanges (first snapshot) treat all visible shifts for this location as changed
+            final firstSnapshot = snap.metadata.isFromCache == false && snap.docChanges.isEmpty;
+            if (changedShiftIds.isEmpty && firstSnapshot) {
+              for (final s in assignedShifts.value) {
+                // Only include shifts belonging to the current selected location
+                final locIds = coerceToLocationIds(s.locationIds);
+                if (locIds.isNotEmpty && locIds.first == selectedLocationId.value) {
+                  changedShiftIds.add(s.shiftId);
+                }
+              }
+            }
+
             logger.d(
-              '[Dashboard] Daily checklists changed (${snap.docs.length} checklists for $today), refreshing assigned work',
+              '[Dashboard] Daily checklists snapshot (docs=${snap.docs.length}, changes=${snap.docChanges.length}, changedShiftIds=$changedShiftIds)',
             );
+
+            // Nothing relevant changed
+            if (changedShiftIds.isEmpty) return;
+
             Future.microtask(() async {
               try {
-                // Reload checklists for current assigned shifts
-                if (assignedShifts.value.isNotEmpty) {
-                  List<List<DailyChecklist>> checklistGroups = [];
-                  for (int i = 0; i < assignedShifts.value.length; i++) {
-                    final shift = assignedShifts.value[i];
-                    final locationId = selectedLocationIds.value[i];
-                    final checklists = await _loadChecklistsForShiftSimple(
-                      shift,
-                      locationId,
-                      today,
-                      organizationId.value!,
-                    );
-                    checklistGroups.add(checklists);
-                  }
-                  allChecklists.value = checklistGroups;
-                  logger.d(
-                    '[Dashboard] Updated ${checklistGroups.length} checklist groups after daily checklist changes',
-                  );
+                // We'll create a mutable copy of existing checklist groups for merging
+                final currentGroups = List<List<DailyChecklist>>.from(
+                  allChecklists.value.map((g) => List<DailyChecklist>.from(g)),
+                );
+
+                // Map shiftId -> index in assignedShifts to maintain alignment
+                final shiftIndexById = <String, int>{};
+                for (int i = 0; i < assignedShifts.value.length; i++) {
+                  shiftIndexById[assignedShifts.value[i].shiftId] = i;
                 }
-              } catch (e) {
-                logger.e('[Dashboard] Error refreshing checklists after daily checklist changes: $e', e);
+
+                for (final changedShiftId in changedShiftIds) {
+                  final index = shiftIndexById[changedShiftId];
+                  if (index == null) continue; // shift not currently displayed
+
+                  // Safety: verify location alignment
+                  final locationId =
+                      (index < selectedLocationIds.value.length)
+                          ? selectedLocationIds.value[index]
+                          : selectedLocationId.value!;
+                  if (locationId != selectedLocationId.value) {
+                    // Different location than currently selected tab; skip
+                    continue;
+                  }
+
+                  final shiftData = assignedShifts.value[index];
+                  final reloaded = await _loadChecklistsForShiftSimple(
+                    shiftData,
+                    locationId,
+                    today,
+                    organizationId.value!,
+                  );
+
+                  // Merge: preserve already hydrated tasks if the reloaded version has fewer (likely due to race)
+                  final existingList = (index < currentGroups.length) ? currentGroups[index] : <DailyChecklist>[];
+                  final merged = <DailyChecklist>[];
+                  for (final newCl in reloaded) {
+                    final old = existingList.firstWhere((c) => c.id == newCl.id, orElse: () => newCl);
+                    if (old.id == newCl.id) {
+                      if ((old.tasks.length > newCl.tasks.length) && newCl.tasks.isEmpty) {
+                        // Retain old hydrated tasks
+                        merged.add(old);
+                        logger.d(
+                          '[Dashboard] Guarded merge kept hydrated tasks for checklist ${old.id} (old=${old.tasks.length}, new=${newCl.tasks.length})',
+                        );
+                        continue;
+                      }
+                    }
+                    merged.add(newCl);
+                  }
+                  // Include any old checklists that disappeared (unlikely) to avoid sudden UI drop unless they were removed intentionally
+                  for (final old in existingList) {
+                    if (!merged.any((c) => c.id == old.id)) {
+                      merged.add(old);
+                    }
+                  }
+
+                  // Sort merged to stable order (by id) to avoid unnecessary rebuild churn
+                  merged.sort((a, b) => a.id.compareTo(b.id));
+
+                  if (index < currentGroups.length) {
+                    currentGroups[index] = merged;
+                  } else {
+                    // Pad missing groups
+                    while (currentGroups.length < index) {
+                      currentGroups.add(<DailyChecklist>[]);
+                    }
+                    currentGroups.add(merged);
+                  }
+                }
+
+                allChecklists.value = currentGroups;
+                logger.d('[Dashboard] Selective checklist refresh applied to ${changedShiftIds.length} shift(s).');
+              } catch (e, st) {
+                logger.e('[Dashboard] Error during selective checklist merge: $e\n$st', e, st);
               }
             });
           });
@@ -764,29 +865,40 @@ class UserDashboardPage extends HookConsumerWidget {
         );
 
         final isAdminMgr = _isManagerOrAdmin(userRole.value);
-        final uj = userJobTypes.value.isNotEmpty ? userJobTypes.value.first.toLowerCase().trim() : '';
+        final lowerUserJobs = userJobTypes.value.map((j) => j.toLowerCase().trim()).where((j) => j.isNotEmpty).toList();
         final filtered = <Map<String, dynamic>>[];
-
         for (final g in groups) {
-          final gj = (g['jobType'] ?? g['shiftJobType'] ?? g['role'] ?? '').toString().toLowerCase().trim();
-
           if (isAdminMgr) {
             filtered.add(g);
             continue;
           }
-          if (gj.isNotEmpty && gj == uj) {
-            filtered.add(g);
-            continue;
+          final gjRaw = (g['jobType'] ?? g['shiftJobType'] ?? g['role']);
+          List<String> groupJobs = [];
+          if (gjRaw is List) {
+            groupJobs = gjRaw.map((e) => e.toString().toLowerCase().trim()).where((e) => e.isNotEmpty).toList();
+          } else if (gjRaw is String) {
+            groupJobs = [gjRaw.toLowerCase().trim()];
           }
 
-          // Fallback: cross-check shiftId with loaded shifts
-          final sid = (g['shiftId'] ?? '').toString();
-          if (sid.isNotEmpty) {
-            final found = shifts.value.firstWhere((s) => s['id'] == sid, orElse: () => const {});
-            if (found.isNotEmpty && matchesUserJobTypeLocal(found)) {
-              filtered.add(g);
+          bool matches = false;
+          if (lowerUserJobs.isNotEmpty && groupJobs.isNotEmpty) {
+            matches = groupJobs.toSet().intersection(lowerUserJobs.toSet()).isNotEmpty;
+          }
+
+          if (!matches) {
+            // Fallback: use shiftId lookup for jobTypes intersection
+            final sid = (g['shiftId'] ?? '').toString();
+            if (sid.isNotEmpty) {
+              final found = shifts.value.firstWhere((s) => s['id'] == sid, orElse: () => const {});
+              if (found.isNotEmpty) {
+                final shiftJobs =
+                    coerceToJobTypes(found['jobTypes'] ?? found['jobType']).map((e) => e.toLowerCase()).toList();
+                matches = shiftJobs.toSet().intersection(lowerUserJobs.toSet()).isNotEmpty;
+              }
             }
           }
+
+          if (matches) filtered.add(g);
         }
 
         missedGroups.value = filtered;
@@ -885,9 +997,7 @@ class UserDashboardPage extends HookConsumerWidget {
                 try {
                   LocationSelectionService.instance.setLocation(value);
                 } catch (_) {}
-                isLoading.value = true;
-                await loadDashboardData();
-                isLoading.value = false;
+                await loadDashboardData(resetData: true); // explicit reset for location switch
               },
               itemBuilder:
                   (context) =>
@@ -980,6 +1090,11 @@ class UserDashboardPage extends HookConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      if (isRefreshing.value)
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 8.0),
+                          child: LinearProgressIndicator(minHeight: 3),
+                        ),
                       // ...existing code...
                       if (errorMessage.value != null) _InfoCard(message: errorMessage.value!, color: Colors.red),
 
@@ -1066,19 +1181,29 @@ class UserDashboardPage extends HookConsumerWidget {
                                       try {
                                         if (!assignedShifts.value.any((s) => s.shiftId == shift.shiftId)) {
                                           // Insert at the front so it's visible
-                                          assignedShifts.value = [shift, ...assignedShifts.value];
+                                          final newAssignedShifts = [shift, ...assignedShifts.value];
+                                          assignedShifts.value = newAssignedShifts;
+
                                           // Set selectedLocationIds accordingly
                                           final adoptLoc = selectedLocationId.value ?? locationId;
-                                          selectedLocationIds.value = [adoptLoc, ...selectedLocationIds.value];
+                                          final newLocationIds = [adoptLoc, ...selectedLocationIds.value];
+                                          selectedLocationIds.value = newLocationIds;
 
                                           // Load checklists for this shift instantly and prepend
+                                          logger.d(
+                                            "[Dashboard] Optimistically loading checklists for joined shift ${shift.shiftName}",
+                                          );
                                           final loaded = await _loadChecklistsForShiftSimple(
                                             shift,
                                             adoptLoc,
                                             todayString,
                                             organizationId.value!,
                                           );
-                                          allChecklists.value = [loaded, ...allChecklists.value];
+                                          final newChecklists = [loaded, ...allChecklists.value];
+                                          allChecklists.value = newChecklists;
+                                          logger.d(
+                                            "[Dashboard] Optimistic update complete. Assigned shifts: ${newAssignedShifts.length}, Checklists: ${newChecklists.length}",
+                                          );
                                         }
                                       } catch (e) {
                                         logger.w('[Dashboard] Optimistic UI update failed: $e');
@@ -1560,13 +1685,16 @@ Future<List<DailyChecklist>> _loadChecklistsForShiftSimple(
             .where('date', isEqualTo: todayString)
             .get();
 
-    logger.d("[Dashboard] Found ${checklistSnapshot.docs.length} existing checklists");
+    logger.d("[Dashboard] Found ${checklistSnapshot.docs.length} existing checklists for shift ${shift.shiftName}");
     final checklists = checklistSnapshot.docs.map((doc) => DailyChecklist.fromMap(doc.data(), doc.id)).toList();
 
     // NEW: Hydrate tasks from subcollection if parent 'tasks' array is empty (post-migration storage)
     for (int i = 0; i < checklists.length; i++) {
       final checklist = checklists[i];
-      if (checklist.tasks.isNotEmpty) continue; // already has inline tasks
+      if (checklist.tasks.isNotEmpty) {
+        logger.d("[Dashboard] Checklist ${checklist.id} already has ${checklist.tasks.length} inline tasks.");
+        continue; // already has inline tasks
+      }
       try {
         final tasksSnap =
             await FirestoreEnforcer.instance
@@ -1591,6 +1719,9 @@ Future<List<DailyChecklist>> _loadChecklistsForShiftSimple(
                 return DailyChecklistTask.fromMap(data);
               }).toList();
           checklists[i] = checklist.copyWith(tasks: subTasks);
+          logger.d("[Dashboard] Hydrated checklist ${checklist.id} now has ${checklists[i].tasks.length} tasks.");
+        } else {
+          logger.d("[Dashboard] No subcollection tasks found for checklist ${checklist.id}");
         }
       } catch (e) {
         logger.w('[Dashboard] Failed hydrating tasks for checklist ${checklist.id}: $e');
@@ -1612,7 +1743,9 @@ Future<List<DailyChecklist>> _loadChecklistsForShiftSimple(
       return generatedChecklists;
     }
 
-    logger.d("[Dashboard] Returning ${checklists.length} checklists for shift ${shift.shiftName}");
+    logger.d(
+      "[Dashboard] Returning ${checklists.length} checklists for shift ${shift.shiftName}. Task counts: ${checklists.map((c) => c.tasks.length).toList()}",
+    );
     return checklists;
   } catch (e, stack) {
     logger.e("[Dashboard] Error loading checklists: $e\n$stack", e, stack);

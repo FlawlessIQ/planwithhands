@@ -276,9 +276,10 @@ async function cleanupInvalidTokens(invalidTokens: string[]): Promise<void> {
     const batch = admin.firestore().batch();
 
     for (const token of invalidTokens) {
+      // NOTE: client stores the token under field 'fcmToken'. Previous query used 'token' and never matched.
       const tokenQuery = await admin.firestore()
           .collection("deviceTokens")
-          .where("token", "==", token)
+          .where("fcmToken", "==", token)
           .get();
 
       tokenQuery.docs.forEach((doc) => {

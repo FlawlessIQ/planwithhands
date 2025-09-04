@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -9,7 +8,6 @@ import '../models/message.dart';
 class MessagingService {
   final _db = FirestoreEnforcer.instance;
   final _auth = FirebaseAuth.instance;
-  final _functions = FirebaseFunctions.instance;
 
   String? get currentUserId => _auth.currentUser?.uid;
 
@@ -98,35 +96,23 @@ class MessagingService {
     return threadRef.id;
   }
 
-  Future<void> sendMessage(String threadId, String text, {bool sendNotifications = true}) async {
+  Future<void> sendMessage(String threadId, String text) async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) throw Exception('User not signed in');
     final msgRef = _db.collection('messageThreads').doc(threadId).collection('messages').doc();
+
+    // The onMessageCreated trigger will handle all notifications and updates.
+    // The client is only responsible for creating the message document.
     await msgRef.set({'senderId': uid, 'text': text, 'createdAt': FieldValue.serverTimestamp()});
+
+    // The trigger also updates the lastMessagePreview and lastMessageAt fields.
+    // To ensure the UI updates instantly without waiting for the trigger's latency,
+    // we can perform a local-only update to the thread document.
+    // A full set with merge is safe and will be overwritten by the trigger if needed.
     await _db.collection('messageThreads').doc(threadId).set({
       'lastMessagePreview': text.substring(0, text.length > 80 ? 80 : text.length),
       'lastMessageAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
-
-    // Optionally trigger push notifications via callable function
-    // Note: The Firestore trigger (onMessageCreated) will automatically handle notifications
-    // This callable approach is an alternative if you prefer explicit control
-    if (sendNotifications) {
-      try {
-        // Get thread data to find recipients
-        final threadDoc = await _db.collection('messageThreads').doc(threadId).get();
-        final threadData = threadDoc.data();
-        final recipientUserIds = threadData?['recipientUserIds'] as List<dynamic>?;
-
-        if (recipientUserIds != null && recipientUserIds.isNotEmpty) {
-          final callable = _functions.httpsCallable('sendMessageNotification');
-          await callable.call({'threadId': threadId, 'messageText': text, 'recipientUserIds': recipientUserIds});
-        }
-      } catch (e) {
-        // Don't fail message sending if notification fails
-        debugPrint('Warning: Failed to send message notification: $e');
-      }
-    }
   }
 
   Stream<List<MessageThread>> watchThreads(String orgId, String userId) {

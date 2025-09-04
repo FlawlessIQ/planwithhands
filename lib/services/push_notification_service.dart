@@ -1,12 +1,15 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hands_app/core/logging/logger.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 /// Top-level function for handling background messages
 /// Must be annotated with @pragma('vm:entry-point') for Flutter 3.3+
@@ -162,6 +165,8 @@ class PushNotificationService {
       logger.d('[FCM] Token refreshed: ${token.substring(0, 20)}...');
       _currentToken = token;
       _tokenStreamController.add(token);
+  // Persist refreshed token to deviceTokens collection (best-effort)
+  _persistToken(token);
     });
   }
 
@@ -173,9 +178,62 @@ class PushNotificationService {
         _currentToken = token;
         logger.d('[FCM] Initial token: ${token.substring(0, 20)}...');
         _tokenStreamController.add(token);
+        // Persist initial token as well
+        _persistToken(token);
       }
     } catch (e) {
       debugPrint('[FCM] Error getting initial token: $e');
+    }
+  }
+
+  /// Persist token to Firestore via TokenRegistrationService (imports kept minimal to avoid circular deps)
+  Future<void> _persistToken(String token) async {
+  try {
+      final auth = FirebaseAuth.instance;
+      final user = auth.currentUser;
+      if (user == null) return;
+      final userId = user.uid;
+      final docId = '${userId}_$token';
+      // FirestoreEnforcer is already globally initialized elsewhere.
+      await FirestoreEnforcer.instance.collection('deviceTokens').doc(docId).set({
+        'userId': userId,
+        'fcmToken': token,
+        'isActive': true,
+        'updatedAt': FieldValue.serverTimestamp(),
+        'platform': kIsWeb
+            ? 'web'
+            : Platform.isIOS
+                ? 'ios'
+                : Platform.isAndroid
+                    ? 'android'
+                    : 'other',
+        'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
+      }, SetOptions(merge: true));
+      // Also store lastFcmToken on user doc for quick debugging
+      try {
+        await FirestoreEnforcer.instance.collection('users').doc(userId).set({
+          'lastFcmToken': token,
+          'lastFcmTokenUpdatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } catch (_) {}
+    } catch (e) {
+      logger.w('[PushNotificationService] Failed to persist token: $e');
+    }
+  }
+
+  /// Public helper to force token refresh & registration post-permission grant
+  Future<void> ensureRegistered() async {
+    try {
+      final token = await _firebaseMessaging.getToken();
+      if (token != null) {
+        if (token != _currentToken) {
+          _currentToken = token;
+          _tokenStreamController.add(token);
+        }
+        _persistToken(token);
+      }
+    } catch (e) {
+      logger.e('[PushNotificationService] ensureRegistered error', e);
     }
   }
 

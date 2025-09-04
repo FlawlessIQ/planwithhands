@@ -42,7 +42,7 @@ const admin = __importStar(require("firebase-admin"));
 const luxon_1 = require("luxon");
 const crypto = __importStar(require("crypto"));
 const firestoreTTLHelper_1 = require("./firestoreTTLHelper");
-admin.initializeApp();
+// Don't initialize admin here - it's already initialized in index.ts
 const db = admin.firestore();
 // Helper: add days to a JS Date
 /**

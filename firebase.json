@@ -24,15 +24,12 @@
   "hosting": [
     {
       "site": "planwithhands-marketing",
-      "public": "website/marketing/dist",
+      "public": "website/marketing/out",
       "ignore": ["**/.*", "**/node_modules/**"],
       "headers": [
         {"source": "**/*.@(js|css)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]},
         {"source": "**/*.@(jpg|jpeg|gif|png|svg|webp)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]},
         {"source": "/index.html", "headers": [{"key": "Cache-Control", "value": "no-store"}]}
-      ],
-      "rewrites": [
-        {"source": "**", "destination": "/index.html"}
       ],
       "cleanUrls": true
     },

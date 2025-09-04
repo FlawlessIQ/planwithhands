@@ -14,35 +14,29 @@ import 'dart:async';
 
 import 'package:hands_app/services/firebase_initializer.dart';
 import 'package:hands_app/services/push_notification_service.dart';
-import 'package:hands_app/pages/web_platform_page.dart';
-// Conditional user agent import (web vs other)
-import 'platform/user_agent_stub.dart' if (dart.library.html) 'platform/user_agent_web.dart';
+import 'package:hands_app/debug/firebase_init_test.dart'; // Import Firebase test page
+import 'package:firebase_core/firebase_core.dart';
+import 'package:hands_app/firebase_options.dart';
+// No longer need web platform page since we're allowing direct web access
+// import 'package:hands_app/pages/web_platform_page.dart';
+// No longer checking user agent for mobile browsers
+// import 'platform/user_agent_stub.dart' if (dart.library.html) 'platform/user_agent_web.dart';
 import 'config/release_config.dart';
 
-bool _isBlockedMobileSafari() {
-  if (!kIsWeb) return false;
-  try {
-    final ua = getUserAgent().toLowerCase();
-    final isIOSDevice = ua.contains('iphone') || ua.contains('ipad') || ua.contains('ipod');
-    // Safari user agent contains 'safari' but not 'chrome' nor 'crios' nor 'fxios'
-    final isSafari = ua.contains('safari') && !ua.contains('crios') && !ua.contains('chrome') && !ua.contains('fxios');
-    return isIOSDevice && isSafari;
-  } catch (_) {
-    return false;
-  }
-}
+// Mobile browser detection removed - now allowing all browsers to access web app
+// This enables seamless access from marketing site to app for both desktop and mobile users
+
+// Special parameter to enable Firebase debug mode
+const String FIREBASE_DEBUG_PARAM = 'firebaseDebug';
 
 void main() async {
-  // Allow override to force full app even on blocked platform
-  final forceApp = kIsWeb && Uri.base.queryParameters.containsKey('forceApp');
-  // On mobile Safari (known crash) show fallback unless forced
-  if (_isBlockedMobileSafari() && !forceApp) {
+  // Set URL strategy early to ensure proper URL handling
+  usePathUrlStrategy();
+
+  // If we should show the Firebase debug page, short-circuit and show it now.
+  if (kIsWeb && Uri.base.queryParameters.containsKey(FIREBASE_DEBUG_PARAM)) {
     WidgetsFlutterBinding.ensureInitialized();
-    usePathUrlStrategy();
-    debugPrint(
-      '[MAIN] Detected mobile Safari. Showing fallback web platform page. Add ?forceApp=1 to attempt full app.',
-    );
-    runApp(const WebHandsApp());
+    runApp(MaterialApp(debugShowCheckedModeBanner: false, home: SafeArea(child: FirebaseInitTest())));
     return;
   }
 
@@ -50,9 +44,27 @@ void main() async {
   // initialized inside that same zone to avoid the "Zone mismatch" error.
   runZonedGuarded<Future<void>>(
     () async {
-      // Ensure the Widgets binding is initialized before using any
-      // platform channels or WidgetsBinding.instance.
+      // Ensure the Widgets binding is initialized inside this zone before
+      // using any platform channels or calling runApp. This prevents the
+      // "Zone mismatch" assertion by keeping ensureInitialized and runApp
+      // in the same zone.
       WidgetsFlutterBinding.ensureInitialized();
+
+      // Initialize Firebase early here so it's done inside the guarded zone.
+      try {
+        if (kIsWeb) {
+          debugPrint('[MAIN] Direct Firebase initialization on web');
+          await Firebase.initializeApp(options: DefaultFirebaseOptions.web);
+        } else {
+          debugPrint('[MAIN] Direct Firebase initialization on native');
+          await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+        }
+        debugPrint('[MAIN] Firebase initialized, allowing all browsers to access web app');
+      } catch (e) {
+        debugPrint('[MAIN] CRITICAL ERROR initializing Firebase: $e');
+        // Let FirebaseInitializer attempt initialization later as a fallback.
+      }
+
       tz.initializeTimeZones();
 
       // Wrap critical startup in a try/catch so we can show a friendly
@@ -195,19 +207,7 @@ void main() async {
   };
 }
 
-class WebHandsApp extends StatelessWidget {
-  const WebHandsApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Plan with Hands',
-      theme: handsTheme,
-      debugShowCheckedModeBanner: false,
-      home: const WebPlatformPage(),
-    );
-  }
-}
+// WebHandsApp class removed - no longer needed as all browsers now use the main HandsApp
 
 class HandsApp extends ConsumerWidget {
   const HandsApp({super.key});

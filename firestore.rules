@@ -2,22 +2,8 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // -------------------------------------------------------------------
-    // Collection group access for tasks subcollections across hierarchy
-    // Must be declared at the top level (direct child of documents) so
-    // collectionGroup('tasks') queries can match a rule. The previous
-    // placement inside the organizations/{orgId} block caused
-    // permission-denied on collectionGroup queries.
-    // -------------------------------------------------------------------
-    match /organizations/{orgId}/checklist_templates/{templateId}/tasks/{taskId} {
-      allow get, list: if request.auth != null && isOrgMember(orgId);
-      allow create, update: if request.auth != null && isOrgManagerOrAdmin(orgId) && request.resource.data.organizationId == orgId;
-      allow delete: if request.auth != null && isOrgManagerOrAdmin(orgId);
-    }
 
-    // -------------------------------------------------------------------
-    // Helper functions (scoped to entire database)
-    // -------------------------------------------------------------------
+    // Helper functions
     function userDoc() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid));
     }
@@ -26,7 +12,6 @@ service cloud.firestore {
       return request.auth != null && exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
-    // orgMemberships: array of orgIds (fallback to legacy organizationId field)
     function orgMemberships() {
       return hasUserDoc() && userDoc().data.orgMemberships != null
         ? userDoc().data.orgMemberships
@@ -39,7 +24,6 @@ service cloud.firestore {
       return request.auth != null && orgMemberships().hasAny([orgId]);
     }
 
-    // roles: map { orgId: 'admin' | 'manager' | 'member' }
     function roleInOrg(orgId) {
       return hasUserDoc() && userDoc().data.roles != null && userDoc().data.roles[orgId] != null
         ? userDoc().data.roles[orgId]
@@ -52,188 +36,62 @@ service cloud.firestore {
       return ['admin','manager'].hasAny([ roleInOrg(orgId) ]);
     }
 
-    // Utility: ensure request contains only allowed fields when updating specific docs
-    function keysExactly(allowed) {
-      return request.resource.data.keys().hasOnly(allowed) && request.resource.data.keys().hasAll(allowed);
-    }
-
-    // -------------------------------------------------------------------
-    // Users (retain existing self-access pattern)
-    // -------------------------------------------------------------------
+    // Users
     match /users/{userId} {
-      // Allow the user to read/update/delete their own document OR allow org managers/admins
-      // to manage users within their organization.
       allow read, update, delete: if request.auth != null && (
         request.auth.uid == userId ||
         (resource.data.organizationId != null && isOrgManagerOrAdmin(resource.data.organizationId))
       );
-
-      // Allow listing/getting user docs to authenticated users for debugging/UX.
-      // (Can be tightened to org members if desired.)
       allow get, list: if request.auth != null;
-
-      // Signup flow: allow authenticated creation (server-side sign-up also exists)
       allow create: if request.auth != null;
-
-      // User preferences subcollection - allow users to manage their own preferences
-      match /preferences/{preferencesId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
-      }
     }
 
-    // -------------------------------------------------------------------
-    // Organizations (legacy behavior retained; tighten later as needed)
-    // -------------------------------------------------------------------
+    // Organizations
     match /organizations/{orgId} {
-      // Organization metadata access
-      allow read: if request.auth == null; // TEMP for invites (public landing use)
-      // Broadened temporarily to any authenticated user to debug permission-denied on org read.
-      // TODO: Re-tighten to 'isOrgMember(orgId)' once confirmed fixed.
-      allow read: if request.auth != null; 
-      // Original intent (kept for documentation): allow read: if isOrgMember(orgId);
-      
-      // Allow authenticated users to create organizations (for signup flow)
+      allow read: if request.auth != null;
       allow create: if request.auth != null;
-      
-      // Updates/deletes require membership and admin/manager role
+      // Allow updates only by managers/admins for the org document itself
       allow update, delete: if isOrgMember(orgId) && isOrgManagerOrAdmin(orgId);
 
-      // Locations within organizations
+      // Shifts within organizations
+      match /shifts/{shiftId} {
+        allow read, write: if request.auth != null;
+      }
+
+      // Other subcollections
       match /locations/{locId} {
-        // TEMP: Allow broader access for debugging - any authenticated user
         allow get, list: if request.auth != null;
-        // Original rule: allow get, list: if request.auth != null && isOrgMember(orgId);
-        allow create, update, delete: if request.auth != null; // TEMP: Allow any authenticated user to create locations
-        // Original rule: allow create, update, delete: if request.auth != null && isOrgManagerOrAdmin(orgId);
-        // Parent daily_checklists
+        allow create, update, delete: if request.auth != null && isOrgManagerOrAdmin(orgId);
         match /daily_checklists/{checklistId} {
-          allow get, list: if request.auth != null && isOrgMember(orgId);
-          // Creation of today's checklist is allowed to members; restrict updates to managers if you prefer
-          allow create: if request.auth != null && isOrgMember(orgId);
-          allow update: if request.auth != null && isOrgMember(orgId);
+          allow get, list, create, update: if request.auth != null;
           allow delete: if request.auth != null && isOrgManagerOrAdmin(orgId);
-
-          // Per-task subcollection
           match /tasks/{taskId} {
-            allow get, list: if request.auth != null && isOrgMember(orgId);
-
-            // Users can update their shift tasks (notes/photo/completed)
-            allow create, update: if request.auth != null && isOrgMember(orgId);
-            // (Optionally) restrict create to service only if you tag with createdBy/service UID.
-
-            allow delete: if request.auth != null && isOrgManagerOrAdmin(orgId);
+            allow get, list, create, update: if request.auth != null;
+            allow delete: if request.auth != null;
           }
         }
       }
-
-      // Shifts within organizations (for shift name resolution and scheduling)
-      match /shifts/{shiftId} {
-        allow get, list: if request.auth != null && isOrgMember(orgId);
-        allow create, update, delete: if request.auth != null && isOrgManagerOrAdmin(orgId);
-      }
-
-      // Checklist templates within organizations
       match /checklist_templates/{templateId} {
-        // TEMP: Allow broader access for debugging - any authenticated user
         allow get, list: if request.auth != null;
-        // Original rule: allow get, list: if request.auth != null && isOrgMember(orgId);
         allow create, update, delete: if request.auth != null && isOrgManagerOrAdmin(orgId);
       }
-
-      // Job Types within organizations
       match /jobTypes/{jobTypeId} {
         allow get, list: if request.auth != null && isOrgMember(orgId);
         allow create, update, delete: if request.auth != null && isOrgManagerOrAdmin(orgId);
       }
-
-      // Notifications within organizations
       match /notifications/{notifId} {
         allow get, list: if request.auth != null && isOrgMember(orgId);
-        allow create: if request.auth != null && isOrgManagerOrAdmin(orgId);
-        allow update, delete: if request.auth != null && isOrgManagerOrAdmin(orgId);
+        allow create, update, delete: if request.auth != null && isOrgManagerOrAdmin(orgId);
       }
-
     }
 
-    // Locations, shifts, checklists (retain broad authenticated access - adjust if needed)
-  match /locations/{locationId} { allow read, write: if request.auth != null; }
-  // Top-level shifts collection (legacy) retained; consider migration. Restrict to authenticated for now.
-  match /shifts/{shiftId}     { allow read, write: if request.auth != null; }
-    match /checklists/{cid}     { allow read, write: if request.auth != null; }
-
-    // Invites (public for onboarding)
+    // Fallback for legacy top-level collections
+    match /locations/{locationId} { allow read, write: if request.auth != null; }
+    match /shifts/{shiftId} { allow read, write: if request.auth != null; }
     match /invites/{inviteId} { allow read, write: if true; }
 
-    // -------------------------------------------------------------------
-    // Messaging: messageThreads, messages subcollection, notifications, deviceTokens
-    // -------------------------------------------------------------------
-
-    // Threads
-    match /messageThreads/{threadId} {
-      allow get, list: if request.auth != null &&
-        isOrgMember(resource.data.orgId) &&
-        resource.data.recipientUserIds != null && resource.data.recipientUserIds.hasAny([request.auth.uid]);
-
-      // Create thread
-      allow create: if request.auth != null &&
-        isOrgMember(request.resource.data.orgId) &&
-        request.resource.data.createdBy == request.auth.uid &&
-        (
-          // Target-based types require manager/admin
-          (request.resource.data.targetType in ['all_users','shift','role','location','group'] && isOrgManagerOrAdmin(request.resource.data.orgId)) ||
-          // Custom: creator must be org member. (Full recipient membership validation must be enforced server-side.)
-          (request.resource.data.targetType == 'custom' && request.resource.data.recipientUserIds.hasAny([request.auth.uid]))
-        );
-
-      // Disallow client updates & deletes (server functions use Admin SDK bypassing rules)
-      allow update, delete: if false;
-
-      // Messages subcollection
-      match /messages/{messageId} {
-        allow get, list: if request.auth != null &&
-          isOrgMember(resource.data.orgId) &&
-          exists(/databases/$(database)/documents/messageThreads/$(threadId)) &&
-          get(/databases/$(database)/documents/messageThreads/$(threadId)).data.recipientUserIds.hasAny([request.auth.uid]);
-
-        allow create: if request.auth != null &&
-          request.resource.data.senderId == request.auth.uid &&
-          isOrgMember(request.resource.data.orgId) &&
-          request.resource.data.orgId == get(/databases/$(database)/documents/messageThreads/$(threadId)).data.orgId &&
-          get(/databases/$(database)/documents/messageThreads/$(threadId)).data.recipientUserIds.hasAny([request.auth.uid]);
-
-        allow update, delete: if false;
-      }
-    }
-
-    // Notifications
-    match /notifications/{notifId} {
-      allow get, list: if request.auth != null &&
-        isOrgMember(resource.data.orgId) && resource.data.userId == request.auth.uid;
-
-      // Only allow marking read -> true (no other field modifications)
-      allow update: if request.auth != null &&
-        resource.data.userId == request.auth.uid &&
-        isOrgMember(resource.data.orgId) &&
-        request.resource.data.read == true &&
-        resource.data.read == false &&
-        keysExactly(['read']);
-
-      // Creation handled by backend (deny from clients)
-      allow create, delete: if false;
-    }
-
-    // Device tokens (per-user ownership)
-    match /deviceTokens/{tokenId} {
-      allow get, list: if request.auth != null && resource.data.userId == request.auth.uid;
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-      allow update: if request.auth != null && resource.data.userId == request.auth.uid && request.resource.data.userId == resource.data.userId;
-      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
-    }
-
-    // -------------------------------------------------------------------
-    // Catch-all: TEMP DEBUG - allow all reads for any authenticated user
-    // -------------------------------------------------------------------
-    match /{document=**} { 
+    // Catch-all deny for writes, allow reads for authenticated users
+    match /{document=**} {
       allow read: if request.auth != null;
       allow write: if false;
     }

@@ -4,7 +4,7 @@ import {DateTime} from "luxon";
 import * as crypto from "crypto";
 import {FirestoreTTLHelper} from "./firestoreTTLHelper";
 
-admin.initializeApp();
+// Don't initialize admin here - it's already initialized in index.ts
 const db = admin.firestore();
 
 // Helper: add days to a JS Date

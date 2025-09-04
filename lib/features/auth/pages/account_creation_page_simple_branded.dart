@@ -1,5 +1,3 @@
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -14,7 +12,6 @@ import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/theme/theme.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class SimpleSignUpPage extends StatefulWidget {
   final String? email;
@@ -321,46 +318,6 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
 
   @override
   Widget build(BuildContext context) {
-    // iOS platform check - redirect to website for new organization sign-ups
-    if (!kIsWeb && Platform.isIOS) {
-      return Scaffold(
-        appBar: AppBar(leading: BackButton(), title: Text('Sign Up')),
-        body: Padding(
-          padding: EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                'To sign up a new organization, please visit:',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
-              SizedBox(height: 8),
-              GestureDetector(
-                onTap: () async {
-                  final url = Uri.parse('https://planwithhands.com');
-                  if (await canLaunchUrl(url)) {
-                    await launchUrl(url, mode: LaunchMode.externalApplication);
-                  }
-                },
-                child: SelectableText(
-                  'https://planwithhands.com',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.blue, decoration: TextDecoration.underline),
-                ),
-              ),
-              SizedBox(height: 16),
-              Text(
-                'If you are a new user joining an existing organization, please contact your administrator to receive an invite.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
     final isInvitedUser = widget.organizationId != null;
 
     return Scaffold(
@@ -376,6 +333,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Debug banner removed
             // Welcome section with charcoal branding
             if (!isInvitedUser) ...[
               Container(

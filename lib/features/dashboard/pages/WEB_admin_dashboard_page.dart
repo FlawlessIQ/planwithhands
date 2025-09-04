@@ -2394,12 +2394,47 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
 
     if (confirm == true) {
       try {
-        await FirestoreEnforcer.instance
-            .collection('organizations')
-            .doc(widget.organizationId)
-            .collection('checklist_templates')
-            .doc(checklist['id'])
-            .delete();
+        final orgRef = FirestoreEnforcer.instance.collection('organizations').doc(widget.organizationId);
+        final checklistId = checklist['id'];
+
+        // 1. Delete the checklist template document
+        await orgRef.collection('checklist_templates').doc(checklistId).delete();
+
+        // 2. Remove the template id from any shift documents that reference it
+        try {
+          final shiftsSnap = await orgRef.collection('shifts').get();
+          WriteBatch batch = FirestoreEnforcer.instance.batch();
+          int ops = 0;
+          for (final s in shiftsSnap.docs) {
+            final data = s.data();
+            final List<dynamic> tidsDyn = (data['checklistTemplateIds'] as List?) ?? const [];
+            final originalLen = tidsDyn.length;
+            final filtered = tidsDyn.where((e) => e != checklistId).toList();
+            if (filtered.length != originalLen) {
+              batch.update(s.reference, {'checklistTemplateIds': filtered});
+              ops++;
+              if (ops == 450) {
+                await batch.commit();
+                batch = FirestoreEnforcer.instance.batch();
+                ops = 0;
+              }
+            }
+          }
+          if (ops > 0) await batch.commit();
+          logger.d('[WEBAdminDashboard] Removed deleted checklist $checklistId from affected shifts');
+        } catch (e, st) {
+          logger.e('[WEBAdminDashboard] Error removing checklist from shifts: $e\n$st');
+        }
+
+        // 3. Update local lookup maps to prevent displaying "Unknown Checklist"
+        _checklistNameById.remove(checklistId);
+        _shiftsByChecklistId.remove(checklistId);
+        // Also prune any cached shift -> checklist relationships
+        _checklistsByShiftId.updateAll((_, list) => list.where((id) => id != checklistId).toList());
+
+        // 4. Reload shifts table to reflect changes
+        await _loadShiftsTable();
+        if (mounted) setState(() {});
 
         _showSnackBar('Checklist deleted successfully');
       } catch (e) {

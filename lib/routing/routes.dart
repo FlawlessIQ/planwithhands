@@ -156,6 +156,23 @@ class AuthGateWithOrg extends ConsumerWidget {
         }
         final user = authSnap.data;
         if (user == null) {
+          // CRITICAL FIX: Check if we're on the create_account page
+          // Get the current path from URI instead of GoRouterState to avoid null issues
+          final uri = Uri.base;
+          final currentPath = uri.path;
+          logger.d('[AuthGateWithOrg] Unauthenticated user accessing: $currentPath');
+
+          // Check for exact path or if path contains the account creation route
+          // This makes it more robust when we might have a trailing slash or query params
+          if (currentPath == AppRoutes.accountCreationPage.path ||
+              currentPath.contains(AppRoutes.accountCreationPage.path)) {
+            logger.d('[AuthGateWithOrg] *** ALLOWING DIRECT SIGNUP ACCESS ***');
+            // Return signup page instead of login for this route
+            return const branded.SimpleSignUpPage();
+          }
+
+          // For all other routes, redirect to login
+          logger.d('[AuthGateWithOrg] Redirecting unauthenticated user to login');
           return const LoginPage();
         }
         // now fetch org ID
@@ -430,22 +447,36 @@ GoRouter buildAppRouter(Ref ref) {
     _cachedRouter = GoRouter(
       navigatorKey: PushNotificationService.navigatorKey,
       redirect: (context, state) {
-        // Debug logging for ALL routing
-        logger.d('[ROUTER] ===============================');
-        logger.d('[ROUTER] TESTING - Current path: ${state.matchedLocation}');
-        logger.d('[ROUTER] TESTING - URI path: ${state.uri.path}');
-        logger.d('[ROUTER] TESTING - Full path: ${state.fullPath}');
-        logger.d('[ROUTER] TESTING - Query params: ${state.uri.queryParameters}');
-        logger.d('[ROUTER] TESTING - Raw URI: ${state.uri.toString()}');
-        logger.d('[ROUTER] TESTING - Browser URL: ${Uri.base.toString()}');
-        logger.d('[ROUTER] ===============================');
-
-        // AGGRESSIVE BROWSER URL PARSING
+        // Debug ALL incoming routes
         final browserUri = Uri.base;
         final routerPath = state.uri.path;
+        final fullPath = state.fullPath;
 
+        logger.d('[ROUTER_DEBUG] ==========================================');
+        logger.d('[ROUTER_DEBUG] Browser URI: ${browserUri.toString()}');
+        logger.d('[ROUTER_DEBUG] Router Path: $routerPath');
+        logger.d('[ROUTER_DEBUG] Full Path: $fullPath');
+        logger.d('[ROUTER_DEBUG] Matched Location: ${state.matchedLocation}');
+        logger.d('[ROUTER_DEBUG] Query Params: ${state.uri.queryParameters}');
+        logger.d('[ROUTER_DEBUG] ==========================================');
+
+        // AGGRESSIVE BROWSER URL PARSING
         logger.d('[ROUTER] Browser path: ${browserUri.path}');
         logger.d('[ROUTER] Router path: $routerPath');
+
+        // CRITICAL FIX: Handle direct navigation to create_account from marketing site
+        if (browserUri.path.contains('/create_account') && routerPath != AppRoutes.accountCreationPage.path) {
+          logger.d('[ROUTER] *** FORCING SIGNUP NAVIGATION ***');
+          logger.d('[ROUTER] Redirecting to: ${AppRoutes.accountCreationPage.path}');
+          return AppRoutes.accountCreationPage.path;
+        }
+
+        // CRITICAL FIX: Handle direct navigation to login from marketing site
+        if (browserUri.path.contains('/login') && routerPath != AppRoutes.loginPage.path) {
+          logger.d('[ROUTER] *** FORCING LOGIN NAVIGATION ***');
+          logger.d('[ROUTER] Redirecting to: ${AppRoutes.loginPage.path}');
+          return AppRoutes.loginPage.path;
+        }
 
         // If browser shows welcome but router doesn't, force welcome navigation
         if (browserUri.path == '/welcome' && routerPath != '/welcome') {
@@ -471,10 +502,22 @@ GoRouter buildAppRouter(Ref ref) {
           }
         }
 
+        logger.d('[ROUTER_DEBUG] No redirect applied - continuing to route');
         return null;
       },
-      // Default to home, which will redirect to the appropriate dashboard
-      initialLocation: AppRoutes.homePage.path,
+      // Add error handling for router exceptions
+      onException: (_, GoRouterState state, GoRouter router) {
+        logger.e('🚨 [ROUTER_ERROR] Exception on path: ${state.uri}');
+        if (kIsWeb) {
+          router.go(AppRoutes.homePage.path); // Safe fallback to home on error
+        }
+      },
+
+      // IMPROVED: Use browser URL path as initial location when available
+      // Simplified logic to avoid potential null issues
+      initialLocation: kIsWeb && Uri.base.path.isNotEmpty ? Uri.base.path : AppRoutes.homePage.path,
+      // Add observer for detailed route tracking
+      observers: [],
       routes: [
         GoRoute(path: AppRoutes.homePage.path, builder: (context, state) => const AuthGateWithOrg()),
         // Invite route removed

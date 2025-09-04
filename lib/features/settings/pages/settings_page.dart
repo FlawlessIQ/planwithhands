@@ -1579,40 +1579,53 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                         ),
                       ],
                       const SizedBox(height: 10),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            if (_organizationId.isEmpty) {
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('No organization found. Please contact support.'),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
+                      // Only show billing portal button when running in a web browser
+                      // (kIsWeb) or on non-iOS platforms. Hide it for in-app iOS (TestFlight / App Store)
+                      if (kIsWeb || !Platform.isIOS) ...[
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              if (_organizationId.isEmpty) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('No organization found. Please contact support.'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                                return;
                               }
-                              return;
-                            }
 
-                            try {
-                              await StripeService.openBillingPortal(_organizationId);
-                            } catch (e) {
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Failed to open billing portal: $e'),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
+                              try {
+                                await StripeService.openBillingPortal(_organizationId);
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Failed to open billing portal: $e'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
                               }
-                            }
-                          },
-                          icon: const Icon(Icons.receipt_long, size: 18),
-                          label: Text('Billing Portal', softWrap: true, maxLines: 2, overflow: TextOverflow.ellipsis),
-                          style: billingStyle,
+                            },
+                            icon: const Icon(Icons.receipt_long, size: 18),
+                            label: Text('Billing Portal', softWrap: true, maxLines: 2, overflow: TextOverflow.ellipsis),
+                            style: billingStyle,
+                          ),
                         ),
-                      ),
+                      ] else ...[
+                        // If on iOS app (non-web), instruct user to use the web portal
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                          child: Text(
+                            'To manage billing, please open this page in Safari or Chrome and visit the billing portal. Subscriptions must be managed via the web portal.',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ),
+                      ],
                     ],
                   );
                 }
@@ -1661,38 +1674,54 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                       ),
                     ),
                     const SizedBox(width: 12),
+                    // Show billing portal button only on web or non-iOS platforms.
+                    // When running inside the iOS app (TestFlight/App Store), show instructions instead.
                     Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () async {
-                          if (_organizationId.isEmpty) {
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('No organization found. Please contact support.'),
-                                  backgroundColor: Colors.red,
-                                ),
-                              );
-                            }
-                            return;
-                          }
+                      child:
+                          kIsWeb || !Platform.isIOS
+                              ? OutlinedButton.icon(
+                                onPressed: () async {
+                                  if (_organizationId.isEmpty) {
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('No organization found. Please contact support.'),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                    }
+                                    return;
+                                  }
 
-                          try {
-                            await StripeService.openBillingPortal(_organizationId);
-                          } catch (e) {
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Failed to open billing portal: $e'),
-                                  backgroundColor: Colors.red,
+                                  try {
+                                    await StripeService.openBillingPortal(_organizationId);
+                                  } catch (e) {
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Failed to open billing portal: $e'),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                    }
+                                  }
+                                },
+                                icon: const Icon(Icons.receipt_long, size: 18),
+                                label: Text(
+                                  'Billing Portal',
+                                  softWrap: true,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                              );
-                            }
-                          }
-                        },
-                        icon: const Icon(Icons.receipt_long, size: 18),
-                        label: Text('Billing Portal', softWrap: true, maxLines: 2, overflow: TextOverflow.ellipsis),
-                        style: billingStyle,
-                      ),
+                                style: billingStyle,
+                              )
+                              : Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                                child: Text(
+                                  'To manage billing, please open this page in Safari or Chrome and visit the billing portal. Subscriptions must be managed via the web portal.',
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                ),
+                              ),
                     ),
                   ],
                 );

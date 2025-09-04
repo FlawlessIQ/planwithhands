@@ -79,22 +79,39 @@ class ShiftAssignmentService {
         return false; // Already joined
       }
 
-      // Update both tracking systems atomically
+      // Update both tracking systems atomically. Build the update map so we
+      // can log exactly what will be sent to Firestore (useful for debugging
+      // rules/permission problems where dot-path keys are used).
+      final updates = {
+        'volunteers': FieldValue.arrayUnion([userId]),
+        'volunteerJoins.$userId': dateString,
+      };
+
+      // Use print instead of logger for guaranteed console output
+      print('[ShiftAssignment] Attempting update for join: $updates (org=$organizationId shift=$shiftId user=$userId)');
+
       await FirestoreEnforcer.instance
           .collection('organizations')
           .doc(organizationId)
           .collection('shifts')
           .doc(shiftId)
-          .update({
-            'volunteers': FieldValue.arrayUnion([userId]),
-            'volunteerJoins.$userId': dateString,
-          });
+          .update(updates);
 
       logger.d('[ShiftAssignment] Successfully joined user $userId to shift $shiftId for $dateString');
       return true;
     } catch (e) {
-      logger.e('[ShiftAssignment] Error joining shift: $e');
-      return false;
+      // Log full error and rethrow so callers can see the stacktrace in logs
+      // (useful when debugging permission-denied or emulator vs prod differences).
+      print('[ShiftAssignment] Error joining shift: $e');
+      logger.e('[ShiftAssignment] Error joining shift: $e', e);
+      // Include stacktrace in console for quick local debugging
+      try {
+        // ignore: avoid_print
+        print('ShiftAssignment.joinShift stack:');
+        // ignore: avoid_print
+        print(StackTrace.current);
+      } catch (_) {}
+      rethrow;
     }
   }
 
