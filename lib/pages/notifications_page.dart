@@ -153,6 +153,66 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
     );
   }
 
+  Future<void> _deleteNotification(String id) async {
+    if (_userId == null || _orgId == null) return;
+
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            backgroundColor: HandsColors.cardPrimary,
+            title: Text(
+              'Delete Message',
+              style: GoogleFonts.comfortaa(color: HandsColors.white, fontWeight: FontWeight.bold),
+            ),
+            content: Text(
+              'Are you sure you want to permanently delete this message? This action cannot be undone.',
+              style: GoogleFonts.comfortaa(color: HandsColors.white70),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text('Cancel', style: GoogleFonts.comfortaa(color: HandsColors.white70)),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: Text('Delete', style: GoogleFonts.comfortaa(color: Colors.red, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(_orgId)
+            .collection('notifications')
+            .doc(id)
+            .delete();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Message deleted successfully', style: GoogleFonts.comfortaa(color: Colors.white)),
+              backgroundColor: HandsColors.primary,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to delete message: $e', style: GoogleFonts.comfortaa(color: Colors.white)),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
   @override
   void dispose() {
     _subscription?.cancel();
@@ -302,15 +362,37 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
                             _archiveNotification(n['id']);
                           } else if (value == 'unarchive') {
                             _unarchiveNotification(n['id']);
+                          } else if (value == 'delete') {
+                            _deleteNotification(n['id']);
                           }
                         },
                         itemBuilder:
                             (context) => [
                               PopupMenuItem(
                                 value: isArchived ? 'unarchive' : 'archive',
-                                child: Text(
-                                  isArchived ? 'Unarchive' : 'Archive',
-                                  style: GoogleFonts.comfortaa(color: HandsColors.white),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      isArchived ? Icons.unarchive : Icons.archive,
+                                      color: HandsColors.white,
+                                      size: 16,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      isArchived ? 'Unarchive' : 'Archive',
+                                      style: GoogleFonts.comfortaa(color: HandsColors.white),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              PopupMenuItem(
+                                value: 'delete',
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.delete, color: Colors.red, size: 16),
+                                    const SizedBox(width: 8),
+                                    Text('Delete', style: GoogleFonts.comfortaa(color: Colors.red)),
+                                  ],
                                 ),
                               ),
                             ],

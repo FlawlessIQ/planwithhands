@@ -2213,7 +2213,7 @@ class _HelpOutDialog extends StatelessWidget {
       }
 
       // Sort shifts chronologically by parsed start time (HH:mm). Use shiftName as a tiebreaker.
-      int _minutesFromStart(String s) {
+      int minutesFromStart(String s) {
         try {
           final parts = s.split(':');
           final h = int.tryParse(parts[0]) ?? 0;
@@ -2225,8 +2225,8 @@ class _HelpOutDialog extends StatelessWidget {
       }
 
       shifts.sort((a, b) {
-        final ma = _minutesFromStart(a.startTime);
-        final mb = _minutesFromStart(b.startTime);
+        final ma = minutesFromStart(a.startTime);
+        final mb = minutesFromStart(b.startTime);
         final cmp = ma.compareTo(mb);
         if (cmp != 0) return cmp;
         return a.shiftName.toLowerCase().compareTo(b.shiftName.toLowerCase());

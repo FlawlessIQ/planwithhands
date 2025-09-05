@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://planwithhands.com/sitemap.xml
+
+# Disallow app redirect pages (these are just for redirecting to the main app)
+Disallow: /app-login
+Disallow: /app-signup
+
+# Disallow test pages
+Disallow: /test-routes

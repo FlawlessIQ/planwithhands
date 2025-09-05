@@ -12,6 +12,9 @@ import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/global_widgets/hands_icon.dart';
 import 'package:hands_app/state/user_state.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:io' show Platform;
+import 'package:url_launcher/url_launcher.dart';
 
 class LoginPage extends HookConsumerWidget {
   const LoginPage({super.key});
@@ -147,6 +150,75 @@ class LoginPage extends HookConsumerWidget {
     ).then((_) {
       forgotEmailController.dispose();
     });
+  }
+
+  // Method to build the sign-up section based on platform
+  Widget _buildSignUpSection(BuildContext context) {
+    if (!kIsWeb && Platform.isIOS) {
+      // iOS native: show modal link instead of navigation
+      return GestureDetector(
+        onTap: () {
+          showDialog(
+            context: context,
+            builder:
+                (context) => AlertDialog(
+                  title: Text('Create an Account'),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('To create an account for your organization, please visit:', textAlign: TextAlign.center),
+                      SizedBox(height: 8),
+                      GestureDetector(
+                        onTap: () async {
+                          final url = Uri.parse('https://planwithhands.com');
+                          if (await canLaunchUrl(url)) {
+                            await launchUrl(url, mode: LaunchMode.externalApplication);
+                          }
+                        },
+                        child: SelectableText(
+                          'https://planwithhands.com',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.blue, decoration: TextDecoration.underline),
+                        ),
+                      ),
+                      SizedBox(height: 12),
+                      Text(
+                        'If you are trying to log in to an existing organization, please contact your manager to send you an invite.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                  actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: Text('Close'))],
+                ),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.only(top: 16.0),
+          child: Text('Need an account?', style: TextStyle(color: Colors.blue)),
+        ),
+      );
+    } else {
+      // All other platforms show the regular sign up navigation
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            "Don't have an account?",
+            style: GoogleFonts.comfortaa(fontSize: 14, fontWeight: FontWeight.normal, color: HandsColors.white70),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: () {
+              context.pushNamed('AccountCreationPage');
+            },
+            child: Text(
+              ' Sign up',
+              style: GoogleFonts.comfortaa(fontSize: 14, fontWeight: FontWeight.normal, color: Colors.blue),
+            ),
+          ),
+        ],
+      );
+    }
   }
 
   @override
@@ -472,29 +544,8 @@ class LoginPage extends HookConsumerWidget {
                     ),
                   ),
                 ),
-                // Sign Up Link
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 32.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        "Don't have an account?",
-                        style: GoogleFonts.comfortaa(
-                          fontSize: 14,
-                          fontWeight: FontWeight.normal,
-                          color: HandsColors.white70,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      HandsTextButton(
-                        text: 'SIGN UP',
-                        onPressed: () => context.go(AppRoutes.accountCreationPage.path),
-                        textColor: HandsColors.handsOrange,
-                      ),
-                    ],
-                  ),
-                ),
+                // Sign Up Link - Different behavior based on platform
+                Padding(padding: const EdgeInsets.symmetric(vertical: 32.0), child: _buildSignUpSection(context)),
                 const SizedBox(height: 20),
               ],
             ),

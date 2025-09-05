@@ -55,8 +55,8 @@ exports.createCheckoutSession = functions
         payment_method_types: ["card"],
   line_items: [{price: finalPriceId, quantity: data.quantity || 1}],
         mode: "subscription",
-        success_url: "https://plan-with-hands.web.app/dashboard?payment=success",
-        cancel_url: "https://plan-with-hands.web.app/pricing?payment=cancelled",
+        success_url: "https://plan-with-hands.web.app/payment-success",
+        cancel_url: "https://plan-with-hands.web.app/payment-cancelled",
         allow_promotion_codes: true,
         subscription_data: {
           trial_period_days: 14,

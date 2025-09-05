@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onGeneralNotificationCreated = exports.sendMessageNotification = exports.onMessageCreated = void 0;
+exports.onGeneralNotificationCreated = exports.onDailySummaryNotificationCreated = exports.sendMessageNotification = exports.onMessageCreated = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 /**
@@ -72,15 +72,35 @@ exports.onMessageCreated = functions.firestore
             return;
         }
         console.log(`Notifying ${actualRecipients.length} recipients`);
-        // Get FCM tokens for recipients
+        // Get FCM tokens for recipients from user-specific subcollections
         const tokenPromises = actualRecipients.map(async (userId) => {
-            const tokenSnap = await admin.firestore()
-                .collection("deviceTokens")
-                .where("userId", "==", userId)
-                .where("isActive", "==", true)
-                .get();
-            const tokens = tokenSnap.docs.map((doc) => doc.data().fcmToken);
-            return { userId, tokens };
+            try {
+                // First try to get from user-specific subcollection (new format)
+                const userTokenSnap = await admin.firestore()
+                    .collection("users")
+                    .doc(userId)
+                    .collection("deviceTokens")
+                    .where("isActive", "==", true)
+                    .get();
+                let tokens = [];
+                if (!userTokenSnap.empty) {
+                    tokens = userTokenSnap.docs.map((doc) => doc.data().fcmToken);
+                }
+                else {
+                    // Fallback to top-level deviceTokens collection (legacy format)
+                    const legacyTokenSnap = await admin.firestore()
+                        .collection("deviceTokens")
+                        .where("userId", "==", userId)
+                        .where("isActive", "==", true)
+                        .get();
+                    tokens = legacyTokenSnap.docs.map((doc) => doc.data().fcmToken);
+                }
+                return { userId, tokens: tokens.filter(Boolean) };
+            }
+            catch (error) {
+                console.error(`Error fetching tokens for user ${userId}:`, error);
+                return { userId, tokens: [] };
+            }
         });
         const userTokens = await Promise.all(tokenPromises);
         const allTokens = [];
@@ -192,14 +212,33 @@ exports.sendMessageNotification = functions.https.onCall(async (data, context) =
         if (actualRecipients.length === 0) {
             return { success: true, message: "No recipients to notify" };
         }
-        // Get FCM tokens
+        // Get FCM tokens from user-specific subcollections
         const tokenPromises = actualRecipients.map(async (userId) => {
-            const tokenSnap = await admin.firestore()
-                .collection("deviceTokens")
-                .where("userId", "==", userId)
-                .where("isActive", "==", true)
-                .get();
-            return tokenSnap.docs.map((doc) => doc.data().fcmToken);
+            try {
+                // First try to get from user-specific subcollection (new format)
+                const userTokenSnap = await admin.firestore()
+                    .collection("users")
+                    .doc(userId)
+                    .collection("deviceTokens")
+                    .where("isActive", "==", true)
+                    .get();
+                if (!userTokenSnap.empty) {
+                    return userTokenSnap.docs.map((doc) => doc.data().fcmToken);
+                }
+                else {
+                    // Fallback to top-level deviceTokens collection (legacy format)
+                    const legacyTokenSnap = await admin.firestore()
+                        .collection("deviceTokens")
+                        .where("userId", "==", userId)
+                        .where("isActive", "==", true)
+                        .get();
+                    return legacyTokenSnap.docs.map((doc) => doc.data().fcmToken);
+                }
+            }
+            catch (error) {
+                console.error(`Error fetching tokens for user ${userId}:`, error);
+                return [];
+            }
         });
         const userTokenArrays = await Promise.all(tokenPromises);
         const allTokens = userTokenArrays.flat();
@@ -269,11 +308,26 @@ async function cleanupInvalidTokens(invalidTokens) {
     try {
         const batch = admin.firestore().batch();
         for (const token of invalidTokens) {
-            const tokenQuery = await admin.firestore()
+            // Clean up from both new user-specific subcollections and legacy top-level collection
+            // First, check user-specific subcollections
+            const usersSnapshot = await admin.firestore().collection("users").get();
+            for (const userDoc of usersSnapshot.docs) {
+                const userTokenQuery = await admin.firestore()
+                    .collection("users")
+                    .doc(userDoc.id)
+                    .collection("deviceTokens")
+                    .where("fcmToken", "==", token)
+                    .get();
+                userTokenQuery.docs.forEach((doc) => {
+                    batch.update(doc.ref, { isActive: false });
+                });
+            }
+            // Also clean up legacy top-level collection
+            const legacyTokenQuery = await admin.firestore()
                 .collection("deviceTokens")
-                .where("token", "==", token)
+                .where("fcmToken", "==", token)
                 .get();
-            tokenQuery.docs.forEach((doc) => {
+            legacyTokenQuery.docs.forEach((doc) => {
                 batch.update(doc.ref, { isActive: false });
             });
         }
@@ -284,6 +338,123 @@ async function cleanupInvalidTokens(invalidTokens) {
         console.error("Error cleaning up invalid tokens:", error);
     }
 }
+/**
+ * Trigger when a new daily summary notification is created
+ * Sends push notifications specifically for daily summary notifications
+ */
+exports.onDailySummaryNotificationCreated = functions.firestore
+    .document("organizations/{orgId}/notifications/{notifId}")
+    .onCreate(async (snap, context) => {
+    const notification = snap.data();
+    const notifId = context.params.notifId;
+    const orgId = context.params.orgId;
+    try {
+        // Only process daily summary notifications with userId field
+        if (notification.type !== "general" || !notification.userId || !notification.title?.includes("Daily Notes Summary")) {
+            return;
+        }
+        console.log(`[DailySummary] Processing daily summary notification: ${notifId} for user: ${notification.userId} in org: ${orgId}`);
+        // Get FCM tokens for the specific user
+        const userId = notification.userId;
+        let fcmTokens = [];
+        try {
+            // First try to get from user-specific subcollection (new format)
+            const userTokenSnap = await admin.firestore()
+                .collection("users")
+                .doc(userId)
+                .collection("deviceTokens")
+                .where("isActive", "==", true)
+                .get();
+            if (!userTokenSnap.empty) {
+                fcmTokens = userTokenSnap.docs.map((doc) => doc.data().fcmToken).filter(Boolean);
+                console.log(`[DailySummary] Found ${fcmTokens.length} tokens from user subcollection for ${userId}`);
+            }
+            else {
+                // Fallback to top-level deviceTokens collection (legacy format)
+                const legacyTokenSnap = await admin.firestore()
+                    .collection("deviceTokens")
+                    .where("userId", "==", userId)
+                    .where("isActive", "==", true)
+                    .get();
+                fcmTokens = legacyTokenSnap.docs.map((doc) => doc.data().fcmToken).filter(Boolean);
+                console.log(`[DailySummary] Found ${fcmTokens.length} tokens from legacy collection for ${userId}`);
+            }
+        }
+        catch (error) {
+            console.error(`[DailySummary] Error fetching tokens for user ${userId}:`, error);
+        }
+        if (fcmTokens.length === 0) {
+            console.log(`[DailySummary] No FCM tokens found for user ${userId} - notification document created but no push sent`);
+            return;
+        }
+        // Prepare FCM message with daily summary specific data
+        const fcmMessage = {
+            notification: {
+                title: notification.title || "Daily Summary",
+                body: "Daily summary report is ready for review",
+            },
+            data: {
+                type: "daily_summary",
+                notificationId: notifId,
+                orgId: orgId,
+                userId: userId,
+                // Truncate message content for data field (FCM has size limits)
+                summary: notification.message ? notification.message.substring(0, 500) : "",
+            },
+            tokens: fcmTokens,
+            android: {
+                notification: {
+                    channelId: "daily_summary",
+                    priority: "default",
+                },
+            },
+            apns: {
+                payload: {
+                    aps: {
+                        category: "DAILY_SUMMARY",
+                    },
+                },
+            },
+        };
+        // Send push notifications
+        const response = await admin.messaging().sendMulticast(fcmMessage);
+        console.log(`[DailySummary] Push notification sent: ${response.successCount} successful, ${response.failureCount} failed`);
+        // Log detailed success/failure info
+        if (response.responses) {
+            const failures = [];
+            response.responses.forEach((resp, index) => {
+                if (!resp.success && resp.error) {
+                    failures.push({
+                        token: fcmTokens[index].substring(0, 20) + "...",
+                        error: resp.error.code || "unknown",
+                    });
+                }
+            });
+            if (failures.length > 0) {
+                console.log(`[DailySummary] Failed tokens:`, failures);
+            }
+        }
+        // Clean up invalid tokens
+        if (response.responses) {
+            const invalidTokens = [];
+            response.responses.forEach((resp, index) => {
+                if (!resp.success &&
+                    (resp.error?.code === "messaging/registration-token-not-registered" ||
+                        resp.error?.code === "messaging/invalid-registration-token")) {
+                    invalidTokens.push(fcmTokens[index]);
+                }
+            });
+            if (invalidTokens.length > 0) {
+                console.log(`[DailySummary] Cleaning up ${invalidTokens.length} invalid tokens`);
+                await cleanupInvalidTokens(invalidTokens);
+            }
+        }
+    }
+    catch (error) {
+        console.error("[DailySummary] Error processing daily summary notification:", error);
+        throw error;
+    }
+});
 /**
  * Trigger when a new general notification is created
  * Sends push notifications to targeted recipients based on notification type
@@ -296,9 +467,9 @@ exports.onGeneralNotificationCreated = functions.firestore
     const orgId = context.params.orgId;
     try {
         console.log(`Processing general notification: ${notifId} in org: ${orgId}`);
-        // Skip if this is a user-specific notification (already has userId)
-        if (notification.userId) {
-            console.log("Skipping user-specific notification - already processed");
+        // Skip if this is a user-specific notification (daily summaries are handled by dedicated function)
+        if (notification.userId || notification.title?.includes("Daily Notes Summary")) {
+            console.log("Skipping user-specific or daily summary notification - handled by other functions");
             return;
         }
         const targetType = notification.targetType;
@@ -347,15 +518,35 @@ exports.onGeneralNotificationCreated = functions.firestore
             return;
         }
         console.log(`Notifying ${recipientUserIds.length} recipients for ${targetType} notification`);
-        // Get FCM tokens for recipients
+        // Get FCM tokens for recipients from user-specific subcollections
         const tokenPromises = recipientUserIds.map(async (userId) => {
-            const tokenSnap = await admin.firestore()
-                .collection("deviceTokens")
-                .where("userId", "==", userId)
-                .where("isActive", "==", true)
-                .get();
-            const tokens = tokenSnap.docs.map((doc) => doc.data().fcmToken);
-            return { userId, tokens };
+            try {
+                // First try to get from user-specific subcollection (new format)
+                const userTokenSnap = await admin.firestore()
+                    .collection("users")
+                    .doc(userId)
+                    .collection("deviceTokens")
+                    .where("isActive", "==", true)
+                    .get();
+                let tokens = [];
+                if (!userTokenSnap.empty) {
+                    tokens = userTokenSnap.docs.map((doc) => doc.data().fcmToken);
+                }
+                else {
+                    // Fallback to top-level deviceTokens collection (legacy format)
+                    const legacyTokenSnap = await admin.firestore()
+                        .collection("deviceTokens")
+                        .where("userId", "==", userId)
+                        .where("isActive", "==", true)
+                        .get();
+                    tokens = legacyTokenSnap.docs.map((doc) => doc.data().fcmToken);
+                }
+                return { userId, tokens: tokens.filter(Boolean) };
+            }
+            catch (error) {
+                console.error(`Error fetching tokens for user ${userId}:`, error);
+                return { userId, tokens: [] };
+            }
         });
         const userTokens = await Promise.all(tokenPromises);
         const allTokens = [];

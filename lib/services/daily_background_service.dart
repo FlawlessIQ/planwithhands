@@ -65,7 +65,7 @@ class DailyBackgroundService {
           await _firestore
               .collection('users')
               .where('isActive', isEqualTo: true)
-              .where('userRole', isEqualTo: 2) // Only get orgs with admin users
+              .where('userRole', whereIn: [1, 2]) // Get orgs with manager/admin users
               .get();
 
       final orgIds = <String>{};
@@ -259,10 +259,10 @@ class DailyBackgroundService {
           await _firestore
               .collection('users')
               .where('organizationId', isEqualTo: organizationId)
-              .where('userRole', isEqualTo: 2) // Admin users only
+              .where('userRole', whereIn: [1, 2]) // Manager and admin users
               .get();
 
-      final adminUsers = <Map<String, dynamic>>[];
+      final managerAdminUsers = <Map<String, dynamic>>[];
 
       for (final userDoc in usersQuery.docs) {
         final userData = userDoc.data();
@@ -276,7 +276,7 @@ class DailyBackgroundService {
           final prefs = prefsDoc.exists ? prefsDoc.data() ?? {} : {};
           final timeData = prefs['dailySummaryTime'] as Map<String, dynamic>?;
 
-          adminUsers.add({
+          managerAdminUsers.add({
             'userId': userId,
             'firstName': userData['firstName'] ?? '',
             'lastName': userData['lastName'] ?? '',
@@ -287,7 +287,7 @@ class DailyBackgroundService {
         } catch (e) {
           logger.w('[DailyBackgroundService] Error loading preferences for user $userId: $e');
           // Add user with default preferences if we can't load their prefs
-          adminUsers.add({
+          managerAdminUsers.add({
             'userId': userId,
             'firstName': userData['firstName'] ?? '',
             'lastName': userData['lastName'] ?? '',
@@ -298,7 +298,7 @@ class DailyBackgroundService {
         }
       }
 
-      return adminUsers;
+      return managerAdminUsers;
     } catch (e) {
       logger.e('[DailyBackgroundService] Error getting admin users with preferences', e);
       return [];

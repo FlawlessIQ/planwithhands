@@ -14,14 +14,43 @@ class PushNotificationDebugger {
       print('✅ FCM Token: ${token?.substring(0, 20)}...');
 
       if (token != null) {
-        // 2. Check token storage in Firestore
-        final docId = '${userId}_$token';
-        final doc = await FirebaseFirestore.instance.collection('deviceTokens').doc(docId).get();
+        // 2. Check token storage in user-specific subcollection (new format)
+        final tokenHash = token.hashCode.abs().toString();
+        final userTokenDoc =
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(userId)
+                .collection('deviceTokens')
+                .doc(tokenHash)
+                .get();
 
-        if (doc.exists) {
-          print('✅ Token stored in Firestore: ${doc.data()}');
+        if (userTokenDoc.exists) {
+          print('✅ Token stored in user subcollection: ${userTokenDoc.data()}');
         } else {
-          print('❌ Token NOT found in Firestore');
+          print('❌ Token NOT found in user subcollection');
+
+          // Check legacy top-level collection
+          final docId = '${userId}_$token';
+          final legacyDoc = await FirebaseFirestore.instance.collection('deviceTokens').doc(docId).get();
+
+          if (legacyDoc.exists) {
+            print('⚠️ Token found in legacy top-level collection: ${legacyDoc.data()}');
+            print('   Consider running migration to move to user-specific paths');
+          } else {
+            print('❌ Token NOT found in legacy collection either');
+          }
+        }
+
+        // Check lastFcmToken on user document
+        final userDoc = await FirebaseFirestore.instance.collection('users').doc(userId).get();
+        if (userDoc.exists) {
+          final userData = userDoc.data();
+          final lastToken = userData?['lastFcmToken'] as String?;
+          if (lastToken == token) {
+            print('✅ lastFcmToken matches current token on user doc');
+          } else {
+            print('⚠️ lastFcmToken mismatch on user doc: $lastToken vs $token');
+          }
         }
       }
     } catch (e) {

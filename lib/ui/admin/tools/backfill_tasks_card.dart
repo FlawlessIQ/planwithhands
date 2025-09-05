@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:hands_app/utils/firestore_enforcer.dart';
-import 'package:hands_app/services/task_backfill_service.dart';
+// import 'package:hands_app/utils/firestore_enforcer.dart';
+// import 'package:hands_app/services/task_backfill_service.dart'; // Service not implemented yet
 
 class BackfillTasksCard extends StatefulWidget {
   final String organizationId;
@@ -13,7 +13,7 @@ class BackfillTasksCard extends StatefulWidget {
 }
 
 class _BackfillTasksCardState extends State<BackfillTasksCard> {
-  late final TaskBackfillService _backfillService;
+  // late final TaskBackfillService _backfillService; // Service not implemented yet
 
   String _status = 'Idle';
   int _locationsCount = 0;
@@ -26,7 +26,7 @@ class _BackfillTasksCardState extends State<BackfillTasksCard> {
   @override
   void initState() {
     super.initState();
-    _backfillService = TaskBackfillService(firestore: FirestoreEnforcer.instance);
+    // _backfillService = TaskBackfillService(firestore: FirestoreEnforcer.instance); // Service not implemented yet
   }
 
   void _resetCounters() {
@@ -39,19 +39,19 @@ class _BackfillTasksCardState extends State<BackfillTasksCard> {
     });
   }
 
-  void _onProgress({
-    required int locationsDone,
-    required int checklistsDone,
-    required int tasksExamined,
-    required int tasksUpdated,
-  }) {
-    setState(() {
-      _locationsCount = locationsDone;
-      _checklistsCount = checklistsDone;
-      _tasksExamined = tasksExamined;
-      _tasksUpdated = tasksUpdated;
-    });
-  }
+  // void _onProgress({
+  //   required int locationsDone,
+  //   required int checklistsDone,
+  //   required int tasksExamined,
+  //   required int tasksUpdated,
+  // }) {
+  //   setState(() {
+  //     _locationsCount = locationsDone;
+  //     _checklistsCount = checklistsDone;
+  //     _tasksExamined = tasksExamined;
+  //     _tasksUpdated = tasksUpdated;
+  //   });
+  // }
 
   Future<void> _runBackfill({required bool dryRun}) async {
     if (_isRunning) return;
@@ -64,26 +64,17 @@ class _BackfillTasksCardState extends State<BackfillTasksCard> {
     _resetCounters();
 
     try {
-      await _backfillService.backfillTaskMetadata(
-        organizationId: widget.organizationId,
-        dryRun: dryRun,
-        onProgress: _onProgress,
-      );
-
+      // TODO: Implement TaskBackfillService
       setState(() {
-        _status = 'Done';
+        _status = 'Service not implemented';
         _isRunning = false;
       });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              dryRun
-                  ? 'Dry run complete: $_tasksUpdated tasks would be updated'
-                  : 'Backfill complete: $_tasksUpdated tasks updated',
-            ),
-            backgroundColor: Colors.green,
+          const SnackBar(
+            content: Text('TaskBackfillService not yet implemented'),
+            backgroundColor: Colors.orange,
           ),
         );
       }
@@ -104,75 +95,29 @@ class _BackfillTasksCardState extends State<BackfillTasksCard> {
 
   Future<void> _verifyTasks() async {
     try {
-      final missingTaskRefs = await _backfillService.findTasksMissingMetadata(
-        organizationId: widget.organizationId,
-        limit: 50,
-      );
-
+      // TODO: Implement TaskBackfillService
       if (!mounted) return;
 
       showDialog(
         context: context,
-        builder:
-            (context) => AlertDialog(
-              title: const Text('Task Metadata Verification'),
-              content: SizedBox(
-                width: double.maxFinite,
-                height: 400,
-                child:
-                    missingTaskRefs.isEmpty
-                        ? const Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.check_circle, color: Colors.green, size: 64),
-                              SizedBox(height: 16),
-                              Text('All tasks have required metadata.', style: TextStyle(fontSize: 16)),
-                            ],
-                          ),
-                        )
-                        : Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Found ${missingTaskRefs.length} tasks missing metadata:',
-                              style: const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 16),
-                            Expanded(
-                              child: ListView.builder(
-                                itemCount: missingTaskRefs.length,
-                                itemBuilder: (context, index) {
-                                  final taskRef = missingTaskRefs[index];
-                                  final pathParts = taskRef.path.split('/');
-                                  final shortPath =
-                                      pathParts.length >= 4
-                                          ? '.../${pathParts[pathParts.length - 3]}/${pathParts[pathParts.length - 2]}/${pathParts[pathParts.length - 1]}'
-                                          : taskRef.path;
-
-                                  return Card(
-                                    margin: const EdgeInsets.only(bottom: 4),
-                                    child: ListTile(
-                                      dense: true,
-                                      title: Text(
-                                        shortPath,
-                                        style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
-                                      ),
-                                      subtitle: Text(
-                                        'Document ID: ${taskRef.id}',
-                                        style: const TextStyle(fontSize: 11),
-                                      ),
-                                      leading: const Icon(Icons.warning, color: Colors.orange, size: 16),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
+        builder: (context) => AlertDialog(
+          title: const Text('Task Metadata Verification'),
+          content: const SizedBox(
+            width: double.maxFinite,
+            height: 400,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.info, color: Colors.blue, size: 64),
+                  SizedBox(height: 16),
+                  Text('TaskBackfillService not yet implemented.', style: TextStyle(fontSize: 16)),
+                ],
               ),
-              actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close'))],
             ),
+          ),
+          actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close'))],
+        ),
       );
     } catch (e) {
       if (mounted) {

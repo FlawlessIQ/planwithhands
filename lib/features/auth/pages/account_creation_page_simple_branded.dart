@@ -12,6 +12,8 @@ import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/theme/theme.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:io';
 
 class SimpleSignUpPage extends StatefulWidget {
   final String? email;
@@ -309,7 +311,6 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
         priceId: _isAnnual ? kStripePriceAnnual : kStripePriceMonthly,
         quantity: _locations,
       );
-      debugPrint('Stripe checkout initiated (quantity: $_locations)');
     } catch (e) {
       logger.e('Error in _createNewOrganization: $e', e);
       rethrow;
@@ -319,6 +320,57 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
   @override
   Widget build(BuildContext context) {
     final isInvitedUser = widget.organizationId != null;
+
+    // iOS platform check: Prevent account creation for Apple Store compliance
+    // Apple doesn't allow Stripe checkout for new account signups on iOS apps
+    if (!kIsWeb && Platform.isIOS && !isInvitedUser) {
+      return Scaffold(
+        appBar: AppBar(
+          backgroundColor: HandsColors.cardPrimary,
+          elevation: 0,
+          toolbarHeight: kToolbarHeight,
+          title: GenericAppBarContent(appBarTitle: 'Account Creation', userRole: 0),
+          automaticallyImplyLeading: false,
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.web, size: 64, color: HandsColors.handsOrange),
+                const SizedBox(height: 24),
+                Text(
+                  'Create Account on Web',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: HandsColors.white),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'To create a new account and set up subscription billing, please visit our website at planwithhands.com and click "Sign up" from any web browser.\n\nDue to Apple Store policies, new account creation with subscription setup must be done via our web portal.',
+                  style: TextStyle(fontSize: 16, color: HandsColors.white70, height: 1.5),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 32),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    context.go(AppRoutes.loginPage.path);
+                  },
+                  icon: Icon(Icons.arrow_back),
+                  label: Text('Back to Login'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: HandsColors.handsOrange,
+                    foregroundColor: HandsColors.cardPrimary,
+                    minimumSize: const Size(200, 48),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(

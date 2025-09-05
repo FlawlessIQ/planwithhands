@@ -502,6 +502,15 @@ GoRouter buildAppRouter(Ref ref) {
           }
         }
 
+        // Handle old pricing page cancellation URL
+        if (routerPath == '/pricing') {
+          final paymentParam = state.uri.queryParameters['payment'];
+          if (paymentParam == 'cancelled') {
+            logger.d('[ROUTER] *** REDIRECTING PRICING CANCELLATION TO PAYMENT CANCELLED ***');
+            return AppRoutes.paymentCancelledPage.path;
+          }
+        }
+
         logger.d('[ROUTER_DEBUG] No redirect applied - continuing to route');
         return null;
       },

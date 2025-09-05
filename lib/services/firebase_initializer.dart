@@ -26,7 +26,7 @@ class FirebaseInitializer {
 
       // If a Firebase app already exists (hot restart scenario), just mark initialized
       if (Firebase.apps.isNotEmpty) {
-        debugPrint('🔥 [FIREBASE] Already initialized, using existing app');
+        debugPrint('🔥 [FIREBASE] Already initialized, using existing app: ${Firebase.apps.first.name}');
         _isInitialized = true;
         return;
       }
@@ -39,21 +39,22 @@ class FirebaseInitializer {
       // Register background message handler for non-web platforms only
       if (!kIsWeb) {
         FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+        debugPrint('🔥 [FIREBASE] Background message handler registered');
       }
 
       _isInitialized = true;
     } on FirebaseException catch (e) {
-      // Swallow duplicate-app exception
+      // Handle duplicate-app exception gracefully
       if (e.code == 'duplicate-app') {
-        debugPrint('🔥 [FIREBASE] Duplicate app exception handled');
+        debugPrint('🔥 [FIREBASE] Duplicate app exception handled gracefully');
         _isInitialized = true;
         return;
       }
 
-      debugPrint('🔥 [FIREBASE] Error initializing: ${e.code} - ${e.message}');
+      debugPrint('🔥 [FIREBASE] FirebaseException: ${e.code} - ${e.message}');
       rethrow;
     } catch (e) {
-      debugPrint('🔥 [FIREBASE] Unexpected error: $e');
+      debugPrint('🔥 [FIREBASE] Unexpected error during initialization: $e');
       rethrow;
     }
   }

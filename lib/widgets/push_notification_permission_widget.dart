@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hands_app/services/push_notification_service.dart';
+import 'package:hands_app/core/logging/logger.dart';
 
-/// Widget for managing push notification permissions with native dialogs
+/// Widget for managing push notification permissions with enhanced UX
 class PushNotificationPermissionWidget extends ConsumerStatefulWidget {
   /// Callback when permission is granted
   final VoidCallback? onPermissionGranted;
@@ -19,6 +20,15 @@ class PushNotificationPermissionWidget extends ConsumerStatefulWidget {
   /// Custom message for the permission explanation
   final String? message;
 
+  /// Context for the permission request (used for analytics and UX)
+  final String context;
+
+  /// Whether to show as a card or inline
+  final bool showAsCard;
+
+  /// Custom description widget
+  final Widget? customDescription;
+
   const PushNotificationPermissionWidget({
     super.key,
     this.onPermissionGranted,
@@ -26,6 +36,9 @@ class PushNotificationPermissionWidget extends ConsumerStatefulWidget {
     this.autoRequest = false,
     this.title,
     this.message,
+    this.context = 'general',
+    this.showAsCard = true,
+    this.customDescription,
   });
 
   @override
@@ -102,7 +115,7 @@ class _PushNotificationPermissionWidgetState extends ConsumerState<PushNotificat
     });
 
     try {
-      final result = await _notificationService.requestPermission();
+      final result = await _notificationService.requestPermissionWithContext(context: widget.context);
 
       if (mounted) {
         setState(() {
@@ -114,20 +127,25 @@ class _PushNotificationPermissionWidgetState extends ConsumerState<PushNotificat
           case NotificationPermissionResult.granted:
             widget.onPermissionGranted?.call();
             _showSuccessSnackBar();
+            logger.d('[PushNotificationPermissionWidget] Permission granted for context: ${widget.context}');
             break;
           case NotificationPermissionResult.denied:
             widget.onPermissionDenied?.call();
             _showDeniedDialog();
+            logger.w('[PushNotificationPermissionWidget] Permission denied for context: ${widget.context}');
             break;
           case NotificationPermissionResult.notDetermined:
             // User dismissed the dialog, try again later
+            logger.d('[PushNotificationPermissionWidget] Permission not determined for context: ${widget.context}');
             break;
           case NotificationPermissionResult.error:
             _showErrorSnackBar();
+            logger.e('[PushNotificationPermissionWidget] Permission error for context: ${widget.context}');
             break;
         }
       }
     } catch (e) {
+      logger.e('[PushNotificationPermissionWidget] Error requesting permission', e);
       if (mounted) {
         setState(() {
           _isLoading = false;

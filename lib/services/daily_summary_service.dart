@@ -9,7 +9,7 @@ import 'package:hands_app/services/daily_checklist_service.dart';
 class DailySummaryService {
   final FirebaseFirestore _firestore = FirestoreEnforcer.instance;
 
-  /// Generate and send daily summary notification to all admins (userRole = 2)
+  /// Generate and send daily summary notification to managers and admins (userRole >= 1)
   /// This should be called at the end of each day or when all shifts are completed
   Future<void> generateAndSendDailySummary({required String organizationId, DateTime? targetDate}) async {
     try {
@@ -42,11 +42,11 @@ class DailySummaryService {
         return;
       }
 
-      // Get all admin users (userRole = 2)
+      // Get all manager and admin users (userRole >= 1)
       final adminUsers = await _getAdminUsers(organizationId);
 
       if (adminUsers.isEmpty) {
-        logger.w('[DailySummaryService] No admin users found for organization $organizationId');
+        logger.w('[DailySummaryService] No manager/admin users found for organization $organizationId');
         return;
       }
 
@@ -340,14 +340,14 @@ class DailySummaryService {
     }
   }
 
-  /// Get all admin users (userRole = 2) for an organization
+  /// Get all admin and manager users (userRole >= 1) for an organization
   Future<List<Map<String, dynamic>>> _getAdminUsers(String organizationId) async {
     try {
       final usersQuery =
           await _firestore
               .collection('users')
               .where('organizationId', isEqualTo: organizationId)
-              .where('userRole', isEqualTo: 2)
+              .where('userRole', whereIn: [1, 2]) // Include both managers (1) and admins (2)
               .where('isActive', isEqualTo: true)
               .get();
 
@@ -623,7 +623,7 @@ class DailySummaryService {
           'targetId': admin['userId'], // Added for trigger compatibility
           // Keep targets for backward compatibility with existing UI
           'targets': {
-            'userRole': [2], // Target admins only
+            'userRole': [1, 2], // Target managers and admins
             'userId': [admin['userId']],
           },
         };

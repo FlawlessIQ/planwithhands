@@ -57,6 +57,14 @@ final unreadNotificationsCountProvider = StreamProvider<int>((ref) {
 bool _shouldUserSeeNotification(Map<String, dynamic> notificationData, Map<String, dynamic> userData, String userId) {
   final targetType = notificationData['targetType'] as String?;
   final targetId = notificationData['targetId'] as String?;
+  final notificationType = notificationData['type'] as String?;
+  final notificationUserId = notificationData['userId'] as String?;
+
+  // Handle message notifications (created by messaging system)
+  if (notificationType == 'message') {
+    // Message notifications are user-specific and already have userId set
+    return notificationUserId == userId;
+  }
 
   // Handle legacy notifications and "all users" notifications
   if (targetType == null || targetType == 'all') {

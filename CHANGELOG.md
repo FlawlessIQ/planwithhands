@@ -1,5 +1,23 @@
 # CHANGELOG.md
 
+## [1.1.5] - 2025-09-04
+
+### FCM Token Storage Fixes
+- **BREAKING CHANGE**: FCM tokens now stored in user-specific subcollections (`users/{uid}/deviceTokens/`) instead of top-level `deviceTokens` collection
+- Fixed Firebase Security Rules violations caused by global token collection writes
+- Added automatic cleanup of old/inactive tokens per user
+- Updated cloud functions to read from new user-specific token paths with legacy fallback
+- Added `lastFcmToken` field to user documents for quick debugging access
+- Enhanced push notification service with better error handling and logging
+- Updated debug tools to verify new token storage paths
+- Backward compatible with existing tokens during migration period
+
+### Cloud Functions Updates
+- Updated `messagingNotifications.ts` to query user-specific token subcollections
+- Added fallback support for legacy top-level token collection
+- Enhanced token cleanup functions to handle both new and legacy storage formats
+- Built and ready for deployment
+
 ## [Unreleased]
 
 ### Native Permission Handling

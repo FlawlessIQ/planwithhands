@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import Head from 'next/head'
 
 const MONTHLY = 'monthly'
 const ANNUAL = 'annual'
@@ -20,7 +21,40 @@ export default function Pricing() {
   const suffix = cycle === MONTHLY ? '/month' : '/year (10% off)'
 
   return (
-    <div className="container mx-auto py-12 sm:py-16 md:py-20 text-center max-w-4xl px-4 sm:px-6">
+    <>
+      <Head>
+        <title>Pricing - Plan With Hands | Restaurant Management Software</title>
+        <meta name="description" content="Simple, transparent pricing for restaurant management software. $69.99/month for first location, $49.99 for additional locations. Save 10% with annual billing. Free 14-day trial." />
+        <meta property="og:title" content="Pricing - Plan With Hands | Restaurant Management Software" />
+        <meta property="og:description" content="Simple, transparent pricing for restaurant management software. $69.99/month for first location, $49.99 for additional locations. Save 10% with annual billing." />
+        <link rel="canonical" href="https://planwithhands.com/pricing/" />
+        
+        {/* Structured Data for Pricing */}
+        <script type="application/ld+json">
+          {`
+            {
+              "@context": "https://schema.org",
+              "@type": "Product",
+              "name": "Plan With Hands Restaurant Management Software",
+              "description": "Restaurant operations management software with digital checklists, team messaging, and real-time insights",
+              "offers": {
+                "@type": "Offer",
+                "price": "69.99",
+                "priceCurrency": "USD",
+                "priceSpecification": {
+                  "@type": "UnitPriceSpecification",
+                  "price": "69.99",
+                  "priceCurrency": "USD",
+                  "unitText": "MONTH"
+                },
+                "availability": "https://schema.org/InStock",
+                "url": "https://planwithhands.com/pricing/"
+              }
+            }
+          `}
+        </script>
+      </Head>
+      <div className="container mx-auto py-12 sm:py-16 md:py-20 text-center max-w-4xl px-4 sm:px-6">
       <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3 sm:mb-4 leading-tight">Simple, transparent pricing</h1>
       <p className="text-white/80 mb-6 sm:mb-8 text-sm sm:text-base">Pay per location. Save 10% with annual billing.</p>
 
@@ -74,5 +108,6 @@ export default function Pricing() {
         </div>
       </div>
     </div>
+    </>
   )
 }

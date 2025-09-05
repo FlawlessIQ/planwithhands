@@ -15,8 +15,6 @@ import 'dart:async';
 import 'package:hands_app/services/firebase_initializer.dart';
 import 'package:hands_app/services/push_notification_service.dart';
 import 'package:hands_app/debug/firebase_init_test.dart'; // Import Firebase test page
-import 'package:firebase_core/firebase_core.dart';
-import 'package:hands_app/firebase_options.dart';
 // No longer need web platform page since we're allowing direct web access
 // import 'package:hands_app/pages/web_platform_page.dart';
 // No longer checking user agent for mobile browsers
@@ -49,21 +47,6 @@ void main() async {
       // "Zone mismatch" assertion by keeping ensureInitialized and runApp
       // in the same zone.
       WidgetsFlutterBinding.ensureInitialized();
-
-      // Initialize Firebase early here so it's done inside the guarded zone.
-      try {
-        if (kIsWeb) {
-          debugPrint('[MAIN] Direct Firebase initialization on web');
-          await Firebase.initializeApp(options: DefaultFirebaseOptions.web);
-        } else {
-          debugPrint('[MAIN] Direct Firebase initialization on native');
-          await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-        }
-        debugPrint('[MAIN] Firebase initialized, allowing all browsers to access web app');
-      } catch (e) {
-        debugPrint('[MAIN] CRITICAL ERROR initializing Firebase: $e');
-        // Let FirebaseInitializer attempt initialization later as a fallback.
-      }
 
       tz.initializeTimeZones();
 
