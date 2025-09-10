@@ -119,11 +119,11 @@ class MessagingService {
     // This was causing 4x message duplication in notifications.
     // The Firestore trigger 'onMessageCreated' is sufficient and reliable
     // for handling all notifications including push notifications.
-    // 
+    //
     // Previous implementation created race conditions where both:
     // 1. Firestore trigger would create notifications
     // 2. Callable function would also create/send notifications
-    // 
+    //
     // Single execution path via Firestore trigger is more reliable.
   }
 

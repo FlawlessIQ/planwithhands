@@ -42,8 +42,11 @@ const admin = __importStar(require("firebase-admin"));
 const luxon_1 = require("luxon");
 const crypto = __importStar(require("crypto"));
 const firestoreTTLHelper_1 = require("./firestoreTTLHelper");
-// Don't initialize admin here - it's already initialized in index.ts
-const db = admin.firestore();
+const firestore_1 = require("@google-cloud/firestore");
+// Ensure we use the correct Firestore database (multi-db projects)
+const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || "planwithhands";
+// Use a Firestore instance explicitly bound to the target database
+const db = new firestore_1.Firestore({ databaseId: FIRESTORE_DATABASE_ID });
 // Helper: add days to a JS Date
 /**
  * Returns a Firestore Timestamp representing now + `days` days.

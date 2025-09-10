@@ -15,6 +15,8 @@ import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/ui/contact_sales_dialog.dart';
 import 'package:hands_app/ui/location_bottom_sheet_new.dart';
 import 'package:hands_app/theme/theme.dart';
+import 'package:hands_app/core/platform_ios.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class HandsSettingsPage extends StatefulWidget {
   const HandsSettingsPage({super.key});
@@ -1749,6 +1751,157 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
     }
   }
 
+  /// iOS-compliant organization info card (replaces billing on iOS)
+  Widget _buildOrganizationInfoCard() {
+    return Card(
+      color: HandsColors.cardPrimary,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.business, color: Theme.of(context).primaryColor),
+                const SizedBox(width: 8),
+                Text(
+                  'Organization Information',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: HandsColors.cardPrimary,
+                border: Border.all(color: Colors.white24),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Organization:', style: TextStyle(color: Colors.white)),
+                      Expanded(
+                        child: Text(
+                          _businessNameController.text.isNotEmpty ? _businessNameController.text : 'Not set',
+                          style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
+                          textAlign: TextAlign.right,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Business Type:', style: TextStyle(color: Colors.white)),
+                      Text(
+                        _businessType ?? 'Not set',
+                        style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  FutureBuilder<QuerySnapshot>(
+                    future:
+                        FirestoreEnforcer.instance
+                            .collection('organizations')
+                            .doc(_organizationId)
+                            .collection('locations')
+                            .get(),
+                    builder: (context, snapshot) {
+                      final locationCount = snapshot.data?.size ?? 0;
+                      return Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Active Locations:', style: TextStyle(color: Colors.white)),
+                          Text(
+                            '$locationCount',
+                            style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                border: Border.all(color: Colors.blue[200]!),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.blue[700], size: 20),
+                      const SizedBox(width: 8),
+                      Text('Need Help?', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue[700])),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'For subscription management, billing questions, or technical support, please contact us:',
+                    style: TextStyle(color: Colors.blue[700]),
+                  ),
+                  const SizedBox(height: 12),
+                  InkWell(
+                    onTap: () async {
+                      final Uri emailUri = Uri(
+                        scheme: 'mailto',
+                        path: 'support@planwithhands.com',
+                        query: 'subject=Support Request - ${_businessNameController.text}',
+                      );
+                      // Note: No url_launcher import needed - using intent
+                      try {
+                        await launchUrl(emailUri);
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(const SnackBar(content: Text('Please email us at support@planwithhands.com')));
+                        }
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[100],
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: Colors.blue[300]!),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.email, color: Colors.blue[700], size: 16),
+                          const SizedBox(width: 8),
+                          Text(
+                            'support@planwithhands.com',
+                            style: TextStyle(color: Colors.blue[700], fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _onAddLocation() async {
     if (!_isAdmin || _organizationId.isEmpty) return;
 
@@ -1898,27 +2051,59 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                             ),
                           ),
                         ),
-                        // Subscription Status Card - Only visible to admin users
+                        // Subscription Status Card - Only visible to admin users (hidden on iOS for App Store compliance)
+                        if (!isIOS) ...[
+                          const SizedBox(height: 16),
+                          _buildSubscriptionStatusCard(),
+                          const SizedBox(height: 16),
+                          // Subscription Management Card
+                          _buildSubscriptionManagementCard(),
+                        ] else ...[
+                          // iOS: Show organization info and support contact instead of billing
+                          const SizedBox(height: 16),
+                          _buildOrganizationInfoCard(),
+                        ],
                         const SizedBox(height: 16),
-                        _buildSubscriptionStatusCard(),
-                        const SizedBox(height: 16),
-                        // Subscription Management Card
-                        _buildSubscriptionManagementCard(),
-                        const SizedBox(height: 16),
-                        // Locations management card - simplified
+                        // Locations management card - iOS compliant
                         Card(
                           child: ListTile(
                             leading: const Icon(Icons.location_on),
                             title: const Text('Locations'),
-                            subtitle: const Text('Manage your business locations'),
+                            subtitle: Text(isIOS ? 'Manage your business locations' : 'Manage your business locations'),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                OutlinedButton.icon(
-                                  onPressed: _onAddLocation,
-                                  icon: const Icon(Icons.add, size: 18),
-                                  label: const Text('Add'),
-                                ),
+                                if (!isIOS) ...[
+                                  OutlinedButton.icon(
+                                    onPressed: _onAddLocation,
+                                    icon: const Icon(Icons.add, size: 18),
+                                    label: const Text('Add'),
+                                  ),
+                                ] else ...[
+                                  // iOS: Show support contact for location management
+                                  TextButton.icon(
+                                    onPressed: () async {
+                                      final Uri emailUri = Uri(
+                                        scheme: 'mailto',
+                                        path: 'support@planwithhands.com',
+                                        query: 'subject=Location Management Request - ${_businessNameController.text}',
+                                      );
+                                      try {
+                                        await launchUrl(emailUri);
+                                      } catch (e) {
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Please email us at support@planwithhands.com'),
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    },
+                                    icon: const Icon(Icons.help_outline, size: 18),
+                                    label: const Text('Support'),
+                                  ),
+                                ],
                               ],
                             ),
                           ),

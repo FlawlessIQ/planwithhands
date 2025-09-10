@@ -407,11 +407,7 @@ class DailySummaryService {
   /// Build notification content from comprehensive summary data
   String _buildNotificationContent(Map<String, dynamic> summaryData, DateTime date) {
     final buffer = StringBuffer();
-    final formattedDate = DateFormat('EEEE, MMMM dd, yyyy').format(date);
-
-    buffer.writeln('🏢 DAILY SUMMARY REPORT');
-    buffer.writeln('📅 $formattedDate');
-    buffer.writeln('');
+    final formattedDate = DateFormat('EEEE, MMM dd').format(date);
 
     final notesEntries = summaryData['notesEntries'] as List<Map<String, dynamic>>? ?? [];
     final missedTaskEntries = summaryData['missedTaskEntries'] as List<Map<String, dynamic>>? ?? [];
@@ -425,30 +421,50 @@ class DailySummaryService {
     final completedTasks = overallStats['completedTasks'] as int? ?? 0;
     final overallPercentage = overallStats['overallPercentage'] as double? ?? 0.0;
 
-    buffer.writeln('📊 OVERALL COMPLETION');
-    buffer.writeln('═' * 25);
-    buffer.writeln('Tasks Completed: $completedTasks of $totalTasks (${overallPercentage.toStringAsFixed(1)}%)');
+    // Generate performance emoji and message
+    final performanceEmoji = _getPerformanceEmoji(overallPercentage);
+    final performanceMessage = _getPerformanceMessage(overallPercentage, totalTasks);
+
+    buffer.writeln('$performanceEmoji Daily Summary • $formattedDate');
+    buffer.writeln('');
+    buffer.writeln('$performanceMessage');
+    buffer.writeln('');
+    buffer.writeln('📊 ${overallPercentage.toStringAsFixed(0)}% Complete ($completedTasks/$totalTasks tasks)');
     buffer.writeln('');
 
-    // Shift-by-shift breakdown
+    // Shift-by-shift breakdown (simplified)
     if (shiftCompletions.isNotEmpty) {
-      buffer.writeln('� SHIFT COMPLETION BREAKDOWN');
-      buffer.writeln('═' * 35);
+      buffer.writeln('📍 By Location:');
 
+      // Group by location for cleaner display
+      final locationGroups = <String, List<Map<String, dynamic>>>{};
       for (final shift in shiftCompletions) {
-        final shiftName = shift['shiftName'] ?? 'Unknown Shift';
         final locationName = shift['locationName'] ?? 'Unknown Location';
-        final shiftTotal = shift['totalTasks'] as int? ?? 0;
-        final shiftCompleted = shift['completedTasks'] as int? ?? 0;
-        final percentage = shift['completionPercentage'] as double? ?? 0.0;
+        locationGroups.putIfAbsent(locationName, () => []).add(shift);
+      }
 
-        buffer.writeln('• $shiftName ($locationName)');
-        buffer.writeln('  $shiftCompleted of $shiftTotal tasks (${percentage.toStringAsFixed(1)}%)');
+      for (final entry in locationGroups.entries) {
+        final locationName = entry.key;
+        final shifts = entry.value;
+
+        if (shifts.length == 1) {
+          final shift = shifts.first;
+          final percentage = shift['completionPercentage'] as double? ?? 0.0;
+          final completed = shift['completedTasks'] as int? ?? 0;
+          final total = shift['totalTasks'] as int? ?? 0;
+          buffer.writeln('• $locationName: ${percentage.toStringAsFixed(0)}% ($completed/$total)');
+        } else {
+          // Multiple shifts at this location
+          final totalCompleted = shifts.fold<int>(0, (sum, s) => sum + (s['completedTasks'] as int? ?? 0));
+          final totalTasks = shifts.fold<int>(0, (sum, s) => sum + (s['totalTasks'] as int? ?? 0));
+          final avgPercentage = totalTasks > 0 ? (totalCompleted / totalTasks * 100) : 0.0;
+          buffer.writeln('• $locationName: ${avgPercentage.toStringAsFixed(0)}% ($totalCompleted/$totalTasks)');
+        }
       }
       buffer.writeln('');
     }
 
-    // Yesterday's missed tasks progress
+    // Yesterday's missed tasks progress (simplified)
     if (yesterdayMissedProgress.isNotEmpty) {
       final totalCarried = yesterdayMissedProgress.fold<int>(
         0,
@@ -461,139 +477,142 @@ class DailySummaryService {
       final totalRemaining = totalCarried - totalCompletedToday;
       final progressPercentage = totalCarried > 0 ? (totalCompletedToday / totalCarried * 100) : 0.0;
 
-      buffer.writeln('📋 YESTERDAY\'S MISSED TASKS PROGRESS');
-      buffer.writeln('═' * 40);
-      buffer.writeln('Total Carried Forward: $totalCarried tasks');
-      buffer.writeln('Completed Today: $totalCompletedToday tasks (${progressPercentage.toStringAsFixed(1)}%)');
-      buffer.writeln('Still Remaining: $totalRemaining tasks');
+      buffer.writeln('♻️ Yesterday\'s Follow-ups:');
+      buffer.writeln('${progressPercentage.toStringAsFixed(0)}% completed ($totalCompletedToday/$totalCarried)');
+      if (totalRemaining > 0) {
+        buffer.writeln('⚠️ $totalRemaining items still need attention');
+      }
       buffer.writeln('');
+    }
 
-      if (yesterdayMissedProgress.length <= 10) {
-        // Show details if reasonable number of items
-        buffer.writeln('Details by Task:');
-        for (final item in yesterdayMissedProgress) {
-          final taskName = item['taskName'] ?? 'Unknown Task';
-          final shiftName = item['shiftName'] ?? 'Unknown Shift';
-          final completed = item['completedToday'] as int? ?? 0;
-          final total = item['totalCarriedForward'] as int? ?? 0;
-          final remaining = item['remainingOpen'] as int? ?? 0;
+    // Highlights section (combining important items)
+    final hasIssues = missedTaskEntries.isNotEmpty || photoBypassed.isNotEmpty;
+    final hasNotes = notesEntries.isNotEmpty;
 
-          if (total > 0) {
-            final taskPercentage = (completed / total * 100).toStringAsFixed(0);
-            buffer.writeln('  • $taskName ($shiftName): $completed/$total completed ($taskPercentage%)');
-            if (remaining > 0) {
-              buffer.writeln('    ⚠️ $remaining still pending');
-            }
-          }
+    if (hasIssues || hasNotes) {
+      buffer.writeln('📋 Key Items:');
+
+      // Show critical issues first (limited to top 3)
+      if (missedTaskEntries.isNotEmpty) {
+        final criticalMissed = missedTaskEntries.take(3);
+        for (final entry in criticalMissed) {
+          buffer.writeln('❌ ${entry['taskName']} (${entry['locationName']})');
+          buffer.writeln('   ${entry['reason']}');
+        }
+        if (missedTaskEntries.length > 3) {
+          buffer.writeln('   ... and ${missedTaskEntries.length - 3} more missed tasks');
+        }
+        buffer.writeln('');
+      }
+
+      // Show photo bypassed (limited to top 2)
+      if (photoBypassed.isNotEmpty) {
+        final criticalPhotos = photoBypassed.take(2);
+        for (final entry in criticalPhotos) {
+          buffer.writeln('📷 ${entry['taskName']} - photo required but skipped');
+          buffer.writeln('   ${entry['locationName']} by ${entry['userName']}');
+        }
+        if (photoBypassed.length > 2) {
+          buffer.writeln('   ... and ${photoBypassed.length - 2} more missing photos');
+        }
+        buffer.writeln('');
+      }
+
+      // Show important notes (limited to top 2)
+      if (notesEntries.isNotEmpty) {
+        final importantNotes = notesEntries.take(2);
+        for (final entry in importantNotes) {
+          buffer.writeln('📝 ${entry['taskName']} (${entry['locationName']})');
+          buffer.writeln('   "${entry['notes']}" - ${entry['userName']}');
+        }
+        if (notesEntries.length > 2) {
+          buffer.writeln('   ... and ${notesEntries.length - 2} more notes');
         }
         buffer.writeln('');
       }
     }
 
-    // Task notes section
-    if (notesEntries.isNotEmpty) {
-      buffer.writeln('📝 TASK NOTES (${notesEntries.length})');
-      buffer.writeln('═' * 30);
-
-      for (int i = 0; i < notesEntries.length; i++) {
-        final entry = notesEntries[i];
-        buffer.writeln('${i + 1}. ${entry['taskName']}');
-        buffer.writeln('   Shift: ${entry['shiftName']}');
-        buffer.writeln('   Location: ${entry['locationName']}');
-        buffer.writeln('   User: ${entry['userName']}');
-        buffer.writeln('   Notes: ${entry['notes']}');
-
-        if (entry['completedAt'] != null) {
-          try {
-            final completedAt = (entry['completedAt'] as Timestamp).toDate();
-            final timeStr = DateFormat('h:mm a').format(completedAt);
-            buffer.writeln('   Time: $timeStr');
-          } catch (e) {
-            // Handle timestamp parsing error
-          }
-        }
-
-        if (i < notesEntries.length - 1) {
-          buffer.writeln('');
-        }
-      }
-      buffer.writeln('');
+    // Action items and next steps
+    buffer.writeln('🎯 Next Steps:');
+    final actionItems = _generateActionItems(
+      overallPercentage,
+      missedTaskEntries.length,
+      photoBypassed.length,
+      yesterdayMissedProgress.isNotEmpty,
+    );
+    for (final action in actionItems) {
+      buffer.writeln('• $action');
     }
 
-    // Missed tasks with reasons
-    if (missedTaskEntries.isNotEmpty) {
-      buffer.writeln('⚠️ MISSED TASKS WITH REASONS (${missedTaskEntries.length})');
-      buffer.writeln('═' * 40);
-
-      for (int i = 0; i < missedTaskEntries.length; i++) {
-        final entry = missedTaskEntries[i];
-        buffer.writeln('${i + 1}. ${entry['taskName']}');
-        buffer.writeln('   Shift: ${entry['shiftName']}');
-        buffer.writeln('   Location: ${entry['locationName']}');
-        buffer.writeln('   Reason: ${entry['reason']}');
-
-        if (i < missedTaskEntries.length - 1) {
-          buffer.writeln('');
-        }
-      }
-      buffer.writeln('');
-    }
-
-    // Photo bypassed section
-    if (photoBypassed.isNotEmpty) {
-      buffer.writeln('📸 PHOTO REQUIRED BUT BYPASSED (${photoBypassed.length})');
-      buffer.writeln('═' * 45);
-
-      for (int i = 0; i < photoBypassed.length; i++) {
-        final entry = photoBypassed[i];
-        buffer.writeln('${i + 1}. ${entry['taskName']}');
-        buffer.writeln('   Shift: ${entry['shiftName']}');
-        buffer.writeln('   Location: ${entry['locationName']}');
-        buffer.writeln('   User: ${entry['userName']}');
-
-        if (entry['completedAt'] != null) {
-          try {
-            final completedAt = (entry['completedAt'] as Timestamp).toDate();
-            final timeStr = DateFormat('h:mm a').format(completedAt);
-            buffer.writeln('   Completed: $timeStr');
-          } catch (e) {
-            // Handle timestamp parsing error
-          }
-        }
-
-        if (i < photoBypassed.length - 1) {
-          buffer.writeln('');
-        }
-      }
-      buffer.writeln('');
-    }
-
-    // Summary footer
-    buffer.writeln('━' * 50);
-    buffer.writeln('📈 SUMMARY');
-    buffer.writeln('Overall Completion: ${overallPercentage.toStringAsFixed(1)}%');
-    if (notesEntries.isNotEmpty) {
-      buffer.writeln('📝 Notes: ${notesEntries.length}');
-    }
-    if (missedTaskEntries.isNotEmpty) {
-      buffer.writeln('⚠️ Missed with Reasons: ${missedTaskEntries.length}');
-    }
-    if (photoBypassed.isNotEmpty) {
-      buffer.writeln('📸 Photos Bypassed: ${photoBypassed.length}');
-    }
-    if (yesterdayMissedProgress.isNotEmpty) {
-      final totalCarried = yesterdayMissedProgress.fold<int>(
-        0,
-        (total, item) => total + (item['totalCarriedForward'] as int? ?? 0),
-      );
-      final totalCompletedToday = yesterdayMissedProgress.fold<int>(
-        0,
-        (total, item) => total + (item['completedToday'] as int? ?? 0),
-      );
-      buffer.writeln('📋 Yesterday Missed Progress: $totalCompletedToday/$totalCarried completed');
-    }
+    buffer.writeln('');
+    buffer.writeln('📱 View full details in the app');
 
     return buffer.toString();
+  }
+
+  /// Generate performance emoji based on completion percentage
+  String _getPerformanceEmoji(double percentage) {
+    if (percentage >= 95) return '🎉';
+    if (percentage >= 85) return '✅';
+    if (percentage >= 70) return '👍';
+    if (percentage >= 50) return '⚠️';
+    return '🚨';
+  }
+
+  /// Generate performance message based on completion percentage and context
+  String _getPerformanceMessage(double percentage, int totalTasks) {
+    if (totalTasks == 0) {
+      return 'No tasks scheduled for this day.';
+    }
+
+    if (percentage >= 95) {
+      return 'Outstanding work! Nearly perfect completion rate.';
+    } else if (percentage >= 85) {
+      return 'Great job! Strong performance across all areas.';
+    } else if (percentage >= 70) {
+      return 'Good progress! A few items need attention.';
+    } else if (percentage >= 50) {
+      return 'Mixed results. Several areas need follow-up.';
+    } else {
+      return 'Action needed! Many tasks require immediate attention.';
+    }
+  }
+
+  /// Generate actionable next steps based on the day's performance
+  List<String> _generateActionItems(double percentage, int missedCount, int photoCount, bool hasPreviousMissed) {
+    final actions = <String>[];
+
+    if (percentage >= 95) {
+      actions.add('Keep up the excellent work!');
+      if (photoCount > 0) {
+        actions.add('Remind team about photo requirements');
+      }
+    } else if (percentage >= 85) {
+      actions.add('Review and address any missed tasks');
+      if (photoCount > 0) {
+        actions.add('Follow up on missing photos');
+      }
+    } else if (percentage >= 70) {
+      actions.add('Schedule team check-in for missed tasks');
+      actions.add('Review task completion procedures');
+    } else {
+      actions.add('Urgent: Schedule immediate team meeting');
+      actions.add('Review training needs and procedures');
+      if (missedCount > 5) {
+        actions.add('Consider adjusting task loads or schedules');
+      }
+    }
+
+    if (hasPreviousMissed) {
+      actions.add('Follow up on yesterday\'s outstanding items');
+    }
+
+    // Always include app reminder
+    if (actions.length > 3) {
+      actions.add('Check app for complete task details');
+    }
+
+    return actions.take(4).toList(); // Limit to 4 actions max
   }
 
   /// Send notification to all admin users

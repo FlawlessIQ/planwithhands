@@ -19,7 +19,9 @@ import 'package:hands_app/pages/sign_in_page.dart';
 import 'package:hands_app/pages/welcome_page.dart';
 import 'package:hands_app/pages/payment_success_page.dart';
 import 'package:hands_app/pages/payment_cancelled_page.dart';
+import 'package:hands_app/pages/not_available_ios_page.dart';
 import 'package:hands_app/ui/schedule_page.dart';
+import 'package:hands_app/core/platform_ios.dart';
 
 // Make sure that the NotificationsPage class is defined in notifications_page.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -460,6 +462,16 @@ GoRouter buildAppRouter(Ref ref) {
         logger.d('[ROUTER_DEBUG] Query Params: ${state.uri.queryParameters}');
         logger.d('[ROUTER_DEBUG] ==========================================');
 
+        // iOS App Store compliance - block restricted routes
+        if (isIOS) {
+          final restrictedPaths = ['/create_account', '/pricing', '/billing', '/signup', '/subscription'];
+
+          if (restrictedPaths.any((path) => routerPath.startsWith(path))) {
+            logger.d('[ROUTER] iOS compliance: blocking restricted path $routerPath');
+            return '/not-available-ios';
+          }
+        }
+
         // AGGRESSIVE BROWSER URL PARSING
         logger.d('[ROUTER] Browser path: ${browserUri.path}');
         logger.d('[ROUTER] Router path: $routerPath');
@@ -522,9 +534,15 @@ GoRouter buildAppRouter(Ref ref) {
         GoRoute(
           path: AppRoutes.accountCreationPage.path,
           builder: (context, state) {
+            // iOS compliance: block signup page
+            if (isIOS) {
+              return const NotAvailableOnIOSPage(requestedFeature: 'Account creation');
+            }
             return const branded.SimpleSignUpPage();
           },
         ),
+        // iOS compliance route
+        GoRoute(path: '/not-available-ios', builder: (context, state) => const NotAvailableOnIOSPage()),
         GoRoute(path: AppRoutes.loginPage.path, builder: (context, state) => const LoginPage()),
         GoRoute(path: AppRoutes.signInPage.path, builder: (context, state) => const SignInPage()),
         GoRoute(

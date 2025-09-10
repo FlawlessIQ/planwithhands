@@ -3,9 +3,13 @@ import * as admin from "firebase-admin";
 import {DateTime} from "luxon";
 import * as crypto from "crypto";
 import {FirestoreTTLHelper} from "./firestoreTTLHelper";
+import {Firestore} from "@google-cloud/firestore";
 
-// Don't initialize admin here - it's already initialized in index.ts
-const db = admin.firestore();
+// Ensure we use the correct Firestore database (multi-db projects)
+const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || "planwithhands";
+
+// Use a Firestore instance explicitly bound to the target database
+const db = new Firestore({ databaseId: FIRESTORE_DATABASE_ID });
 
 // Helper: add days to a JS Date
 /**

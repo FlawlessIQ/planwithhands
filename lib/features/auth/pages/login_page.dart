@@ -12,9 +12,7 @@ import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/global_widgets/hands_icon.dart';
 import 'package:hands_app/state/user_state.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'dart:io' show Platform;
-import 'package:url_launcher/url_launcher.dart';
+import 'package:hands_app/core/platform_ios.dart';
 
 class LoginPage extends HookConsumerWidget {
   const LoginPage({super.key});
@@ -154,47 +152,30 @@ class LoginPage extends HookConsumerWidget {
 
   // Method to build the sign-up section based on platform
   Widget _buildSignUpSection(BuildContext context) {
-    if (!kIsWeb && Platform.isIOS) {
-      // iOS native: show modal link instead of navigation
-      return GestureDetector(
-        onTap: () {
-          showDialog(
-            context: context,
-            builder:
-                (context) => AlertDialog(
-                  title: Text('Create an Account'),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('To create an account for your organization, please visit:', textAlign: TextAlign.center),
-                      SizedBox(height: 8),
-                      GestureDetector(
-                        onTap: () async {
-                          final url = Uri.parse('https://planwithhands.com');
-                          if (await canLaunchUrl(url)) {
-                            await launchUrl(url, mode: LaunchMode.externalApplication);
-                          }
-                        },
-                        child: SelectableText(
-                          'https://planwithhands.com',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.blue, decoration: TextDecoration.underline),
-                        ),
-                      ),
-                      SizedBox(height: 12),
-                      Text(
-                        'If you are trying to log in to an existing organization, please contact your manager to send you an invite.',
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                  actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: Text('Close'))],
-                ),
-          );
-        },
-        child: Padding(
-          padding: const EdgeInsets.only(top: 16.0),
-          child: Text('Need an account?', style: TextStyle(color: Colors.blue)),
+    if (isIOS) {
+      // iOS: Show neutral messaging without external signup links (App Store compliance)
+      return Container(
+        padding: const EdgeInsets.all(16.0),
+        decoration: BoxDecoration(
+          color: HandsColors.secondaryContainer,
+          borderRadius: BorderRadius.circular(12.0),
+          border: Border.all(color: HandsColors.white12),
+        ),
+        child: Column(
+          children: [
+            Icon(Icons.info_outline, color: HandsColors.handsOrange, size: 24),
+            const SizedBox(height: 12),
+            Text(
+              'Need Access?',
+              style: GoogleFonts.comfortaa(fontSize: 16, fontWeight: FontWeight.bold, color: HandsColors.white),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'If you need to access an existing organization, please contact your manager to send you an invite.',
+              style: GoogleFonts.comfortaa(fontSize: 14, fontWeight: FontWeight.normal, color: HandsColors.white70),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       );
     } else {
