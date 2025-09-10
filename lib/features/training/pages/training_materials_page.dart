@@ -13,12 +13,12 @@ import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:video_player/video_player.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/global_widgets/hands_icon.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/ui/UploadDocumentBottomSheet.dart';
+import 'package:hands_app/widgets/pdf_inline_viewer.dart';
 
 class ViewDocumentsPage extends HookConsumerWidget {
   const ViewDocumentsPage({super.key});
@@ -237,26 +237,32 @@ class ViewDocumentsPage extends HookConsumerWidget {
       body: Column(
         children: [
           // Category Filter
-          SizedBox(
-            height: 50,
+          Container(
+            height: 42,
+            margin: const EdgeInsets.symmetric(vertical: 6),
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               scrollDirection: Axis.horizontal,
               itemCount: categories.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              separatorBuilder: (_, __) => const SizedBox(width: 6),
               itemBuilder: (context, index) {
                 final category = categories[index];
                 final isSelected = selectedCategory.value == category;
 
                 return ChoiceChip(
-                  label: Text(category),
+                  label: Text(
+                    category,
+                    style: TextStyle(fontSize: 12, fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400),
+                  ),
                   selected: isSelected,
                   onSelected: (_) => selectedCategory.value = category,
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 );
               },
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 6),
           // Documents List
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
@@ -282,8 +288,8 @@ class ViewDocumentsPage extends HookConsumerWidget {
                 final docs = snapshotData.docs;
 
                 return ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  separatorBuilder: (_, __) => const SizedBox(height: 6),
                   itemCount: docs.length,
                   itemBuilder: (context, index) {
                     final doc = docs[index];
@@ -312,15 +318,33 @@ class ViewDocumentsPage extends HookConsumerWidget {
                     }
 
                     return Card(
+                      margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
                       child: ListTile(
-                        leading: Icon(icon, size: 36, color: Theme.of(context).primaryColor),
-                        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
+                        dense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        leading: Icon(icon, size: 24, color: Theme.of(context).primaryColor),
+                        title: Text(
+                          title,
+                          style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(subtitle),
+                            Text(
+                              subtitle,
+                              style: const TextStyle(fontSize: 12),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                             if (fileName.isNotEmpty)
-                              Text(fileName, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                              Text(
+                                fileName,
+                                style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                           ],
                         ),
                         trailing: Row(
@@ -328,17 +352,19 @@ class ViewDocumentsPage extends HookConsumerWidget {
                           children: [
                             if (userRole == 2) ...[
                               IconButton(
-                                icon: const Icon(Icons.edit),
+                                icon: const Icon(Icons.edit, size: 18),
                                 tooltip: 'Edit',
+                                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                                 onPressed: () => showUploadSheet(docId: doc.id, docData: data),
                               ),
                               IconButton(
-                                icon: const Icon(Icons.delete),
+                                icon: const Icon(Icons.delete, size: 18),
                                 tooltip: 'Delete',
+                                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                                 onPressed: () => deleteDocument(doc.id),
                               ),
                             ],
-                            const Icon(Icons.arrow_forward),
+                            Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey.shade400),
                           ],
                         ),
                         onTap:
@@ -600,37 +626,34 @@ class DocumentViewerPage extends HookWidget {
   }
 
   Widget _buildPDFViewer(BuildContext context, String path) {
-    // For web, use an iframe or redirect to external viewer
+    // Use inline viewer on web; fallback to native PDFView elsewhere.
     if (kIsWeb) {
-      return Center(
+      return Padding(
+        padding: const EdgeInsets.all(12),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.picture_as_pdf, size: 64, color: Colors.blue),
-            const SizedBox(height: 16),
-            Text('PDF Preview', style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 8),
-            Text(
-              'Click below to open the PDF in a new tab',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () async {
-                final uri = Uri.parse(path);
-                if (await canLaunchUrl(uri)) {
-                  await launchUrl(uri, mode: LaunchMode.externalApplication);
-                }
-              },
-              icon: const Icon(Icons.open_in_new),
-              label: const Text('Open PDF'),
+            Expanded(child: PdfInlineViewer(url: path)),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final uri = Uri.parse(path);
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    }
+                  },
+                  icon: const Icon(Icons.open_in_new),
+                  label: const Text('Open in New Tab'),
+                ),
+              ],
             ),
           ],
         ),
       );
     }
 
-    // For mobile platforms, use the PDFView widget
     return PDFView(
       filePath: path,
       enableSwipe: true,
@@ -692,67 +715,7 @@ class DocumentViewerPage extends HookWidget {
   }
 
   Widget _buildVideoViewer(BuildContext context, String url) {
-    // For web, use HTML5 video element which is more reliable
-    if (kIsWeb) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Expanded(
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 800),
-                child: AspectRatio(
-                  aspectRatio: 16 / 9, // Default aspect ratio
-                  child: Container(
-                    decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(8)),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: HtmlElementView(
-                        viewType: 'video-${url.hashCode}',
-                        onPlatformViewCreated: (id) {
-                          // Web video element will be created
-                        },
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ElevatedButton.icon(
-                  onPressed: () async {
-                    final uri = Uri.parse(url);
-                    if (await canLaunchUrl(uri)) {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
-                    }
-                  },
-                  icon: const Icon(Icons.open_in_new),
-                  label: const Text('Open in New Tab'),
-                ),
-                const SizedBox(width: 16),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    await Clipboard.setData(ClipboardData(text: url));
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(
-                        context,
-                      ).showSnackBar(const SnackBar(content: Text('Video URL copied to clipboard')));
-                    }
-                  },
-                  icon: const Icon(Icons.copy),
-                  label: const Text('Copy URL'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      );
-    }
-
-    // For mobile, use the existing VideoPlayerWidget
+    // Use the existing VideoPlayerWidget for all platforms to keep UI consistent.
     return VideoPlayerWidget(url: url);
   }
 

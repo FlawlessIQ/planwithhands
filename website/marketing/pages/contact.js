@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import SEO from '../components/SEO'
 
 export default function Contact() {
   const [name, setName] = useState('')
@@ -60,7 +61,33 @@ Received at: ${new Date().toISOString()}`
     }
   }
 
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "ContactPage",
+    "name": "Contact Plan With Hands",
+    "description": "Get in touch with Plan With Hands for restaurant management software questions, demos, and support.",
+    "url": "https://planwithhands.com/contact/",
+    "mainEntity": {
+      "@type": "Organization",
+      "name": "Plan With Hands",
+      "contactPoint": {
+        "@type": "ContactPoint",
+        "contactType": "customer service",
+        "email": "support@planwithhands.com",
+        "url": "https://planwithhands.com/contact/"
+      }
+    }
+  };
+
   return (
+    <>
+      <SEO
+        title="Contact Us - Plan With Hands | Restaurant Management Software Support"
+        description="Contact Plan With Hands for restaurant management software questions, demos, and support. Email support@planwithhands.com or use our contact form."
+        canonical="https://planwithhands.com/contact/"
+        structuredData={structuredData}
+        keywords="contact plan with hands, restaurant software support, demo request, customer service, restaurant management help"
+      />
     <div className="container mx-auto py-12 sm:py-16 md:py-20 px-4 sm:px-6">
       <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 sm:mb-6 text-center leading-tight">Contact Us</h1>
       <p className="text-white/80 text-center mb-8 sm:mb-12 text-sm sm:text-base px-2">
@@ -82,5 +109,6 @@ Received at: ${new Date().toISOString()}`
         </button>
       </form>
     </div>
+    </>
   )
 }

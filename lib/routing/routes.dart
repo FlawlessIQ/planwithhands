@@ -464,19 +464,8 @@ GoRouter buildAppRouter(Ref ref) {
         logger.d('[ROUTER] Browser path: ${browserUri.path}');
         logger.d('[ROUTER] Router path: $routerPath');
 
-        // CRITICAL FIX: Handle direct navigation to create_account from marketing site
-        if (browserUri.path.contains('/create_account') && routerPath != AppRoutes.accountCreationPage.path) {
-          logger.d('[ROUTER] *** FORCING SIGNUP NAVIGATION ***');
-          logger.d('[ROUTER] Redirecting to: ${AppRoutes.accountCreationPage.path}');
-          return AppRoutes.accountCreationPage.path;
-        }
-
-        // CRITICAL FIX: Handle direct navigation to login from marketing site
-        if (browserUri.path.contains('/login') && routerPath != AppRoutes.loginPage.path) {
-          logger.d('[ROUTER] *** FORCING LOGIN NAVIGATION ***');
-          logger.d('[ROUTER] Redirecting to: ${AppRoutes.loginPage.path}');
-          return AppRoutes.loginPage.path;
-        }
+        // Don't interfere with normal navigation between login and account creation
+        // Only handle specific redirect cases if needed
 
         // If browser shows welcome but router doesn't, force welcome navigation
         if (browserUri.path == '/welcome' && routerPath != '/welcome') {

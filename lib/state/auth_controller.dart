@@ -171,6 +171,10 @@ class AuthController extends _$AuthController {
         try {
           final permissionResult = await PushNotificationService().requestPermission();
           debugPrint('[AUTH_CONTROLLER] Notification permission result: ${permissionResult.name}');
+          if (permissionResult.isGranted) {
+            // Ensure token is persisted/cleaned up and registered for messaging
+            await PushNotificationService().ensureRegistered();
+          }
         } catch (e) {
           debugPrint('[AUTH_CONTROLLER] Notification permission request failed: $e');
         }

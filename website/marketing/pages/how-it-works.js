@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import SEO from '../components/SEO'
 
 const admin = [
   { 
@@ -151,6 +152,50 @@ function ModernTimeline({ steps, title, subtitle, variant = 'admin' }) {
 }
 
 export default function HowItWorks() {
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "How to Set Up Restaurant Management with Plan With Hands",
+    "description": "Step-by-step guide to implementing Plan With Hands restaurant management software for digital checklists, team communication, and operational excellence.",
+    "url": "https://planwithhands.com/how-it-works/",
+    "step": [
+      {
+        "@type": "HowToStep",
+        "name": "Sign up & setup",
+        "text": "Create your organization, add locations, and access the admin dashboard to configure everything."
+      },
+      {
+        "@type": "HowToStep", 
+        "name": "Define operations",
+        "text": "Set up shifts, roles, and assign checklists with tasks to each location and shift."
+      },
+      {
+        "@type": "HowToStep",
+        "name": "Invite your team", 
+        "text": "Add managers and staff—invites prompt mobile app download and account setup."
+      },
+      {
+        "@type": "HowToStep",
+        "name": "Centralize documents",
+        "text": "Upload training materials, SOPs, and procedures so everyone sees the latest version."
+      },
+      {
+        "@type": "HowToStep",
+        "name": "Go live & manage",
+        "text": "Monitor completion in real-time, view photos/notes, spot misses, and message your team."
+      }
+    ]
+  };
+
+  return (
+    <>
+      <SEO
+        title="How It Works - Plan With Hands | Restaurant Management Implementation Guide"
+        description="Learn how to implement Plan With Hands restaurant management software. Step-by-step guide for digital checklists, team communication, and operational excellence."
+        canonical="https://planwithhands.com/how-it-works/"
+        structuredData={structuredData}
+        keywords="how restaurant management software works, implementation guide, restaurant operations setup, digital checklist implementation, team management setup"
+      />
   return (
     <div>
       {/* Hero Section */}
@@ -244,5 +289,6 @@ export default function HowItWorks() {
         </div>
       </section>
     </div>
+    </>
   )
 }

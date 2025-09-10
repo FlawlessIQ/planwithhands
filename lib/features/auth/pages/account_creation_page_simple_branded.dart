@@ -737,7 +737,13 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                   Center(
                     child: TextButton(
                       onPressed: () {
-                        context.go(AppRoutes.loginPage.path);
+                        debugPrint('[ACCOUNT_CREATION] Navigating to login page: ${AppRoutes.loginPage.path}');
+                        try {
+                          context.go(AppRoutes.loginPage.path);
+                          debugPrint('[ACCOUNT_CREATION] Navigation triggered successfully');
+                        } catch (e) {
+                          debugPrint('[ACCOUNT_CREATION] Navigation error: $e');
+                        }
                       },
                       child: const Text(
                         'Already have an account? Sign in',

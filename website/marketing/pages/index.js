@@ -1,49 +1,62 @@
 import Link from 'next/link'
 import Image from 'next/image'
-import Head from 'next/head'
+import SEO from '../components/SEO'
 
 export default function Home() {
   const signupUrl = '/app-signup';
+  
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Plan With Hands",
+    "alternateName": "Hands App",
+    "description": "Restaurant operations management software with digital checklists, team messaging, training documents, and real-time insights. No hardware needed.",
+    "url": "https://planwithhands.com",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "iOS, Android, Web",
+    "offers": {
+      "@type": "Offer",
+      "price": "69.99",
+      "priceCurrency": "USD",
+      "priceSpecification": {
+        "@type": "UnitPriceSpecification",
+        "price": "69.99",
+        "priceCurrency": "USD",
+        "unitText": "MONTH"
+      }
+    },
+    "provider": {
+      "@type": "Organization",
+      "name": "Plan With Hands",
+      "url": "https://planwithhands.com",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://planwithhands.com/images/favicon-192.png"
+      }
+    },
+    "aggregateRating": {
+      "@type": "AggregateRating",
+      "ratingValue": "4.8",
+      "ratingCount": "127"
+    },
+    "featureList": [
+      "Digital Checklists",
+      "Team Messaging", 
+      "Training Documents",
+      "Real-time Analytics",
+      "Multi-location Management"
+    ]
+  };
+
   return (
     <>
-      <Head>
-        <title>Plan With Hands - Restaurant Operations Management Software</title>
-        <meta name="description" content="Transform restaurant operations with Hands - digital checklists, team messaging, training documents, and real-time insights. No hardware needed. Start your free trial today." />
-        <meta property="og:title" content="Plan With Hands - Restaurant Operations Management Software" />
-        <meta property="og:description" content="Transform restaurant operations with Hands - digital checklists, team messaging, training documents, and real-time insights. No hardware needed." />
-        <link rel="canonical" href="https://planwithhands.com/" />
-        
-        {/* Structured Data for Restaurant Software */}
-        <script type="application/ld+json">
-          {`
-            {
-              "@context": "https://schema.org",
-              "@type": "SoftwareApplication",
-              "name": "Plan With Hands",
-              "description": "Restaurant operations management software with digital checklists, team messaging, and real-time insights",
-              "url": "https://planwithhands.com",
-              "applicationCategory": "Restaurant Management Software",
-              "operatingSystem": "Web, iOS, Android",
-              "offers": {
-                "@type": "Offer",
-                "price": "69.99",
-                "priceCurrency": "USD",
-                "priceSpecification": {
-                  "@type": "UnitPriceSpecification",
-                  "price": "69.99",
-                  "priceCurrency": "USD",
-                  "unitText": "MONTH"
-                }
-              },
-              "provider": {
-                "@type": "Organization",
-                "name": "Plan With Hands",
-                "url": "https://planwithhands.com"
-              }
-            }
-          `}
-        </script>
-      </Head>
+      <SEO
+        title="Plan With Hands - Restaurant Task & Team Management Software"
+        description="Transform restaurant operations with Hands - digital checklists, team messaging, training documents, and real-time insights. No hardware needed. Start your free trial today."
+        canonical="https://planwithhands.com/"
+        structuredData={structuredData}
+        keywords="restaurant management software, digital checklists, restaurant operations, team communication, food service software, restaurant technology, operational excellence, task management"
+      />
       <div>
       {/* Hero Section */}
       <section className="relative px-4 sm:px-6 py-16 sm:py-20 md:py-32 overflow-hidden">

@@ -385,7 +385,13 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
 
       setState(() {
         _availableLocations = locations;
-        if ((_selectedLocationId == null || !_availableLocations.any((l) => l['id'] == _selectedLocationId)) &&
+        // If a selected location id already exists and is in the loaded list, set its name
+        if (_selectedLocationId != null && _availableLocations.any((l) => l['id'] == _selectedLocationId)) {
+          _selectedLocationName =
+              _availableLocations.firstWhere((l) => l['id'] == _selectedLocationId)['name'] as String?;
+        }
+        // Otherwise, if no valid selection exists, auto-select the primary/first location
+        else if ((_selectedLocationId == null || !_availableLocations.any((l) => l['id'] == _selectedLocationId)) &&
             _availableLocations.isNotEmpty) {
           final primary = _availableLocations.firstWhere(
             (l) => l['isPrimary'] == true,
@@ -882,7 +888,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
             ),
             const DataColumn(label: Text('Checklists')),
             const DataColumn(label: Text('Schedule')),
-            const DataColumn(label: Text('Locations')),
+            // Locations column removed - locations are now managed uniquely and should not be displayed here
             const DataColumn(label: Text('Status')),
             const DataColumn(label: Text('Actions')),
           ],
@@ -894,18 +900,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
   }
 
   DataRow _buildShiftRow(Map<String, dynamic> shift) {
-    final locationIds =
-        (shift['locations'] as List? ?? []).map((e) => e.toString()).where((e) => e.isNotEmpty).toList();
-    final locationNames = locationIds
-        .map((id) {
-          final location = _availableLocations.firstWhere(
-            (loc) => loc['id'] == id,
-            orElse: () => {'name': 'Unknown Location'},
-          );
-          return location['name'] as String;
-        })
-        .where((name) => name.isNotEmpty)
-        .join(', ');
+    // Location IDs and names intentionally not used in web shifts table (locations are managed uniquely)
 
     // Format time as "10:00am - 3:00pm"
     String formatTime(String time) {
@@ -960,15 +955,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
             child: Text(_formatSchedule(shift), style: GoogleFonts.comfortaa(color: HandsColors.white70)),
           ),
         ),
-        DataCell(
-          SizedBox(
-            width: 150, // Give it a width to wrap
-            child: Text(
-              locationNames.isNotEmpty ? locationNames : 'No locations',
-              style: GoogleFonts.comfortaa(color: HandsColors.white70),
-            ),
-          ),
-        ),
+        // Locations cell removed - do not display location names in shifts table
         DataCell(
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

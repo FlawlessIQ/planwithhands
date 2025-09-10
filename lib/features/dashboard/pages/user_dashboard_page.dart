@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'dart:async';
@@ -12,6 +11,8 @@ import 'package:hands_app/services/daily_checklist_service.dart';
 // removed unused imports - dialogs now use DailyChecklistService directly
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
+import 'package:hands_app/global_widgets/location_selector.dart' show setCurrentLocation;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/utils/location_helper.dart';
@@ -156,12 +157,14 @@ class UserDashboardPage extends HookConsumerWidget {
                   .collection('locations')
                   .get();
           locationIds = locationsSnapshot.docs.map((doc) => doc.id).toList();
-        } else if (userRoleValue == 1 && userData['locationIds'] != null) {
-          // Manager - get assigned locations (coerce to list if needed)
-          locationIds = coerceToLocationIds(userData['locationIds']);
-        } else if (userData['locationId'] != null) {
-          // General user - get single location (coerce to list for safety)
-          locationIds = coerceToLocationIds(userData['locationId']);
+        } else {
+          // Non-admin users (managers and staff): prefer explicit locationIds if present,
+          // otherwise fall back to single locationId for backwards compatibility.
+          if (userData['locationIds'] != null) {
+            locationIds = coerceToLocationIds(userData['locationIds']);
+          } else if (userData['locationId'] != null) {
+            locationIds = coerceToLocationIds(userData['locationId']);
+          }
         }
 
         // Load location details for all locations
@@ -388,7 +391,17 @@ class UserDashboardPage extends HookConsumerWidget {
         for (int i = 0; i < foundShifts.length; i++) {
           final shift = foundShifts[i];
           final locationId = selectedLocationIds.value[i];
-          final checklists = await _loadChecklistsForShiftSimple(shift, locationId, todayString, organizationId.value!);
+          debugPrint(
+            '[Dashboard] Calling _loadChecklistsForShiftSimple for shift "${shift.shiftName}". User role: ${userRole.value}, Job types: ${userJobTypes.value}',
+          );
+          final checklists = await _loadChecklistsForShiftSimple(
+            shift,
+            locationId,
+            todayString,
+            organizationId.value!,
+            userRole: userRole.value,
+            userJobTypes: userJobTypes.value,
+          );
           checklistGroups.add(checklists);
         }
         allChecklists.value = checklistGroups;
@@ -644,26 +657,15 @@ class UserDashboardPage extends HookConsumerWidget {
           .collection('shifts')
           .where('locationIds', arrayContains: selectedLocationId.value);
 
-      final isAdminMgr = _isManagerOrAdmin(userRole.value);
-      if (!isAdminMgr && userJobTypes.value.isNotEmpty) {
-        try {
-          // Narrow server-side when possible; prefer array-contains-any for multiple job types
-          q = q.where('jobTypes', arrayContainsAny: userJobTypes.value);
-        } catch (_) {
-          try {
-            q = q.where('jobType', isEqualTo: userJobTypes.value.first);
-          } catch (_) {
-            // Ignore server-side narrowing failures and fall back to client-side filter
-          }
-        }
-      }
+      // Do not apply jobType-based narrowing on shifts. Shifts are visible to all users.
 
       final sub = q.snapshots().listen((snap) {
         final out = <Map<String, dynamic>>[];
         for (final d in snap.docs) {
           final data = Map<String, dynamic>.from(d.data());
           data['id'] = d.id;
-          if (isAdminMgr || matchesUserJobTypeLocal(data)) out.add(data);
+          // Shifts are visible to all users regardless of jobTypes.
+          out.add(data);
         }
         shifts.value = out;
 
@@ -802,6 +804,8 @@ class UserDashboardPage extends HookConsumerWidget {
                     locationId,
                     today,
                     organizationId.value!,
+                    userRole: userRole.value,
+                    userJobTypes: userJobTypes.value,
                   );
 
                   // Merge: preserve already hydrated tasks if the reloaded version has fewer (likely due to race)
@@ -983,7 +987,8 @@ class UserDashboardPage extends HookConsumerWidget {
           Padding(
             padding: const EdgeInsets.only(right: 8.0),
             child: PopupMenuButton<String>(
-              enabled: availableLocations.value.isNotEmpty,
+              // Only enable when multiple allowed locations are available
+              enabled: availableLocations.value.length > 1,
               onSelected: (value) async {
                 selectedLocationId.value = value;
                 final selected = availableLocations.value.firstWhere(
@@ -997,6 +1002,24 @@ class UserDashboardPage extends HookConsumerWidget {
                 try {
                   LocationSelectionService.instance.setLocation(value);
                 } catch (_) {}
+
+                // Persist to user doc so selection survives across devices
+                try {
+                  final user = FirebaseAuth.instance.currentUser;
+                  if (user != null) {
+                    final locRef = FirestoreEnforcer.instance
+                        .collection('organizations')
+                        .doc(organizationId.value)
+                        .collection('locations')
+                        .doc(value);
+                    await setCurrentLocation(uid: user.uid, locationRef: locRef, locationName: selected['name']);
+                    // Telemetry: location switch selected
+                    logger.d('[Analytics] location_switch_selected: user=${user.uid}, location=${locRef.id}');
+                  }
+                } catch (e) {
+                  logger.w('[Dashboard] Failed to persist current location to user doc: $e');
+                }
+
                 await loadDashboardData(resetData: true); // explicit reset for location switch
               },
               itemBuilder:
@@ -1098,177 +1121,175 @@ class UserDashboardPage extends HookConsumerWidget {
                       // ...existing code...
                       if (errorMessage.value != null) _InfoCard(message: errorMessage.value!, color: Colors.red),
 
-                      // Available Shifts button at top
-                      if (enableScheduling)
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            ElevatedButton.icon(
-                              icon: const Icon(Icons.volunteer_activism),
-                              label: const Text("Available Shifts"),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Theme.of(context).primaryColor,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                              ),
-                              onPressed: () async {
-                                logger.d("[Dashboard] Available Shifts button pressed");
-                                final result = await showDialog<Map<String, dynamic>>(
-                                  context: context,
-                                  builder:
-                                      (_) => _HelpOutDialog(
-                                        organizationId: organizationId.value ?? '',
-                                        todayDayName: todayDayName,
-                                        selectedLocationId: selectedLocationId.value,
-                                        selectedLocationName: selectedLocationName.value ?? 'Unknown Location',
-                                      ),
-                                );
+                      // Instructional text (hide when there is an active assigned shift)
+                      if (assignedShifts.value.isEmpty) _InstructionCard(),
+                      const SizedBox(height: 24),
 
-                                if (result != null) {
-                                  final shift = result['shift'] as ShiftData;
-                                  final locationId = result['locationId'] as String;
+                      // Primary CTA: moved under the blue Help/How-to card
+                      if (enableScheduling && assignedShifts.value.isEmpty) ...[
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.play_arrow_rounded),
+                          label: const Text("Begin Your Shift"),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Theme.of(context).primaryColor,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                          ),
+                          onPressed: () async {
+                            logger.d("[Dashboard] Available Shifts button pressed");
+                            final result = await showDialog<Map<String, dynamic>>(
+                              context: context,
+                              builder:
+                                  (_) => _HelpOutDialog(
+                                    organizationId: organizationId.value ?? '',
+                                    todayDayName: todayDayName,
+                                    selectedLocationId: selectedLocationId.value,
+                                    selectedLocationName: selectedLocationName.value ?? 'Unknown Location',
+                                    availableLocations: availableLocations.value,
+                                  ),
+                            );
 
-                                  logger.d(
-                                    "[Dashboard] User chose to help with shift '${shift.shiftName}' at location '$locationId'",
+                            if (result != null) {
+                              final shift = result['shift'] as ShiftData;
+                              final locationId = result['locationId'] as String;
+
+                              logger.d(
+                                "[Dashboard] User chose to help with shift '${shift.shiftName}' at location '$locationId'",
+                              );
+
+                              // Add user to shift's volunteers array using centralized service
+                              final user = FirebaseAuth.instance.currentUser;
+                              if (user != null) {
+                                try {
+                                  final shiftAssignmentService = ShiftAssignmentService();
+
+                                  // Check if already assigned to avoid duplicate operations
+                                  final alreadyAssigned = await shiftAssignmentService.isUserAssignedToShift(
+                                    organizationId: organizationId.value!,
+                                    shiftId: shift.shiftId,
+                                    userId: user.uid,
                                   );
 
-                                  // Add user to shift's volunteers array using centralized service
-                                  final user = FirebaseAuth.instance.currentUser;
-                                  if (user != null) {
-                                    try {
-                                      final shiftAssignmentService = ShiftAssignmentService();
+                                  if (alreadyAssigned) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('You are already signed up for ${shift.shiftName}.'),
+                                        backgroundColor: Colors.orange,
+                                        duration: const Duration(seconds: 2),
+                                      ),
+                                    );
+                                    logger.d("[Dashboard] User already assigned to shift ${shift.shiftId}");
+                                  } else {
+                                    final success = await shiftAssignmentService.joinShift(
+                                      organizationId: organizationId.value!,
+                                      shiftId: shift.shiftId,
+                                      userId: user.uid,
+                                    );
 
-                                      // Check if already assigned to avoid duplicate operations
-                                      final alreadyAssigned = await shiftAssignmentService.isUserAssignedToShift(
-                                        organizationId: organizationId.value!,
-                                        shiftId: shift.shiftId,
-                                        userId: user.uid,
-                                      );
-
-                                      if (alreadyAssigned) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: Text('You are already signed up for ${shift.shiftName}.'),
-                                            backgroundColor: Colors.orange,
-                                            duration: const Duration(seconds: 2),
-                                          ),
-                                        );
-                                        logger.d("[Dashboard] User already assigned to shift ${shift.shiftId}");
-                                      } else {
-                                        final success = await shiftAssignmentService.joinShift(
-                                          organizationId: organizationId.value!,
-                                          shiftId: shift.shiftId,
-                                          userId: user.uid,
-                                        );
-
-                                        if (success) {
-                                          // Show success message
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: Text('Successfully joined ${shift.shiftName}!'),
-                                              backgroundColor: Colors.green,
-                                              duration: const Duration(seconds: 2),
-                                            ),
-                                          );
-                                          logger.d("[Dashboard] Successfully joined shift using centralized service");
-                                        } else {
-                                          throw Exception('Failed to join shift');
-                                        }
-                                      }
-
-                                      // Optimistically ensure the joined shift appears immediately in the UI for the current session.
-                                      try {
-                                        if (!assignedShifts.value.any((s) => s.shiftId == shift.shiftId)) {
-                                          // Insert at the front so it's visible
-                                          final newAssignedShifts = [shift, ...assignedShifts.value];
-                                          assignedShifts.value = newAssignedShifts;
-
-                                          // Set selectedLocationIds accordingly
-                                          final adoptLoc = selectedLocationId.value ?? locationId;
-                                          final newLocationIds = [adoptLoc, ...selectedLocationIds.value];
-                                          selectedLocationIds.value = newLocationIds;
-
-                                          // Load checklists for this shift instantly and prepend
-                                          logger.d(
-                                            "[Dashboard] Optimistically loading checklists for joined shift ${shift.shiftName}",
-                                          );
-                                          final loaded = await _loadChecklistsForShiftSimple(
-                                            shift,
-                                            adoptLoc,
-                                            todayString,
-                                            organizationId.value!,
-                                          );
-                                          final newChecklists = [loaded, ...allChecklists.value];
-                                          allChecklists.value = newChecklists;
-                                          logger.d(
-                                            "[Dashboard] Optimistic update complete. Assigned shifts: ${newAssignedShifts.length}, Checklists: ${newChecklists.length}",
-                                          );
-                                        }
-                                      } catch (e) {
-                                        logger.w('[Dashboard] Optimistic UI update failed: $e');
-                                      }
-
-                                      // Mark this shift as selected in global operational state so its checklists auto-expand
-                                      try {
-                                        ref.read(operationalStateProvider.notifier).selectShift(shift);
-                                      } catch (e) {
-                                        logger.e('[Dashboard] Failed to update OperationalState selectedShift: $e', e);
-                                      }
-
-                                      // If no explicit location selected yet, adopt the shift's location so subsequent reloads
-                                      // filter/associate correctly. Without this, checklist loading may target a placeholder.
-                                      try {
-                                        // Adopt the joined shift's location so the dashboard will show its assigned checklists.
-                                        final shiftLocs = coerceToLocationIds(shift.locationIds);
-                                        final adoptLoc = shiftLocs.isNotEmpty ? shiftLocs.first : locationId;
-                                        if (selectedLocationId.value != adoptLoc) {
-                                          selectedLocationId.value = adoptLoc;
-                                          // Try to set a human-readable name if we have it available
-                                          try {
-                                            final nameEntry = availableLocations.value.firstWhere(
-                                              (l) => l['id'] == adoptLoc,
-                                              orElse: () => <String, dynamic>{},
-                                            );
-                                            if (nameEntry.isNotEmpty) selectedLocationName.value = nameEntry['name'];
-                                          } catch (_) {}
-                                          logger.d(
-                                            '[Dashboard] Adopted shift location $adoptLoc as selectedLocationId',
-                                          );
-                                          // Persist this selection globally so other pages and future visits honor it
-                                          try {
-                                            LocationSelectionService.instance.setLocation(adoptLoc);
-                                          } catch (e) {
-                                            logger.w('[Dashboard] Failed to persist adopted location: $e');
-                                          }
-                                        }
-                                      } catch (e) {
-                                        logger.e('[Dashboard] Error adopting shift location: $e', e);
-                                      }
-
-                                      // Refresh the dashboard to show the new volunteer shift
-                                      // logger.d("[Dashboard] Refreshing dashboard after joining volunteer shift...");
-                                      // await loadDashboardData(); // DISABLED: This causes a race condition where the optimistic UI update is wiped.
-                                    } catch (e) {
-                                      logger.e('[Dashboard] Error joining volunteer shift: $e', e);
+                                    if (success) {
+                                      // Show success message
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                          content: Text('Error joining shift. Please try again.'),
-                                          backgroundColor: Colors.red,
+                                        SnackBar(
+                                          content: Text('Successfully joined ${shift.shiftName}!'),
+                                          backgroundColor: Colors.green,
+                                          duration: const Duration(seconds: 2),
                                         ),
                                       );
+                                      logger.d("[Dashboard] Successfully joined shift using centralized service");
+                                    } else {
+                                      throw Exception('Failed to join shift');
                                     }
                                   }
-                                }
-                              },
-                            ),
-                            const SizedBox(height: 24),
 
-                            // Instructional text (hide when there is an active assigned shift)
-                            if (assignedShifts.value.isEmpty) _InstructionCard(),
-                            const SizedBox(height: 24),
-                          ],
+                                  // Optimistically ensure the joined shift appears immediately in the UI for the current session.
+                                  try {
+                                    if (!assignedShifts.value.any((s) => s.shiftId == shift.shiftId)) {
+                                      // Insert at the front so it's visible
+                                      final newAssignedShifts = [shift, ...assignedShifts.value];
+                                      assignedShifts.value = newAssignedShifts;
+
+                                      // Set selectedLocationIds accordingly
+                                      final adoptLoc = selectedLocationId.value ?? locationId;
+                                      final newLocationIds = [adoptLoc, ...selectedLocationIds.value];
+                                      selectedLocationIds.value = newLocationIds;
+
+                                      // Load checklists for this shift instantly and prepend
+                                      logger.d(
+                                        "[Dashboard] Optimistically loading checklists for joined shift ${shift.shiftName}",
+                                      );
+                                      final loaded = await _loadChecklistsForShiftSimple(
+                                        shift,
+                                        adoptLoc,
+                                        todayString,
+                                        organizationId.value!,
+                                        userRole: userRole.value,
+                                        userJobTypes: userJobTypes.value,
+                                      );
+                                      final newChecklists = [loaded, ...allChecklists.value];
+                                      allChecklists.value = newChecklists;
+                                      logger.d(
+                                        "[Dashboard] Optimistic update complete. Assigned shifts: ${newAssignedShifts.length}, Checklists: ${newChecklists.length}",
+                                      );
+                                    }
+                                  } catch (e) {
+                                    logger.w('[Dashboard] Optimistic UI update failed: $e');
+                                  }
+
+                                  // Mark this shift as selected in global operational state so its checklists auto-expand
+                                  try {
+                                    ref.read(operationalStateProvider.notifier).selectShift(shift);
+                                  } catch (e) {
+                                    logger.e('[Dashboard] Failed to update OperationalState selectedShift: $e', e);
+                                  }
+
+                                  // If no explicit location selected yet, adopt the shift's location so subsequent reloads
+                                  // filter/associate correctly. Without this, checklist loading may target a placeholder.
+                                  try {
+                                    // Adopt the joined shift's location so the dashboard will show its assigned checklists.
+                                    final shiftLocs = coerceToLocationIds(shift.locationIds);
+                                    final adoptLoc = shiftLocs.isNotEmpty ? shiftLocs.first : locationId;
+                                    if (selectedLocationId.value != adoptLoc) {
+                                      selectedLocationId.value = adoptLoc;
+                                      // Try to set a human-readable name if we have it available
+                                      try {
+                                        final nameEntry = availableLocations.value.firstWhere(
+                                          (l) => l['id'] == adoptLoc,
+                                          orElse: () => <String, dynamic>{},
+                                        );
+                                        if (nameEntry.isNotEmpty) selectedLocationName.value = nameEntry['name'];
+                                      } catch (_) {}
+                                      logger.d('[Dashboard] Adopted shift location $adoptLoc as selectedLocationId');
+                                      // Persist this selection globally so other pages and future visits honor it
+                                      try {
+                                        LocationSelectionService.instance.setLocation(adoptLoc);
+                                      } catch (e) {
+                                        logger.w('[Dashboard] Failed to persist adopted location: $e');
+                                      }
+                                    }
+                                  } catch (e) {
+                                    logger.e('[Dashboard] Error adopting shift location: $e', e);
+                                  }
+
+                                  // Refresh the dashboard to show the new volunteer shift
+                                  // logger.d("[Dashboard] Refreshing dashboard after joining volunteer shift...");
+                                  // await loadDashboardData(); // DISABLED: This causes a race condition where the optimistic UI update is wiped.
+                                } catch (e) {
+                                  logger.e('[Dashboard] Error joining volunteer shift: $e', e);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Error joining shift. Please try again.'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              }
+                            }
+                          },
                         ),
+                        const SizedBox(height: 16),
+                      ],
+                      // (Begin Another Shift button relocated to below the Missed Tasks section)
 
                       // (Missed tasks section moved below Today's Assigned Work - see later)
 
@@ -1340,6 +1361,8 @@ class UserDashboardPage extends HookConsumerWidget {
                                             locationId,
                                             todayString,
                                             organizationId.value!,
+                                            userRole: userRole.value,
+                                            userJobTypes: userJobTypes.value,
                                           );
                                           allChecklists.value[shiftIndex] = refreshed;
                                           allChecklists.value = List.from(allChecklists.value);
@@ -1377,6 +1400,105 @@ class UserDashboardPage extends HookConsumerWidget {
                           },
                         ),
                         const SizedBox(height: 24),
+                      ],
+
+                      // Begin Another Shift CTA (moved here to appear beneath the Missed Tasks section)
+                      if (enableScheduling && assignedShifts.value.isNotEmpty) ...[
+                        Center(
+                          child: ElevatedButton.icon(
+                            icon: const Icon(Icons.playlist_add),
+                            label: const Text('Begin Another Shift'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Theme.of(context).primaryColor,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 18),
+                              textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                            ),
+                            onPressed: () async {
+                              logger.d('[Dashboard] Begin Another Shift pressed');
+                              final result = await showDialog<Map<String, dynamic>>(
+                                context: context,
+                                builder:
+                                    (_) => _HelpOutDialog(
+                                      organizationId: organizationId.value ?? '',
+                                      todayDayName: todayDayName,
+                                      selectedLocationId: selectedLocationId.value,
+                                      selectedLocationName: selectedLocationName.value ?? 'Unknown Location',
+                                      availableLocations: availableLocations.value,
+                                    ),
+                              );
+
+                              if (result != null) {
+                                final shift = result['shift'] as ShiftData;
+                                final locationId = result['locationId'] as String;
+
+                                // Attempt to join using the same flow as the main CTA
+                                final user = FirebaseAuth.instance.currentUser;
+                                if (user != null) {
+                                  try {
+                                    final shiftAssignmentService = ShiftAssignmentService();
+                                    final alreadyAssigned = await shiftAssignmentService.isUserAssignedToShift(
+                                      organizationId: organizationId.value!,
+                                      shiftId: shift.shiftId,
+                                      userId: user.uid,
+                                    );
+
+                                    if (!alreadyAssigned) {
+                                      final success = await shiftAssignmentService.joinShift(
+                                        organizationId: organizationId.value!,
+                                        shiftId: shift.shiftId,
+                                        userId: user.uid,
+                                      );
+
+                                      if (success) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Successfully joined ${shift.shiftName}!'),
+                                            backgroundColor: Colors.green,
+                                            duration: const Duration(seconds: 2),
+                                          ),
+                                        );
+
+                                        // Optimistic UI update similar to the original CTA
+                                        if (!assignedShifts.value.any((s) => s.shiftId == shift.shiftId)) {
+                                          assignedShifts.value = [shift, ...assignedShifts.value];
+                                          final adoptLoc = selectedLocationId.value ?? locationId;
+                                          selectedLocationIds.value = [adoptLoc, ...selectedLocationIds.value];
+                                          final loaded = await _loadChecklistsForShiftSimple(
+                                            shift,
+                                            adoptLoc,
+                                            todayString,
+                                            organizationId.value!,
+                                            userRole: userRole.value,
+                                            userJobTypes: userJobTypes.value,
+                                          );
+                                          allChecklists.value = [loaded, ...allChecklists.value];
+                                        }
+                                      }
+                                    } else {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('You are already signed up for ${shift.shiftName}.'),
+                                          backgroundColor: Colors.orange,
+                                          duration: const Duration(seconds: 2),
+                                        ),
+                                      );
+                                    }
+                                  } catch (e) {
+                                    logger.e('[Dashboard] Error joining another shift: $e', e);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Error joining shift. Please try again.'),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                  }
+                                }
+                              }
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 12),
                       ],
                     ],
                   ),
@@ -1592,23 +1714,7 @@ Future<List<ShiftData>> _getAllShiftsForToday(String userId, String todayDayName
     logger.e("[Dashboard][DEBUG] Error getting assigned volunteer shifts: $e", e, stack);
   }
 
-  // 4. Role-based filtering: employees (userRole 0) should only see shifts matching their jobTypes
-  try {
-    if (userRole == 0 && userJobTypes.isNotEmpty) {
-      final beforeCount = allShifts.length;
-      final filtered =
-          allShifts.where((s) {
-            final shiftJobs = s.jobType;
-            return shiftJobs.toSet().intersection(userJobTypes.toSet()).isNotEmpty;
-          }).toList();
-      logger.d(
-        "[Dashboard][DEBUG] Filtered shifts by userJobTypes ($userJobTypes): removed ${beforeCount - filtered.length} shifts",
-      );
-      return filtered;
-    }
-  } catch (e, stack) {
-    logger.e('[Dashboard][DEBUG] Error filtering shifts by jobType: $e', e, stack);
-  }
+  // 4. Do not filter shifts by jobTypes here; visibility is controlled at checklist level.
 
   logger.d("[Dashboard][DEBUG] Final total with volunteers: ${allShifts.length} shifts");
   return allShifts;
@@ -1668,25 +1774,125 @@ Future<List<DailyChecklist>> _loadChecklistsForShiftSimple(
   ShiftData shift,
   String locationId,
   String todayString,
-  String organizationId,
-) async {
+  String organizationId, {
+  int? userRole,
+  List<String>? userJobTypes,
+}) async {
   try {
+    logger.d("🚨🚨🚨 FUNCTION START: _loadChecklistsForShiftSimple called for ${shift.shiftName}");
     logger.d("[Dashboard] Loading checklists for shift: ${shift.shiftName} (${shift.shiftId})");
     logger.d("[Dashboard] Location: $locationId, Date: $todayString, Org: $organizationId");
 
-    final checklistSnapshot =
-        await FirestoreEnforcer.instance
-            .collection('organizations')
-            .doc(organizationId)
-            .collection('locations')
-            .doc(locationId)
-            .collection('daily_checklists')
-            .where('shiftId', isEqualTo: shift.shiftId)
-            .where('date', isEqualTo: todayString)
-            .get();
+    // If caller didn't provide role/jobTypes, fetch current user data as fallback
+    if (userRole == null || userJobTypes == null) {
+      try {
+        final authUser = FirebaseAuth.instance.currentUser;
+        if (authUser != null) {
+          final userDoc = await FirestoreEnforcer.instance.collection('users').doc(authUser.uid).get();
+          if (userDoc.exists) {
+            final u = userDoc.data()!;
+            userRole = userRole ?? (u['userRole'] ?? 0) as int;
+            userJobTypes = userJobTypes ?? coerceToJobTypes(u['jobTypes'] ?? u['jobType']);
+          } else {
+            // If user doc doesn't exist, we cannot determine job types.
+            throw Exception('User document not found, cannot determine job types for filtering.');
+          }
+        } else {
+          throw Exception('No authenticated user, cannot determine job types for filtering.');
+        }
+      } catch (e) {
+        logger.e('[Dashboard] CRITICAL: Failed to load current user role/jobTypes fallback: $e');
+        // Re-throw the exception to prevent showing unfiltered data, which is a security risk.
+        rethrow;
+      }
+    }
 
-    logger.d("[Dashboard] Found ${checklistSnapshot.docs.length} existing checklists for shift ${shift.shiftName}");
-    final checklists = checklistSnapshot.docs.map((doc) => DailyChecklist.fromMap(doc.data(), doc.id)).toList();
+    userRole = userRole ?? 0;
+    userJobTypes = userJobTypes ?? <String>[];
+
+    // Build base query for daily_checklists for this shift/date/location
+    var baseQuery = FirestoreEnforcer.instance
+        .collection('organizations')
+        .doc(organizationId)
+        .collection('locations')
+        .doc(locationId)
+        .collection('daily_checklists')
+        .where('shiftId', isEqualTo: shift.shiftId)
+        .where('date', isEqualTo: todayString);
+
+    final checklistSnapshot = await baseQuery.get();
+
+    logger.d(
+      "[Dashboard] Found ${checklistSnapshot.docs.length} existing checklists for shift ${shift.shiftName} before filtering.",
+    );
+    logger.d(
+      "[Dashboard] Filter check: userRole=$userRole, userJobTypes=$userJobTypes, userJobTypes.isNotEmpty=${userJobTypes.isNotEmpty}",
+    );
+    // If we didn't use server-side filtering, apply client-side jobTypes filtering where needed
+    List<QueryDocumentSnapshot> docs = checklistSnapshot.docs;
+    // Always apply client-side filtering for non-admins with job types.
+    if (userRole != 2 && userJobTypes.isNotEmpty) {
+      final lowerUserJobs = userJobTypes.map((j) => j.toLowerCase().trim()).where((j) => j.isNotEmpty).toSet();
+      logger.d('[Dashboard] Applying client-side filter. User jobs: $lowerUserJobs');
+
+      docs =
+          docs.where((d) {
+            try {
+              final raw = d.data() as Map<String, dynamic>?;
+              if (raw == null) return false; // Don't show invalid data
+
+              final checklistName = raw['templateName'] ?? raw['id'] ?? 'Unknown Checklist';
+              final jtRaw = raw['jobTypes'] ?? raw['jobType'];
+
+              if (jtRaw == null) {
+                logger.d('[Dashboard] Filter: ✅ Checklist "$checklistName" is visible to all (no job types).');
+                return true;
+              }
+              if (jtRaw is List && jtRaw.isEmpty) {
+                logger.d('[Dashboard] Filter: ✅ Checklist "$checklistName" is visible to all (empty job types list).');
+                return true;
+              }
+
+              final list =
+                  (jtRaw is List)
+                      ? jtRaw.map((e) => e.toString().toLowerCase().trim()).toList()
+                      : [jtRaw.toString().toLowerCase().trim()];
+              final set = list.where((e) => e.isNotEmpty).toSet();
+
+              if (set.isEmpty) {
+                logger.d(
+                  '[Dashboard] Filter: ✅ Checklist "$checklistName" is visible to all (job types list is empty after trim).',
+                );
+                return true;
+              }
+
+              final bool hasIntersection = set.intersection(lowerUserJobs).isNotEmpty;
+              if (hasIntersection) {
+                logger.d(
+                  '[Dashboard] Filter: ✅ Checklist "$checklistName" matches user job type. Checklist jobs: $set',
+                );
+              } else {
+                logger.d(
+                  '[Dashboard] Filter: ❌ Checklist "$checklistName" does NOT match user job type. Checklist jobs: $set',
+                );
+              }
+              return hasIntersection;
+            } catch (e) {
+              logger.w('[Dashboard] Client-side filter failed on a checklist "$d.id": $e');
+              return false; // Fail closed
+            }
+          }).toList();
+    } else {
+      logger.d(
+        "[Dashboard] Skipping client-side filtering - userRole=$userRole, userJobTypes.isNotEmpty=${userJobTypes.isNotEmpty}",
+      );
+    }
+
+    logger.d(
+      "[Dashboard] After filtering: ${docs.length} checklists remain from original ${checklistSnapshot.docs.length}",
+    );
+
+    final checklists = docs.map((doc) => DailyChecklist.fromMap(doc.data() as Map<String, dynamic>, doc.id)).toList();
 
     // NEW: Hydrate tasks from subcollection if parent 'tasks' array is empty (post-migration storage)
     for (int i = 0; i < checklists.length; i++) {
@@ -1731,15 +1937,96 @@ Future<List<DailyChecklist>> _loadChecklistsForShiftSimple(
     // Fallback logic
     if (checklists.isEmpty && shift.checklistTemplateIds.isNotEmpty) {
       logger.d("[Dashboard] No existing checklists found, generating from templates: ${shift.checklistTemplateIds}");
+
+      // CRITICAL FIX: Filter templates by job type BEFORE generating checklists
+      List<String> filteredTemplateIds = shift.checklistTemplateIds;
+      if (userRole != 2 && userJobTypes.isNotEmpty) {
+        final lowerUserJobs = userJobTypes.map((j) => j.toLowerCase().trim()).where((j) => j.isNotEmpty).toSet();
+        logger.d('[Dashboard] Filtering checklist templates by user job types: $lowerUserJobs');
+
+        final List<String> matchingTemplates = [];
+        for (final templateId in shift.checklistTemplateIds) {
+          try {
+            // Fetch template to check its job types
+            final templateDoc =
+                await FirestoreEnforcer.instance
+                    .collection('organizations')
+                    .doc(organizationId)
+                    .collection('checklist_templates')
+                    .doc(templateId)
+                    .get();
+
+            if (!templateDoc.exists) {
+              logger.d('[Dashboard] Template $templateId not found, skipping');
+              continue;
+            }
+
+            final templateData = templateDoc.data()!;
+            final templateName = templateData['name'] ?? templateId;
+            final jtRaw = templateData['jobTypes'] ?? templateData['jobType'];
+
+            if (jtRaw == null) {
+              logger.d('[Dashboard] Filter: ✅ Template "$templateName" is visible to all (no job types)');
+              matchingTemplates.add(templateId);
+              continue;
+            }
+
+            final List<String> templateJobTypes;
+            if (jtRaw is List) {
+              templateJobTypes =
+                  jtRaw.map((e) => e.toString().toLowerCase().trim()).where((e) => e.isNotEmpty).toList();
+            } else {
+              templateJobTypes = [jtRaw.toString().toLowerCase().trim()].where((e) => e.isNotEmpty).toList();
+            }
+
+            if (templateJobTypes.isEmpty) {
+              logger.d('[Dashboard] Filter: ✅ Template "$templateName" is visible to all (empty job types)');
+              matchingTemplates.add(templateId);
+              continue;
+            }
+
+            final templateJobSet = templateJobTypes.toSet();
+            final hasIntersection = templateJobSet.intersection(lowerUserJobs).isNotEmpty;
+
+            if (hasIntersection) {
+              logger.d(
+                '[Dashboard] Filter: ✅ Template "$templateName" matches user job type. Template jobs: $templateJobSet',
+              );
+              matchingTemplates.add(templateId);
+            } else {
+              logger.d(
+                '[Dashboard] Filter: ❌ Template "$templateName" does NOT match user job type. Template jobs: $templateJobSet',
+              );
+            }
+          } catch (e) {
+            logger.w('[Dashboard] Error checking template $templateId for job types: $e');
+            // Fail open for individual template errors
+            matchingTemplates.add(templateId);
+          }
+        }
+        filteredTemplateIds = matchingTemplates;
+        logger.d(
+          '[Dashboard] Filtered templates from ${shift.checklistTemplateIds.length} to ${filteredTemplateIds.length}',
+        );
+      }
+
+      if (filteredTemplateIds.isEmpty) {
+        logger.d("[Dashboard] No templates match user job types, returning empty list");
+        return <DailyChecklist>[];
+      }
+
+      // Create a modified shift data with only the filtered template IDs
+      final filteredShift = shift.copyWith(checklistTemplateIds: filteredTemplateIds);
+
       final dailyChecklistService = DailyChecklistService();
       final generatedChecklists = await dailyChecklistService.generateDailyChecklists(
         organizationId: organizationId,
         locationId: locationId,
         shiftId: shift.shiftId,
-        shiftData: shift,
+        shiftData: filteredShift,
         date: todayString,
       );
-      logger.d("[Dashboard] Generated ${generatedChecklists.length} checklists");
+      logger.d("[Dashboard] Generated ${generatedChecklists.length} filtered checklists");
       return generatedChecklists;
     }
 
@@ -1861,16 +2148,23 @@ class _HelpOutDialog extends StatelessWidget {
   final String todayDayName;
   final String? selectedLocationId;
   final String selectedLocationName;
+  final List<Map<String, dynamic>> availableLocations;
 
   const _HelpOutDialog({
     required this.organizationId,
     required this.todayDayName,
     this.selectedLocationId,
     required this.selectedLocationName,
+    required this.availableLocations,
   });
 
   @override
   Widget build(BuildContext context) {
+    // Local copies of passed-in values for use in async builders/callbacks
+    final selLocationId = selectedLocationId;
+    final availableLocationsList = availableLocations;
+    final orgId = organizationId;
+
     return Dialog(
       backgroundColor: HandsColors.primaryContainer,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1897,14 +2191,14 @@ class _HelpOutDialog extends StatelessWidget {
                           'Available Shifts',
                           style: Theme.of(
                             context,
-                          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600, color: HandsColors.white),
+                          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600, color: HandsColors.white),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 2),
                         Text(
                           'Select a shift to begin working at $selectedLocationName',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: HandsColors.white70),
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: HandsColors.white70),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -1916,8 +2210,8 @@ class _HelpOutDialog extends StatelessWidget {
                     onPressed: () => Navigator.of(context).pop(),
                     icon: const Icon(Icons.close, color: HandsColors.white70),
                     padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                    iconSize: 20,
+                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                    iconSize: 18,
                   ),
                 ],
               ),
@@ -1925,7 +2219,7 @@ class _HelpOutDialog extends StatelessWidget {
             // Content
             Expanded(
               child: FutureBuilder<List<ShiftData>>(
-                future: _getAvailableShifts(),
+                future: _getAvailableShifts(selLocationId, availableLocationsList, orgId, todayDayName),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
@@ -1951,27 +2245,27 @@ class _HelpOutDialog extends StatelessWidget {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.work_off, size: 40, color: HandsColors.white30),
-                          const SizedBox(height: 12),
+                          Icon(Icons.work_off, size: 32, color: HandsColors.white30),
+                          const SizedBox(height: 8),
                           Text(
                             'No available shifts',
-                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: HandsColors.white70),
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: HandsColors.white70),
                           ),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 4),
                           Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 32),
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
                             child: Column(
                               children: [
                                 Text(
                                   'There are no shifts available for you to join today.',
                                   textAlign: TextAlign.center,
-                                  style: TextStyle(color: HandsColors.white70),
+                                  style: TextStyle(fontSize: 12, color: HandsColors.white70),
                                 ),
-                                const SizedBox(height: 8),
+                                const SizedBox(height: 4),
                                 Text(
                                   'Shifts will become available to select 30 minutes before their start time.',
                                   textAlign: TextAlign.center,
-                                  style: TextStyle(color: HandsColors.white70),
+                                  style: TextStyle(fontSize: 12, color: HandsColors.white70),
                                 ),
                               ],
                             ),
@@ -1982,21 +2276,26 @@ class _HelpOutDialog extends StatelessWidget {
                   }
 
                   return ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     itemCount: shifts.length,
                     itemBuilder: (context, index) {
                       final shift = shifts[index];
                       return Card(
-                        margin: const EdgeInsets.only(bottom: 8),
+                        margin: const EdgeInsets.only(bottom: 6),
                         color: HandsColors.secondaryContainer,
                         child: ListTile(
+                          dense: true,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                           leading: CircleAvatar(
                             backgroundColor: HandsColors.handsOrange,
-                            child: const Icon(Icons.work, color: HandsColors.white, size: 20),
+                            radius: 16,
+                            child: const Icon(Icons.work, color: HandsColors.white, size: 16),
                           ),
                           title: Text(
                             shift.shiftName,
-                            style: TextStyle(fontWeight: FontWeight.w500, color: HandsColors.white),
+                            style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14, color: HandsColors.white),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                           subtitle: Text(
                             _formatSchedule({
@@ -2005,15 +2304,20 @@ class _HelpOutDialog extends StatelessWidget {
                               'repeatsDaily': shift.repeatsDaily,
                               'days': shift.days,
                             }),
-                            style: TextStyle(color: HandsColors.white70),
+                            style: TextStyle(fontSize: 12, color: HandsColors.white70),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                           trailing: ElevatedButton(
                             onPressed: () {
-                              Navigator.of(context).pop({'shift': shift, 'locationId': selectedLocationId});
+                              Navigator.of(context).pop({'shift': shift, 'locationId': selLocationId});
                             },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: HandsColors.handsOrange,
                               foregroundColor: HandsColors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              minimumSize: const Size(50, 32),
+                              textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
                             ),
                             child: const Text('Join'),
                           ),
@@ -2030,32 +2334,48 @@ class _HelpOutDialog extends StatelessWidget {
     );
   }
 
-  Future<List<ShiftData>> _getAvailableShifts() async {
+  Future<List<ShiftData>> _getAvailableShifts(
+    String? selLocationId,
+    List<Map<String, dynamic>> availableLocationsList,
+    String? orgId,
+    String todayDayName,
+  ) async {
     try {
-      if (selectedLocationId == null) return [];
+      // Determine which location ids to query. If a single location is selected,
+      // use it; otherwise fall back to any available locations for the user so
+      // the Available Shifts sheet shows shifts across locations.
+      final List<String> locationIdsToQuery = [];
+      if (selLocationId != null) {
+        locationIdsToQuery.add(selLocationId);
+      } else if (availableLocationsList.isNotEmpty) {
+        locationIdsToQuery.addAll(availableLocationsList.map((l) => l['id'] as String));
+      } else {
+        // No location context available: nothing to show
+        return [];
+      }
 
-      // Get all shifts for the organization that apply to this location.
+      // Get all shifts for the organization that apply to these location ids.
       // Some older shift docs may store a single 'locationId' string instead of
-      // the newer 'locationIds' array. Query both and merge to ensure we don't
-      // miss shifts like the Opening Bar which may use the legacy field.
-      final shiftsColl = FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(organizationId)
-          .collection('shifts');
+      // the newer 'locationIds' array. Query both for each location and merge.
+      if (orgId == null) return [];
 
-      final qArray = shiftsColl.where('locationIds', arrayContains: selectedLocationId);
-      final qSingle = shiftsColl.where('locationId', isEqualTo: selectedLocationId);
-
-      final snapArray = await qArray.get();
-      final snapSingle = await qSingle.get();
+      final shiftsColl = FirestoreEnforcer.instance.collection('organizations').doc(orgId).collection('shifts');
 
       // Merge and dedupe by document id
       final Map<String, QueryDocumentSnapshot> docsById = {};
-      for (final d in snapArray.docs) {
-        docsById[d.id] = d;
-      }
-      for (final d in snapSingle.docs) {
-        docsById[d.id] = d;
+      for (final locId in locationIdsToQuery) {
+        final qArray = shiftsColl.where('locationIds', arrayContains: locId);
+        final qSingle = shiftsColl.where('locationId', isEqualTo: locId);
+
+        final snapArray = await qArray.get();
+        final snapSingle = await qSingle.get();
+
+        for (final d in snapArray.docs) {
+          docsById[d.id] = d;
+        }
+        for (final d in snapSingle.docs) {
+          docsById[d.id] = d;
+        }
       }
 
       final combinedDocs = docsById.values.toList();
@@ -2137,7 +2457,7 @@ class _HelpOutDialog extends StatelessWidget {
         }
       }
 
-      debugPrint('[HelpOutSheet] Found ${combinedDocs.length} potential shifts for location $selectedLocationId');
+      debugPrint('[HelpOutSheet] Found ${combinedDocs.length} potential shifts for location $selLocationId');
       debugPrint('[HelpOutSheet] User role: $userRole, jobTypes: $userJobTypes, todayDayName: $todayDayName');
 
       for (final doc in combinedDocs) {
@@ -2185,24 +2505,7 @@ class _HelpOutDialog extends StatelessWidget {
             debugPrint('[HelpOutSheet] Error checking assignment status: $e');
           }
 
-          // Role-based visibility:
-          // - userRole 1 (manager) and 2 (admin): see all shifts within window
-          // - userRole 0 (general user): only shifts matching user's jobType(s)
-          if (userRole == 0) {
-            final shiftJobs = shift.jobType; // List<String>
-            debugPrint(
-              '[HelpOutSheet] Checking job type match for user. Shift jobs: $shiftJobs, user jobs: $userJobTypes',
-            );
-            if (userJobTypes.isEmpty) {
-              debugPrint('[HelpOutSheet] User has no job types, skipping shift');
-              continue;
-            }
-            final intersects = shiftJobs.toSet().intersection(userJobTypes.toSet()).isNotEmpty;
-            debugPrint('[HelpOutSheet] Job types intersect: $intersects');
-            if (!intersects) continue;
-          } else {
-            debugPrint('[HelpOutSheet] User is manager/admin, including shift regardless of job types');
-          }
+          // Do not restrict shifts by job types in the Available Shifts sheet.
 
           shifts.add(shift);
           debugPrint('[HelpOutSheet] Added shift ${shift.shiftName} to available shifts');

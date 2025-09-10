@@ -52,23 +52,47 @@ class _MessageThreadPageState extends State<MessageThreadPage> {
                     final isMine = m.senderId == FirebaseAuth.instance.currentUser?.uid;
                     return Align(
                       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: isMine ? Colors.blue : Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(m.text, style: TextStyle(color: isMine ? Colors.white : Colors.black87)),
-                            const SizedBox(height: 4),
-                            Text(
-                              _formatTs(m.createdAt),
-                              style: TextStyle(fontSize: 11, color: isMine ? Colors.white70 : Colors.black54),
-                            ),
-                          ],
+                      child: GestureDetector(
+                        onLongPress: isMine ? () => _showDeleteDialog(m) : null,
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: isMine ? Colors.blue : Colors.grey.shade300,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      m.text,
+                                      style: TextStyle(color: isMine ? Colors.white : Colors.black87),
+                                    ),
+                                  ),
+                                  if (isMine) ...[
+                                    const SizedBox(width: 8),
+                                    GestureDetector(
+                                      onTap: () => _showDeleteDialog(m),
+                                      child: Icon(
+                                        Icons.delete_outline,
+                                        size: 16,
+                                        color: isMine ? Colors.white70 : Colors.black54,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _formatTs(m.createdAt),
+                                style: TextStyle(fontSize: 11, color: isMine ? Colors.white70 : Colors.black54),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     );
@@ -115,5 +139,40 @@ class _MessageThreadPageState extends State<MessageThreadPage> {
       return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
     }
     return '${dt.month}/${dt.day} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _showDeleteDialog(ThreadMessage message) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Delete Message'),
+            content: const Text('Are you sure you want to delete this message? This action cannot be undone.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Delete', style: TextStyle(color: Colors.red)),
+              ),
+            ],
+          ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await _svc.deleteMessage(widget.threadId, message.id);
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Message deleted successfully'), backgroundColor: Colors.green));
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Failed to delete message: $e'), backgroundColor: Colors.red));
+        }
+      }
+    }
   }
 }

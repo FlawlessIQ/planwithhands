@@ -1,6 +1,36 @@
 import PhoneMockup from '../components/PhoneMockup'
+import SEO from '../components/SEO'
 
 export default function Features() {
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Restaurant Management Software Features",
+    "description": "Comprehensive features for restaurant operations: digital checklists, team messaging, training documents, and real-time analytics.",
+    "url": "https://planwithhands.com/features/",
+    "mainEntity": {
+      "@type": "SoftwareApplication",
+      "name": "Plan With Hands",
+      "featureList": [
+        "Daily Digital Checklists with Photo Requirements",
+        "Team Messaging with Push Notifications", 
+        "Training Documents and Materials Library",
+        "Real-time Analytics and Missed Task Insights",
+        "Multi-location Management Dashboard",
+        "Audit History and Compliance Tracking"
+      ]
+    }
+  };
+
+  return (
+    <>
+      <SEO
+        title="Features - Plan With Hands | Restaurant Management Software Tools"
+        description="Discover powerful features for restaurant operations: digital checklists, team messaging, training documents, real-time analytics, and multi-location management tools."
+        canonical="https://planwithhands.com/features/"
+        structuredData={structuredData}
+        keywords="restaurant management features, digital checklists, team messaging, training documents, restaurant analytics, multi-location management, operational tools"
+      />
   return (
     <div className="py-20">
       <header className="text-center max-w-3xl mx-auto px-4">
@@ -126,5 +156,6 @@ export default function Features() {
         </div>
       </div>
     </div>
+    </>
   )
 }

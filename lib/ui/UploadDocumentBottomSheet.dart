@@ -109,9 +109,14 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
           type: FileType.custom,
           allowedExtensions: ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'mp4', 'mov'],
           allowMultiple: false,
+          withData: true, // ensure bytes are available for web uploads
         );
         if (result != null && result.files.isNotEmpty) {
-          selectedFile.value = result.files.first;
+          final f = result.files.first;
+          debugPrint(
+            '[UploadDoc] Picked file name=${f.name} size=${f.size} hasBytes=${f.bytes != null} ext=${f.extension}',
+          );
+          selectedFile.value = f;
         }
       } catch (e) {
         if (context.mounted) {
@@ -121,14 +126,25 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
     }
 
     Future<void> uploadDocument() async {
-      if (!formKey.currentState!.validate()) {
+      // Check if we're already uploading
+      if (isUploading.value) {
+        return;
+      }
+
+      // Safely check form validation
+      final currentState = formKey.currentState;
+      if (currentState == null || !currentState.validate()) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all required fields')));
         return;
       }
+
+      // Check if we have a file for new uploads
       if (!isEditMode && selectedFile.value == null) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select a file')));
         return;
       }
+
+      // Check organization ID
       final orgId = organizationId.value;
       if (orgId == null || orgId.isEmpty) {
         ScaffoldMessenger.of(
@@ -136,23 +152,77 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
         ).showSnackBar(const SnackBar(content: Text('Organization ID is missing. Cannot upload document.')));
         return;
       }
+
+      // Check if user is authenticated
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('User not authenticated. Please log in again.')));
+        return;
+      }
+
       isUploading.value = true;
       try {
         String? downloadUrl = documentData?['fileUrl'];
         String? fileName = documentData?['fileName'];
         String fileType = documentData?['fileType'] ?? 'document';
         int? fileSize = documentData?['fileSize'];
-        if (selectedFile.value != null) {
-          final file = selectedFile.value!;
+
+        final selectedFileValue = selectedFile.value;
+        if (selectedFileValue != null) {
+          final file = selectedFileValue;
+
+          // Check if file bytes are available
+          final fileBytes = file.bytes;
+          if (fileBytes == null) {
+            debugPrint('[UploadDoc][ERROR] File bytes are null; did FilePicker return a path-only file?');
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('File data is not available. Please try selecting the file again.')),
+            );
+            return;
+          }
+
           fileName = '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
           final storageRef = FirebaseStorage.instance.ref().child('documents/$fileName');
           UploadTask uploadTask;
+          // Determine content-type for better handling in Storage and browsers
+          final ext = file.extension?.toLowerCase() ?? '';
+          String? contentType;
+          switch (ext) {
+            case 'jpg':
+            case 'jpeg':
+              contentType = 'image/jpeg';
+              break;
+            case 'png':
+              contentType = 'image/png';
+              break;
+            case 'pdf':
+              contentType = 'application/pdf';
+              break;
+            case 'doc':
+              contentType = 'application/msword';
+              break;
+            case 'docx':
+              contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+              break;
+            case 'mp4':
+              contentType = 'video/mp4';
+              break;
+            case 'mov':
+              contentType = 'video/quicktime';
+              break;
+            default:
+              contentType = 'application/octet-stream';
+          }
+
+          final metadata = SettableMetadata(contentType: contentType);
           if (kIsWeb) {
-            uploadTask = storageRef.putData(file.bytes!);
+            uploadTask = storageRef.putData(fileBytes, metadata);
           } else {
             // For mobile, we'd need dart:io which isn't available on web compilation
             // For now, we'll assume this is primarily used on web
-            uploadTask = storageRef.putData(file.bytes!);
+            uploadTask = storageRef.putData(fileBytes, metadata);
           }
           final snapshot = await uploadTask;
           downloadUrl = await snapshot.ref.getDownloadURL();
@@ -185,7 +255,7 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
               .doc(documentId)
               .update(docData);
         } else {
-          docData['uploadedBy'] = userState.userData?.userId ?? 'unknown';
+          docData['uploadedBy'] = userState.userData?.userId ?? FirebaseAuth.instance.currentUser?.uid ?? 'unknown';
           docData['createdAt'] = FieldValue.serverTimestamp();
           await FirestoreEnforcer.instance
               .collection('organizations')
@@ -211,9 +281,25 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
       } catch (e, stack) {
         // Log error and stack trace for debugging
         debugPrint('Upload failed: $e');
+        debugPrint('Error type: ${e.runtimeType}');
         debugPrintStack(stackTrace: stack);
+
+        // Provide more specific error messages
+        String errorMessage = 'Upload failed: ';
+        if (e.toString().contains('null check operator')) {
+          errorMessage += 'Missing required data. Please try selecting the file again.';
+        } else if (e.toString().contains('permission')) {
+          errorMessage += 'Permission denied. Please check your account permissions.';
+        } else if (e.toString().contains('storage')) {
+          errorMessage += 'Storage error. Please check your internet connection.';
+        } else {
+          errorMessage += e.toString();
+        }
+
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(errorMessage), backgroundColor: Colors.red, duration: const Duration(seconds: 5)),
+          );
         }
       } finally {
         isUploading.value = false;

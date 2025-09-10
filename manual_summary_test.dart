@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 /// Simple manual test to trigger daily summary
 /// Replace YOUR_ORG_ID with your actual organization ID
 void main() async {

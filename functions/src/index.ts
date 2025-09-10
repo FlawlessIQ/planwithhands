@@ -2,7 +2,15 @@
 import * as admin from "firebase-admin";
 
 // Ensure admin is initialized (idempotent)
-admin.initializeApp();
+try {
+	admin.initializeApp();
+} catch (e) {
+	// noop if already initialized
+}
+
+// Log database binding for visibility in logs
+const boundDb = process.env.FIRESTORE_DATABASE_ID || "(default)";
+console.log(`[functions] Booting with FIRESTORE_DATABASE_ID=${boundDb}`);
 
 // Re-export the JS function implementation under a TypeScript entrypoint name.
 // This allows us to have a TS entry while keeping the existing JS implementation.

@@ -1,9 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/services/daily_background_service.dart';
 import 'package:hands_app/services/daily_summary_service.dart';
-import 'package:hands_app/core/logging/logger.dart';
 
 void main() async {
   print('🔍 Daily Summary Issue Debug Tool');

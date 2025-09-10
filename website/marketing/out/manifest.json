@@ -1,11 +1,14 @@
 {
-  "name": "Plan With Hands",
+  "name": "Plan With Hands - Restaurant Management Software",
   "short_name": "Hands",
-  "description": "Transform restaurant operations with digital checklists, team messaging, training documents, and real-time insights",
+  "description": "Transform restaurant operations with digital checklists, team messaging, training documents, and real-time insights. No hardware needed.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#1C1C1E",
   "theme_color": "#1C1C1E",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "categories": ["business", "productivity", "utilities"],
   "icons": [
     {
       "src": "/images/favicon-16.png",
@@ -18,8 +21,14 @@
       "type": "image/png"
     },
     {
-      "src": "/images/favicon-192.png",
+      "src": "/icon-192.png",
       "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
     },

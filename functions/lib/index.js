@@ -33,11 +33,19 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.scheduledDailyGenerator = exports.onDailySummaryNotificationCreated = exports.onGeneralNotificationCreated = exports.sendMessageNotification = exports.onMessageCreated = exports.proxyDownload = exports.proxyUpload = exports.getSignedUploadUrl = exports.placeDetailsHttp = exports.placesAutocompleteHttp = exports.createBillingPortalSession = exports.updateSubscription = exports.cancelSubscription = exports.stripeWebhook = exports.createCheckoutSession = exports.deleteUser = exports.createUser = exports.repairTaskTitlesFromCsv = exports.repairTemplateTaskTitles = exports.migrateChecklistTemplates = exports.syncTodayOnShiftChange = exports.syncTodayOnTemplateChange = void 0;
+exports.sendToToken = exports.scheduledDailyGenerator = exports.onDailySummaryNotificationCreated = exports.onGeneralNotificationCreated = exports.sendMessageNotification = exports.onMessageCreated = exports.proxyDownload = exports.proxyUpload = exports.getSignedUploadUrl = exports.placeDetailsHttp = exports.placesAutocompleteHttp = exports.createBillingPortalSession = exports.updateSubscription = exports.cancelSubscription = exports.stripeWebhook = exports.createCheckoutSession = exports.deleteUser = exports.createUser = exports.repairTaskTitlesFromCsv = exports.repairTemplateTaskTitles = exports.migrateChecklistTemplates = exports.syncTodayOnShiftChange = exports.syncTodayOnTemplateChange = void 0;
 /* eslint-disable @typescript-eslint/no-require-imports */
 const admin = __importStar(require("firebase-admin"));
 // Ensure admin is initialized (idempotent)
-admin.initializeApp();
+try {
+    admin.initializeApp();
+}
+catch (e) {
+    // noop if already initialized
+}
+// Log database binding for visibility in logs
+const boundDb = process.env.FIRESTORE_DATABASE_ID || "(default)";
+console.log(`[functions] Booting with FIRESTORE_DATABASE_ID=${boundDb}`);
 // Re-export the JS function implementation under a TypeScript entrypoint name.
 // This allows us to have a TS entry while keeping the existing JS implementation.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -93,3 +101,5 @@ Object.defineProperty(exports, "onDailySummaryNotificationCreated", { enumerable
 // Export daily generator (scheduled function to create daily checklists)
 var dailyGenerator_1 = require("./dailyGenerator");
 Object.defineProperty(exports, "scheduledDailyGenerator", { enumerable: true, get: function () { return dailyGenerator_1.scheduledDailyGenerator; } });
+var sendToToken_1 = require("./sendToToken");
+Object.defineProperty(exports, "sendToToken", { enumerable: true, get: function () { return sendToToken_1.sendToToken; } });

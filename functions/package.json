@@ -16,14 +16,14 @@
     "migrate:run": "bash scripts/run_migrate_checklist_templates.sh"
   },
   "engines": {
-    "node": "20"
+    "node": "18"
   },
   "main": "lib/index.js",
   "dependencies": {
     "@sendgrid/mail": "^8.1.5",
     "csv-parse": "^6.1.0",
-    "firebase-admin": "^11.10.1",
-    "firebase-functions": "^4.4.1",
+    "firebase-admin": "^12.6.0",
+    "firebase-functions": "^4.9.0",
     "luxon": "^3.7.1",
     "stripe": "^18.3.0"
   },

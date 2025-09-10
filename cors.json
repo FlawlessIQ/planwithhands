@@ -1,7 +1,23 @@
 [
   {
-    "origin": ["http://localhost:*", "https://*.web.app", "https://*.firebaseapp.com"],
-    "method": ["GET"],
+    "origin": [
+      "*",
+      "https://*.web.app",
+      "https://*.firebaseapp.com"
+    ],
+    "method": ["GET", "HEAD", "POST", "PUT", "DELETE"],
+    "responseHeader": [
+      "Content-Type",
+      "Authorization",
+      "x-goog-resumable",
+      "x-goog-meta-*",
+      "x-goog-upload-protocol",
+      "x-goog-upload-command",
+      "x-goog-upload-offset",
+      "x-goog-upload-header-content-length",
+      "x-goog-upload-content-type",
+      "x-goog-upload-size"
+    ],
     "maxAgeSeconds": 3600
   }
 ]

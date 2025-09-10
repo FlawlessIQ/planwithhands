@@ -1,12 +1,20 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
+import {Firestore} from "@google-cloud/firestore";
+
+// Ensure we use the correct Firestore database (multi-db projects)
+const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || "planwithhands";
+
+// Use a Firestore instance explicitly bound to the target database
+const db = new Firestore({ databaseId: FIRESTORE_DATABASE_ID });
 
 /**
  * Trigger when a new message is created in a thread
  * Sends push notifications to all recipients in the thread
  */
 export const onMessageCreated = functions.firestore
-    .document("messageThreads/{threadId}/messages/{messageId}")
+  .database(FIRESTORE_DATABASE_ID)
+  .document("messageThreads/{threadId}/messages/{messageId}")
     .onCreate(async (snap, context) => {
       const message = snap.data();
       const threadId = context.params.threadId;
@@ -17,12 +25,12 @@ export const onMessageCreated = functions.firestore
 
         // Get the sender's information
         const senderId = message.senderId;
-        const senderDoc = await admin.firestore().collection("users").doc(senderId).get();
+  const senderDoc = await db.collection("users").doc(senderId).get();
         const senderData = senderDoc.data();
         const senderName = `${senderData?.firstName || ""} ${senderData?.lastName || ""}`.trim() || "Someone";
 
         // Get thread details to find recipients
-        const threadDoc = await admin.firestore()
+  const threadDoc = await db
             .collection("messageThreads")
             .doc(threadId)
             .get();
@@ -47,10 +55,10 @@ export const onMessageCreated = functions.firestore
         console.log(`Notifying ${actualRecipients.length} recipients`);
 
         // Get FCM tokens for recipients from user-specific subcollections
-        const tokenPromises = actualRecipients.map(async (userId: string) => {
+    const tokenPromises = actualRecipients.map(async (userId: string) => {
           try {
             // First try to get from user-specific subcollection (new format)
-            const userTokenSnap = await admin.firestore()
+      const userTokenSnap = await db
                 .collection("users")
                 .doc(userId)
                 .collection("deviceTokens")
@@ -63,7 +71,7 @@ export const onMessageCreated = functions.firestore
               tokens = userTokenSnap.docs.map((doc) => doc.data().fcmToken);
             } else {
               // Fallback to top-level deviceTokens collection (legacy format)
-              const legacyTokenSnap = await admin.firestore()
+              const legacyTokenSnap = await db
                   .collection("deviceTokens")
                   .where("userId", "==", userId)
                   .where("isActive", "==", true)
@@ -91,11 +99,11 @@ export const onMessageCreated = functions.firestore
         }
 
         // Create notification documents for each recipient
-        const batch = admin.firestore().batch();
+  const batch = db.batch();
         const timestamp = admin.firestore.FieldValue.serverTimestamp();
 
         for (const userId of actualRecipients) {
-          const notificationRef = admin.firestore()
+          const notificationRef = db
               .collection("organizations")
               .doc(orgId)
               .collection("notifications")
@@ -178,7 +186,7 @@ export const sendMessageNotification = functions.https.onCall(async (data, conte
     throw new functions.https.HttpsError("unauthenticated", "User must be authenticated");
   }
 
-  const {threadId, messageText, recipientUserIds} = data;
+  const {threadId, messageText, recipientUserIds, skipDocs} = data as {threadId: string; messageText: string; recipientUserIds?: string[]; skipDocs?: boolean};
   const senderId = context.auth.uid;
 
   if (!threadId || !messageText) {
@@ -187,12 +195,12 @@ export const sendMessageNotification = functions.https.onCall(async (data, conte
 
   try {
     // Get sender information
-    const senderDoc = await admin.firestore().collection("users").doc(senderId).get();
+  const senderDoc = await db.collection("users").doc(senderId).get();
     const senderData = senderDoc.data();
     const senderName = `${senderData?.firstName || ""} ${senderData?.lastName || ""}`.trim() || "Someone";
 
     // Get thread information
-    const threadDoc = await admin.firestore().collection("messageThreads").doc(threadId).get();
+  const threadDoc = await db.collection("messageThreads").doc(threadId).get();
     const threadData = threadDoc.data();
     const orgId = threadData?.orgId;
 
@@ -209,10 +217,10 @@ export const sendMessageNotification = functions.https.onCall(async (data, conte
     }
 
     // Get FCM tokens from user-specific subcollections
-    const tokenPromises = actualRecipients.map(async (userId: string) => {
+  const tokenPromises = actualRecipients.map(async (userId: string) => {
       try {
         // First try to get from user-specific subcollection (new format)
-        const userTokenSnap = await admin.firestore()
+    const userTokenSnap = await db
             .collection("users")
             .doc(userId)
             .collection("deviceTokens")
@@ -223,7 +231,7 @@ export const sendMessageNotification = functions.https.onCall(async (data, conte
           return userTokenSnap.docs.map((doc) => doc.data().fcmToken);
         } else {
           // Fallback to top-level deviceTokens collection (legacy format)
-          const legacyTokenSnap = await admin.firestore()
+    const legacyTokenSnap = await db
               .collection("deviceTokens")
               .where("userId", "==", userId)
               .where("isActive", "==", true)
@@ -243,33 +251,33 @@ export const sendMessageNotification = functions.https.onCall(async (data, conte
       return {success: true, message: "No FCM tokens found"};
     }
 
-    // Create notification documents
-    const batch = admin.firestore().batch();
-    const timestamp = admin.firestore.FieldValue.serverTimestamp();
-
-    for (const userId of actualRecipients) {
-      const notificationRef = admin.firestore()
+    // Optionally create notification documents (skip if asked by client fallback)
+    if (!skipDocs) {
+      const batch = db.batch();
+      const timestamp = admin.firestore.FieldValue.serverTimestamp();
+      for (const userId of actualRecipients) {
+        const notificationRef = db
           .collection("organizations")
           .doc(orgId)
           .collection("notifications")
           .doc();
 
-      batch.set(notificationRef, {
-        userId: userId,
-        orgId: orgId,
-        threadId: threadId,
-        type: "message",
-        title: senderName,
-        message: messageText.length > 100 ? `${messageText.substring(0, 100)}...` : messageText,
-        read: false,
-        createdAt: timestamp,
-        senderId: senderId,
-        senderName: senderName,
-        expiresAt: new Date(Date.now() + (30 * 24 * 60 * 60 * 1000)),
-      });
+        batch.set(notificationRef, {
+          userId: userId,
+          orgId: orgId,
+          threadId: threadId,
+          type: "message",
+          title: senderName,
+          message: messageText.length > 100 ? `${messageText.substring(0, 100)}...` : messageText,
+          read: false,
+          createdAt: timestamp,
+          senderId: senderId,
+          senderName: senderName,
+          expiresAt: new Date(Date.now() + (30 * 24 * 60 * 60 * 1000)),
+        });
+      }
+      await batch.commit();
     }
-
-    await batch.commit();
 
     // Send push notification
     const fcmMessage = {
@@ -287,13 +295,14 @@ export const sendMessageNotification = functions.https.onCall(async (data, conte
       tokens: allTokens,
     };
 
-    const response = await admin.messaging().sendMulticast(fcmMessage);
+  const response = await admin.messaging().sendMulticast(fcmMessage);
 
     return {
-      success: true,
-      sent: response.successCount,
-      failed: response.failureCount,
-      recipients: actualRecipients.length,
+  success: true,
+  sent: response.successCount,
+  failed: response.failureCount,
+  recipients: actualRecipients.length,
+  docsCreated: !skipDocs,
     };
   } catch (error) {
     console.error("Error in sendMessageNotification:", error);
@@ -311,38 +320,39 @@ async function cleanupInvalidTokens(invalidTokens: string[]): Promise<void> {
 
   try {
     const batch = admin.firestore().batch();
+    const tokenChunks = [];
 
-    for (const token of invalidTokens) {
-      // Clean up from both new user-specific subcollections and legacy top-level collection
-      
-      // First, check user-specific subcollections
-      const usersSnapshot = await admin.firestore().collection("users").get();
-      for (const userDoc of usersSnapshot.docs) {
-        const userTokenQuery = await admin.firestore()
-            .collection("users")
-            .doc(userDoc.id)
-            .collection("deviceTokens")
-            .where("fcmToken", "==", token)
-            .get();
+    // Firestore 'in' queries are limited to 10 items
+    for (let i = 0; i < invalidTokens.length; i += 10) {
+      tokenChunks.push(invalidTokens.slice(i, i + 10));
+    }
 
-        userTokenQuery.docs.forEach((doc) => {
-          batch.update(doc.ref, {isActive: false});
-        });
-      }
-      
-      // Also clean up legacy top-level collection
+    for (const chunk of tokenChunks) {
+      // New model: Query all deviceTokens subcollections
+      const deviceTokensQuery = await admin.firestore()
+          .collectionGroup("deviceTokens")
+          .where("fcmToken", "in", chunk)
+          .get();
+
+      deviceTokensQuery.docs.forEach((doc) => {
+        console.log(`Marking token as inactive in subcollection: ${doc.ref.path}`);
+        batch.update(doc.ref, {isActive: false});
+      });
+
+      // Legacy model: Query top-level deviceTokens collection
       const legacyTokenQuery = await admin.firestore()
           .collection("deviceTokens")
-          .where("fcmToken", "==", token)
+          .where("fcmToken", "in", chunk)
           .get();
 
       legacyTokenQuery.docs.forEach((doc) => {
+        console.log(`Marking token as inactive in legacy collection: ${doc.ref.path}`);
         batch.update(doc.ref, {isActive: false});
       });
     }
 
     await batch.commit();
-    console.log(`Marked ${invalidTokens.length} tokens as inactive`);
+    console.log(`Attempted to mark ${invalidTokens.length} tokens as inactive.`);
   } catch (error) {
     console.error("Error cleaning up invalid tokens:", error);
   }
@@ -353,7 +363,8 @@ async function cleanupInvalidTokens(invalidTokens: string[]): Promise<void> {
  * Sends push notifications specifically for daily summary notifications
  */
 export const onDailySummaryNotificationCreated = functions.firestore
-    .document("organizations/{orgId}/notifications/{notifId}")
+  .database(FIRESTORE_DATABASE_ID)
+  .document("organizations/{orgId}/notifications/{notifId}")
     .onCreate(async (snap, context) => {
       const notification = snap.data();
       const notifId = context.params.notifId;
@@ -373,7 +384,7 @@ export const onDailySummaryNotificationCreated = functions.firestore
 
         try {
           // First try to get from user-specific subcollection (new format)
-          const userTokenSnap = await admin.firestore()
+    const userTokenSnap = await db
               .collection("users")
               .doc(userId)
               .collection("deviceTokens")
@@ -385,7 +396,7 @@ export const onDailySummaryNotificationCreated = functions.firestore
             console.log(`[DailySummary] Found ${fcmTokens.length} tokens from user subcollection for ${userId}`);
           } else {
             // Fallback to top-level deviceTokens collection (legacy format)
-            const legacyTokenSnap = await admin.firestore()
+            const legacyTokenSnap = await db
                 .collection("deviceTokens")
                 .where("userId", "==", userId)
                 .where("isActive", "==", true)
@@ -481,7 +492,8 @@ export const onDailySummaryNotificationCreated = functions.firestore
  * Sends push notifications to targeted recipients based on notification type
  */
 export const onGeneralNotificationCreated = functions.firestore
-    .document("organizations/{orgId}/notifications/{notifId}")
+  .database(FIRESTORE_DATABASE_ID)
+  .document("organizations/{orgId}/notifications/{notifId}")
     .onCreate(async (snap, context) => {
       const notification = snap.data();
       const notifId = context.params.notifId;
@@ -505,7 +517,7 @@ export const onGeneralNotificationCreated = functions.firestore
         switch (targetType) {
           case 'all':
             // Get all active users in the organization
-            const allUsersSnap = await admin.firestore()
+            const allUsersSnap = await db
                 .collection("users")
                 .where("organizationId", "==", orgId)
                 .where("isActive", "==", true)
@@ -515,7 +527,7 @@ export const onGeneralNotificationCreated = functions.firestore
 
           case 'group':
             // Get users in the specified group
-            const groupDoc = await admin.firestore()
+            const groupDoc = await db
                 .collection("organizations")
                 .doc(orgId)
                 .collection("groups")
@@ -530,7 +542,7 @@ export const onGeneralNotificationCreated = functions.firestore
 
           case 'location':
             // Get users assigned to the specified location
-            const locationUsersSnap = await admin.firestore()
+            const locationUsersSnap = await db
                 .collection("users")
                 .where("organizationId", "==", orgId)
                 .where("isActive", "==", true)
@@ -552,10 +564,10 @@ export const onGeneralNotificationCreated = functions.firestore
         console.log(`Notifying ${recipientUserIds.length} recipients for ${targetType} notification`);
 
         // Get FCM tokens for recipients from user-specific subcollections
-        const tokenPromises = recipientUserIds.map(async (userId: string) => {
+    const tokenPromises = recipientUserIds.map(async (userId: string) => {
           try {
             // First try to get from user-specific subcollection (new format)
-            const userTokenSnap = await admin.firestore()
+      const userTokenSnap = await db
                 .collection("users")
                 .doc(userId)
                 .collection("deviceTokens")
@@ -568,7 +580,7 @@ export const onGeneralNotificationCreated = functions.firestore
               tokens = userTokenSnap.docs.map((doc) => doc.data().fcmToken);
             } else {
               // Fallback to top-level deviceTokens collection (legacy format)
-              const legacyTokenSnap = await admin.firestore()
+              const legacyTokenSnap = await db
                   .collection("deviceTokens")
                   .where("userId", "==", userId)
                   .where("isActive", "==", true)
@@ -596,11 +608,11 @@ export const onGeneralNotificationCreated = functions.firestore
         }
 
         // Create notification documents for each recipient
-        const batch = admin.firestore().batch();
+  const batch = db.batch();
         const timestamp = admin.firestore.FieldValue.serverTimestamp();
 
         for (const userId of recipientUserIds) {
-          const userNotificationRef = admin.firestore()
+          const userNotificationRef = db
               .collection("organizations")
               .doc(orgId)
               .collection("notifications")

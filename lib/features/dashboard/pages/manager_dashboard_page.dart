@@ -1224,7 +1224,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
                                         border: Border.all(color: HandsColors.white30, width: 1),
                                       ),
                                       child: Text(
-                                        '${_filteredLiveShifts.length} DONE',
+                                        '${_filteredLiveShifts.length} COMPLETE',
                                         style: GoogleFonts.comfortaa(
                                           color: HandsColors.white70,
                                           fontSize: 12,
@@ -1256,7 +1256,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
                                           },
                                         ),
                                         _StatusToggleButton(
-                                          label: 'Done',
+                                          label: 'Complete',
                                           selected: _selectedStatusFilter == 'finished',
                                           onTap: () async {
                                             setState(() => _selectedStatusFilter = 'finished');
@@ -1667,10 +1667,10 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
     if (_selectedStatusFilter == null) return _liveShifts;
 
     if (_selectedStatusFilter == 'live') {
-      // Show shifts that are in progress or starting soon
+      // Show shifts that are in progress (exclude upcoming 'Starts in')
       return _liveShifts.where((s) {
         final timeStatus = s['timeStatus'].toString();
-        return timeStatus.contains('remaining') || timeStatus.contains('Starts in');
+        return timeStatus.contains('remaining');
       }).toList();
     } else if (_selectedStatusFilter == 'finished') {
       // Show finished shifts
@@ -2804,6 +2804,12 @@ class _ProfessionalDialog extends StatelessWidget {
     final screenHeight = MediaQuery.of(context).size.height;
     final isSmallScreen = screenWidth < 600;
 
+    // Compute available height after accounting for keyboard (viewInsets)
+    final insetBottom = MediaQuery.of(context).viewInsets.bottom;
+    final desiredHeight = height ?? (isSmallScreen ? screenHeight * 0.9 : screenHeight * 0.8);
+    final maxAvailable = screenHeight - insetBottom - (isSmallScreen ? 40.0 : 24.0);
+    final effectiveHeight = min(desiredHeight, maxAvailable);
+
     return Dialog(
       backgroundColor: HandsColors.primaryContainer,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -2813,46 +2819,48 @@ class _ProfessionalDialog extends StatelessWidget {
               : const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
       child: SizedBox(
         width: width ?? (isSmallScreen ? screenWidth * 0.95 : screenWidth * 0.9),
-        height: height ?? (isSmallScreen ? screenHeight * 0.9 : screenHeight * 0.8),
-        child: Column(
-          children: [
-            // Header with title and X button
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              decoration: BoxDecoration(
-                color: HandsColors.primaryContainer,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                border: Border(bottom: BorderSide(color: HandsColors.white12)),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      title.toUpperCase(),
-                      style: GoogleFonts.comfortaa(
-                        fontSize: isSmallScreen ? 12 : 14,
-                        fontWeight: FontWeight.w600,
-                        color: HandsColors.white,
-                        letterSpacing: 0.5,
+        height: effectiveHeight,
+        child: SafeArea(
+          child: Column(
+            children: [
+              // Header with title and close button
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                decoration: BoxDecoration(
+                  color: HandsColors.primaryContainer,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                  border: Border(bottom: BorderSide(color: HandsColors.white12)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title.toUpperCase(),
+                        style: GoogleFonts.comfortaa(
+                          fontSize: isSmallScreen ? 12 : 14,
+                          fontWeight: FontWeight.w600,
+                          color: HandsColors.white,
+                          letterSpacing: 0.5,
+                        ),
+                        maxLines: isSmallScreen ? 1 : 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: isSmallScreen ? 1 : 2,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close, color: HandsColors.white),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                    iconSize: 20,
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close, color: HandsColors.white),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      iconSize: 20,
+                    ),
+                  ],
+                ),
               ),
-            ),
-            // Content
-            Expanded(child: child),
-          ],
+              // Content area
+              Expanded(child: child),
+            ],
+          ),
         ),
       ),
     );
@@ -4378,7 +4386,7 @@ class _StatusToggleButton extends StatelessWidget {
           label.toUpperCase(),
           style: GoogleFonts.comfortaa(
             color: selected ? HandsColors.white : HandsColors.white70,
-            fontSize: 12,
+            fontSize: 11,
             fontWeight: selected ? FontWeight.bold : FontWeight.normal,
             letterSpacing: 0.5,
           ),

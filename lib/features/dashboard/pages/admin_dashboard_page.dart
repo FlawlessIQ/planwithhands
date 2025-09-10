@@ -1154,17 +1154,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                   final startTime = shiftData['startTime'] ?? '';
                   final endTime = shiftData['endTime'] ?? '';
                   final roles = coerceToJobTypes(shiftData['jobTypes'] ?? shiftData['jobType']);
-                  final locationIds = coerceToLocationIds(shiftData['locationIds'] ?? shiftData['locationId']);
-
-                  // Get location names for this shift
-                  final locationNames =
-                      locationIds.map((id) {
-                        final location = _availableLocations.firstWhere(
-                          (loc) => loc['id'] == id,
-                          orElse: () => {'name': 'Unknown Location'},
-                        );
-                        return location['name'] as String;
-                      }).toList();
+                  // locationIds intentionally not used in mobile shifts list view; locations managed uniquely
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 8),
@@ -1186,11 +1176,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                             '${_range12h(startTime, endTime)} • ${roles.join(', ')}',
                             style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11),
                           ),
-                          if (locationNames.isNotEmpty)
-                            Text(
-                              'Locations: ${locationNames.join(', ')}',
-                              style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 10),
-                            ),
+                          // Locations display removed - locations are now managed uniquely
                         ],
                       ),
                       trailing: Row(
@@ -1350,11 +1336,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                   final description = checklistData['description'] ?? 'No description';
                   final tasksList = checklistData['tasks'] as List<dynamic>? ?? [];
                   final taskCount = tasksList.length;
-                  final locIdsRaw = checklistData['locationIds'];
-                  List<String> locIds = [];
-                  if (locIdsRaw is Iterable) {
-                    locIds = locIdsRaw.map((e) => e.toString()).toList();
-                  }
+                  // locationIds intentionally not used in checklist list view; locations managed uniquely
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 8),
@@ -1376,11 +1358,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                             '$description • $taskCount tasks',
                             style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11),
                           ),
-                          if (locIds.isNotEmpty)
-                            Text(
-                              'Locations: ${locIds.length}',
-                              style: GoogleFonts.comfortaa(color: HandsColors.white30, fontSize: 10),
-                            ),
+                          // Locations display removed - locations are now managed uniquely
                         ],
                       ),
                       trailing: Row(
@@ -1570,11 +1548,11 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
     final batch = FirestoreEnforcer.instance.batch();
 
     // 1. Save the main checklist template at organization level
-    final mainChecklistRef = FirestoreEnforcer.instance
+    final checklistColl = FirestoreEnforcer.instance
         .collection('organizations')
         .doc(organizationId)
-        .collection('checklist_templates')
-        .doc(existingChecklistId); // If null, a new ID is generated
+        .collection('checklist_templates');
+    final mainChecklistRef = existingChecklistId == null ? checklistColl.doc() : checklistColl.doc(existingChecklistId);
     final mainChecklistId = mainChecklistRef.id;
     logger.d('[AdminDashboard] Main checklist ID: $mainChecklistId');
     final List<Map<String, dynamic>> tasksArray =

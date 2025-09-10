@@ -20,7 +20,7 @@ class _PaymentCancelledPageState extends State<PaymentCancelledPage> {
   String? _userEmail;
   String? _organizationId;
   int _locationCount = 1;
-  bool _isAnnual = false;
+  final bool _isAnnual = false;
 
   @override
   void initState() {

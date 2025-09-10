@@ -87,7 +87,7 @@
     },
     {
       "name": "built_value",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/built_value-8.11.0",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/built_value-8.12.0",
       "packageUri": "lib/",
       "languageVersion": "3.0"
     },
@@ -237,7 +237,7 @@
     },
     {
       "name": "file_picker",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/file_picker-10.2.0",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/file_picker-10.3.2",
       "packageUri": "lib/",
       "languageVersion": "3.4"
     },
@@ -249,9 +249,9 @@
     },
     {
       "name": "file_selector_macos",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/file_selector_macos-0.9.4+3",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/file_selector_macos-0.9.4+4",
       "packageUri": "lib/",
-      "languageVersion": "3.6"
+      "languageVersion": "3.7"
     },
     {
       "name": "file_selector_platform_interface",
@@ -369,7 +369,7 @@
     },
     {
       "name": "flutter_hooks",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/flutter_hooks-0.21.2",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/flutter_hooks-0.21.3+1",
       "packageUri": "lib/",
       "languageVersion": "2.17"
     },
@@ -405,9 +405,9 @@
     },
     {
       "name": "flutter_plugin_android_lifecycle",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/flutter_plugin_android_lifecycle-2.0.28",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/flutter_plugin_android_lifecycle-2.0.30",
       "packageUri": "lib/",
-      "languageVersion": "3.6"
+      "languageVersion": "3.7"
     },
     {
       "name": "flutter_riverpod",
@@ -459,15 +459,15 @@
     },
     {
       "name": "go_router",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/go_router-16.0.0",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/go_router-16.2.1",
       "packageUri": "lib/",
-      "languageVersion": "3.6"
+      "languageVersion": "3.7"
     },
     {
       "name": "google_fonts",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/google_fonts-6.2.1",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/google_fonts-6.3.1",
       "packageUri": "lib/",
-      "languageVersion": "2.14"
+      "languageVersion": "3.7"
     },
     {
       "name": "graphs",
@@ -489,7 +489,7 @@
     },
     {
       "name": "http",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/http-1.4.0",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/http-1.5.0",
       "packageUri": "lib/",
       "languageVersion": "3.4"
     },
@@ -507,51 +507,51 @@
     },
     {
       "name": "image_picker",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/image_picker-1.1.2",
-      "packageUri": "lib/",
-      "languageVersion": "3.3"
-    },
-    {
-      "name": "image_picker_android",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/image_picker_android-0.8.12+24",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/image_picker-1.2.0",
       "packageUri": "lib/",
       "languageVersion": "3.6"
     },
     {
-      "name": "image_picker_for_web",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/image_picker_for_web-3.0.6",
+      "name": "image_picker_android",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/image_picker_android-0.8.13+1",
       "packageUri": "lib/",
-      "languageVersion": "3.4"
+      "languageVersion": "3.7"
+    },
+    {
+      "name": "image_picker_for_web",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/image_picker_for_web-3.1.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.6"
     },
     {
       "name": "image_picker_ios",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/image_picker_ios-0.8.12+2",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/image_picker_ios-0.8.13",
       "packageUri": "lib/",
-      "languageVersion": "3.4"
+      "languageVersion": "3.6"
     },
     {
       "name": "image_picker_linux",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/image_picker_linux-0.2.1+2",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/image_picker_linux-0.2.2",
       "packageUri": "lib/",
-      "languageVersion": "3.4"
+      "languageVersion": "3.6"
     },
     {
       "name": "image_picker_macos",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/image_picker_macos-0.2.1+2",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/image_picker_macos-0.2.2",
       "packageUri": "lib/",
-      "languageVersion": "3.4"
+      "languageVersion": "3.6"
     },
     {
       "name": "image_picker_platform_interface",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/image_picker_platform_interface-2.10.1",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/image_picker_platform_interface-2.11.0",
       "packageUri": "lib/",
-      "languageVersion": "3.4"
+      "languageVersion": "3.6"
     },
     {
       "name": "image_picker_windows",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/image_picker_windows-0.2.1+1",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/image_picker_windows-0.2.2",
       "packageUri": "lib/",
-      "languageVersion": "2.19"
+      "languageVersion": "3.6"
     },
     {
       "name": "intl",
@@ -651,13 +651,13 @@
     },
     {
       "name": "package_info_plus",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/package_info_plus-8.3.0",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/package_info_plus-8.3.1",
       "packageUri": "lib/",
       "languageVersion": "3.3"
     },
     {
       "name": "package_info_plus_platform_interface",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/package_info_plus_platform_interface-3.2.0",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/package_info_plus_platform_interface-3.2.1",
       "packageUri": "lib/",
       "languageVersion": "2.18"
     },
@@ -675,15 +675,15 @@
     },
     {
       "name": "path_provider_android",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/path_provider_android-2.2.17",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/path_provider_android-2.2.18",
       "packageUri": "lib/",
-      "languageVersion": "3.6"
+      "languageVersion": "3.7"
     },
     {
       "name": "path_provider_foundation",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/path_provider_foundation-2.4.1",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/path_provider_foundation-2.4.2",
       "packageUri": "lib/",
-      "languageVersion": "3.3"
+      "languageVersion": "3.7"
     },
     {
       "name": "path_provider_linux",
@@ -747,9 +747,9 @@
     },
     {
       "name": "petitparser",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/petitparser-6.1.0",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/petitparser-7.0.1",
       "packageUri": "lib/",
-      "languageVersion": "3.5"
+      "languageVersion": "3.8"
     },
     {
       "name": "photo_view",
@@ -825,9 +825,9 @@
     },
     {
       "name": "shared_preferences_android",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/shared_preferences_android-2.4.10",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/shared_preferences_android-2.4.12",
       "packageUri": "lib/",
-      "languageVersion": "3.6"
+      "languageVersion": "3.7"
     },
     {
       "name": "shared_preferences_foundation",
@@ -891,7 +891,7 @@
     },
     {
       "name": "source_helper",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/source_helper-1.3.6",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/source_helper-1.3.7",
       "packageUri": "lib/",
       "languageVersion": "3.6"
     },
@@ -999,15 +999,15 @@
     },
     {
       "name": "url_launcher_android",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/url_launcher_android-6.3.16",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/url_launcher_android-6.3.18",
       "packageUri": "lib/",
-      "languageVersion": "3.6"
+      "languageVersion": "3.7"
     },
     {
       "name": "url_launcher_ios",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/url_launcher_ios-6.3.3",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/url_launcher_ios-6.3.4",
       "packageUri": "lib/",
-      "languageVersion": "3.4"
+      "languageVersion": "3.7"
     },
     {
       "name": "url_launcher_linux",
@@ -1017,9 +1017,9 @@
     },
     {
       "name": "url_launcher_macos",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/url_launcher_macos-3.2.2",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/url_launcher_macos-3.2.3",
       "packageUri": "lib/",
-      "languageVersion": "3.3"
+      "languageVersion": "3.7"
     },
     {
       "name": "url_launcher_platform_interface",
@@ -1059,13 +1059,13 @@
     },
     {
       "name": "video_player_android",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/video_player_android-2.8.7",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/video_player_android-2.8.13",
       "packageUri": "lib/",
       "languageVersion": "3.7"
     },
     {
       "name": "video_player_avfoundation",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/video_player_avfoundation-2.8.0",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/video_player_avfoundation-2.8.4",
       "packageUri": "lib/",
       "languageVersion": "3.6"
     },
@@ -1089,7 +1089,7 @@
     },
     {
       "name": "watcher",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/watcher-1.1.2",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/watcher-1.1.3",
       "packageUri": "lib/",
       "languageVersion": "3.1"
     },
@@ -1125,9 +1125,9 @@
     },
     {
       "name": "xml",
-      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/xml-6.5.0",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/xml-6.6.1",
       "packageUri": "lib/",
-      "languageVersion": "3.2"
+      "languageVersion": "3.8"
     },
     {
       "name": "yaml",

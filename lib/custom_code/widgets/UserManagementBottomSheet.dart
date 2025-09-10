@@ -1067,16 +1067,55 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       updateData['locationIds'] = locationIds?.toList() ?? [];
       // Keep locationId for backwards compatibility (use first location)
       updateData['locationId'] = locationIds?.first;
+      // Also store refs for resolver compatibility
+      if (locationIds != null && locationIds.isNotEmpty) {
+        updateData['assignedLocationRefs'] =
+            locationIds
+                .map(
+                  (id) => FirestoreEnforcer.instance
+                      .collection('organizations')
+                      .doc(organizationId)
+                      .collection('locations')
+                      .doc(id),
+                )
+                .toList();
+      } else {
+        updateData['assignedLocationRefs'] = [];
+      }
     } else if (accessLevel == 1) {
       // Manager - multiple locations
       updateData['locationIds'] = locationIds?.toList() ?? [];
       // Keep locationId for backwards compatibility (use first location)
       updateData['locationId'] = locationIds?.first;
+      if (locationIds != null && locationIds.isNotEmpty) {
+        updateData['assignedLocationRefs'] =
+            locationIds
+                .map(
+                  (id) => FirestoreEnforcer.instance
+                      .collection('organizations')
+                      .doc(organizationId)
+                      .collection('locations')
+                      .doc(id),
+                )
+                .toList();
+      } else {
+        updateData['assignedLocationRefs'] = [];
+      }
     } else {
       // Admin - has access to all locations, but keep locationId for primary
       if (locationIds != null && locationIds.isNotEmpty) {
         updateData['locationIds'] = locationIds.toList();
         updateData['locationId'] = locationIds.first;
+        updateData['assignedLocationRefs'] =
+            locationIds
+                .map(
+                  (id) => FirestoreEnforcer.instance
+                      .collection('organizations')
+                      .doc(organizationId)
+                      .collection('locations')
+                      .doc(id),
+                )
+                .toList();
       }
     }
 
@@ -1128,6 +1167,22 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       'adminEmail': adminEmail,
     };
 
+    // Also include assignedLocationRefs for compatibility
+    if (locationIds != null && locationIds.isNotEmpty) {
+      inviteData['assignedLocationRefs'] =
+          locationIds
+              .map(
+                (id) => FirestoreEnforcer.instance
+                    .collection('organizations')
+                    .doc(organizationId)
+                    .collection('locations')
+                    .doc(id),
+              )
+              .toList();
+    } else {
+      inviteData['assignedLocationRefs'] = [];
+    }
+
     // Handle job types based on user role
     if (accessLevel == 0) {
       // Employee - requires job types
@@ -1177,6 +1232,18 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       'organizationId': organizationId,
       'locationId': locationId,
       'locationIds': locationIds?.toList(),
+      'assignedLocationRefs':
+          locationIds != null
+              ? locationIds
+                  .map(
+                    (id) => FirestoreEnforcer.instance
+                        .collection('organizations')
+                        .doc(organizationId)
+                        .collection('locations')
+                        .doc(id),
+                  )
+                  .toList()
+              : [],
       'orgName': orgName,
       'adminEmail': adminEmail,
       'inviteUrl': inviteUrl,

@@ -22,6 +22,9 @@ class DailyChecklistService {
   final Uuid _uuid = const Uuid();
   // Tracks which (org|date|location) combinations have attempted an on-demand carry-forward fallback
   static final Set<String> _carryForwardFallbackAttempts = <String>{};
+  // Protect against rapid repeated generation attempts for the same (org|loc|shift|date)
+  static final Map<String, DateTime> _recentGenerationAttempts = <String, DateTime>{};
+  static final Set<String> _generationInProgress = <String>{};
 
   /// Helper function to safely convert task data from either List or Map format
   List<Map<String, dynamic>> _extractTasksList(Map<String, dynamic> data) {
@@ -157,6 +160,8 @@ class DailyChecklistService {
           'checklistTemplateId': templateId,
           'date': dateString,
           'templateName': templateName,
+          // CRITICAL FIX: Copy job types from template to checklist for filtering
+          'jobTypes': templateData['jobTypes'] ?? templateData['jobType'],
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         };
@@ -1187,6 +1192,62 @@ class DailyChecklistService {
     required ShiftData shiftData,
     required String date, // YYYY-MM-DD format
   }) async {
+    final key = '${organizationId}_${locationId}_${shiftId}_$date';
+    final now = DateTime.now();
+
+    // If a generation for this key is already running, bail out early to avoid re-entrancy
+    if (_generationInProgress.contains(key)) {
+      debugPrint('[DailyChecklistService] Skipping generation because one is already in progress for $key');
+      // Return any existing checklists for the caller to use
+      try {
+        final snap =
+            await _firestore
+                .collection('organizations')
+                .doc(organizationId)
+                .collection('locations')
+                .doc(locationId)
+                .collection('daily_checklists')
+                .where('shiftId', isEqualTo: shiftId)
+                .where('date', isEqualTo: date)
+                .get();
+        return snap.docs.map((d) => DailyChecklist.fromMap(d.data(), d.id)).toList();
+      } catch (e) {
+        debugPrint(
+          '[DailyChecklistService] Error returning existing checklists while another generation is running: $e',
+        );
+        return <DailyChecklist>[];
+      }
+    }
+
+    // Cooldown: skip repeated attempts within short window to prevent write->listener->write feedback
+    final lastAttempt = _recentGenerationAttempts[key];
+    const cooldown = Duration(seconds: 4);
+    if (lastAttempt != null && now.difference(lastAttempt) < cooldown) {
+      debugPrint(
+        '[DailyChecklistService] Generation for $key skipped due to cooldown (${now.difference(lastAttempt).inMilliseconds}ms)',
+      );
+      try {
+        final snap =
+            await _firestore
+                .collection('organizations')
+                .doc(organizationId)
+                .collection('locations')
+                .doc(locationId)
+                .collection('daily_checklists')
+                .where('shiftId', isEqualTo: shiftId)
+                .where('date', isEqualTo: date)
+                .get();
+        return snap.docs.map((d) => DailyChecklist.fromMap(d.data(), d.id)).toList();
+      } catch (e) {
+        debugPrint('[DailyChecklistService] Error returning existing checklists during cooldown: $e');
+        return <DailyChecklist>[];
+      }
+    }
+
+    // Mark this generation attempt time and flag in-progress
+    _recentGenerationAttempts[key] = now;
+    _generationInProgress.add(key);
+
     debugPrint('[DailyChecklistService] Starting generation (subcollection-only)…');
     debugPrint(
       '[DailyChecklistService] Params: orgId=$organizationId, locationId=$locationId, shiftId=$shiftId, date=$date',
@@ -1250,6 +1311,10 @@ class DailyChecklistService {
     debugPrint(
       '[DailyChecklistService] Generation complete (subcollection-only). Created/ensured ${createdChecklists.length} checklists.',
     );
+    // Clear in-progress flag for this key
+    try {
+      _generationInProgress.remove(key);
+    } catch (_) {}
     return createdChecklists;
   }
 
@@ -2502,8 +2567,8 @@ class DailyChecklistService {
                 (taskStats[taskName]!['shiftNames'] as Set<String>).add(shiftName);
               }
 
-              // Count missed
-              if (!completed) {
+              // Count missed (exclude carry-forward items)
+              if (!completed && !isCarryForward) {
                 taskStats[taskName]!['missedCount'] = (taskStats[taskName]!['missedCount'] ?? 0) + 1;
                 debugPrint(
                   '[DailyChecklistService] Found missed task: "$taskName" on $docDate in shift: $shiftName (missedCount now: ${taskStats[taskName]!['missedCount']})',

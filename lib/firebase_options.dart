@@ -43,7 +43,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '948527720669',
     projectId: 'plan-with-hands',
     authDomain: 'plan-with-hands.firebaseapp.com',
-    storageBucket: 'plan-with-hands.appspot.com',
+    storageBucket: 'plan-with-hands.firebasestorage.app',
     measurementId: 'G-NQ57SGRHWC',
   );
 
@@ -52,7 +52,7 @@ class DefaultFirebaseOptions {
     appId: '1:948527720669:android:a94ba3a6a0036547ba9334',
     messagingSenderId: '948527720669',
     projectId: 'plan-with-hands',
-    storageBucket: 'plan-with-hands.appspot.com',
+    storageBucket: 'plan-with-hands.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
@@ -60,7 +60,7 @@ class DefaultFirebaseOptions {
     appId: '1:948527720669:ios:9b42e5a6ae865655ba9334',
     messagingSenderId: '948527720669',
     projectId: 'plan-with-hands',
-    storageBucket: 'plan-with-hands.appspot.com',
+    storageBucket: 'plan-with-hands.firebasestorage.app',
     iosBundleId: 'com.example.handsClean',
   );
 
@@ -69,7 +69,7 @@ class DefaultFirebaseOptions {
     appId: '1:948527720669:ios:9b42e5a6ae865655ba9334',
     messagingSenderId: '948527720669',
     projectId: 'plan-with-hands',
-    storageBucket: 'plan-with-hands.appspot.com',
+    storageBucket: 'plan-with-hands.firebasestorage.app',
     iosBundleId: 'com.example.handsClean',
   );
 
@@ -79,7 +79,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '948527720669',
     projectId: 'plan-with-hands',
     authDomain: 'plan-with-hands.firebaseapp.com',
-    storageBucket: 'plan-with-hands.appspot.com',
+    storageBucket: 'plan-with-hands.firebasestorage.app',
     measurementId: 'G-F6TK9E5D7P',
   );
 }

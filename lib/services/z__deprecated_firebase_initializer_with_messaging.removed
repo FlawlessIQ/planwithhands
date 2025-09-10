@@ -1,0 +1,87 @@
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:hands_app/firebase_options.dart';
+import 'package:hands_app/services/push_notification_service.dart';
+import 'package:flutter/foundation.dart';
+
+/// Robust, hot-restart safe Firebase initialization helper.
+/// iOS Safari compatible - uses proven working Firebase Core approach.
+class FirebaseInitializer {
+  static final FirebaseInitializer _instance = FirebaseInitializer._internal();
+  factory FirebaseInitializer() => _instance;
+  FirebaseInitializer._internal();
+
+  bool _isInitialized = false;
+  Future<void>? _initializing;
+
+  Future<void> initialize() async {
+    if (_isInitialized) return;
+
+    if (_initializing != null) {
+      return _initializing;
+    }
+
+    _initializing = _doInitialize();
+    try {
+      await _initializing;
+    } finally {
+      _initializing = null;
+    }
+  }
+
+  Future<void> _doInitialize() async {
+    try {
+      if (Firebase.apps.isNotEmpty) {
+        _isInitialized = true;
+        return;
+      }
+
+      print('🔥 Starting Firebase initialization with iOS Safari compatibility...');
+      
+      // Use the proven working approach from our successful test
+      if (kIsWeb) {
+        print('🌐 Web platform - using proven iOS Safari compatible method');
+        await Future.delayed(const Duration(milliseconds: 1000));
+        
+        await Firebase.initializeApp(
+          options: const FirebaseOptions(
+            apiKey: 'AIzaSyDIYzHMKb-VI9W2bz2MPQzVevH58YFAM6A',
+            appId: '1:948527720669:web:6c46317a79c64ea0ba9334',
+            messagingSenderId: '948527720669',
+            projectId: 'plan-with-hands',
+            // Using minimal config that we proved works on iOS Safari
+          ),
+        );
+      } else {
+        await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+      }
+
+      // Skip Firebase Messaging setup on web to avoid iOS Safari issues
+      if (!kIsWeb) {
+        try {
+          FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+          print('✅ Firebase messaging registered (non-web)');
+        } catch (e) {
+          print('⚠️ Messaging setup failed (non-critical): $e');
+        }
+      } else {
+        print('🌐 Skipping Firebase Messaging setup on web for iOS Safari compatibility');
+      }
+
+      _isInitialized = true;
+      print('🎉 Firebase initialization completed successfully');
+      
+    } on FirebaseException catch (e) {
+      if (e.code == 'duplicate-app') {
+        _isInitialized = true;
+        return;
+      }
+      print('❌ FirebaseException: ${e.code} - ${e.message}');
+      rethrow;
+    } catch (e, stackTrace) {
+      print('❌ Firebase error: $e');
+      print('📍 Stack: $stackTrace');
+      rethrow;
+    }
+  }
+}

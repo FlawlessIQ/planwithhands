@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import '../models/message_thread.dart';
 import '../models/message.dart';
 
@@ -113,34 +115,94 @@ class MessagingService {
       'lastMessagePreview': text.substring(0, text.length > 80 ? 80 : text.length),
       'lastMessageAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+
+    // Fire-and-forget fallback: call the callable to send notifications directly.
+    // This guards against rare cases where the Firestore trigger might not fire.
+    try {
+      // Use Cloud Functions callable to trigger notifications immediately.
+      // We pass skipDocs: true to avoid duplicating notification documents
+      // if the Firestore trigger already created them.
+      // ignore: avoid_dynamic_calls
+      // dynamic import to keep dependency surface minimal
+      // This avoids import cycles if this service is used in isolates/tests.
+      // The callable is small and idempotent with skipDocs.
+      final functions = FirebaseFunctions.instance;
+      final callable = functions.httpsCallable('sendMessageNotification');
+      unawaited(callable.call({
+        'threadId': threadId,
+        'messageText': text,
+        'skipDocs': true,
+      }));
+    } catch (_) {/* non-fatal fallback */}
+  }
+
+  Future<void> deleteMessage(String threadId, String messageId) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) throw Exception('User not signed in');
+
+    await _db.collection('messageThreads').doc(threadId).collection('messages').doc(messageId).delete();
   }
 
   Stream<List<MessageThread>> watchThreads(String orgId, String userId) {
-    return _db
+    final controller = StreamController<List<MessageThread>>.broadcast();
+    QuerySnapshot<Map<String, dynamic>>? threadsSnap;
+    QuerySnapshot<Map<String, dynamic>>? notifsSnap;
+    StreamSubscription? threadsSub;
+    StreamSubscription? notifsSub;
+
+    void emit() {
+      if (threadsSnap == null || notifsSnap == null) return;
+
+      // Build unread counts per thread from notifications snapshot
+      final unreadByThread = <String, int>{};
+      for (final d in notifsSnap!.docs) {
+        final data = d.data();
+        if ((data['type'] as String?) != 'message') continue;
+        final tid = data['threadId'] as String?;
+        final readBy = List<String>.from(data['readBy'] ?? const <String>[]);
+        final archivedBy = List<String>.from(data['archivedBy'] ?? const <String>[]);
+        final isUnread = !readBy.contains(userId) && !archivedBy.contains(userId);
+        if (isUnread && tid != null) {
+          unreadByThread[tid] = (unreadByThread[tid] ?? 0) + 1;
+        }
+      }
+
+      final threads =
+          threadsSnap!.docs
+              .where((d) => (d.data()['recipientUserIds'] ?? []).contains(userId))
+              .map((d) => MessageThread.fromDoc(d, unreadCount: unreadByThread[d.id] ?? 0))
+              .toList();
+
+      controller.add(threads);
+    }
+
+    threadsSub = _db
         .collection('messageThreads')
         .where('orgId', isEqualTo: orgId)
         .orderBy('lastMessageAt', descending: true)
         .snapshots()
-        .asyncMap((snap) async {
-          final notifSnap =
-              await _db
-                  .collection('organizations')
-                  .doc(orgId)
-                  .collection('notifications')
-                  .where('userId', isEqualTo: userId)
-                  .where('read', isEqualTo: false)
-                  .get();
-          final unreadByThread = <String, int>{};
-          for (final d in notifSnap.docs) {
-            final data = d.data();
-            final tid = data['threadId'] as String?;
-            if (tid != null) unreadByThread[tid] = (unreadByThread[tid] ?? 0) + 1;
-          }
-          return snap.docs
-              .where((d) => (d.data()['recipientUserIds'] ?? []).contains(userId))
-              .map((d) => MessageThread.fromDoc(d, unreadCount: unreadByThread[d.id] ?? 0))
-              .toList();
+        .listen((snap) {
+          threadsSnap = snap;
+          emit();
         });
+
+    notifsSub = _db
+        .collection('organizations')
+        .doc(orgId)
+        .collection('notifications')
+        .where('userId', isEqualTo: userId)
+        .snapshots()
+        .listen((snap) {
+          notifsSnap = snap;
+          emit();
+        });
+
+    controller.onCancel = () async {
+      await threadsSub?.cancel();
+      await notifsSub?.cancel();
+    };
+
+    return controller.stream;
   }
 
   Stream<List<ThreadMessage>> watchMessages(String threadId) {
@@ -162,10 +224,15 @@ class MessagingService {
             .collection('notifications')
             .where('threadId', isEqualTo: threadId)
             .where('userId', isEqualTo: userId)
-            .where('read', isEqualTo: false)
+            .where('type', isEqualTo: 'message')
             .get();
+
     for (final d in q.docs) {
-      batch.update(d.reference, {'read': true});
+      batch.update(d.reference, {
+        // Keep boolean for legacy/UI, but also track per-user read state
+        'read': true,
+        'readBy': FieldValue.arrayUnion([userId]),
+      });
     }
     await batch.commit();
   }

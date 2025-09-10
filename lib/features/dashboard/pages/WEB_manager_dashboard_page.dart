@@ -1259,7 +1259,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
                               },
                             ),
                             _StatusToggleButton(
-                              label: 'Done',
+                              label: 'Complete',
                               selected: _selectedStatusFilter == 'finished',
                               onTap: () async {
                                 setState(() => _selectedStatusFilter = 'finished');
@@ -1497,10 +1497,10 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
     if (_selectedStatusFilter == null) return _liveShifts;
 
     if (_selectedStatusFilter == 'live') {
-      // Show shifts that are in progress or starting soon
+      // Show shifts that are in progress (exclude upcoming 'Starts in')
       return _liveShifts.where((s) {
         final timeStatus = s['timeStatus'].toString();
-        return timeStatus.contains('remaining') || timeStatus.contains('Starts in');
+        return timeStatus.contains('remaining');
       }).toList();
     } else if (_selectedStatusFilter == 'finished') {
       // Show finished shifts
@@ -3282,7 +3282,7 @@ class _StatusToggleButton extends StatelessWidget {
           label.toUpperCase(),
           style: GoogleFonts.comfortaa(
             color: selected ? HandsColors.white : HandsColors.white70,
-            fontSize: 12,
+            fontSize: 11,
             fontWeight: selected ? FontWeight.bold : FontWeight.normal,
             letterSpacing: 0.5,
           ),

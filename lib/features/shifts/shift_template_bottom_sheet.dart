@@ -41,14 +41,12 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
   final Set<String> _selectedDays = {};
   final List<String> _weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-  // Step 2: Locations
+  // Step 2: Locations (selection of multiple locations removed)
+  // Use a single location context; multi-location duplication is no longer allowed.
   List<String> selectedLocationIds = [];
 
   // Step 3: Roles & Staffing
-  List<String> selectedJobTypes = [];
   Map<String, int> staffingLevels = {};
-  List<String> availableJobTypes = [];
-  final TextEditingController _customJobTypeController = TextEditingController();
 
   // Step 4: Checklist Templates
   List<String> selectedChecklistTemplateIds = [];
@@ -64,8 +62,6 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
     if (!isEditing && widget.availableLocations.length == 1) {
       selectedLocationIds = [widget.availableLocations.first['id'] as String];
     }
-    // Load available job types from Firestore
-    _loadAvailableJobTypes();
   }
 
   void _populateFields() {
@@ -76,7 +72,6 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
     _repeatsDaily = shift.repeatsDaily;
     _selectedDays.addAll(shift.days);
     selectedLocationIds = coerceToLocationIds(shift.locationIds);
-    selectedJobTypes = List<String>.from(shift.jobType);
     selectedChecklistTemplateIds = List<String>.from(shift.checklistTemplateIds);
     staffingLevels = Map<String, int>.from(shift.staffingLevels);
   }
@@ -89,81 +84,23 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
     return [input.toString()];
   }
 
-  void _loadAvailableJobTypes() async {
-    try {
-      final snapshot =
-          await FirestoreEnforcer.instance
-              .collection('organizations')
-              .doc(widget.organizationId)
-              .collection('jobTypes')
-              .get();
-
-      if (mounted) {
-        setState(() {
-          availableJobTypes = snapshot.docs.map((doc) => doc.data()['name'] as String).toList();
-        });
-      }
-
-      // Add any job types from existing shift data
-      for (final jobType in selectedJobTypes) {
-        if (!availableJobTypes.contains(jobType)) {
-          availableJobTypes.add(jobType);
-        }
-      }
-    } catch (e) {
-      // If loading fails, create some defaults
-      if (mounted) {
-        await _createDefaultJobTypes();
-        _loadAvailableJobTypes(); // Retry
-      }
-    }
-  }
-
-  Future<void> _createDefaultJobTypes() async {
-    final defaultJobTypes = [
-      'Manager',
-      'Server',
-      'Cook',
-      'Bartender',
-      'Host/Hostess',
-      'Dishwasher',
-      'Food Runner',
-      'Busser',
-      'Cashier',
-      'Cleaner',
-    ];
-    final batch = FirestoreEnforcer.instance.batch();
-
-    for (final jobType in defaultJobTypes) {
-      final docRef =
-          FirestoreEnforcer.instance
-              .collection('organizations')
-              .doc(widget.organizationId)
-              .collection('jobTypes')
-              .doc();
-
-      batch.set(docRef, {
-        'name': jobType,
-        'createdAt': FieldValue.serverTimestamp(),
-        'organizationId': widget.organizationId,
-      });
-    }
-
-    await batch.commit();
-  }
+  // Shift-level job type helpers removed.
 
   @override
   void dispose() {
     _shiftNameController.dispose();
     _startTimeController.dispose();
     _endTimeController.dispose();
-    _customJobTypeController.dispose();
     super.dispose();
   }
 
   void _nextStep() {
     if (!_validateCurrentStep()) return;
-    if (_currentStep < 3) {
+    // There are 3 steps (indices 0..2). Guard against incrementing
+    // past the last index which trips the Stepper assertion:
+    // "0 <= currentStep && currentStep < steps.length"
+    const maxStepIndex = 2;
+    if (_currentStep < maxStepIndex) {
       setState(() => _currentStep++);
     } else {
       _saveShift();
@@ -220,11 +157,9 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
   bool _validateCurrentStep() {
     switch (_currentStep) {
       case 1:
-        // Allow skip when single location
+        // Location selection is informational; require at least one location only when multiple exist and none auto-selected
         if (widget.availableLocations.length > 1 && selectedLocationIds.isEmpty) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Please select at least one location')));
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select a location')));
           return false;
         }
         return true;
@@ -238,12 +173,7 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
         }
         return true;
       case 2:
-        if (selectedJobTypes.isEmpty) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Please select at least one job type for this shift.')));
-          return false;
-        }
+        // Roles step is informational; no validation required.
         return true;
       case 3:
         return true;
@@ -260,12 +190,11 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
       'endTime': _endTimeController.text.trim(),
       'days': _selectedDays.toList(),
       'repeatsDaily': _repeatsDaily,
+      // Persist a single location id list. If multiple were selected previously, only the first will be used.
       'locationIds':
           selectedLocationIds.isNotEmpty
-              ? selectedLocationIds
-              : widget.availableLocations.map((l) => l['id'] as String).toList(),
-      'jobTypes': selectedJobTypes,
-      'jobType': selectedJobTypes.isNotEmpty ? selectedJobTypes : [],
+              ? [selectedLocationIds.first]
+              : [if (widget.availableLocations.isNotEmpty) widget.availableLocations.first['id'] as String],
       'staffingLevels': staffingLevels,
       'checklistTemplateIds': selectedChecklistTemplateIds,
       'updatedAt': FieldValue.serverTimestamp(),
@@ -300,34 +229,6 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
         setState(() => isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving shift: $e')));
       }
-    }
-  }
-
-  void _addCustomJobType() async {
-    final jt = _customJobTypeController.text.trim();
-    if (jt.isEmpty || availableJobTypes.contains(jt)) return;
-
-    try {
-      await FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(widget.organizationId)
-          .collection('jobTypes')
-          .add({'name': jt, 'createdAt': FieldValue.serverTimestamp(), 'organizationId': widget.organizationId});
-
-      // Update the local state
-      setState(() {
-        availableJobTypes.add(jt);
-        selectedJobTypes.add(jt);
-        _customJobTypeController.clear();
-      });
-    } catch (e) {
-      debugPrint('Error adding custom job type: $e');
-      // Still add locally if Firestore fails
-      setState(() {
-        availableJobTypes.add(jt);
-        selectedJobTypes.add(jt);
-        _customJobTypeController.clear();
-      });
     }
   }
 
@@ -413,7 +314,7 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
                 ElevatedButton(
                   onPressed: details.onStepContinue,
                   style: BottomSheetStyles.primaryButtonStyle(),
-                  child: Text(_currentStep < 3 ? 'Next' : 'Save'),
+                  child: Text(_currentStep < 2 ? 'Next' : 'Save'),
                 ),
               ],
             ),
@@ -437,16 +338,8 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
             ),
           ),
           Step(
-            title: BottomSheetStyles.stepTitle('Roles'),
-            isActive: _currentStep >= 2,
-            content: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
-              child: _buildRolesAndStaffingStep(),
-            ),
-          ),
-          Step(
             title: BottomSheetStyles.stepTitle('Checklists'),
-            isActive: _currentStep >= 3,
+            isActive: _currentStep >= 2,
             content: Padding(
               padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
               child: _buildChecklistStep(),
@@ -614,77 +507,7 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
     );
   }
 
-  Widget _buildRolesAndStaffingStep() {
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Selected job types
-          if (selectedJobTypes.isNotEmpty) ...[
-            Text('Selected Roles:', style: Theme.of(context).textTheme.titleSmall),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8.0,
-              runSpacing: 4.0,
-              children:
-                  selectedJobTypes.map((jt) {
-                    return Chip(
-                      label: Text(jt),
-                      deleteIcon: const Icon(Icons.close, size: 18),
-                      onDeleted: () {
-                        setState(() {
-                          selectedJobTypes.remove(jt);
-                          staffingLevels.remove(jt);
-                        });
-                      },
-                    );
-                  }).toList(),
-            ),
-            const Divider(),
-            const SizedBox(height: 12),
-          ],
-
-          // Available job types to select from
-          if (availableJobTypes.isNotEmpty) ...[
-            Text('Available Roles:', style: Theme.of(context).textTheme.titleSmall),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8.0,
-              runSpacing: 4.0,
-              children:
-                  availableJobTypes
-                      .where((jt) => !selectedJobTypes.contains(jt))
-                      .map(
-                        (jt) => FilterChip(
-                          label: Text(jt),
-                          selected: false,
-                          onSelected: (selected) {
-                            if (selected) {
-                              setState(() {
-                                selectedJobTypes.add(jt);
-                              });
-                            }
-                          },
-                        ),
-                      )
-                      .toList(),
-            ),
-            const Divider(),
-            const SizedBox(height: 12),
-          ],
-
-          // Add custom job type
-          TextField(
-            controller: _customJobTypeController,
-            decoration: const InputDecoration(hintText: 'Add custom job type'),
-            onSubmitted: (_) => _addCustomJobType(),
-          ),
-          const SizedBox(height: 8),
-          ElevatedButton(onPressed: _addCustomJobType, child: const Text('Add Job Type')),
-        ],
-      ),
-    );
-  }
+  // Roles step removed. Job type gating lives on checklist templates now.
 
   Widget _buildChecklistStep() {
     // Determine which location(s) to show templates for. Prefer user-selected

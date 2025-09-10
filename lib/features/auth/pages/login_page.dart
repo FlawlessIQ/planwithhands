@@ -209,7 +209,13 @@ class LoginPage extends HookConsumerWidget {
           const SizedBox(width: 8),
           GestureDetector(
             onTap: () {
-              context.pushNamed('AccountCreationPage');
+              debugPrint('[LOGIN] Navigating to account creation page: ${AppRoutes.accountCreationPage.path}');
+              try {
+                context.go(AppRoutes.accountCreationPage.path);
+                debugPrint('[LOGIN] Navigation triggered successfully');
+              } catch (e) {
+                debugPrint('[LOGIN] Navigation error: $e');
+              }
             },
             child: Text(
               ' Sign up',

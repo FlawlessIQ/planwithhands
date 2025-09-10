@@ -1,4 +1,36 @@
+import SEO from '../components/SEO'
+
 export default function About() {
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "Plan With Hands",
+    "alternateName": "Hands",
+    "url": "https://planwithhands.com",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://planwithhands.com/images/favicon-192.png"
+    },
+    "description": "Restaurant operations management software company focused on digital checklists, team communication, and operational excellence.",
+    "foundingDate": "2024",
+    "industry": "Restaurant Technology",
+    "mission": "Make restaurant operations effortless, consistent, and scalable so every guest gets the same great experience.",
+    "contactPoint": {
+      "@type": "ContactPoint",
+      "contactType": "customer service",
+      "url": "https://planwithhands.com/contact"
+    }
+  };
+
+  return (
+    <>
+      <SEO
+        title="About Plan With Hands | Restaurant Operations Management Company"
+        description="Learn about Plan With Hands - restaurant operations management software built by operators for operators. Digital checklists, team communication, and operational excellence tools."
+        canonical="https://planwithhands.com/about/"
+        structuredData={structuredData}
+        keywords="about plan with hands, restaurant management company, restaurant operations software company, digital checklist company, restaurant technology"
+      />
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-16 md:py-20 space-y-12 sm:space-y-16 md:space-y-20">
       {/* Hero */}
@@ -77,5 +109,6 @@ export default function About() {
         <a href="https://plan-with-hands.web.app/create_account" className="px-5 sm:px-6 py-3 bg-accent text-primary font-semibold rounded-xl shadow-lg hover:opacity-90 transition-colors duration-200 text-sm sm:text-base min-h-[44px] inline-flex items-center justify-center">Start free trial</a>
       </section>
     </div>
+    </>
   )
 }

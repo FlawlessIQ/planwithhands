@@ -9,7 +9,7 @@ const firebaseConfig = {
   apiKey: "your-api-key",
   authDomain: "plan-with-hands.firebaseapp.com",
   projectId: "plan-with-hands",
-  storageBucket: "plan-with-hands.appspot.com",
+  storageBucket: "plan-with-hands.firebasestorage.app",
   messagingSenderId: "your-sender-id",
   appId: "your-app-id"
 };

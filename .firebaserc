@@ -7,6 +7,9 @@
       "hosting": {
         "hands-app": [
           "plan-with-hands"
+        ],
+        "staging": [
+          "plan-with-hands-staging"
         ]
       }
     }
