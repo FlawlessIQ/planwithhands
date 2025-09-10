@@ -219,6 +219,142 @@ export const onMessageCreated = functions.firestore
       }
     });
 
+/**
+ * Callable function to send a message and trigger notifications
+ * This provides an alternative to the Firestore trigger
+ * @param {object} data - Function call data
+ * @param {object} context - Function call context
+ * @return {Promise<object>} - Result of the operation
+ */
+export const sendMessageNotification = functions.https.onCall(async (data, context) => {
+  // Verify user is authenticated
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "User must be authenticated");
+  }
+
+  const {threadId, messageText, recipientUserIds, skipDocs} = data as {threadId: string; messageText: string; recipientUserIds?: string[]; skipDocs?: boolean};
+  const senderId = context.auth.uid;
+
+  if (!threadId || !messageText) {
+    throw new functions.https.HttpsError("invalid-argument", "Missing required fields");
+  }
+
+  try {
+    // Get sender information
+  const senderDoc = await db.collection("users").doc(senderId).get();
+    const senderData = senderDoc.data();
+    const senderName = `${senderData?.firstName || ""} ${senderData?.lastName || ""}`.trim() || "Someone";
+
+    // Get thread information
+  const threadDoc = await db.collection("messageThreads").doc(threadId).get();
+    const threadData = threadDoc.data();
+    const orgId = threadData?.orgId;
+
+    if (!orgId) {
+      throw new functions.https.HttpsError("not-found", "Organization not found");
+    }
+
+    // Use provided recipient list or get from thread
+    const recipients = recipientUserIds || threadData?.recipientUserIds || [];
+    const actualRecipients = recipients.filter((id: string) => id !== senderId);
+
+    if (actualRecipients.length === 0) {
+      return {success: true, message: "No recipients to notify"};
+    }
+
+    // Get FCM tokens from user-specific subcollections
+  const tokenPromises = actualRecipients.map(async (userId: string) => {
+      try {
+        // First try to get from user-specific subcollection (new format)
+    const userTokenSnap = await db
+            .collection("users")
+            .doc(userId)
+            .collection("deviceTokens")
+            .where("isActive", "==", true)
+            .get();
+
+        if (!userTokenSnap.empty) {
+          return userTokenSnap.docs.map((doc) => doc.data().fcmToken);
+        } else {
+          // Fallback to top-level deviceTokens collection (legacy format)
+    const legacyTokenSnap = await db
+              .collection("deviceTokens")
+              .where("userId", "==", userId)
+              .where("isActive", "==", true)
+              .get();
+          return legacyTokenSnap.docs.map((doc) => doc.data().fcmToken);
+        }
+      } catch (error) {
+        console.error(`Error fetching tokens for user ${userId}:`, error);
+        return [];
+      }
+    });
+
+    const userTokenArrays = await Promise.all(tokenPromises);
+    const allTokens = userTokenArrays.flat();
+
+    if (allTokens.length === 0) {
+      return {success: true, message: "No FCM tokens found"};
+    }
+
+    // Optionally create notification documents (skip if asked by client fallback)
+    if (!skipDocs) {
+      const batch = db.batch();
+      const timestamp = admin.firestore.FieldValue.serverTimestamp();
+      for (const userId of actualRecipients) {
+        const notificationRef = db
+          .collection("organizations")
+          .doc(orgId)
+          .collection("notifications")
+          .doc();
+
+        batch.set(notificationRef, {
+          userId: userId,
+          orgId: orgId,
+          threadId: threadId,
+          type: "message",
+          title: senderName,
+          message: messageText.length > 100 ? `${messageText.substring(0, 100)}...` : messageText,
+          read: false,
+          createdAt: timestamp,
+          senderId: senderId,
+          senderName: senderName,
+          expiresAt: new Date(Date.now() + (30 * 24 * 60 * 60 * 1000)),
+        });
+      }
+      await batch.commit();
+    }
+
+    // Send push notification
+    const fcmMessage = {
+      notification: {
+        title: senderName,
+        body: messageText.length > 100 ? `${messageText.substring(0, 100)}...` : messageText,
+      },
+      data: {
+        type: "message",
+        threadId: threadId,
+        senderId: senderId,
+        senderName: senderName,
+        orgId: orgId,
+      },
+      tokens: allTokens,
+    };
+
+  const response = await admin.messaging().sendMulticast(fcmMessage);
+
+    return {
+  success: true,
+  sent: response.successCount,
+  failed: response.failureCount,
+  recipients: actualRecipients.length,
+  docsCreated: !skipDocs,
+    };
+  } catch (error) {
+    console.error("Error in sendMessageNotification:", error);
+    throw new functions.https.HttpsError("internal", "Failed to send notification");
+  }
+});
 
 /**
  * Helper function to clean up invalid FCM tokens

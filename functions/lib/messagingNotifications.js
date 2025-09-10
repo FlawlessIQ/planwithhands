@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onGeneralNotificationCreated = exports.onDailySummaryNotificationCreated = exports.sendMessageNotification = exports.onMessageCreated = void 0;
+exports.onGeneralNotificationCreated = exports.onDailySummaryNotificationCreated = exports.onMessageCreated = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const firestore_1 = require("@google-cloud/firestore");
@@ -53,7 +53,26 @@ exports.onMessageCreated = functions.firestore
     const threadId = context.params.threadId;
     const messageId = context.params.messageId;
     try {
-        console.log(`Processing new message: ${messageId} in thread: ${threadId}`);
+        console.log(`🚀 [onMessageCreated] Processing new message: ${messageId} in thread: ${threadId}`);
+        console.log(`📝 [onMessageCreated] Message data:`, JSON.stringify(message, null, 2));
+        // Add processing lock to prevent race conditions from function retries
+        const lockId = `msg_lock_${threadId}_${messageId}`;
+        const lockRef = db.collection("messageLocks").doc(lockId);
+        // Check if this message is already being processed
+        const lockDoc = await lockRef.get();
+        if (lockDoc.exists) {
+            console.log(`🔒 [onMessageCreated] Message ${messageId} already processed, skipping`);
+            return;
+        }
+        console.log(`🔓 [onMessageCreated] Creating processing lock for message ${messageId}`);
+        // Create processing lock
+        await lockRef.set({
+            threadId: threadId,
+            messageId: messageId,
+            processedAt: admin.firestore.FieldValue.serverTimestamp(),
+            // Auto-expire lock after 5 minutes in case of function crash
+            expiresAt: new Date(Date.now() + (5 * 60 * 1000))
+        });
         // Get the sender's information
         const senderId = message.senderId;
         const senderDoc = await db.collection("users").doc(senderId).get();
@@ -74,10 +93,10 @@ exports.onMessageCreated = functions.firestore
         // Filter out the sender from recipients
         const actualRecipients = recipientUserIds.filter((id) => id !== senderId);
         if (actualRecipients.length === 0) {
-            console.log("No recipients to notify");
+            console.log("📭 [onMessageCreated] No recipients to notify");
             return;
         }
-        console.log(`Notifying ${actualRecipients.length} recipients`);
+        console.log(`👥 [onMessageCreated] Notifying ${actualRecipients.length} recipients: ${actualRecipients.join(', ')}`);
         // Get FCM tokens for recipients from user-specific subcollections
         const tokenPromises = actualRecipients.map(async (userId) => {
             try {
@@ -114,22 +133,36 @@ exports.onMessageCreated = functions.firestore
             allTokens.push(...tokens);
         });
         if (allTokens.length === 0) {
-            console.log("No FCM tokens found for recipients");
-            return;
+            console.log("📱 [onMessageCreated] No FCM tokens found for recipients");
+            // Still create notification documents even if no push tokens
         }
-        // Create notification documents for each recipient
+        console.log(`🔔 [onMessageCreated] Found ${allTokens.length} FCM tokens for push notifications`);
+        // Create notification documents for each recipient with deduplication
         const batch = db.batch();
         const timestamp = admin.firestore.FieldValue.serverTimestamp();
+        let notificationsCreated = 0;
+        let notificationsSkipped = 0;
         for (const userId of actualRecipients) {
+            // Use deterministic ID to prevent duplicates: msg_{messageId}_{userId}
+            const notificationId = `msg_${messageId}_${userId}`;
             const notificationRef = db
                 .collection("organizations")
                 .doc(orgId)
                 .collection("notifications")
-                .doc();
+                .doc(notificationId);
+            // Check if notification already exists (deduplication)
+            const existingNotification = await notificationRef.get();
+            if (existingNotification.exists) {
+                console.log(`⚠️  [onMessageCreated] Notification ${notificationId} already exists, skipping`);
+                notificationsSkipped++;
+                continue;
+            }
+            console.log(`📝 [onMessageCreated] Creating notification ${notificationId} for user ${userId}`);
             batch.set(notificationRef, {
                 userId: userId,
                 orgId: orgId,
                 threadId: threadId,
+                messageId: messageId, // Add messageId for reference
                 type: "message",
                 title: `${senderName}`,
                 message: message.text.length > 100 ? `${message.text.substring(0, 100)}...` : message.text,
@@ -140,170 +173,57 @@ exports.onMessageCreated = functions.firestore
                 // Add TTL - notifications expire after 30 days
                 expiresAt: new Date(Date.now() + (30 * 24 * 60 * 60 * 1000)),
             });
+            notificationsCreated++;
         }
         await batch.commit();
-        // Prepare FCM message
-        const messageText = message.text.length > 100 ? `${message.text.substring(0, 100)}...` : message.text;
-        const fcmMessage = {
-            notification: {
-                title: senderName,
-                body: messageText,
-            },
-            data: {
-                type: "message",
-                threadId: threadId,
-                messageId: messageId,
-                senderId: senderId,
-                senderName: senderName,
-                orgId: orgId,
-            },
-            tokens: allTokens,
-        };
-        // Send push notifications
-        const response = await admin.messaging().sendMulticast(fcmMessage);
-        console.log(`Push notifications sent: ${response.successCount} successful, ${response.failureCount} failed`);
-        // Clean up invalid tokens
-        if (response.responses) {
-            const invalidTokens = [];
-            response.responses.forEach((resp, index) => {
-                if (!resp.success &&
-                    (resp.error?.code === "messaging/registration-token-not-registered" ||
-                        resp.error?.code === "messaging/invalid-registration-token")) {
-                    invalidTokens.push(allTokens[index]);
-                }
-            });
-            if (invalidTokens.length > 0) {
-                console.log(`Cleaning up ${invalidTokens.length} invalid tokens`);
-                await cleanupInvalidTokens(invalidTokens);
-            }
-        }
-    }
-    catch (error) {
-        console.error("Error processing message notification:", error);
-        throw error;
-    }
-});
-/**
- * Callable function to send a message and trigger notifications
- * This provides an alternative to the Firestore trigger
- * @param {object} data - Function call data
- * @param {object} context - Function call context
- * @return {Promise<object>} - Result of the operation
- */
-exports.sendMessageNotification = functions.https.onCall(async (data, context) => {
-    // Verify user is authenticated
-    if (!context.auth) {
-        throw new functions.https.HttpsError("unauthenticated", "User must be authenticated");
-    }
-    const { threadId, messageText, recipientUserIds, skipDocs } = data;
-    const senderId = context.auth.uid;
-    if (!threadId || !messageText) {
-        throw new functions.https.HttpsError("invalid-argument", "Missing required fields");
-    }
-    try {
-        // Get sender information
-        const senderDoc = await db.collection("users").doc(senderId).get();
-        const senderData = senderDoc.data();
-        const senderName = `${senderData?.firstName || ""} ${senderData?.lastName || ""}`.trim() || "Someone";
-        // Get thread information
-        const threadDoc = await db.collection("messageThreads").doc(threadId).get();
-        const threadData = threadDoc.data();
-        const orgId = threadData?.orgId;
-        if (!orgId) {
-            throw new functions.https.HttpsError("not-found", "Organization not found");
-        }
-        // Use provided recipient list or get from thread
-        const recipients = recipientUserIds || threadData?.recipientUserIds || [];
-        const actualRecipients = recipients.filter((id) => id !== senderId);
-        if (actualRecipients.length === 0) {
-            return { success: true, message: "No recipients to notify" };
-        }
-        // Get FCM tokens from user-specific subcollections
-        const tokenPromises = actualRecipients.map(async (userId) => {
-            try {
-                // First try to get from user-specific subcollection (new format)
-                const userTokenSnap = await db
-                    .collection("users")
-                    .doc(userId)
-                    .collection("deviceTokens")
-                    .where("isActive", "==", true)
-                    .get();
-                if (!userTokenSnap.empty) {
-                    return userTokenSnap.docs.map((doc) => doc.data().fcmToken);
-                }
-                else {
-                    // Fallback to top-level deviceTokens collection (legacy format)
-                    const legacyTokenSnap = await db
-                        .collection("deviceTokens")
-                        .where("userId", "==", userId)
-                        .where("isActive", "==", true)
-                        .get();
-                    return legacyTokenSnap.docs.map((doc) => doc.data().fcmToken);
-                }
-            }
-            catch (error) {
-                console.error(`Error fetching tokens for user ${userId}:`, error);
-                return [];
-            }
-        });
-        const userTokenArrays = await Promise.all(tokenPromises);
-        const allTokens = userTokenArrays.flat();
-        if (allTokens.length === 0) {
-            return { success: true, message: "No FCM tokens found" };
-        }
-        // Optionally create notification documents (skip if asked by client fallback)
-        if (!skipDocs) {
-            const batch = db.batch();
-            const timestamp = admin.firestore.FieldValue.serverTimestamp();
-            for (const userId of actualRecipients) {
-                const notificationRef = db
-                    .collection("organizations")
-                    .doc(orgId)
-                    .collection("notifications")
-                    .doc();
-                batch.set(notificationRef, {
-                    userId: userId,
-                    orgId: orgId,
-                    threadId: threadId,
-                    type: "message",
+        console.log(`✅ [onMessageCreated] Notification documents committed: ${notificationsCreated} created, ${notificationsSkipped} skipped`);
+        // Only send push notifications if we have tokens
+        if (allTokens.length > 0) {
+            // Prepare FCM message
+            const messageText = message.text.length > 100 ? `${message.text.substring(0, 100)}...` : message.text;
+            const fcmMessage = {
+                notification: {
                     title: senderName,
-                    message: messageText.length > 100 ? `${messageText.substring(0, 100)}...` : messageText,
-                    read: false,
-                    createdAt: timestamp,
+                    body: messageText,
+                },
+                data: {
+                    type: "message",
+                    threadId: threadId,
+                    messageId: messageId,
                     senderId: senderId,
                     senderName: senderName,
-                    expiresAt: new Date(Date.now() + (30 * 24 * 60 * 60 * 1000)),
+                    orgId: orgId,
+                },
+                tokens: allTokens,
+            };
+            // Send push notifications
+            console.log(`📤 [onMessageCreated] Sending push notifications to ${allTokens.length} tokens`);
+            const response = await admin.messaging().sendMulticast(fcmMessage);
+            console.log(`✅ [onMessageCreated] Push notifications sent: ${response.successCount} successful, ${response.failureCount} failed`);
+            // Clean up invalid tokens
+            if (response.responses) {
+                const invalidTokens = [];
+                response.responses.forEach((resp, index) => {
+                    if (!resp.success &&
+                        (resp.error?.code === "messaging/registration-token-not-registered" ||
+                            resp.error?.code === "messaging/invalid-registration-token")) {
+                        invalidTokens.push(allTokens[index]);
+                    }
                 });
+                if (invalidTokens.length > 0) {
+                    console.log(`🗑️  [onMessageCreated] Cleaning up ${invalidTokens.length} invalid tokens`);
+                    await cleanupInvalidTokens(invalidTokens);
+                }
             }
-            await batch.commit();
         }
-        // Send push notification
-        const fcmMessage = {
-            notification: {
-                title: senderName,
-                body: messageText.length > 100 ? `${messageText.substring(0, 100)}...` : messageText,
-            },
-            data: {
-                type: "message",
-                threadId: threadId,
-                senderId: senderId,
-                senderName: senderName,
-                orgId: orgId,
-            },
-            tokens: allTokens,
-        };
-        const response = await admin.messaging().sendMulticast(fcmMessage);
-        return {
-            success: true,
-            sent: response.successCount,
-            failed: response.failureCount,
-            recipients: actualRecipients.length,
-            docsCreated: !skipDocs,
-        };
+        else {
+            console.log(`📭 [onMessageCreated] Skipping push notifications - no FCM tokens available`);
+        }
+        console.log(`🎉 [onMessageCreated] Message processing completed successfully for ${messageId}`);
     }
     catch (error) {
-        console.error("Error in sendMessageNotification:", error);
-        throw new functions.https.HttpsError("internal", "Failed to send notification");
+        console.error("❌ [onMessageCreated] Error processing message notification:", error);
+        throw error;
     }
 });
 /**
@@ -587,7 +507,7 @@ exports.onGeneralNotificationCreated = functions.firestore
                 read: false,
                 createdAt: timestamp,
                 targetType: targetType,
-                targetId: targetId || "",
+                targetId: targetId,
                 // Add TTL - notifications expire after 30 days
                 expiresAt: new Date(Date.now() + (30 * 24 * 60 * 60 * 1000)),
             });
