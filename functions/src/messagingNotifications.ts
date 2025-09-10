@@ -23,6 +23,26 @@ export const onMessageCreated = functions.firestore
       try {
         console.log(`Processing new message: ${messageId} in thread: ${threadId}`);
 
+        // Add processing lock to prevent race conditions from function retries
+        const lockId = `msg_lock_${threadId}_${messageId}`;
+        const lockRef = db.collection("messageLocks").doc(lockId);
+        
+        // Check if this message is already being processed
+        const lockDoc = await lockRef.get();
+        if (lockDoc.exists) {
+          console.log(`Message ${messageId} already processed, skipping`);
+          return;
+        }
+
+        // Create processing lock
+        await lockRef.set({
+          threadId: threadId,
+          messageId: messageId,
+          processedAt: admin.firestore.FieldValue.serverTimestamp(),
+          // Auto-expire lock after 5 minutes in case of function crash
+          expiresAt: new Date(Date.now() + (5 * 60 * 1000))
+        });
+
         // Get the sender's information
         const senderId = message.senderId;
   const senderDoc = await db.collection("users").doc(senderId).get();
@@ -98,21 +118,31 @@ export const onMessageCreated = functions.firestore
           return;
         }
 
-        // Create notification documents for each recipient
-  const batch = db.batch();
+        // Create notification documents for each recipient with deduplication
+        const batch = db.batch();
         const timestamp = admin.firestore.FieldValue.serverTimestamp();
 
         for (const userId of actualRecipients) {
+          // Use deterministic ID to prevent duplicates: msg_{messageId}_{userId}
+          const notificationId = `msg_${messageId}_${userId}`;
           const notificationRef = db
               .collection("organizations")
               .doc(orgId)
               .collection("notifications")
-              .doc();
+              .doc(notificationId);
+
+          // Check if notification already exists (deduplication)
+          const existingNotification = await notificationRef.get();
+          if (existingNotification.exists) {
+            console.log(`Notification ${notificationId} already exists, skipping`);
+            continue;
+          }
 
           batch.set(notificationRef, {
             userId: userId,
             orgId: orgId,
             threadId: threadId,
+            messageId: messageId, // Add messageId for reference
             type: "message",
             title: `${senderName}`,
             message: message.text.length > 100 ? `${message.text.substring(0, 100)}...` : message.text,
@@ -123,9 +153,7 @@ export const onMessageCreated = functions.firestore
             // Add TTL - notifications expire after 30 days
             expiresAt: new Date(Date.now() + (30 * 24 * 60 * 60 * 1000)),
           });
-        }
-
-        await batch.commit();
+        }        await batch.commit();
 
         // Prepare FCM message
         const messageText = message.text.length > 100 ? `${message.text.substring(0, 100)}...` : message.text;

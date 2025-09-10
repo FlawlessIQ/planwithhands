@@ -3,7 +3,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import '../models/message_thread.dart';
 import '../models/message.dart';
 
@@ -116,24 +115,16 @@ class MessagingService {
       'lastMessageAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
-    // Fire-and-forget fallback: call the callable to send notifications directly.
-    // This guards against rare cases where the Firestore trigger might not fire.
-    try {
-      // Use Cloud Functions callable to trigger notifications immediately.
-      // We pass skipDocs: true to avoid duplicating notification documents
-      // if the Firestore trigger already created them.
-      // ignore: avoid_dynamic_calls
-      // dynamic import to keep dependency surface minimal
-      // This avoids import cycles if this service is used in isolates/tests.
-      // The callable is small and idempotent with skipDocs.
-      final functions = FirebaseFunctions.instance;
-      final callable = functions.httpsCallable('sendMessageNotification');
-      unawaited(callable.call({
-        'threadId': threadId,
-        'messageText': text,
-        'skipDocs': true,
-      }));
-    } catch (_) {/* non-fatal fallback */}
+    // REMOVED: Fire-and-forget fallback callable function call
+    // This was causing 4x message duplication in notifications.
+    // The Firestore trigger 'onMessageCreated' is sufficient and reliable
+    // for handling all notifications including push notifications.
+    // 
+    // Previous implementation created race conditions where both:
+    // 1. Firestore trigger would create notifications
+    // 2. Callable function would also create/send notifications
+    // 
+    // Single execution path via Firestore trigger is more reliable.
   }
 
   Future<void> deleteMessage(String threadId, String messageId) async {
