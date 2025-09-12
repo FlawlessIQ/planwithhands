@@ -320,23 +320,15 @@ class UserDashboardPage extends HookConsumerWidget {
         List<ShiftData> foundShifts = await _getAllShiftsForToday(user.uid, todayDayName, todayString);
         logger.d("[Dashboard][DEBUG] Found ${foundShifts.length} shifts after querying for today");
         // Filter by selected location. Only include shifts that explicitly list the
-        // selected location. Previously we preserved volunteer-joined shifts across
-        // locations which caused joined shifts to appear at other locations; remove
-        // that behavior so joined shifts only appear when the selected location
-        // matches the shift's declared locations.
+        // selected location. Volunteer-joined shifts should only appear at the location
+        // where they were joined, not at other locations.
         foundShifts =
             selectedLocationId.value != null
                 ? foundShifts.where((shift) {
                   try {
                     final shiftLocs = coerceToLocationIds(shift.locationIds);
                     // Keep shift only if it matches the selected location
-                    if (shiftLocs.contains(selectedLocationId.value)) return true;
-                    final volunteers = shift.volunteers;
-                    if (volunteers.contains(user.uid)) {
-                      logger.d("[Dashboard] Preserving volunteer-joined shift ${shift.shiftName} across locations");
-                      return true;
-                    }
-                    return false;
+                    return shiftLocs.contains(selectedLocationId.value);
                   } catch (e) {
                     logger.w('[Dashboard] Error while filtering shifts by location: $e');
                     return false;
@@ -1807,8 +1799,7 @@ Future<List<DailyChecklist>> _loadChecklistsForShiftSimple(
       }
     }
 
-    userRole = userRole ?? 0;
-    userJobTypes = userJobTypes ?? <String>[];
+    // After the above checks, userRole and userJobTypes are guaranteed to be non-null
 
     // Build base query for daily_checklists for this shift/date/location
     var baseQuery = FirestoreEnforcer.instance

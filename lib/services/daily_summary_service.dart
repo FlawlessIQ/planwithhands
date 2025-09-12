@@ -427,7 +427,7 @@ class DailySummaryService {
 
     buffer.writeln('$performanceEmoji Daily Summary • $formattedDate');
     buffer.writeln('');
-    buffer.writeln('$performanceMessage');
+    buffer.writeln(performanceMessage);
     buffer.writeln('');
     buffer.writeln('📊 ${overallPercentage.toStringAsFixed(0)}% Complete ($completedTasks/$totalTasks tasks)');
     buffer.writeln('');

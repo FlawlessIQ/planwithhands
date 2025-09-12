@@ -495,6 +495,7 @@ class PushNotificationService {
       // Determine appropriate channel based on notification type
       switch (type) {
         case 'message':
+        case 'admin_message':
           channelId = 'messages';
           channelName = 'Chat Messages';
           channelDescription = 'Chat messages and direct communications.';
@@ -521,7 +522,7 @@ class PushNotificationService {
       );
 
       String? payload;
-      if (type == 'message' && message.data['threadId'] != null) {
+      if ((type == 'message' || type == 'admin_message') && message.data['threadId'] != null) {
         payload = 'thread:${message.data['threadId']}';
       } else if (type == 'daily_summary') {
         payload = 'daily_summary:${message.data['orgId'] ?? ''}';

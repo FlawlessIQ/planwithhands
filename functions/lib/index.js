@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.scheduledDailyGenerator = exports.onDailySummaryNotificationCreated = exports.onGeneralNotificationCreated = exports.onMessageCreated = exports.proxyDownload = exports.proxyUpload = exports.getSignedUploadUrl = exports.placeDetailsHttp = exports.placesAutocompleteHttp = exports.createBillingPortalSession = exports.updateSubscription = exports.cancelSubscription = exports.stripeWebhook = exports.createCheckoutSession = exports.deleteUser = exports.createUser = exports.repairTaskTitlesFromCsv = exports.repairTemplateTaskTitles = exports.migrateChecklistTemplates = exports.syncTodayOnShiftChange = exports.syncTodayOnTemplateChange = void 0;
+exports.scheduledDailyGenerator = exports.onNotificationOutboxCreated = exports.proxyDownload = exports.proxyUpload = exports.getSignedUploadUrl = exports.placeDetailsHttp = exports.placesAutocompleteHttp = exports.createBillingPortalSession = exports.updateSubscription = exports.cancelSubscription = exports.stripeWebhook = exports.createCheckoutSession = exports.deleteUser = exports.createUser = exports.repairTaskTitlesFromCsv = exports.repairTemplateTaskTitles = exports.migrateChecklistTemplates = exports.syncTodayOnShiftChange = exports.syncTodayOnTemplateChange = void 0;
 /* eslint-disable @typescript-eslint/no-require-imports */
 const admin = __importStar(require("firebase-admin"));
 // Ensure admin is initialized (idempotent)
@@ -91,12 +91,9 @@ exports.proxyUpload = proxyUploadModule.proxyUpload;
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const proxyDownloadModule = require("./proxyDownload");
 exports.proxyDownload = proxyDownloadModule.proxyDownload;
-// Export messaging notification functions
+// Export new loop-proof messaging notification function
 var messagingNotifications_1 = require("./messagingNotifications");
-Object.defineProperty(exports, "onMessageCreated", { enumerable: true, get: function () { return messagingNotifications_1.onMessageCreated; } });
-var messagingNotifications_2 = require("./messagingNotifications");
-Object.defineProperty(exports, "onGeneralNotificationCreated", { enumerable: true, get: function () { return messagingNotifications_2.onGeneralNotificationCreated; } });
-Object.defineProperty(exports, "onDailySummaryNotificationCreated", { enumerable: true, get: function () { return messagingNotifications_2.onDailySummaryNotificationCreated; } });
+Object.defineProperty(exports, "onNotificationOutboxCreated", { enumerable: true, get: function () { return messagingNotifications_1.onNotificationOutboxCreated; } });
 // Export daily generator (scheduled function to create daily checklists)
 var dailyGenerator_1 = require("./dailyGenerator");
 Object.defineProperty(exports, "scheduledDailyGenerator", { enumerable: true, get: function () { return dailyGenerator_1.scheduledDailyGenerator; } });

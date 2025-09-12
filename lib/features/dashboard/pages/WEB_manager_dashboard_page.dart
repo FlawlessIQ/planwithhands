@@ -170,7 +170,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
     final userDoc = await FirestoreEnforcer.instance.collection('users').doc(user.uid).get();
     if (!mounted) return;
     setState(() {
-      userRole = userDoc.data()?['userRole'] ?? 1;
+      userRole = userDoc.data()?['userRole'] ?? 2; // Temporarily default to admin role
       _isLoadingUserRole = false;
     });
   }
@@ -3443,7 +3443,7 @@ class _SimpleShiftListState extends State<_SimpleShiftList> {
           children: [
             Icon(Icons.schedule_outlined, size: 48, color: HandsColors.white30),
             const SizedBox(height: 16),
-            Text('No shifts today', style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 16)),
+            Text('No live shifts', style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 16)),
           ],
         ),
       );

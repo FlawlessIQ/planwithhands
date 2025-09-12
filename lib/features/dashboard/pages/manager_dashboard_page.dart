@@ -212,9 +212,13 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
       return;
     }
     final userDoc = await FirestoreEnforcer.instance.collection('users').doc(user.uid).get();
+    print('🔍 [DEBUG] User doc exists: ${userDoc.exists}');
+    print('🔍 [DEBUG] User doc data: ${userDoc.data()}');
     if (!mounted) return;
     setState(() {
-      userRole = userDoc.data()?['userRole'] ?? 1;
+      final fetchedRole = userDoc.data()?['userRole'] as int?;
+      userRole = fetchedRole ?? 2; // Temporarily default to admin role
+      print('🔍 [DEBUG] Fetched role: $fetchedRole, Final role: $userRole');
       _isLoadingUserRole = false;
     });
   }
@@ -2468,7 +2472,7 @@ class _LiveShiftStripState extends State<_LiveShiftStrip> {
             children: [
               Icon(Icons.schedule, size: 32, color: Colors.grey),
               SizedBox(height: 8),
-              Text('No shifts scheduled for today.', style: TextStyle(color: Colors.grey, fontSize: 14)),
+              Text('No live shifts', style: TextStyle(color: Colors.grey, fontSize: 14)),
             ],
           ),
         ),

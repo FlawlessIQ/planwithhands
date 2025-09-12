@@ -5,9 +5,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/widgets/professional_message_dialog.dart';
-import 'package:hands_app/utils/location_helper.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 
 class NotificationListSheet extends ConsumerStatefulWidget {
   final void Function(String title, String details)? onMessageTap;
@@ -21,10 +21,14 @@ class NotificationListSheet extends ConsumerStatefulWidget {
 class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
   final List<Map<String, dynamic>> _notifications = [];
   bool _isLoading = true;
+  bool _isLoadingMore = false;
+  bool _hasMoreData = true;
   StreamSubscription<QuerySnapshot>? _subscription;
   String? _userId;
   String? _orgId;
   String _viewFilter = 'Unread'; // 'Unread', 'Read', 'Archived'
+  static const int _pageSize = 10;
+  DocumentSnapshot? _lastDocument;
 
   @override
   void initState() {
@@ -46,115 +50,153 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
       return;
     }
 
-    // Get user data for filtering notifications
-    final userData = userDoc.data()!;
+    // Reset pagination state
+    _lastDocument = null;
+    _hasMoreData = true;
+    _notifications.clear();
 
-    // subscribe to notifications
-    _subscription = FirestoreEnforcer.instance
-        .collection('organizations')
-        .doc(_orgId)
-        .collection('notifications')
-        .orderBy('createdAt', descending: true)
-        .snapshots()
-        .listen((snap) {
-          final docs = snap.docs;
-          final list =
-              docs
-                  .where((doc) {
-                    // Filter notifications based on targeting
-                    return _shouldUserSeeNotification(doc.data(), userData);
-                  })
-                  .map((doc) {
-                    final data = doc.data();
-                    return {
-                      'id': doc.id,
-                      'title': data['title'] as String? ?? '',
-                      'message': data['message'] as String? ?? '',
-                      'createdAt': data['createdAt'],
-                      'readBy': List<String>.from(data['readBy'] ?? []),
-                      'archivedBy': List<String>.from(data['archivedBy'] ?? []),
-                    };
-                  })
-                  .toList();
+    // Load first page
+    await _loadNotifications(isLoadMore: false);
+  }
 
-          setState(() {
-            _notifications
-              ..clear()
-              ..addAll(list);
+  Future<void> _loadNotifications({required bool isLoadMore}) async {
+    if (isLoadMore && (!_hasMoreData || _isLoadingMore)) return;
+
+    if (mounted) {
+      setState(() {
+        if (isLoadMore) {
+          _isLoadingMore = true;
+        } else {
+          _isLoading = true;
+        }
+      });
+    }
+
+    try {
+      // Load all notifications and filter on client side for simplicity
+      // This avoids complex Firestore query limitations with array conditions
+      Query query = FirestoreEnforcer.instance
+          .collection('userNotifications')
+          .doc(_userId!)
+          .collection('notifications')
+          .orderBy('createdAt', descending: true)
+          .limit(_pageSize * 3); // Load more to account for filtering
+
+      // Add pagination
+      if (isLoadMore && _lastDocument != null) {
+        query = query.startAfterDocument(_lastDocument!);
+      }
+
+      final snapshot = await query.get();
+      final docs = snapshot.docs;
+
+      if (docs.isEmpty) {
+        setState(() {
+          _hasMoreData = false;
+          if (isLoadMore) {
+            _isLoadingMore = false;
+          } else {
             _isLoading = false;
-          });
+          }
         });
-  }
+        return;
+      }
 
-  /// Determine if the current user should see this notification
-  bool _shouldUserSeeNotification(Map<String, dynamic> notificationData, Map<String, dynamic> userData) {
-    final targetType = notificationData['targetType'] as String?;
-    final targetId = notificationData['targetId'] as String?;
+      // Filter notifications based on current view
+      final filteredDocs =
+          docs
+              .where((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                final readBy = List<String>.from(data['readBy'] ?? []);
+                final archivedBy = List<String>.from(data['archivedBy'] ?? []);
+                final isRead = readBy.contains(_userId);
+                final isArchived = archivedBy.contains(_userId);
 
-    // Handle legacy notifications and "all users" notifications
-    if (targetType == null || targetType == 'all') {
-      final recipientId = notificationData['recipientId'] as String?;
-      // Show to all users if recipientId is 'all' or null
-      return recipientId == 'all' || recipientId == null;
+                switch (_viewFilter) {
+                  case 'Unread':
+                    return !isRead && !isArchived;
+                  case 'Read':
+                    return isRead && !isArchived;
+                  case 'Archived':
+                    return isArchived;
+                  default:
+                    return true;
+                }
+              })
+              .take(_pageSize)
+              .toList();
+
+      final newNotifications =
+          filteredDocs.map((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            return {
+              'id': doc.id,
+              'title': data['title'] as String? ?? '',
+              'message': data['message'] as String? ?? '',
+              'createdAt': data['createdAt'],
+              'readBy': List<String>.from(data['readBy'] ?? []),
+              'archivedBy': List<String>.from(data['archivedBy'] ?? []),
+              'docSnapshot': doc, // Store for pagination
+            };
+          }).toList();
+
+      setState(() {
+        if (isLoadMore) {
+          _notifications.addAll(newNotifications);
+          _isLoadingMore = false;
+        } else {
+          _notifications
+            ..clear()
+            ..addAll(newNotifications);
+          _isLoading = false;
+        }
+
+        _lastDocument = docs.isNotEmpty ? docs.last : null;
+        _hasMoreData = newNotifications.length == _pageSize;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          if (isLoadMore) {
+            _isLoadingMore = false;
+          } else {
+            _isLoading = false;
+          }
+        });
+      }
     }
-
-    switch (targetType) {
-      case 'all':
-        return true;
-
-      case 'user':
-        // Individual user targeting
-        return targetId == _userId;
-
-      case 'group':
-        // Group targeting - check if user is member of the group
-        // TODO: Implement group membership check when groups are fully implemented
-        return false;
-
-      case 'location':
-        // Location targeting - check if user has access to this location
-        return _userHasLocationAccess(userData, targetId);
-
-      default:
-        // Unknown target type - show to be safe
-        return true;
-    }
-  }
-
-  /// Check if user has access to the specified location
-  bool _userHasLocationAccess(Map<String, dynamic> userData, String? locationId) {
-    if (locationId == null) return false;
-
-    final userRole = userData['userRole'] as int? ?? 0;
-
-    // Admins see all notifications
-    if (userRole == 2) return true;
-
-    // For managers and general users: canonicalize and check locationIds
-    final locIds = coerceToLocationIds(userData['locationIds'] ?? userData['locationId']);
-    return locIds.contains(locationId);
   }
 
   Future<void> _archiveNotification(String id) async {
-    if (_userId == null || _orgId == null) return;
-    await FirestoreEnforcer.instance.collection('organizations').doc(_orgId).collection('notifications').doc(id).update(
-      {
-        'archivedBy': FieldValue.arrayUnion([_userId]),
-      },
-    );
+    if (_userId == null) return;
+    await FirestoreEnforcer.instance
+        .collection('userNotifications')
+        .doc(_userId!)
+        .collection('notifications')
+        .doc(id)
+        .update({
+          'archivedBy': FieldValue.arrayUnion([_userId]),
+        });
+    // Refresh current view
+    await _loadNotifications(isLoadMore: false);
   }
 
   Future<void> _unarchiveNotification(String id) async {
-    if (_userId == null || _orgId == null) return;
-    await FirestoreEnforcer.instance.collection('organizations').doc(_orgId).collection('notifications').doc(id).update(
-      {
-        'archivedBy': FieldValue.arrayRemove([_userId]),
-      },
-    );
+    if (_userId == null) return;
+    await FirestoreEnforcer.instance
+        .collection('userNotifications')
+        .doc(_userId!)
+        .collection('notifications')
+        .doc(id)
+        .update({
+          'archivedBy': FieldValue.arrayRemove([_userId]),
+        });
+    // Refresh current view
+    await _loadNotifications(isLoadMore: false);
   }
 
   Future<void> _deleteNotification(String id) async {
-    if (_userId == null || _orgId == null) return;
+    if (_userId == null) return;
 
     // Show confirmation dialog
     final confirmed = await showDialog<bool>(
@@ -186,8 +228,8 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
     if (confirmed == true) {
       try {
         await FirestoreEnforcer.instance
-            .collection('organizations')
-            .doc(_orgId)
+            .collection('userNotifications')
+            .doc(_userId!)
             .collection('notifications')
             .doc(id)
             .delete();
@@ -199,6 +241,8 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
               backgroundColor: HandsColors.primary,
             ),
           );
+          // Refresh current view
+          await _loadNotifications(isLoadMore: false);
         }
       } catch (e) {
         if (mounted) {
@@ -221,7 +265,7 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
 
   // Mark a single notification as read when user views it
   Future<void> _markNotificationAsRead(String id) async {
-    if (_userId == null || _orgId == null) return;
+    if (_userId == null) return;
     // Optimistically update local state
     final idx = _notifications.indexWhere((n) => n['id'] == id);
     if (idx != -1 && !(_notifications[idx]['readBy'] as List<String>).contains(_userId)) {
@@ -229,32 +273,62 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
         (_notifications[idx]['readBy'] as List<String>).add(_userId!);
       });
     }
-    await FirestoreEnforcer.instance.collection('organizations').doc(_orgId).collection('notifications').doc(id).update(
-      {
-        'readBy': FieldValue.arrayUnion([_userId]),
-      },
-    );
+    await FirestoreEnforcer.instance
+        .collection('userNotifications')
+        .doc(_userId!)
+        .collection('notifications')
+        .doc(id)
+        .update({
+          'readBy': FieldValue.arrayUnion([_userId]),
+        });
+  }
+
+  void _onViewFilterChanged(String newFilter) {
+    setState(() {
+      _viewFilter = newFilter;
+      _lastDocument = null;
+      _hasMoreData = true;
+    });
+    _loadNotifications(isLoadMore: false);
+  }
+
+  String _formatTimestamp(dynamic timestamp) {
+    if (timestamp == null) return '';
+
+    DateTime dateTime;
+    if (timestamp is Timestamp) {
+      dateTime = timestamp.toDate();
+    } else if (timestamp is DateTime) {
+      dateTime = timestamp;
+    } else {
+      return '';
+    }
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final messageDate = DateTime(dateTime.year, dateTime.month, dateTime.day);
+
+    final timeFormat = DateFormat('h:mm a');
+    final dateFormat = DateFormat('MMM d');
+    final fullDateFormat = DateFormat('MMM d, yyyy');
+
+    if (messageDate == today) {
+      // Today - show just time
+      return timeFormat.format(dateTime);
+    } else if (messageDate == today.subtract(const Duration(days: 1))) {
+      // Yesterday
+      return 'Yesterday ${timeFormat.format(dateTime)}';
+    } else if (dateTime.year == now.year) {
+      // This year - show month, day and time
+      return '${dateFormat.format(dateTime)} ${timeFormat.format(dateTime)}';
+    } else {
+      // Different year - show full date and time
+      return '${fullDateFormat.format(dateTime)} ${timeFormat.format(dateTime)}';
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // filter notifications by view
-    final filtered =
-        _notifications.where((n) {
-          final read = (n['readBy'] as List<String>).contains(_userId);
-          final archived = (n['archivedBy'] as List<String>).contains(_userId);
-          switch (_viewFilter) {
-            case 'Unread':
-              return !read && !archived;
-            case 'Read':
-              return read && !archived;
-            case 'Archived':
-              return archived;
-            default:
-              return true;
-          }
-        }).toList();
-
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: HandsDecorations.primaryBoxDecoration,
@@ -290,7 +364,7 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
                       (f) => ChoiceChip(
                         label: Text(f),
                         selected: _viewFilter == f,
-                        onSelected: (_) => setState(() => _viewFilter = f),
+                        onSelected: (_) => _onViewFilterChanged(f),
                         backgroundColor: HandsColors.secondaryContainer,
                         selectedColor: HandsColors.handsOrange,
                         labelStyle: GoogleFonts.comfortaa(
@@ -311,7 +385,7 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
                 child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(HandsColors.handsOrange)),
               ),
             )
-          else if (filtered.isEmpty)
+          else if (_notifications.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 24),
               child: Center(
@@ -323,91 +397,132 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
             )
           else
             Flexible(
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: filtered.length,
-                itemBuilder: (context, i) {
-                  final n = filtered[i];
-                  final isRead = (n['readBy'] as List<String>).contains(_userId);
-                  final isArchived = (n['archivedBy'] as List<String>).contains(_userId);
-                  final title = n['title'] as String? ?? 'New Message';
-                  final details = n['message'] as String? ?? 'No content';
+              child: Column(
+                children: [
+                  Expanded(
+                    child: ListView.builder(
+                      shrinkWrap: false,
+                      itemCount: _notifications.length,
+                      itemBuilder: (context, i) {
+                        final n = _notifications[i];
+                        final isRead = (n['readBy'] as List<String>).contains(_userId);
+                        final isArchived = (n['archivedBy'] as List<String>).contains(_userId);
+                        final title = n['title'] as String? ?? 'New Message';
+                        final details = n['message'] as String? ?? 'No content';
+                        final timestamp = _formatTimestamp(n['createdAt']);
 
-                  return Container(
-                    margin: const EdgeInsets.symmetric(vertical: 6),
-                    decoration: HandsDecorations.tertiaryBoxDecoration,
-                    child: ListTile(
-                      leading: Icon(
-                        isRead ? Icons.mark_email_read_outlined : Icons.mark_email_unread,
-                        color: isRead ? HandsColors.white70 : HandsColors.handsOrange,
-                      ),
-                      title: Text(
-                        title,
-                        style: GoogleFonts.comfortaa(
-                          fontWeight: isRead ? FontWeight.w400 : FontWeight.bold,
-                          color: HandsColors.white,
-                        ),
-                      ),
-                      subtitle: Text(
-                        details,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 13),
-                      ),
-                      trailing: PopupMenuButton<String>(
-                        iconColor: HandsColors.white70,
-                        color: HandsColors.secondaryContainer,
-                        onSelected: (value) {
-                          if (value == 'archive') {
-                            _archiveNotification(n['id']);
-                          } else if (value == 'unarchive') {
-                            _unarchiveNotification(n['id']);
-                          } else if (value == 'delete') {
-                            _deleteNotification(n['id']);
-                          }
-                        },
-                        itemBuilder:
-                            (context) => [
-                              PopupMenuItem(
-                                value: isArchived ? 'unarchive' : 'archive',
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      isArchived ? Icons.unarchive : Icons.archive,
+                        return Container(
+                          margin: const EdgeInsets.symmetric(vertical: 6),
+                          decoration: HandsDecorations.tertiaryBoxDecoration,
+                          child: ListTile(
+                            leading: Icon(
+                              isRead ? Icons.mark_email_read_outlined : Icons.mark_email_unread,
+                              color: isRead ? HandsColors.white70 : HandsColors.handsOrange,
+                            ),
+                            title: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    title,
+                                    style: GoogleFonts.comfortaa(
+                                      fontWeight: isRead ? FontWeight.w400 : FontWeight.bold,
                                       color: HandsColors.white,
-                                      size: 16,
                                     ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      isArchived ? 'Unarchive' : 'Archive',
-                                      style: GoogleFonts.comfortaa(color: HandsColors.white),
+                                  ),
+                                ),
+                                if (timestamp.isNotEmpty)
+                                  Text(
+                                    timestamp,
+                                    style: GoogleFonts.comfortaa(
+                                      fontSize: 12,
+                                      color: HandsColors.white70,
+                                      fontWeight: FontWeight.w300,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            subtitle: Text(
+                              details,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 13),
+                            ),
+                            trailing: PopupMenuButton<String>(
+                              iconColor: HandsColors.white70,
+                              color: HandsColors.secondaryContainer,
+                              onSelected: (value) {
+                                if (value == 'archive') {
+                                  _archiveNotification(n['id']);
+                                } else if (value == 'unarchive') {
+                                  _unarchiveNotification(n['id']);
+                                } else if (value == 'delete') {
+                                  _deleteNotification(n['id']);
+                                }
+                              },
+                              itemBuilder:
+                                  (context) => [
+                                    PopupMenuItem(
+                                      value: isArchived ? 'unarchive' : 'archive',
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            isArchived ? Icons.unarchive : Icons.archive,
+                                            color: HandsColors.white,
+                                            size: 16,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            isArchived ? 'Unarchive' : 'Archive',
+                                            style: GoogleFonts.comfortaa(color: HandsColors.white),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'delete',
+                                      child: Row(
+                                        children: [
+                                          const Icon(Icons.delete, color: Colors.red, size: 16),
+                                          const SizedBox(width: 8),
+                                          Text('Delete', style: GoogleFonts.comfortaa(color: Colors.red)),
+                                        ],
+                                      ),
                                     ),
                                   ],
-                                ),
-                              ),
-                              PopupMenuItem(
-                                value: 'delete',
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.delete, color: Colors.red, size: 16),
-                                    const SizedBox(width: 8),
-                                    Text('Delete', style: GoogleFonts.comfortaa(color: Colors.red)),
-                                  ],
-                                ),
-                              ),
-                            ],
-                      ),
-                      onTap: () {
-                        if (widget.onMessageTap != null) {
-                          widget.onMessageTap!(title, details);
-                        }
-                        if (!isRead) {
-                          _markNotificationAsRead(n['id']);
-                        }
+                            ),
+                            onTap: () {
+                              if (widget.onMessageTap != null) {
+                                widget.onMessageTap!(title, details);
+                              }
+                              if (!isRead) {
+                                _markNotificationAsRead(n['id']);
+                              }
+                            },
+                          ),
+                        );
                       },
                     ),
-                  );
-                },
+                  ),
+                  // Load More button
+                  if (_hasMoreData && !_isLoading)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child:
+                          _isLoadingMore
+                              ? const CircularProgressIndicator(
+                                valueColor: AlwaysStoppedAnimation<Color>(HandsColors.handsOrange),
+                              )
+                              : ElevatedButton(
+                                onPressed: () => _loadNotifications(isLoadMore: true),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: HandsColors.handsOrange,
+                                  foregroundColor: HandsColors.white,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                                child: Text('Load More', style: GoogleFonts.comfortaa(fontWeight: FontWeight.w500)),
+                              ),
+                    ),
+                ],
               ),
             ),
         ],

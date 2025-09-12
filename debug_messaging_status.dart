@@ -1,8 +1,6 @@
 #!/usr/bin/env dart
 // Quick test to check current notification counts and debug the red indicator
 
-import 'dart:io';
-
 void main() async {
   print('🔍 DEBUGGING MESSAGING ISSUE');
   print('=============================');

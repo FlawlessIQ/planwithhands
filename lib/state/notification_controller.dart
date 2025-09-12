@@ -27,7 +27,7 @@ class NotificationController {
 
     // Prepare notification data
     final notifRef =
-        FirestoreEnforcer.instance.collection('organizations').doc(orgId).collection('notifications').doc();
+        FirestoreEnforcer.instance.collection('organizations').doc(orgId).collection('notificationOutbox').doc();
 
     // Build targeting data based on recipient type
     Map<String, dynamic> notificationData = {

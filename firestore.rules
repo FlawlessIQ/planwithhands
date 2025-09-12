@@ -68,6 +68,19 @@ service cloud.firestore {
         allow read, write: if request.auth != null;
       }
 
+      // Groups within organizations  
+      match /groups/{groupId} {
+        allow get, list: if request.auth != null && isOrgMember(orgId);
+        allow create, update, delete: if request.auth != null && isOrgManagerOrAdmin(orgId);
+      }
+
+      // Notification outbox for organization-wide notifications
+      match /notificationOutbox/{notifId} {
+        allow read: if request.auth != null && isOrgMember(orgId);
+        allow create: if request.auth != null && isOrgManagerOrAdmin(orgId);
+        allow update, delete: if false; // Only Cloud Functions should modify after creation
+      }
+
       // Other subcollections
       match /locations/{locId} {
         allow get, list: if request.auth != null;
@@ -94,9 +107,11 @@ service cloud.firestore {
         allow get, list: if request.auth != null && isOrgMember(orgId);
         allow create, update, delete: if request.auth != null && isOrgManagerOrAdmin(orgId);
       }
-      match /notifications/{notifId} {
-        allow get, list: if request.auth != null && isOrgMember(orgId);
-        allow create, update, delete: if request.auth != null && isOrgManagerOrAdmin(orgId);
+
+      // Per-user notification inbox
+      match /userNotifications/{notifId} {
+        allow get, list: if request.auth != null && resource.data.userId == request.auth.uid;
+        allow create, update, delete: if false;
       }
 
       // Training documents within an organization
@@ -105,6 +120,15 @@ service cloud.firestore {
         allow get, list: if request.auth != null && isOrgMember(orgId);
         // Only managers/admins of the org can create/update/delete
         allow create, update, delete: if request.auth != null && isOrgManagerOrAdmin(orgId);
+      }
+    }
+
+    // Top-level per-user notifications collection
+    match /userNotifications/{userId} {
+      match /notifications/{notifId} {
+        allow get, list: if request.auth != null && request.auth.uid == userId;
+        allow update: if request.auth != null && request.auth.uid == userId;
+        allow create, delete: if false; // Only Cloud Functions can create/delete
       }
     }
 

@@ -69,9 +69,8 @@ export const proxyUpload = proxyUploadModule.proxyUpload as any;
 const proxyDownloadModule = require("./proxyDownload");
 export const proxyDownload = proxyDownloadModule.proxyDownload as any;
 
-// Export messaging notification functions
-export {onMessageCreated} from "./messagingNotifications";
-export {onGeneralNotificationCreated, onDailySummaryNotificationCreated} from "./messagingNotifications";
+// Export new loop-proof messaging notification function
+export {onNotificationOutboxCreated} from "./messagingNotifications";
 
 // Export daily generator (scheduled function to create daily checklists)
 export {scheduledDailyGenerator} from "./dailyGenerator";

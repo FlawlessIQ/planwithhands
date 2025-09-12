@@ -100,31 +100,43 @@ class MessagingService {
   Future<void> sendMessage(String threadId, String text) async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) throw Exception('User not signed in');
-    final msgRef = _db.collection('messageThreads').doc(threadId).collection('messages').doc();
 
-    // The onMessageCreated trigger will handle all notifications and updates.
-    // The client is only responsible for creating the message document.
-    await msgRef.set({'senderId': uid, 'text': text, 'createdAt': FieldValue.serverTimestamp()});
+    // Get thread data to understand targeting
+    final threadDoc = await _db.collection('messageThreads').doc(threadId).get();
+    if (!threadDoc.exists) throw Exception('Thread not found');
 
-    // The trigger also updates the lastMessagePreview and lastMessageAt fields.
-    // To ensure the UI updates instantly without waiting for the trigger's latency,
-    // we can perform a local-only update to the thread document.
-    // A full set with merge is safe and will be overwritten by the trigger if needed.
+    final threadData = threadDoc.data()!;
+    final orgId = threadData['orgId'] as String;
+    final targetType = threadData['targetType'] as String;
+    final targetRef = threadData['targetRef'] as String?;
+
+    // Get sender info for notification
+    final userDoc = await _db.collection('users').doc(uid).get();
+    final userData = userDoc.data();
+    final senderName = '${userData?['firstName'] ?? ''} ${userData?['lastName'] ?? ''}'.trim();
+    final title = senderName.isNotEmpty ? senderName : 'Administrator';
+
+    // Create notification directly using onGeneralNotificationCreated pattern
+    final notificationRef = _db.collection('organizations').doc(orgId).collection('notifications').doc();
+
+    await notificationRef.set({
+      'title': title,
+      'message': text.length > 200 ? '${text.substring(0, 200)}...' : text,
+      'targetType': targetType,
+      'targetId': targetRef,
+      'type': 'general',
+      'createdAt': FieldValue.serverTimestamp(),
+      'senderId': uid,
+      'senderName': title,
+      // Add TTL - notifications expire after 30 days
+      'expiresAt': DateTime.now().add(const Duration(days: 30)),
+    });
+
+    // Update thread metadata for UI
     await _db.collection('messageThreads').doc(threadId).set({
       'lastMessagePreview': text.substring(0, text.length > 80 ? 80 : text.length),
       'lastMessageAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
-
-    // REMOVED: Fire-and-forget fallback callable function call
-    // This was causing 4x message duplication in notifications.
-    // The Firestore trigger 'onMessageCreated' is sufficient and reliable
-    // for handling all notifications including push notifications.
-    //
-    // Previous implementation created race conditions where both:
-    // 1. Firestore trigger would create notifications
-    // 2. Callable function would also create/send notifications
-    //
-    // Single execution path via Firestore trigger is more reliable.
   }
 
   Future<void> deleteMessage(String threadId, String messageId) async {
