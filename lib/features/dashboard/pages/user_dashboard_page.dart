@@ -11,6 +11,7 @@ import 'package:hands_app/services/daily_checklist_service.dart';
 // removed unused imports - dialogs now use DailyChecklistService directly
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:hands_app/global_widgets/location_selector.dart' show setCurrentLocation;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
@@ -235,6 +236,9 @@ class UserDashboardPage extends HookConsumerWidget {
       logger.d(
         '[Dashboard] loadDashboardData() called - isLoading: ${isLoading.value}, isRefreshing: ${isRefreshing.value}, resetData=$resetData',
       );
+      logger.d(
+        "[Dashboard][LOCATION_DEBUG] loadDashboardData called for location: ${selectedLocationId.value} (${selectedLocationName.value})",
+      );
       final initial = !hasLoadedOnce.value;
       if (initial || resetData) {
         isLoading.value = true; // show full screen spinner only for first load or explicit resets
@@ -319,22 +323,39 @@ class UserDashboardPage extends HookConsumerWidget {
         // This will automatically clean up expired volunteer shifts
         List<ShiftData> foundShifts = await _getAllShiftsForToday(user.uid, todayDayName, todayString);
         logger.d("[Dashboard][DEBUG] Found ${foundShifts.length} shifts after querying for today");
-        // Filter by selected location. Only include shifts that explicitly list the
-        // selected location. Volunteer-joined shifts should only appear at the location
-        // where they were joined, not at other locations.
-        foundShifts =
-            selectedLocationId.value != null
-                ? foundShifts.where((shift) {
-                  try {
-                    final shiftLocs = coerceToLocationIds(shift.locationIds);
-                    // Keep shift only if it matches the selected location
-                    return shiftLocs.contains(selectedLocationId.value);
-                  } catch (e) {
-                    logger.w('[Dashboard] Error while filtering shifts by location: $e');
-                    return false;
+        // Filter by selected location. Regular shifts must have the location in their locationIds.
+        // For volunteer shifts, only show them at the location where the user originally joined.
+        // This is tracked by storing the join location when the user selects a shift.
+        logger.d(
+          "[Dashboard] Starting location filtering for ${foundShifts.length} shifts at location ${selectedLocationId.value}",
+        );
+        logger.d(
+          "[Dashboard][LOCATION_CHANGE] Current assigned shifts before filtering: ${assignedShifts.value.map((s) => '${s.shiftName}[${s.shiftId}]').toList()}",
+        );
+        if (selectedLocationId.value != null) {
+          foundShifts =
+              foundShifts.where((shift) {
+                try {
+                  final shiftLocs = coerceToLocationIds(shift.locationIds);
+                  final shouldShow = shiftLocs.contains(selectedLocationId.value);
+
+                  if (shouldShow) {
+                    logger.d('[Dashboard] ✅ Including shift ${shift.shiftName} (configured for locations: $shiftLocs)');
+                  } else {
+                    logger.d(
+                      '[Dashboard] ❌ Excluding shift ${shift.shiftName} (configured for: $shiftLocs, viewing: ${selectedLocationId.value})',
+                    );
                   }
-                }).toList()
-                : foundShifts;
+
+                  return shouldShow;
+                } catch (e) {
+                  logger.w('[Dashboard] Error while filtering shift ${shift.shiftName} by location: $e');
+                  return false;
+                }
+              }).toList();
+
+          logger.d("[Dashboard] Location filtering complete: ${foundShifts.length} shifts remaining");
+        }
         // Merge any currently-present (optimistic) assigned shifts so we don't drop them
         try {
           final existing = assignedShifts.value;
@@ -359,6 +380,9 @@ class UserDashboardPage extends HookConsumerWidget {
           return cmp != 0 ? cmp : a.startTime.compareTo(b.startTime);
         });
         logger.d("[Dashboard][DEBUG] Setting ${foundShifts.length} shifts to assignedShifts");
+        logger.d(
+          "[Dashboard][LOCATION_CHANGE] Final shifts after filtering: ${foundShifts.map((s) => '${s.shiftName}[${s.shiftId}] at ${coerceToLocationIds(s.locationIds)}').toList()}",
+        );
         assignedShifts.value = foundShifts;
 
         // Derive per-shift effective location IDs. Previous implementation used a single selectedLocationId or 'default',
@@ -975,123 +999,134 @@ class UserDashboardPage extends HookConsumerWidget {
         title: GenericAppBarContent(appBarTitle: 'Plan with Hands', userRole: userRole.value),
         automaticallyImplyLeading: false,
         actions: [
-          // Compact location selector for mobile
-          Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: PopupMenuButton<String>(
-              // Only enable when multiple allowed locations are available
-              enabled: availableLocations.value.length > 1,
-              onSelected: (value) async {
-                selectedLocationId.value = value;
-                final selected = availableLocations.value.firstWhere(
-                  (loc) => loc['id'] == value,
-                  orElse: () => <String, String>{'name': 'Unknown Location'},
-                );
-                selectedLocationName.value = selected['name'];
-                // Reset missed tasks location so they reload for the new location
-                missedTasksLocationId.value = null;
-                // Persist globally so other pages adopt the change
-                try {
-                  LocationSelectionService.instance.setLocation(value);
-                } catch (_) {}
+          // Only show location selector if there are multiple locations
+          if (availableLocations.value.length > 1)
+            // Compact location selector for mobile
+            Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: PopupMenuButton<String>(
+                onSelected: (value) async {
+                  selectedLocationId.value = value;
+                  final selected = availableLocations.value.firstWhere(
+                    (loc) => loc['id'] == value,
+                    orElse: () => <String, String>{'name': 'Unknown Location'},
+                  );
+                  selectedLocationName.value = selected['name'];
+                  // Reset missed tasks location so they reload for the new location
+                  missedTasksLocationId.value = null;
+                  // Persist globally so other pages adopt the change
+                  try {
+                    LocationSelectionService.instance.setLocation(value);
+                  } catch (_) {}
 
-                // Persist to user doc so selection survives across devices
-                try {
-                  final user = FirebaseAuth.instance.currentUser;
-                  if (user != null) {
-                    final locRef = FirestoreEnforcer.instance
-                        .collection('organizations')
-                        .doc(organizationId.value)
-                        .collection('locations')
-                        .doc(value);
-                    await setCurrentLocation(uid: user.uid, locationRef: locRef, locationName: selected['name']);
-                    // Telemetry: location switch selected
-                    logger.d('[Analytics] location_switch_selected: user=${user.uid}, location=${locRef.id}');
+                  // Persist to user doc so selection survives across devices
+                  try {
+                    final user = FirebaseAuth.instance.currentUser;
+                    if (user != null) {
+                      final locRef = FirestoreEnforcer.instance
+                          .collection('organizations')
+                          .doc(organizationId.value)
+                          .collection('locations')
+                          .doc(value);
+                      await setCurrentLocation(uid: user.uid, locationRef: locRef, locationName: selected['name']);
+                      // Telemetry: location switch selected
+                      logger.d('[Analytics] location_switch_selected: user=${user.uid}, location=${locRef.id}');
+                    }
+                  } catch (e) {
+                    logger.w('[Dashboard] Failed to persist current location to user doc: $e');
                   }
-                } catch (e) {
-                  logger.w('[Dashboard] Failed to persist current location to user doc: $e');
-                }
 
-                await loadDashboardData(resetData: true); // explicit reset for location switch
-              },
-              itemBuilder:
-                  (context) =>
-                      availableLocations.value.map((location) {
-                        return PopupMenuItem<String>(
-                          value: location['id'],
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.location_on,
-                                color:
-                                    location['id'] == selectedLocationId.value
-                                        ? Theme.of(context).primaryColor
-                                        : Colors.grey[600],
-                                size: 16,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  location['name'],
-                                  style: TextStyle(
-                                    fontWeight:
-                                        location['id'] == selectedLocationId.value
-                                            ? FontWeight.bold
-                                            : FontWeight.normal,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              if (location['id'] == selectedLocationId.value)
-                                const Padding(padding: EdgeInsets.only(left: 8), child: Icon(Icons.check, size: 16)),
-                            ],
-                          ),
-                        );
-                      }).toList(),
-              child: Builder(
-                builder: (context) {
-                  final screenWidth = MediaQuery.of(context).size.width;
-                  final isNarrowScreen = screenWidth < 400;
-
-                  if (isNarrowScreen) {
-                    // Compact mobile version - just location icon
-                    return Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Icon(Icons.location_on, color: Colors.white, size: 20),
-                    );
-                  } else {
-                    // Full desktop version
-                    return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.location_on, color: Colors.white, size: 18),
-                          const SizedBox(width: 6),
-                          Text(
-                            selectedLocationName.value?.isNotEmpty == true
-                                ? selectedLocationName.value!
-                                : 'Select Location',
-                            style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.arrow_drop_down, color: Colors.white, size: 16),
-                        ],
-                      ),
-                    );
+                  // Reload dashboard data with proper error handling to prevent crashes
+                  try {
+                    await loadDashboardData(resetData: true); // explicit reset for location switch
+                  } catch (e) {
+                    logger.e('[Dashboard] Failed to reload dashboard data after location switch: $e');
+                    // Show error message to user but don't crash the app
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Failed to load data for selected location. Please try again.'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
                   }
                 },
+                itemBuilder:
+                    (context) =>
+                        availableLocations.value.map((location) {
+                          return PopupMenuItem<String>(
+                            value: location['id'],
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.location_on,
+                                  color:
+                                      location['id'] == selectedLocationId.value
+                                          ? Theme.of(context).primaryColor
+                                          : Colors.grey[600],
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    location['name'],
+                                    style: TextStyle(
+                                      fontWeight:
+                                          location['id'] == selectedLocationId.value
+                                              ? FontWeight.bold
+                                              : FontWeight.normal,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (location['id'] == selectedLocationId.value)
+                                  const Padding(padding: EdgeInsets.only(left: 8), child: Icon(Icons.check, size: 16)),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                child: Builder(
+                  builder: (context) {
+                    if (kIsWeb) {
+                      // Full web version - show location name
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.location_on, color: Colors.white, size: 18),
+                            const SizedBox(width: 6),
+                            Text(
+                              selectedLocationName.value?.isNotEmpty == true
+                                  ? selectedLocationName.value!
+                                  : 'Select Location',
+                              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.arrow_drop_down, color: Colors.white, size: 16),
+                          ],
+                        ),
+                      );
+                    } else {
+                      // Mobile version - just location icon
+                      return Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Icon(Icons.location_on, color: Colors.white, size: 20),
+                      );
+                    }
+                  },
+                ),
               ),
             ),
-          ),
           // Menu button
           UnifiedMenuButton(userRole: userRole.value),
         ],
@@ -1164,30 +1199,35 @@ class UserDashboardPage extends HookConsumerWidget {
                                   );
 
                                   if (alreadyAssigned) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('You are already signed up for ${shift.shiftName}.'),
-                                        backgroundColor: Colors.orange,
-                                        duration: const Duration(seconds: 2),
-                                      ),
-                                    );
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('You are already signed up for ${shift.shiftName}.'),
+                                          backgroundColor: Colors.orange,
+                                          duration: const Duration(seconds: 2),
+                                        ),
+                                      );
+                                    }
                                     logger.d("[Dashboard] User already assigned to shift ${shift.shiftId}");
                                   } else {
                                     final success = await shiftAssignmentService.joinShift(
                                       organizationId: organizationId.value!,
                                       shiftId: shift.shiftId,
                                       userId: user.uid,
+                                      joinLocationId: locationId,
                                     );
 
                                     if (success) {
                                       // Show success message
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text('Successfully joined ${shift.shiftName}!'),
-                                          backgroundColor: Colors.green,
-                                          duration: const Duration(seconds: 2),
-                                        ),
-                                      );
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Successfully joined ${shift.shiftName}!'),
+                                            backgroundColor: Colors.green,
+                                            duration: const Duration(seconds: 2),
+                                          ),
+                                        );
+                                      }
                                       logger.d("[Dashboard] Successfully joined shift using centralized service");
                                     } else {
                                       throw Exception('Failed to join shift');
@@ -1268,12 +1308,14 @@ class UserDashboardPage extends HookConsumerWidget {
                                   // await loadDashboardData(); // DISABLED: This causes a race condition where the optimistic UI update is wiped.
                                 } catch (e) {
                                   logger.e('[Dashboard] Error joining volunteer shift: $e', e);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Error joining shift. Please try again.'),
-                                      backgroundColor: Colors.red,
-                                    ),
-                                  );
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Error joining shift. Please try again.'),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                  }
                                 }
                               }
                             }
@@ -1440,16 +1482,19 @@ class UserDashboardPage extends HookConsumerWidget {
                                         organizationId: organizationId.value!,
                                         shiftId: shift.shiftId,
                                         userId: user.uid,
+                                        joinLocationId: locationId,
                                       );
 
                                       if (success) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: Text('Successfully joined ${shift.shiftName}!'),
-                                            backgroundColor: Colors.green,
-                                            duration: const Duration(seconds: 2),
-                                          ),
-                                        );
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text('Successfully joined ${shift.shiftName}!'),
+                                              backgroundColor: Colors.green,
+                                              duration: const Duration(seconds: 2),
+                                            ),
+                                          );
+                                        }
 
                                         // Optimistic UI update similar to the original CTA
                                         if (!assignedShifts.value.any((s) => s.shiftId == shift.shiftId)) {
@@ -1468,22 +1513,26 @@ class UserDashboardPage extends HookConsumerWidget {
                                         }
                                       }
                                     } else {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text('You are already signed up for ${shift.shiftName}.'),
-                                          backgroundColor: Colors.orange,
-                                          duration: const Duration(seconds: 2),
-                                        ),
-                                      );
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text('You are already signed up for ${shift.shiftName}.'),
+                                            backgroundColor: Colors.orange,
+                                            duration: const Duration(seconds: 2),
+                                          ),
+                                        );
+                                      }
                                     }
                                   } catch (e) {
                                     logger.e('[Dashboard] Error joining another shift: $e', e);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Error joining shift. Please try again.'),
-                                        backgroundColor: Colors.red,
-                                      ),
-                                    );
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Error joining shift. Please try again.'),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                    }
                                   }
                                 }
                               }
@@ -2120,14 +2169,21 @@ Future<void> _leaveVolunteerShift(
       logger.e("[Dashboard] Error refreshing dashboard after leaving shift: $refreshError", refreshError);
     }
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Successfully left volunteer shift!'), backgroundColor: Colors.green));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Successfully left volunteer shift!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
   } catch (e) {
     logger.e('Error leaving volunteer shift: $e', e);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Error leaving shift. Please try again.'), backgroundColor: Colors.red),
-    );
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error leaving shift. Please try again.'), backgroundColor: Colors.red),
+      );
+    }
   }
 }
 
@@ -3704,17 +3760,21 @@ class _TaskTileFromData extends HookWidget {
             final locId = taskData.locationId ?? checklist.locationId;
             final listId = taskData.checklistId ?? checklist.id;
 
-            final updated = await NativePhotoService.showPhotoOptions(
-              context: context,
-              task: taskData,
-              organizationId: orgId,
-              locationId: locId,
-              checklistId: listId,
-            );
+            if (context.mounted) {
+              final updated = await NativePhotoService.showPhotoOptions(
+                context: context,
+                task: taskData,
+                organizationId: orgId,
+                locationId: locId,
+                checklistId: listId,
+              );
 
-            if (updated == null) {
-              // User didn't add a photo
-              return;
+              if (updated == null) {
+                // User didn't add a photo
+                return;
+              }
+            } else {
+              return; // Widget unmounted, can't show photo dialog
             }
             // If a photo was added, continue to mark completed below
           }
@@ -3732,17 +3792,21 @@ class _TaskTileFromData extends HookWidget {
 
       onTaskToggled();
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(isCompleted ? 'Task completed!' : 'Task unchecked'),
-          backgroundColor: isCompleted ? Colors.green : Colors.orange,
-        ),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(isCompleted ? 'Task completed!' : 'Task unchecked'),
+            backgroundColor: isCompleted ? Colors.green : Colors.orange,
+          ),
+        );
+      }
     } catch (e) {
       logger.e('Error updating task completion: $e', e);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error updating task. Please try again.'), backgroundColor: Colors.red),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Error updating task. Please try again.'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -4018,14 +4082,18 @@ class _MissedTaskInteractionTile extends HookWidget {
               );
               if (choice == null || choice == 'cancel') return;
               if (choice == 'add_photo') {
-                final updated = await NativePhotoService.showPhotoOptions(
-                  context: context,
-                  task: task,
-                  organizationId: task.organizationId,
-                  locationId: task.locationId,
-                  checklistId: task.checklistId,
-                );
-                if (updated == null) return; // no photo added
+                if (context.mounted) {
+                  final updated = await NativePhotoService.showPhotoOptions(
+                    context: context,
+                    task: task,
+                    organizationId: task.organizationId,
+                    locationId: task.locationId,
+                    checklistId: task.checklistId,
+                  );
+                  if (updated == null) return; // no photo added
+                } else {
+                  return; // Widget unmounted, can't show photo dialog
+                }
               }
             }
           }
@@ -4079,17 +4147,21 @@ class _MissedTaskInteractionTile extends HookWidget {
           section.tasks.map((t) => t.taskId == task.taskId ? t.copyWith(completed: isCompleted) : t).toList();
       final updatedSection = section.copyWith(tasks: newTasks);
       onUpdate(updatedSection);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(isCompleted ? 'Task completed!' : 'Task unchecked'),
-          backgroundColor: isCompleted ? Colors.green : Colors.orange,
-        ),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(isCompleted ? 'Task completed!' : 'Task unchecked'),
+            backgroundColor: isCompleted ? Colors.green : Colors.orange,
+          ),
+        );
+      }
     } catch (e) {
       logger.e("Error updating missed task: $e", e);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Error updating task. Please try again."), backgroundColor: Colors.red),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Error updating task. Please try again."), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
