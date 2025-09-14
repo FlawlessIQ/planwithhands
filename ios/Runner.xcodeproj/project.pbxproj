@@ -5,6 +5,25 @@
 	};
 	objectVersion = 54;
 	objects = {
+		1A1A1A1A1A1A1A1A1A1A1A1A /* [CP] Pre-Build Pod Install */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "[CP] Pre-Build Pod Install";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "cd \"${SRCROOT}/../ios\"\npod install";
+			showEnvVarsInLog = 0;
+		};
 
 /* Begin PBXBuildFile section */
 		0D3A17C3AAB4E9A2EA4CEF6B /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 850C99737FC2CB18274DE573 /* Pods_RunnerTests.framework */; };
@@ -195,6 +214,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 97C147051CF9000F007C117D /* Build configuration list for PBXNativeTarget "Runner" */;
 			buildPhases = (
+				1A1A1A1A1A1A1A1A1A1A1A1A /* [CP] Pre-Build Pod Install */,
 				337B818B6AFF376A25284877 /* [CP] Check Pods Manifest.lock */,
 				9740EEB61CF901F6004384FC /* Run Script */,
 				97C146EA1CF9000F007C117D /* Sources */,
