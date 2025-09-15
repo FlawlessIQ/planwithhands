@@ -1,14 +1,20 @@
 {
-  "name": "Plan with Hands",
+  "name": "Plan with Hands - Restaurant Management",
   "short_name": "Hands",
   "start_url": ".",
   "display": "standalone",
-  "background_color": "#0175C2",
-  "theme_color": "#0175C2",
-  "description": "Task management made simple",
+  "background_color": "#1C1C1E",
+  "theme_color": "#1C1C1E",
+  "description": "Transform restaurant operations with digital checklists, team messaging, training documents, and real-time insights. No hardware needed.",
   "orientation": "portrait-primary",
   "prefer_related_applications": false,
+  "categories": ["business", "productivity", "utilities"],
   "icons": [
+    {
+      "src": "favicon.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
     {
       "src": "icons/Icon-192.png",
       "sizes": "192x192",

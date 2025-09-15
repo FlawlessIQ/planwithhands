@@ -48,8 +48,11 @@ Widget _buildAdminSetupPage(BuildContext ctx, {required String organizationId, S
   final forceWeb = Uri.base.queryParameters['forceWeb'] == 'true';
   final useWebVersion = forceWeb || (kIsWeb && (isLargeScreen || isLandscapeDesktop));
 
+  // Check for setup query parameter
+  final isNewOrganizationSetup = Uri.base.queryParameters['setup'] == 'true';
+
   debugPrint(
-    'Admin route -> ${useWebVersion ? 'WEB' : 'MOBILE'} | width=$screenWidth height=$screenHeight ratio=${aspectRatio.toStringAsFixed(2)} | orgId=$organizationId tab=$tab',
+    'Admin route -> ${useWebVersion ? 'WEB' : 'MOBILE'} | width=$screenWidth height=$screenHeight ratio=${aspectRatio.toStringAsFixed(2)} | orgId=$organizationId tab=$tab setup=$isNewOrganizationSetup',
   );
 
   // Convert string tab to WebAdminTab enum for web version
@@ -75,7 +78,11 @@ Widget _buildAdminSetupPage(BuildContext ctx, {required String organizationId, S
   }
 
   return useWebVersion
-      ? WEBAdminDashboardPage(organizationId: organizationId, initialTab: webAdminTab)
+      ? WEBAdminDashboardPage(
+        organizationId: organizationId,
+        initialTab: webAdminTab,
+        isNewOrganizationSetup: isNewOrganizationSetup,
+      )
       : AdminDashboardPage();
 }
 

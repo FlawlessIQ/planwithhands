@@ -62,6 +62,7 @@ class ShiftAssignmentService {
     required String shiftId,
     required String userId,
     DateTime? targetDate,
+    String? joinLocationId, // Keep for API compatibility but don't use for now
   }) async {
     try {
       final dateString = _dateFormat.format(targetDate ?? DateTime.now());
@@ -79,9 +80,8 @@ class ShiftAssignmentService {
         return false; // Already joined
       }
 
-      // Update both tracking systems atomically. Build the update map so we
-      // can log exactly what will be sent to Firestore (useful for debugging
-      // rules/permission problems where dot-path keys are used).
+      // For now, keep the simple string format for volunteerJoins
+      // We can enhance this later with location tracking
       final updates = {
         'volunteers': FieldValue.arrayUnion([userId]),
         'volunteerJoins.$userId': dateString,

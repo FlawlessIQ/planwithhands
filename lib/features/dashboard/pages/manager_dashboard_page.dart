@@ -20,7 +20,7 @@ import 'package:hands_app/services/daily_checklist_service.dart';
 import 'package:hands_app/services/organization_setup_service.dart';
 import 'package:hands_app/services/location_selection_service.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
-import 'package:hands_app/widgets/organization_setup_widget.dart';
+import 'package:hands_app/widgets/condensed_setup_widget.dart';
 import 'package:hands_app/features/dashboard/pages/WEB_manager_dashboard_page.dart' as web_dashboard;
 
 class ManagerDashboardPage extends StatefulWidget {
@@ -38,6 +38,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
   final OrganizationSetupService _setupService = OrganizationSetupService();
   bool _metricsEnabled = false;
   bool _isLoadingSetupStatus = true;
+  bool _showSetupSuggestion = true;
 
   // Date helpers
   final DateFormat _dateFormat = DateFormat('yyyy-MM-dd');
@@ -231,6 +232,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
       setState(() {
         _metricsEnabled = isEnabled;
         _isLoadingSetupStatus = false;
+        // Only show the suggestion if setup is NOT complete
+        _showSetupSuggestion = !isEnabled;
       });
       if (_metricsEnabled) {
         await _ensureDailyChecklistsExist();
@@ -1082,7 +1085,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
   }
 
   Widget _buildSetupView() =>
-      OrganizationSetupWidget(organizationId: widget.organizationId, onMetricsEnabled: _onMetricsEnabled);
+      CondensedSetupWidget(organizationId: widget.organizationId, onMetricsEnabled: _onMetricsEnabled);
 
   void _onMetricsEnabled() async {
     setState(() => _metricsEnabled = true);

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hands_app/routing/routes.dart';
 import 'package:hands_app/services/stripe_service.dart';
@@ -286,6 +287,30 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
         },
       });
       logger.i('User document created successfully');
+
+      // Send organization signup notification to admin
+      try {
+        final functions = FirebaseFunctions.instance;
+        final callable = functions.httpsCallable('sendOrganizationSignupNotification');
+
+        await callable.call({
+          'organizationName': businessNameController.text.trim(),
+          'adminFirstName': firstNameController.text.trim(),
+          'adminLastName': lastNameController.text.trim(),
+          'adminEmail': emailController.text.trim(),
+          'businessType': businessType,
+          'numberOfEmployees': _approxEmployees ?? int.tryParse(numberOfEmployeesController.text) ?? 0,
+          'numberOfLocations': _locations,
+          'subscriptionType': _isAnnual ? 'Annual' : 'Monthly',
+          'organizationId': orgId,
+          'createdAt': DateTime.now().toIso8601String(),
+        });
+
+        logger.i('Organization signup notification sent successfully');
+      } catch (emailError) {
+        logger.w('Failed to send organization signup notification (non-critical): $emailError');
+        // Don't fail the signup process if the notification email fails
+      }
 
       // Show success message
       if (mounted) {

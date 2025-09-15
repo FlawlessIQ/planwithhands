@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hands_app/routing/routes.dart';
 import 'package:hands_app/pages/admin/send_notification_sheet.dart';
@@ -15,7 +16,32 @@ class UnifiedMenuButton extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final unreadCountAsync = ref.watch(unreadNotificationsCountProvider);
 
-    final hasUnread = unreadCountAsync.maybeWhen(data: (count) => count > 0, orElse: () => false);
+    final hasUnread = unreadCountAsync.maybeWhen(
+      data: (count) {
+        // Debug logging to help identify red indicator issues
+        if (kDebugMode) {
+          print('[UnifiedMenuButton] Unread count: $count, hasUnread: ${count > 0}');
+        }
+        return count > 0;
+      },
+      loading: () {
+        if (kDebugMode) {
+          print('[UnifiedMenuButton] Provider loading...');
+        }
+        return false;
+      },
+      error: (error, stack) {
+        if (kDebugMode) {
+          print('[UnifiedMenuButton] Provider error: $error');
+        }
+        return false;
+      },
+      orElse: () => false,
+    );
+
+    if (kDebugMode) {
+      print('[UnifiedMenuButton] Final hasUnread: $hasUnread');
+    }
     return PopupMenuButton<_MenuAction>(
       icon: Stack(
         children: [

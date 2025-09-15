@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -419,105 +420,103 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
         title: GenericAppBarContent(appBarTitle: 'Setup', userRole: userRole),
         automaticallyImplyLeading: false,
         actions: [
-          // Compact location selector for mobile
-          Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: PopupMenuButton<String>(
-              enabled: _availableLocations.isNotEmpty,
-              onSelected: (value) async {
-                // Find the selected location details
-                final selectedLoc = _availableLocations.firstWhere(
-                  (loc) => loc['id'] == value,
-                  orElse: () => {'id': value, 'name': 'Unknown Location'},
-                );
+          // Only show location selector if there are multiple locations
+          if (_availableLocations.length > 1)
+            // Compact location selector for mobile
+            Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: PopupMenuButton<String>(
+                onSelected: (value) async {
+                  // Find the selected location details
+                  final selectedLoc = _availableLocations.firstWhere(
+                    (loc) => loc['id'] == value,
+                    orElse: () => {'id': value, 'name': 'Unknown Location'},
+                  );
 
-                // Update shared state with selected location
-                final locationData = LocationData(
-                  locationId: selectedLoc['id'],
-                  locationName: selectedLoc['name'],
-                  createdAt: DateTime.now(),
-                  locationAddress: '',
-                );
-                ref.read(appStateProvider.notifier).setSelectedLocation(locationData);
-                // Also persist to global notifier so other pages without Riverpod can react
-                try {
-                  LocationSelectionService.instance.setLocation(selectedLoc['id']);
-                } catch (_) {}
+                  // Update shared state with selected location
+                  final locationData = LocationData(
+                    locationId: selectedLoc['id'],
+                    locationName: selectedLoc['name'],
+                    createdAt: DateTime.now(),
+                    locationAddress: '',
+                  );
+                  ref.read(appStateProvider.notifier).setSelectedLocation(locationData);
+                  // Also persist to global notifier so other pages without Riverpod can react
+                  try {
+                    LocationSelectionService.instance.setLocation(selectedLoc['id']);
+                  } catch (_) {}
 
-                _triggerRefresh();
-              },
-              itemBuilder:
-                  (context) =>
-                      _availableLocations.map((location) {
-                        return PopupMenuItem<String>(
-                          value: location['id'],
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.location_on,
-                                color:
-                                    location['id'] == _selectedLocationId
-                                        ? HandsColors.handsOrange
-                                        : HandsColors.white30,
-                                size: 16,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  location['name'],
-                                  style: TextStyle(
-                                    fontWeight:
-                                        location['id'] == _selectedLocationId ? FontWeight.bold : FontWeight.normal,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              if (location['id'] == _selectedLocationId)
-                                const Padding(padding: EdgeInsets.only(left: 8), child: Icon(Icons.check, size: 16)),
-                            ],
-                          ),
-                        );
-                      }).toList(),
-              child: Builder(
-                builder: (context) {
-                  final screenWidth = MediaQuery.of(context).size.width;
-                  final isNarrowScreen = screenWidth < 400;
-
-                  if (isNarrowScreen) {
-                    // Compact mobile version - just location icon
-                    return Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(color: HandsColors.white12, borderRadius: BorderRadius.circular(6)),
-                      child: const Icon(Icons.location_on, color: HandsColors.white, size: 20),
-                    );
-                  } else {
-                    // Full desktop version
-                    return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(color: HandsColors.white12, borderRadius: BorderRadius.circular(8)),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.location_on, color: HandsColors.white, size: 18),
-                          const SizedBox(width: 6),
-                          Text(
-                            _selectedLocationName?.isNotEmpty == true ? _selectedLocationName! : 'Select Location',
-                            style: GoogleFonts.comfortaa(
-                              color: HandsColors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w400,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.arrow_drop_down, color: HandsColors.white, size: 16),
-                        ],
-                      ),
-                    );
-                  }
+                  _triggerRefresh();
                 },
+                itemBuilder:
+                    (context) =>
+                        _availableLocations.map((location) {
+                          return PopupMenuItem<String>(
+                            value: location['id'],
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.location_on,
+                                  color:
+                                      location['id'] == _selectedLocationId
+                                          ? HandsColors.handsOrange
+                                          : HandsColors.white30,
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    location['name'],
+                                    style: TextStyle(
+                                      fontWeight:
+                                          location['id'] == _selectedLocationId ? FontWeight.bold : FontWeight.normal,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (location['id'] == _selectedLocationId)
+                                  const Padding(padding: EdgeInsets.only(left: 8), child: Icon(Icons.check, size: 16)),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                child: Builder(
+                  builder: (context) {
+                    if (!kIsWeb) {
+                      // Compact mobile version - just location icon
+                      return Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(color: HandsColors.white12, borderRadius: BorderRadius.circular(6)),
+                        child: const Icon(Icons.location_on, color: HandsColors.white, size: 20),
+                      );
+                    } else {
+                      // Full desktop version
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(color: HandsColors.white12, borderRadius: BorderRadius.circular(8)),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.location_on, color: HandsColors.white, size: 18),
+                            const SizedBox(width: 6),
+                            Text(
+                              _selectedLocationName?.isNotEmpty == true ? _selectedLocationName! : 'Select Location',
+                              style: GoogleFonts.comfortaa(
+                                color: HandsColors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.arrow_drop_down, color: HandsColors.white, size: 16),
+                          ],
+                        ),
+                      );
+                    }
+                  },
+                ),
               ),
             ),
-          ),
           // Debug button removed
 
           // Menu button
@@ -555,7 +554,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
     // Modern segmented control toggle
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isTight = constraints.maxWidth < 420;
+        final isTight = constraints.maxWidth < 350; // More permissive threshold
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -594,26 +593,31 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                               _currentView == AdminView.shiftsChecklists ? HandsColors.handsOrange : Colors.transparent,
                           borderRadius: const BorderRadius.horizontal(left: Radius.circular(10)),
                         ),
-                        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 0),
+                        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
                               Icons.schedule,
-                              size: 16,
+                              size: 14,
                               color:
                                   _currentView == AdminView.shiftsChecklists ? HandsColors.white : HandsColors.white70,
                             ),
-                            const SizedBox(width: 6),
-                            Text(
-                              isTight ? 'Shifts' : 'Shifts & Checklists',
-                              style: GoogleFonts.comfortaa(
-                                color:
-                                    _currentView == AdminView.shiftsChecklists
-                                        ? HandsColors.white
-                                        : HandsColors.white70,
-                                fontWeight: FontWeight.w400,
-                                fontSize: 12,
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                isTight ? 'Shifts' : 'Shifts & Tasks',
+                                style: GoogleFonts.comfortaa(
+                                  color:
+                                      _currentView == AdminView.shiftsChecklists
+                                          ? HandsColors.white
+                                          : HandsColors.white70,
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: isTight ? 10 : 11,
+                                ),
+                                textAlign: TextAlign.center,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],
@@ -637,23 +641,30 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                               _currentView == AdminView.usersLocations ? HandsColors.handsOrange : Colors.transparent,
                           borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
                         ),
-                        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 0),
+                        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
                               Icons.group,
-                              size: 16,
+                              size: 14,
                               color: _currentView == AdminView.usersLocations ? HandsColors.white : HandsColors.white70,
                             ),
-                            const SizedBox(width: 6),
-                            Text(
-                              isTight ? 'Staff' : 'Staff & Locations',
-                              style: GoogleFonts.comfortaa(
-                                color:
-                                    _currentView == AdminView.usersLocations ? HandsColors.white : HandsColors.white70,
-                                fontWeight: FontWeight.w400,
-                                fontSize: 12,
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                isTight ? 'Staff' : 'Staff & Places',
+                                style: GoogleFonts.comfortaa(
+                                  color:
+                                      _currentView == AdminView.usersLocations
+                                          ? HandsColors.white
+                                          : HandsColors.white70,
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: isTight ? 10 : 11,
+                                ),
+                                textAlign: TextAlign.center,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],

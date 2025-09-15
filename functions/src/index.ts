@@ -40,6 +40,7 @@ export const repairTaskTitlesFromCsv = repairCsvModule.repairTaskTitlesFromCsv a
 const userModule = require("../user_functions");
 export const createUser = userModule.createUser as any;
 export const deleteUser = userModule.deleteUser as any;
+export const sendOrganizationSignupNotification = userModule.sendOrganizationSignupNotification as any;
 
 // Export other JS-based functions
 // eslint-disable-next-line @typescript-eslint/no-var-requires

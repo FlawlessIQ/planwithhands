@@ -11,6 +11,7 @@ import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
+import 'package:hands_app/widgets/welcome_organization_dialog.dart';
 
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/utils/location_helper.dart';
@@ -30,8 +31,15 @@ class WEBAdminDashboardPage extends StatefulWidget {
   final String organizationId;
   final WebAdminTab? initialTab;
   final bool usePortalLayout;
+  final bool isNewOrganizationSetup;
 
-  const WEBAdminDashboardPage({super.key, required this.organizationId, this.initialTab, this.usePortalLayout = false});
+  const WEBAdminDashboardPage({
+    super.key,
+    required this.organizationId,
+    this.initialTab,
+    this.usePortalLayout = false,
+    this.isNewOrganizationSetup = false,
+  });
 
   @override
   State<WEBAdminDashboardPage> createState() => _WEBAdminDashboardPageState();
@@ -84,6 +92,13 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
     LocationSelectionService.instance.listenable.addListener(_onGlobalLocationChanged);
     _checkUserAccess();
     _searchController.addListener(_onSearchChanged);
+
+    // Show welcome popup for new organization setup
+    if (widget.isNewOrganizationSetup) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showWelcomeDialog();
+      });
+    }
   }
 
   void _onGlobalLocationChanged() {
@@ -110,6 +125,11 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
     _searchController.dispose();
     _verticalTableController.dispose();
     super.dispose();
+  }
+
+  // Show welcome dialog for new organization setup
+  void _showWelcomeDialog() {
+    showDialog(context: context, barrierDismissible: true, builder: (context) => const WelcomeOrganizationDialog());
   }
 
   // Reload on mount after access check sets up org
@@ -461,12 +481,11 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
         title: GenericAppBarContent(appBarTitle: 'Admin Dashboard', userRole: userRole),
         automaticallyImplyLeading: false,
         actions: [
-          // Location selector dropdown
-          if (_availableLocations.isNotEmpty) ...[
+          // Location selector dropdown - only show if multiple locations
+          if (_availableLocations.length > 1) ...[
             Padding(
               padding: const EdgeInsets.only(right: 8.0),
               child: PopupMenuButton<String>(
-                enabled: _availableLocations.isNotEmpty,
                 onSelected: (value) {
                   setState(() {
                     _selectedLocationId = value;

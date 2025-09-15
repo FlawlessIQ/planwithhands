@@ -41,7 +41,9 @@ final unreadNotificationsCountProvider = StreamProvider<int>((ref) {
               final readBy = List<String>.from(data['readBy'] ?? []);
               final archivedBy = List<String>.from(data['archivedBy'] ?? []);
               final isUnread = !readBy.contains(user.uid) && !archivedBy.contains(user.uid);
-              debugPrint('[unreadNotificationsCountProvider] Doc ${doc.id}: isUnread = $isUnread');
+              debugPrint(
+                '[unreadNotificationsCountProvider] Doc ${doc.id}: readBy=$readBy, archivedBy=$archivedBy, isUnread=$isUnread',
+              );
               return isUnread;
             }).length;
         debugPrint('[unreadNotificationsCountProvider] Final unread count: $count');

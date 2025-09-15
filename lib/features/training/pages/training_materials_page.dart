@@ -19,6 +19,8 @@ import 'package:hands_app/global_widgets/hands_icon.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/ui/UploadDocumentBottomSheet.dart';
 import 'package:hands_app/widgets/pdf_inline_viewer.dart';
+import 'package:hands_app/services/location_selection_service.dart';
+import 'package:hands_app/global_widgets/location_selector.dart' show setCurrentLocation;
 
 class ViewDocumentsPage extends HookConsumerWidget {
   const ViewDocumentsPage({super.key});
@@ -45,6 +47,11 @@ class ViewDocumentsPage extends HookConsumerWidget {
     final selectedCategory = useState<String>('All');
     final organizationId = useState<String?>(null);
     final isLoadingOrgId = useState<bool>(true);
+
+    // Location selector state
+    final selectedLocationId = useState<String?>(null);
+    final selectedLocationName = useState<String>('All Locations');
+    final availableLocations = useState<List<Map<String, dynamic>>>([]);
 
     logger.d('DEBUG: userState: $userState');
     logger.d('DEBUG: userState.userData: ${userState.userData}');
@@ -90,6 +97,86 @@ class ViewDocumentsPage extends HookConsumerWidget {
       loadOrganizationId();
       return null;
     }, [userState.userData?.organizationId]);
+
+    // Load available locations
+    useEffect(() {
+      Future<void> loadLocations() async {
+        if (organizationId.value == null) return;
+
+        try {
+          final currentUser = FirebaseAuth.instance.currentUser;
+          if (currentUser == null) return;
+
+          List<String> locationIds = [];
+
+          if (userRole == 2) {
+            // Admin - get all locations
+            final locationsSnapshot =
+                await FirestoreEnforcer.instance
+                    .collection('organizations')
+                    .doc(organizationId.value!)
+                    .collection('locations')
+                    .get();
+            locationIds = locationsSnapshot.docs.map((doc) => doc.id).toList();
+          } else {
+            // Non-admin users: get assigned locations from user document
+            final userDoc = await FirestoreEnforcer.instance.collection('users').doc(currentUser.uid).get();
+
+            if (userDoc.exists) {
+              final userData = userDoc.data()!;
+              if (userData['locationIds'] != null) {
+                locationIds = List<String>.from(userData['locationIds']);
+              } else if (userData['locationId'] != null) {
+                locationIds = [userData['locationId']];
+              }
+            }
+          }
+
+          // Load location details for all locations
+          final locations = <Map<String, dynamic>>[];
+          for (final locationId in locationIds) {
+            final locationDoc =
+                await FirestoreEnforcer.instance
+                    .collection('organizations')
+                    .doc(organizationId.value!)
+                    .collection('locations')
+                    .doc(locationId)
+                    .get();
+
+            if (locationDoc.exists) {
+              final data = locationDoc.data()!;
+              locations.add({
+                'id': locationId,
+                'name': data['locationName'] ?? 'Unnamed Location',
+                'isPrimary': data['isPrimary'] ?? false,
+              });
+            }
+          }
+
+          // Sort so primary location comes first
+          locations.sort((a, b) {
+            if (a['isPrimary'] == true && b['isPrimary'] != true) return -1;
+            if (b['isPrimary'] == true && a['isPrimary'] != true) return 1;
+            return (a['name'] as String).compareTo(b['name'] as String);
+          });
+
+          availableLocations.value = locations;
+
+          // Set initial selection to first location if available, or keep "All"
+          if (locations.isNotEmpty && selectedLocationId.value == null) {
+            selectedLocationId.value = locations.first['id'];
+            selectedLocationName.value = locations.first['name'];
+          }
+        } catch (e) {
+          logger.e('Error loading locations: $e');
+        }
+      }
+
+      if (organizationId.value != null) {
+        loadLocations();
+      }
+      return null;
+    }, [organizationId.value, userRole]);
 
     final categories = [
       'All',
@@ -162,6 +249,7 @@ class ViewDocumentsPage extends HookConsumerWidget {
           return UploadDocumentBottomSheet(
             documentId: docId,
             documentData: docData,
+            locationId: selectedLocationId.value, // Pass the selected location ID
             onDocumentUploaded: () {
               // Close the sheet from the parent on the next frame to avoid Navigator lock.
               WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -224,7 +312,116 @@ class ViewDocumentsPage extends HookConsumerWidget {
         toolbarHeight: kToolbarHeight,
         title: GenericAppBarContent(appBarTitle: 'Training Materials', userRole: userRole),
         automaticallyImplyLeading: false,
-        actions: [UnifiedMenuButton(userRole: userRole)],
+        actions: [
+          // Only show location selector if there are multiple locations
+          if (availableLocations.value.length > 1)
+            Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: PopupMenuButton<String>(
+                onSelected: (value) async {
+                  selectedLocationId.value = value;
+                  final selected = availableLocations.value.firstWhere(
+                    (loc) => loc['id'] == value,
+                    orElse: () => <String, String>{'name': 'Unknown Location'},
+                  );
+                  selectedLocationName.value = selected['name'];
+
+                  // Persist globally so other pages adopt the change
+                  try {
+                    LocationSelectionService.instance.setLocation(value);
+                  } catch (_) {}
+
+                  // Persist to user doc so selection survives across devices
+                  try {
+                    final user = FirebaseAuth.instance.currentUser;
+                    if (user != null) {
+                      final locRef = FirestoreEnforcer.instance
+                          .collection('organizations')
+                          .doc(organizationId.value)
+                          .collection('locations')
+                          .doc(value);
+                      await setCurrentLocation(uid: user.uid, locationRef: locRef, locationName: selected['name']);
+                      logger.d('[Analytics] location_switch_selected: user=${user.uid}, location=${locRef.id}');
+                    }
+                  } catch (e) {
+                    logger.w('[TrainingMaterials] Failed to persist current location to user doc: $e');
+                  }
+                },
+                itemBuilder:
+                    (context) =>
+                        availableLocations.value.map((location) {
+                          return PopupMenuItem<String>(
+                            value: location['id'],
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.location_on,
+                                  color:
+                                      location['id'] == selectedLocationId.value
+                                          ? Theme.of(context).primaryColor
+                                          : Colors.grey[600],
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    location['name'],
+                                    style: TextStyle(
+                                      fontWeight:
+                                          location['id'] == selectedLocationId.value
+                                              ? FontWeight.bold
+                                              : FontWeight.normal,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (location['id'] == selectedLocationId.value)
+                                  const Padding(padding: EdgeInsets.only(left: 8), child: Icon(Icons.check, size: 16)),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                child: Builder(
+                  builder: (context) {
+                    if (kIsWeb) {
+                      // Full web version - show location name
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.location_on, color: Colors.white, size: 18),
+                            const SizedBox(width: 6),
+                            Text(
+                              selectedLocationName.value.isNotEmpty ? selectedLocationName.value : 'Select Location',
+                              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.arrow_drop_down, color: Colors.white, size: 16),
+                          ],
+                        ),
+                      );
+                    } else {
+                      // Mobile version - just location icon
+                      return Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Icon(Icons.location_on, color: Colors.white, size: 20),
+                      );
+                    }
+                  },
+                ),
+              ),
+            ),
+          UnifiedMenuButton(userRole: userRole),
+        ],
       ),
       floatingActionButton:
           userRole == 2
@@ -266,7 +463,7 @@ class ViewDocumentsPage extends HookConsumerWidget {
           // Documents List
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: _getDocumentsStream(organizationId.value!, selectedCategory.value),
+              stream: _getDocumentsStream(organizationId.value!, selectedCategory.value, selectedLocationId.value),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
@@ -397,8 +594,8 @@ class ViewDocumentsPage extends HookConsumerWidget {
     );
   }
 
-  Stream<QuerySnapshot> _getDocumentsStream(String organizationId, String category) {
-    logger.d('DEBUG: Getting documents for orgId: $organizationId, category: $category');
+  Stream<QuerySnapshot> _getDocumentsStream(String organizationId, String category, String? locationId) {
+    logger.d('DEBUG: Getting documents for orgId: $organizationId, category: $category, locationId: $locationId');
     logger.d('DEBUG: Full path: organizations/$organizationId/training_documents');
 
     // Updated path to match admin dashboard's nested path structure
@@ -406,6 +603,12 @@ class ViewDocumentsPage extends HookConsumerWidget {
         .collection('organizations')
         .doc(organizationId)
         .collection('training_documents');
+
+    // Filter by location if specified
+    if (locationId != null) {
+      logger.d('DEBUG: Filtering by locationId: $locationId');
+      query = query.where('locationId', isEqualTo: locationId);
+    }
 
     if (category != 'All') {
       logger.d('DEBUG: Filtering by category: $category');

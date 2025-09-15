@@ -24,12 +24,25 @@ export default function App({ Component, pageProps }) {
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="Plan With Hands" />
         
-        {/* Default Favicon and App Icons */}
+        {/* Default Favicon and App Icons - Comprehensive set for all browsers and devices */}
         <link rel="icon" type="image/x-icon" href="/favicon.ico" />
         <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16.png" />
         <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png" />
         <link rel="icon" type="image/png" sizes="192x192" href="/images/favicon-192.png" />
+        <link rel="icon" type="image/png" sizes="180x180" href="/images/favicon-180.png" />
+        <link rel="icon" type="image/png" sizes="1024x1024" href="/images/favicon-1024.png" />
         <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+        
+        {/* Additional icon sizes for better browser support */}
+        <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+        <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
+        
+        {/* Microsoft tiles */}
+        <meta name="msapplication-TileColor" content="#1C1C1E" />
+        <meta name="msapplication-TileImage" content="/images/favicon-192.png" />
+        
+        {/* Safari Pinned Tab */}
+        <link rel="mask-icon" href="/images/favicon-192.png" color="#1C1C1E" />
         
         {/* PWA Manifest */}
         <link rel="manifest" href="/manifest.json" />
@@ -49,9 +62,9 @@ export default function App({ Component, pageProps }) {
               "url": "https://planwithhands.com",
               "logo": {
                 "@type": "ImageObject",
-                "url": "https://planwithhands.com/images/favicon-192.png",
-                "width": 192,
-                "height": 192
+                "url": "https://planwithhands.com/images/favicon-1024.png",
+                "width": 1024,
+                "height": 1024
               },
               "description": "Transform restaurant operations with digital checklists, team messaging, training documents, and real-time insights. No hardware needed.",
               "foundingDate": "2024",

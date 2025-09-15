@@ -74,10 +74,24 @@ class PushNotificationService {
       if (!kIsWeb && Platform.isIOS) {
         await _firebaseMessaging.setForegroundNotificationPresentationOptions(alert: true, badge: true, sound: true);
 
-        // Don't auto-request permissions on iOS - let the app request them contextually
-        logger.d(
-          '[PushNotificationService] iOS configured for notifications - permissions will be requested contextually',
-        );
+        // Check permission status; if not determined, request once on first init to register device token
+        final settings = await _firebaseMessaging.getNotificationSettings();
+        logger.d('[PushNotificationService] iOS current auth status: ${settings.authorizationStatus}');
+        if (settings.authorizationStatus == AuthorizationStatus.notDetermined) {
+          logger.d('[PushNotificationService] Requesting iOS notification permission on first launch');
+          final perm = await requestPermissionWithContext(context: 'initialization');
+          if (perm.isGranted) {
+            await ensureRegistered();
+          }
+        }
+
+        // APNs token logging can help diagnose push delivery
+        try {
+          final apnsToken = await _firebaseMessaging.getAPNSToken();
+          logger.d('[PushNotificationService] APNs token: ${apnsToken != null ? apnsToken.substring(0, 12) : 'null'}');
+        } catch (e) {
+          logger.w('[PushNotificationService] Failed to get APNs token: $e');
+        }
       }
 
       // Set up message handlers
@@ -405,8 +419,8 @@ class PushNotificationService {
 
   /// Foreground message handler -> optionally show local notification
   void _onForegroundMessage(RemoteMessage message) {
-    // Only show local notification for message type when app in foreground
-    if (!kIsWeb && Platform.isAndroid) {
+    // Show local notification for foreground messages on mobile to aid visibility
+    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
       _showLocalNotification(message, foreground: true);
     }
     _messageStreamController.add(message);
@@ -481,7 +495,7 @@ class PushNotificationService {
     router.push('/dashboard');
   }
 
-  /// Show local notification (Android)
+  /// Show local notification (Android/iOS)
   Future<void> _showLocalNotification(RemoteMessage message, {bool foreground = false}) async {
     final notification = message.notification;
     if (notification == null) return;
@@ -521,6 +535,8 @@ class PushNotificationService {
         channelShowBadge: true,
       );
 
+      const iosDetails = DarwinNotificationDetails();
+
       String? payload;
       if ((type == 'message' || type == 'admin_message') && message.data['threadId'] != null) {
         payload = 'thread:${message.data['threadId']}';
@@ -534,7 +550,7 @@ class PushNotificationService {
         message.hashCode,
         notification.title,
         notification.body,
-        NotificationDetails(android: androidDetails),
+        NotificationDetails(android: androidDetails, iOS: iosDetails),
         payload: payload,
       );
 

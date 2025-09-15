@@ -1,5 +1,5 @@
 import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -16,6 +16,7 @@ import 'package:hands_app/ui/contact_sales_dialog.dart';
 import 'package:hands_app/ui/location_bottom_sheet_new.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/core/platform_ios.dart';
+import 'package:hands_app/debug/notification_debug_widget.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class HandsSettingsPage extends StatefulWidget {
@@ -2188,6 +2189,9 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                         ),
                       ),
                       const SizedBox(height: 32),
+
+                      // Debug widget for red indicator issue - TEMPORARY
+                      if (kDebugMode) ...[const NotificationDebugWidget(), const SizedBox(height: 32)],
                     ],
                   ),
                 ),

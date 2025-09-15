@@ -4,5 +4,7 @@
 <dict>
 	<key>PreviewsEnabled</key>
 	<false/>
+	<key>IDEWorkspaceSharedSettings_AutocreateSchemesIfNeeded</key>
+	<true/>
 </dict>
 </plist>

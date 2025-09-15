@@ -423,15 +423,18 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       return null;
     }, []);
 
-    // Auto-assign single location when only one exists
-    // Auto-assign single location when only one exists; re-run when locations or role change
+    // Auto-assign locations based on user role
     useEffect(() {
-      if (availableLocations.value.length == 1) {
+      if (availableLocations.value.isEmpty) return null;
+
+      if (selectedAccessLevel.value == 1 || selectedAccessLevel.value == 2) {
+        // Managers (role 1) and Admins (role 2) should be assigned to ALL locations
+        final allLocationIds = availableLocations.value.map((location) => location['id'] as String).toSet();
+        selectedLocationIds.value = allLocationIds;
+      } else if (availableLocations.value.length == 1) {
+        // Employees (role 0) with only one location available - auto-assign
         final singleLoc = availableLocations.value.first['id'] as String;
-        // For both general users and managers, use the set-based approach
-        if (selectedAccessLevel.value == 0 || selectedAccessLevel.value == 1) {
-          selectedLocationIds.value = {singleLoc};
-        }
+        selectedLocationIds.value = {singleLoc};
       }
       return null;
     }, [availableLocations.value, selectedAccessLevel.value]);
@@ -636,8 +639,63 @@ class UserManagementBottomSheet extends HookConsumerWidget {
 
                 // Location selection (show only if more than one location available)
                 if (availableLocations.value.length > 1) ...[
-                  // For both employees (role 0) and managers (role 1), allow multiple locations
-                  if (selectedAccessLevel.value == 0 || selectedAccessLevel.value == 1) ...[
+                  // For admins (role 2) and managers (role 1), show auto-assignment message
+                  if (selectedAccessLevel.value == 1 || selectedAccessLevel.value == 2) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: theme.primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: theme.primaryColor.withOpacity(0.3)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.location_on, color: theme.primaryColor, size: 18),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Location Access',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: theme.primaryColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            selectedAccessLevel.value == 2
+                                ? 'Admins are automatically assigned to all locations and have full access across the organization.'
+                                : 'Managers are automatically assigned to all locations to oversee operations across the organization.',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Assigned locations:',
+                            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 4),
+                          ...availableLocations.value.map(
+                            (loc) => Padding(
+                              padding: const EdgeInsets.only(left: 16, top: 2),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.check_circle, color: theme.primaryColor, size: 16),
+                                  const SizedBox(width: 8),
+                                  Text(loc['name'] ?? 'Unnamed Location'),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ]
+                  // For employees (role 0), allow multiple location selection
+                  else if (selectedAccessLevel.value == 0) ...[
                     const SizedBox(height: 16),
                     Text(
                       'Locations (Select one or more)',
@@ -944,14 +1002,8 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       _showSnackBar(context, 'Please select at least one job type for this employee.', isError: true);
       return;
     }
-    if (accessLevel == 2 && (locationIds == null || locationIds.isEmpty)) {
-      _showSnackBar(context, 'An admin must assign at least one location to each user.', isError: true);
-      return;
-    }
-    if (accessLevel == 1 && (locationIds == null || locationIds.isEmpty)) {
-      _showSnackBar(context, 'A manager must be assigned to at least one location.', isError: true);
-      return;
-    }
+    // Only enforce location selection for employees (userRole 0)
+    // Admins (userRole 2) and Managers (userRole 1) are automatically assigned to all locations
     if (accessLevel == 0 && (locationIds == null || locationIds.isEmpty)) {
       _showSnackBar(context, 'An employee must be assigned to at least one location.', isError: true);
       return;
@@ -1062,61 +1114,68 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     }
 
     // Handle location assignment based on user role
-    if (accessLevel == 0) {
-      // Employee - now supports multiple locations
+    if (accessLevel == 1 || accessLevel == 2) {
+      // Managers (1) and Admins (2) - automatically assign to ALL locations
+      try {
+        final locationsSnapshot =
+            await FirestoreEnforcer.instance
+                .collection('organizations')
+                .doc(organizationId)
+                .collection('locations')
+                .get();
+
+        if (locationsSnapshot.docs.isNotEmpty) {
+          final allLocationIds = locationsSnapshot.docs.map((doc) => doc.id).toList();
+          updateData['locationIds'] = allLocationIds;
+          updateData['locationId'] = allLocationIds.first; // Set first location as primary
+          updateData['assignedLocationRefs'] =
+              allLocationIds
+                  .map(
+                    (id) => FirestoreEnforcer.instance
+                        .collection('organizations')
+                        .doc(organizationId)
+                        .collection('locations')
+                        .doc(id),
+                  )
+                  .toList();
+        } else {
+          // Fallback if no locations found
+          updateData['locationIds'] = [];
+          updateData['locationId'] = null;
+          updateData['assignedLocationRefs'] = [];
+        }
+      } catch (e) {
+        logger.w('Error fetching locations for auto-assignment: $e');
+        // Fallback to provided locations
+        updateData['locationIds'] = locationIds?.toList() ?? [];
+        updateData['locationId'] = locationIds?.first;
+        updateData['assignedLocationRefs'] =
+            locationIds
+                ?.map(
+                  (id) => FirestoreEnforcer.instance
+                      .collection('organizations')
+                      .doc(organizationId)
+                      .collection('locations')
+                      .doc(id),
+                )
+                .toList() ??
+            [];
+      }
+    } else if (accessLevel == 0) {
+      // Employee - use selected locations
       updateData['locationIds'] = locationIds?.toList() ?? [];
-      // Keep locationId for backwards compatibility (use first location)
       updateData['locationId'] = locationIds?.first;
-      // Also store refs for resolver compatibility
-      if (locationIds != null && locationIds.isNotEmpty) {
-        updateData['assignedLocationRefs'] =
-            locationIds
-                .map(
-                  (id) => FirestoreEnforcer.instance
-                      .collection('organizations')
-                      .doc(organizationId)
-                      .collection('locations')
-                      .doc(id),
-                )
-                .toList();
-      } else {
-        updateData['assignedLocationRefs'] = [];
-      }
-    } else if (accessLevel == 1) {
-      // Manager - multiple locations
-      updateData['locationIds'] = locationIds?.toList() ?? [];
-      // Keep locationId for backwards compatibility (use first location)
-      updateData['locationId'] = locationIds?.first;
-      if (locationIds != null && locationIds.isNotEmpty) {
-        updateData['assignedLocationRefs'] =
-            locationIds
-                .map(
-                  (id) => FirestoreEnforcer.instance
-                      .collection('organizations')
-                      .doc(organizationId)
-                      .collection('locations')
-                      .doc(id),
-                )
-                .toList();
-      } else {
-        updateData['assignedLocationRefs'] = [];
-      }
-    } else {
-      // Admin - has access to all locations, but keep locationId for primary
-      if (locationIds != null && locationIds.isNotEmpty) {
-        updateData['locationIds'] = locationIds.toList();
-        updateData['locationId'] = locationIds.first;
-        updateData['assignedLocationRefs'] =
-            locationIds
-                .map(
-                  (id) => FirestoreEnforcer.instance
-                      .collection('organizations')
-                      .doc(organizationId)
-                      .collection('locations')
-                      .doc(id),
-                )
-                .toList();
-      }
+      updateData['assignedLocationRefs'] =
+          locationIds
+              ?.map(
+                (id) => FirestoreEnforcer.instance
+                    .collection('organizations')
+                    .doc(organizationId)
+                    .collection('locations')
+                    .doc(id),
+              )
+              .toList() ??
+          [];
     }
 
     // Update user document in Firestore
@@ -1218,7 +1277,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     }
 
     logger.d(
-      'Calling createUser with payload: ${{'email': userEmail, 'firstName': firstName, 'lastName': lastName, 'userRole': accessLevel, 'jobTypes': finalJobTypes, 'organizationId': organizationId, 'locationId': logLocIds.isNotEmpty ? logLocIds.first : null, 'locationIds': logLocIds, 'orgName': orgName, 'adminEmail': adminEmail, 'inviteUrl': inviteUrl, 'templateId': templateId}}',
+      'Calling createUser with payload: ${{'email': userEmail, 'firstName': firstName, 'lastName': lastName, 'userRole': accessLevel, 'jobTypes': finalJobTypes, 'organizationId': organizationId, 'locationId': logLocIds.isNotEmpty ? logLocIds.first : null, 'locationIds': logLocIds, 'assignedLocationRefs': locationIds?.map((id) => 'organizations/$organizationId/locations/$id').toList() ?? [], 'orgName': orgName, 'adminEmail': adminEmail, 'inviteUrl': inviteUrl, 'templateId': templateId}}',
     );
 
     final result = await createUser.call({
@@ -1233,17 +1292,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       'locationId': locationId,
       'locationIds': locationIds?.toList(),
       'assignedLocationRefs':
-          locationIds != null
-              ? locationIds
-                  .map(
-                    (id) => FirestoreEnforcer.instance
-                        .collection('organizations')
-                        .doc(organizationId)
-                        .collection('locations')
-                        .doc(id),
-                  )
-                  .toList()
-              : [],
+          locationIds != null ? locationIds.map((id) => 'organizations/$organizationId/locations/$id').toList() : [],
       'orgName': orgName,
       'adminEmail': adminEmail,
       'inviteUrl': inviteUrl,

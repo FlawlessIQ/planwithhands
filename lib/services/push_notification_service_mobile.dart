@@ -1,34 +1,40 @@
-// Legacy mobile push notification service file replaced with minimal stub.
-// Original content stored in push_notification_service_mobile.legacy.backup
+// Mobile push notification service - now redirects to main service
+// This ensures compatibility while using the comprehensive push_notification_service.dart
 
 import 'package:flutter/foundation.dart';
 import 'package:hands_app/core/logging/logger.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:hands_app/services/push_notification_service.dart' as main_service;
 
 class PushNotificationService {
   static final PushNotificationService _instance = PushNotificationService._internal();
   factory PushNotificationService() => _instance;
   PushNotificationService._internal();
 
-  bool _isInitialized = false;
+  // Delegate to the main push notification service
+  final main_service.PushNotificationService _mainService = main_service.PushNotificationService();
+
   Future<void> initialize() async {
-    if (_isInitialized) return;
     if (kIsWeb) {
-      logger.w('[PushNotificationService:Stub] Web platform – no mobile push init.');
-      _isInitialized = true;
-      return;
+      logger.w('[PushNotificationService:Mobile] Web platform – delegating to main service.');
     }
-    // Intentionally minimal – real implementation removed.
-    _isInitialized = true;
-    logger.w('[PushNotificationService:Stub] Initialized (stub).');
+    await _mainService.initialize();
   }
 
-  Future<void> ensureRegistered() async {}
-  Future<String?> getToken() async => FirebaseMessaging.instance.getToken();
-  Future<void> openAppSettings() async {
-    logger.w('[PushNotificationService:Stub] openAppSettings() no-op.');
+  Future<void> ensureRegistered() async {
+    await _mainService.ensureRegistered();
   }
-  void dispose() {}
+
+  Future<String?> getToken() async {
+    return await _mainService.getToken();
+  }
+
+  Future<void> openAppSettings() async {
+    await _mainService.openAppSettings();
+  }
+
+  void dispose() {
+    _mainService.dispose();
+  }
 }
 
 enum NotificationPermissionResult { granted, denied, notDetermined, error }

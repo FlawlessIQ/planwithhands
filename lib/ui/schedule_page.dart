@@ -511,8 +511,8 @@ class _SchedulePageState extends State<SchedulePage> {
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
-                // Location Selector
-                if (_locations.isNotEmpty)
+                // Location Selector - only show if multiple locations
+                if (_locations.length > 1)
                   DropdownButtonFormField<String>(
                     value: _selectedLocation,
                     decoration: const InputDecoration(labelText: 'Location', border: OutlineInputBorder()),

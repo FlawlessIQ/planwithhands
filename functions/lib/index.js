@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.scheduledDailyGenerator = exports.onNotificationOutboxCreated = exports.proxyDownload = exports.proxyUpload = exports.getSignedUploadUrl = exports.placeDetailsHttp = exports.placesAutocompleteHttp = exports.createBillingPortalSession = exports.updateSubscription = exports.cancelSubscription = exports.stripeWebhook = exports.createCheckoutSession = exports.deleteUser = exports.createUser = exports.repairTaskTitlesFromCsv = exports.repairTemplateTaskTitles = exports.migrateChecklistTemplates = exports.syncTodayOnShiftChange = exports.syncTodayOnTemplateChange = void 0;
+exports.scheduledDailyGenerator = exports.onNotificationOutboxCreated = exports.proxyDownload = exports.proxyUpload = exports.getSignedUploadUrl = exports.placeDetailsHttp = exports.placesAutocompleteHttp = exports.createBillingPortalSession = exports.updateSubscription = exports.cancelSubscription = exports.stripeWebhook = exports.createCheckoutSession = exports.sendOrganizationSignupNotification = exports.deleteUser = exports.createUser = exports.repairTaskTitlesFromCsv = exports.repairTemplateTaskTitles = exports.migrateChecklistTemplates = exports.syncTodayOnShiftChange = exports.syncTodayOnTemplateChange = void 0;
 /* eslint-disable @typescript-eslint/no-require-imports */
 const admin = __importStar(require("firebase-admin"));
 // Ensure admin is initialized (idempotent)
@@ -68,6 +68,7 @@ exports.repairTaskTitlesFromCsv = repairCsvModule.repairTaskTitlesFromCsv;
 const userModule = require("../user_functions");
 exports.createUser = userModule.createUser;
 exports.deleteUser = userModule.deleteUser;
+exports.sendOrganizationSignupNotification = userModule.sendOrganizationSignupNotification;
 // Export other JS-based functions
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const stripeModule = require("../stripe_functions");

@@ -110,15 +110,28 @@ exports.onNotificationOutboxCreated = functions.firestore
         }
         case "location": {
             console.log(`[Outbox] Location targeting for location ${notif.targetId} in org ${orgId}`);
-            const snap = await db.collection("users")
+            // First try users with locationIds array
+            const arraySnap = await db.collection("users")
                 .where("organizationId", "==", orgId)
                 .where("isActive", "==", true)
                 .where("locationIds", "array-contains", notif.targetId)
                 .get();
-            recipientUserIds = snap.docs.map(doc => doc.id);
-            console.log(`[Outbox] Location ${notif.targetId} has ${recipientUserIds.length} users:`, recipientUserIds);
+            let arrayUserIds = arraySnap.docs.map(doc => doc.id);
+            console.log(`[Outbox] Found ${arrayUserIds.length} users with locationIds array containing ${notif.targetId}`);
+            // Then try users with single locationId field
+            const singleSnap = await db.collection("users")
+                .where("organizationId", "==", orgId)
+                .where("isActive", "==", true)
+                .where("locationId", "==", notif.targetId)
+                .get();
+            let singleUserIds = singleSnap.docs.map(doc => doc.id);
+            console.log(`[Outbox] Found ${singleUserIds.length} users with locationId field equal to ${notif.targetId}`);
+            // Combine and deduplicate user IDs
+            const allLocationUserIds = [...new Set([...arrayUserIds, ...singleUserIds])];
+            recipientUserIds = allLocationUserIds;
+            console.log(`[Outbox] Total unique users for location ${notif.targetId}: ${recipientUserIds.length}`);
             if (recipientUserIds.length === 0) {
-                // Debug: let's check what users exist in this org and their locationIds
+                // Debug: let's check what users exist in this org and their location assignments
                 const allUsersSnap = await db.collection("users")
                     .where("organizationId", "==", orgId)
                     .where("isActive", "==", true)
@@ -126,7 +139,7 @@ exports.onNotificationOutboxCreated = functions.firestore
                 console.log(`[Outbox] Debug: Found ${allUsersSnap.docs.length} active users in org`);
                 allUsersSnap.docs.forEach(doc => {
                     const userData = doc.data();
-                    console.log(`[Outbox] Debug: User ${doc.id} locationIds:`, userData.locationIds || 'none');
+                    console.log(`[Outbox] Debug: User ${doc.id} locationIds:`, userData.locationIds || 'none', 'locationId:', userData.locationId || 'none');
                 });
             }
             break;

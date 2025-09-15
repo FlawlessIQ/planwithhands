@@ -69,6 +69,23 @@ class UserDashboardPage extends HookConsumerWidget {
     // Debounce timer for template/shift changes to prevent excessive refreshes
     final refreshDebounceTimer = useState<Timer?>(null);
 
+    // Resolve a safe, non-empty locationId to use for a given shift to avoid crashes (e.g., Firestore doc(""))
+    String effectiveLocationForShift(ShiftData shift, String? perShiftLocationId, String? selectedLocation) {
+      // 1) Prefer the explicitly computed per-shift id if present
+      if (perShiftLocationId != null && perShiftLocationId.trim().isNotEmpty) {
+        return perShiftLocationId;
+      }
+      // 2) If there's a selected location and the shift includes it, use that
+      final shiftLocs = coerceToLocationIds(shift.locationIds);
+      if (selectedLocation != null && shiftLocs.contains(selectedLocation)) {
+        return selectedLocation;
+      }
+      // 3) Otherwise use the first declared shift location
+      if (shiftLocs.isNotEmpty) return shiftLocs.first;
+      // 4) Fallback to a sentinel that won't crash path building
+      return 'default';
+    }
+
     // Seed from global selection if present and listen for changes
     useEffect(() {
       final global = locationService.currentLocationId;
@@ -239,6 +256,27 @@ class UserDashboardPage extends HookConsumerWidget {
       logger.d(
         "[Dashboard][LOCATION_DEBUG] loadDashboardData called for location: ${selectedLocationId.value} (${selectedLocationName.value})",
       );
+
+      // CRITICAL: Guard against invalid state that can cause crashes
+      final currentOrgId = organizationId.value;
+      final currentLocationId = selectedLocationId.value;
+
+      if (currentOrgId == null || currentOrgId.trim().isEmpty) {
+        logger.w('[Dashboard] Cannot load dashboard - invalid organization ID');
+        errorMessage.value = "Unable to load organization data.";
+        isLoading.value = false;
+        isRefreshing.value = false;
+        return;
+      }
+
+      if (currentLocationId == null || currentLocationId.trim().isEmpty) {
+        logger.w('[Dashboard] Cannot load dashboard - invalid location ID');
+        errorMessage.value = "Please select a valid location.";
+        isLoading.value = false;
+        isRefreshing.value = false;
+        return;
+      }
+
       final initial = !hasLoadedOnce.value;
       if (initial || resetData) {
         isLoading.value = true; // show full screen spinner only for first load or explicit resets
@@ -662,38 +700,69 @@ class UserDashboardPage extends HookConsumerWidget {
 
     // Shifts listener: role-aware, rebinds when org/location/role/job types change
     useEffect(() {
-      if (organizationId.value == null || selectedLocationId.value == null) {
+      final orgId = organizationId.value;
+      final locId = selectedLocationId.value;
+
+      // CRITICAL: Prevent crashes from empty document paths
+      if (orgId == null || orgId.trim().isEmpty || locId == null || locId.trim().isEmpty) {
+        logger.d('[Dashboard] Clearing shifts - invalid orgId or locId');
         shifts.value = const [];
         return null;
       }
 
-      Query<Map<String, dynamic>> q = FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(organizationId.value!)
-          .collection('shifts')
-          .where('locationIds', arrayContains: selectedLocationId.value);
+      // Additional safety: verify location is accessible
+      final locationExists = availableLocations.value.any((loc) => loc['id'] == locId);
+      if (!locationExists) {
+        logger.d('[Dashboard] Clearing shifts - location $locId not in available locations');
+        shifts.value = const [];
+        return null;
+      }
 
-      // Do not apply jobType-based narrowing on shifts. Shifts are visible to all users.
+      try {
+        Query<Map<String, dynamic>> q = FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(orgId)
+            .collection('shifts')
+            .where('locationIds', arrayContains: locId);
 
-      final sub = q.snapshots().listen((snap) {
-        final out = <Map<String, dynamic>>[];
-        for (final d in snap.docs) {
-          final data = Map<String, dynamic>.from(d.data());
-          data['id'] = d.id;
-          // Shifts are visible to all users regardless of jobTypes.
-          out.add(data);
-        }
-        shifts.value = out;
+        // Do not apply jobType-based narrowing on shifts. Shifts are visible to all users.
 
-        // Auto-refresh dashboard when shifts change to pick up new/updated shifts
-        if (hasLoadedOnce.value) {
-          logger.d('[Dashboard] Shifts changed, scheduling refresh');
-          debouncedRefresh('shifts changed');
-        }
-      });
+        final sub = q.snapshots().listen(
+          (snap) {
+            // Defensive: only process if we're still viewing the same location
+            if (selectedLocationId.value != locId) {
+              logger.d('[Dashboard] Ignoring stale shifts update for old location $locId');
+              return;
+            }
 
-      return sub.cancel;
-    }, [organizationId.value, selectedLocationId.value, userRole.value, userJobTypes.value]);
+            final out = <Map<String, dynamic>>[];
+            for (final d in snap.docs) {
+              final data = Map<String, dynamic>.from(d.data());
+              data['id'] = d.id;
+              // Shifts are visible to all users regardless of jobTypes.
+              out.add(data);
+            }
+            shifts.value = out;
+
+            // Auto-refresh dashboard when shifts change to pick up new/updated shifts
+            if (hasLoadedOnce.value) {
+              logger.d('[Dashboard] Shifts changed, scheduling refresh');
+              debouncedRefresh('shifts changed');
+            }
+          },
+          onError: (error) {
+            logger.e('[Dashboard] Shifts listener error: $error');
+            shifts.value = const [];
+          },
+        );
+
+        return sub.cancel;
+      } catch (e) {
+        logger.e('[Dashboard] Failed to create shifts listener: $e');
+        shifts.value = const [];
+        return null;
+      }
+    }, [organizationId.value, selectedLocationId.value, userRole.value, userJobTypes.value, availableLocations.value]);
 
     // Template changes listener: regenerate daily checklists when templates are created/edited
     useEffect(() {
@@ -719,159 +788,222 @@ class UserDashboardPage extends HookConsumerWidget {
 
     // Location-specific template changes listener: handle location-specific templates
     useEffect(() {
-      if (organizationId.value == null || selectedLocationId.value == null) {
+      final locId = selectedLocationId.value;
+      final orgId = organizationId.value;
+
+      // CRITICAL: Guard against empty document paths that crash iOS
+      if (orgId == null || orgId.trim().isEmpty || locId == null || locId.trim().isEmpty) {
+        logger.d('[Dashboard] Skipping location templates listener - invalid orgId or locId');
         return null;
       }
 
-      // Listen to location-specific checklist templates (if they exist)
-      final locationTemplatesSub = FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(organizationId.value!)
-          .collection('locations')
-          .doc(selectedLocationId.value!)
-          .collection('checklist_templates')
-          .snapshots()
-          .listen((snap) {
-            if (hasLoadedOnce.value && snap.docs.isNotEmpty) {
-              logger.d('[Dashboard] Location-specific templates changed, scheduling regeneration');
-              debouncedRefresh('location template changes', delay: const Duration(seconds: 1));
-            }
-          });
-
-      return locationTemplatesSub.cancel;
-    }, [organizationId.value, selectedLocationId.value]);
-
-    // Daily checklists listener: update when daily checklists are created/modified
-    useEffect(() {
-      if (organizationId.value == null || selectedLocationId.value == null || !hasLoadedOnce.value) {
+      // Additional safety: verify location exists in availableLocations
+      final locationExists = availableLocations.value.any((loc) => loc['id'] == locId);
+      if (!locationExists) {
+        logger.d('[Dashboard] Skipping location templates listener - location $locId not in available locations');
         return null;
       }
 
-      // Listen to daily checklists for today
-      final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      final dailyChecklistsSub = FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(organizationId.value!)
-          .collection('locations')
-          .doc(selectedLocationId.value!)
-          .collection('daily_checklists')
-          .where('date', isEqualTo: today)
-          .snapshots()
-          .listen((snap) {
-            // Determine which shifts actually changed
-            final changedShiftIds = <String>{};
-            for (final dc in snap.docChanges) {
-              try {
-                final data = dc.doc.data();
-                final sid = (data?['shiftId'] ?? '').toString();
-                if (sid.isNotEmpty) changedShiftIds.add(sid);
-              } catch (_) {}
-            }
-
-            // If Firestore didn't provide docChanges (first snapshot) treat all visible shifts for this location as changed
-            final firstSnapshot = snap.metadata.isFromCache == false && snap.docChanges.isEmpty;
-            if (changedShiftIds.isEmpty && firstSnapshot) {
-              for (final s in assignedShifts.value) {
-                // Only include shifts belonging to the current selected location
-                final locIds = coerceToLocationIds(s.locationIds);
-                if (locIds.isNotEmpty && locIds.first == selectedLocationId.value) {
-                  changedShiftIds.add(s.shiftId);
+      try {
+        // Listen to location-specific checklist templates (if they exist)
+        final locationTemplatesSub = FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(orgId)
+            .collection('locations')
+            .doc(locId)
+            .collection('checklist_templates')
+            .snapshots()
+            .listen(
+              (snap) {
+                if (hasLoadedOnce.value && snap.docs.isNotEmpty) {
+                  logger.d('[Dashboard] Location-specific templates changed, scheduling regeneration');
+                  debouncedRefresh('location template changes', delay: const Duration(seconds: 1));
                 }
-              }
-            }
-
-            logger.d(
-              '[Dashboard] Daily checklists snapshot (docs=${snap.docs.length}, changes=${snap.docChanges.length}, changedShiftIds=$changedShiftIds)',
+              },
+              onError: (error) {
+                logger.e('[Dashboard] Location templates listener error: $error');
+              },
             );
 
-            // Nothing relevant changed
-            if (changedShiftIds.isEmpty) return;
+        return locationTemplatesSub.cancel;
+      } catch (e) {
+        logger.e('[Dashboard] Failed to create location templates listener: $e');
+        return null;
+      }
+    }, [organizationId.value, selectedLocationId.value, availableLocations.value]);
 
-            Future.microtask(() async {
-              try {
-                // We'll create a mutable copy of existing checklist groups for merging
-                final currentGroups = List<List<DailyChecklist>>.from(
-                  allChecklists.value.map((g) => List<DailyChecklist>.from(g)),
-                );
+    // Daily checklists listener: update when daily checklists are created/modified
+    useEffect(
+      () {
+        final locId = selectedLocationId.value;
+        final orgId = organizationId.value;
 
-                // Map shiftId -> index in assignedShifts to maintain alignment
-                final shiftIndexById = <String, int>{};
-                for (int i = 0; i < assignedShifts.value.length; i++) {
-                  shiftIndexById[assignedShifts.value[i].shiftId] = i;
-                }
+        // CRITICAL: Comprehensive safety checks to prevent crashes
+        if (orgId == null || orgId.trim().isEmpty || locId == null || locId.trim().isEmpty || !hasLoadedOnce.value) {
+          logger.d('[Dashboard] Skipping daily checklists listener - invalid state');
+          return null;
+        }
 
-                for (final changedShiftId in changedShiftIds) {
-                  final index = shiftIndexById[changedShiftId];
-                  if (index == null) continue; // shift not currently displayed
+        // Verify location exists and user has access
+        final locationExists = availableLocations.value.any((loc) => loc['id'] == locId);
+        if (!locationExists) {
+          logger.d('[Dashboard] Skipping daily checklists listener - location $locId not accessible');
+          return null;
+        }
 
-                  // Safety: verify location alignment
-                  final locationId =
-                      (index < selectedLocationIds.value.length)
-                          ? selectedLocationIds.value[index]
-                          : selectedLocationId.value!;
-                  if (locationId != selectedLocationId.value) {
-                    // Different location than currently selected tab; skip
-                    continue;
+        try {
+          // Listen to daily checklists for today
+          final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+          final dailyChecklistsSub = FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(orgId)
+              .collection('locations')
+              .doc(locId)
+              .collection('daily_checklists')
+              .where('date', isEqualTo: today)
+              .snapshots()
+              .listen(
+                (snap) {
+                  // Defensive: only process if we're still viewing the same location
+                  if (selectedLocationId.value != locId) {
+                    logger.d('[Dashboard] Ignoring stale daily checklist update for old location $locId');
+                    return;
                   }
 
-                  final shiftData = assignedShifts.value[index];
-                  final reloaded = await _loadChecklistsForShiftSimple(
-                    shiftData,
-                    locationId,
-                    today,
-                    organizationId.value!,
-                    userRole: userRole.value,
-                    userJobTypes: userJobTypes.value,
-                  );
+                  // Determine which shifts actually changed
+                  final changedShiftIds = <String>{};
+                  for (final dc in snap.docChanges) {
+                    try {
+                      final data = dc.doc.data();
+                      final sid = (data?['shiftId'] ?? '').toString();
+                      if (sid.isNotEmpty) changedShiftIds.add(sid);
+                    } catch (e) {
+                      logger.w('[Dashboard] Error processing docChange: $e');
+                    }
+                  }
 
-                  // Merge: preserve already hydrated tasks if the reloaded version has fewer (likely due to race)
-                  final existingList = (index < currentGroups.length) ? currentGroups[index] : <DailyChecklist>[];
-                  final merged = <DailyChecklist>[];
-                  for (final newCl in reloaded) {
-                    final old = existingList.firstWhere((c) => c.id == newCl.id, orElse: () => newCl);
-                    if (old.id == newCl.id) {
-                      if ((old.tasks.length > newCl.tasks.length) && newCl.tasks.isEmpty) {
-                        // Retain old hydrated tasks
-                        merged.add(old);
-                        logger.d(
-                          '[Dashboard] Guarded merge kept hydrated tasks for checklist ${old.id} (old=${old.tasks.length}, new=${newCl.tasks.length})',
-                        );
-                        continue;
+                  // If Firestore didn't provide docChanges (first snapshot) treat all visible shifts for this location as changed
+                  final firstSnapshot = snap.metadata.isFromCache == false && snap.docChanges.isEmpty;
+                  if (changedShiftIds.isEmpty && firstSnapshot) {
+                    for (final s in assignedShifts.value) {
+                      // Only include shifts belonging to the current selected location
+                      final locIds = coerceToLocationIds(s.locationIds);
+                      if (locIds.isNotEmpty && locIds.first == selectedLocationId.value) {
+                        changedShiftIds.add(s.shiftId);
                       }
                     }
-                    merged.add(newCl);
                   }
-                  // Include any old checklists that disappeared (unlikely) to avoid sudden UI drop unless they were removed intentionally
-                  for (final old in existingList) {
-                    if (!merged.any((c) => c.id == old.id)) {
-                      merged.add(old);
+
+                  logger.d(
+                    '[Dashboard] Daily checklists snapshot (docs=${snap.docs.length}, changes=${snap.docChanges.length}, changedShiftIds=$changedShiftIds)',
+                  );
+
+                  // Nothing relevant changed
+                  if (changedShiftIds.isEmpty) return;
+
+                  Future.microtask(() async {
+                    try {
+                      // We'll create a mutable copy of existing checklist groups for merging
+                      final currentGroups = List<List<DailyChecklist>>.from(
+                        allChecklists.value.map((g) => List<DailyChecklist>.from(g)),
+                      );
+
+                      // Map shiftId -> index in assignedShifts to maintain alignment
+                      final shiftIndexById = <String, int>{};
+                      for (int i = 0; i < assignedShifts.value.length; i++) {
+                        shiftIndexById[assignedShifts.value[i].shiftId] = i;
+                      }
+
+                      for (final changedShiftId in changedShiftIds) {
+                        final index = shiftIndexById[changedShiftId];
+                        if (index == null) continue; // shift not currently displayed
+
+                        // Safety: verify location alignment
+                        final locationId =
+                            (index < selectedLocationIds.value.length)
+                                ? selectedLocationIds.value[index]
+                                : selectedLocationId.value!;
+                        if (locationId != selectedLocationId.value) {
+                          // Different location than currently selected tab; skip
+                          continue;
+                        }
+
+                        final shiftData = assignedShifts.value[index];
+                        final reloaded = await _loadChecklistsForShiftSimple(
+                          shiftData,
+                          locationId,
+                          today,
+                          orgId,
+                          userRole: userRole.value,
+                          userJobTypes: userJobTypes.value,
+                        );
+
+                        // Merge: preserve already hydrated tasks if the reloaded version has fewer (likely due to race)
+                        final existingList = (index < currentGroups.length) ? currentGroups[index] : <DailyChecklist>[];
+                        final merged = <DailyChecklist>[];
+                        for (final newCl in reloaded) {
+                          final old = existingList.firstWhere((c) => c.id == newCl.id, orElse: () => newCl);
+                          if (old.id == newCl.id) {
+                            if ((old.tasks.length > newCl.tasks.length) && newCl.tasks.isEmpty) {
+                              // Retain old hydrated tasks
+                              merged.add(old);
+                              logger.d(
+                                '[Dashboard] Guarded merge kept hydrated tasks for checklist ${old.id} (old=${old.tasks.length}, new=${newCl.tasks.length})',
+                              );
+                              continue;
+                            }
+                          }
+                          merged.add(newCl);
+                        }
+                        // Include any old checklists that disappeared (unlikely) to avoid sudden UI drop unless they were removed intentionally
+                        for (final old in existingList) {
+                          if (!merged.any((c) => c.id == old.id)) {
+                            merged.add(old);
+                          }
+                        }
+
+                        // Sort merged to stable order (by id) to avoid unnecessary rebuild churn
+                        merged.sort((a, b) => a.id.compareTo(b.id));
+
+                        if (index < currentGroups.length) {
+                          currentGroups[index] = merged;
+                        } else {
+                          // Pad missing groups
+                          while (currentGroups.length < index) {
+                            currentGroups.add(<DailyChecklist>[]);
+                          }
+                          currentGroups.add(merged);
+                        }
+                      }
+
+                      allChecklists.value = currentGroups;
+                      logger.d(
+                        '[Dashboard] Selective checklist refresh applied to ${changedShiftIds.length} shift(s).',
+                      );
+                    } catch (e, st) {
+                      logger.e('[Dashboard] Error during selective checklist merge: $e\n$st', e, st);
                     }
-                  }
+                  });
+                },
+                onError: (error) {
+                  logger.e('[Dashboard] Daily checklists listener error: $error');
+                },
+              );
 
-                  // Sort merged to stable order (by id) to avoid unnecessary rebuild churn
-                  merged.sort((a, b) => a.id.compareTo(b.id));
-
-                  if (index < currentGroups.length) {
-                    currentGroups[index] = merged;
-                  } else {
-                    // Pad missing groups
-                    while (currentGroups.length < index) {
-                      currentGroups.add(<DailyChecklist>[]);
-                    }
-                    currentGroups.add(merged);
-                  }
-                }
-
-                allChecklists.value = currentGroups;
-                logger.d('[Dashboard] Selective checklist refresh applied to ${changedShiftIds.length} shift(s).');
-              } catch (e, st) {
-                logger.e('[Dashboard] Error during selective checklist merge: $e\n$st', e, st);
-              }
-            });
-          });
-
-      return dailyChecklistsSub.cancel;
-    }, [organizationId.value, selectedLocationId.value, hasLoadedOnce.value, assignedShifts.value.length]);
+          return dailyChecklistsSub.cancel;
+        } catch (e) {
+          logger.e('[Dashboard] Failed to create daily checklists listener: $e');
+          return null;
+        }
+      },
+      [
+        organizationId.value,
+        selectedLocationId.value,
+        hasLoadedOnce.value,
+        assignedShifts.value.length,
+        availableLocations.value,
+      ],
+    );
 
     // Missed tasks loader (role-aware) - uses carry-forward query and keeps UI model in sync
     Future<void> loadMissedYesterdayRoleAware() async {
@@ -1006,18 +1138,35 @@ class UserDashboardPage extends HookConsumerWidget {
               padding: const EdgeInsets.only(right: 8.0),
               child: PopupMenuButton<String>(
                 onSelected: (value) async {
+                  // Prevent rapid location switches that can cause race conditions
+                  if (selectedLocationId.value == value) return;
+
+                  logger.d('[Dashboard] Location switch initiated: ${selectedLocationId.value} -> $value');
+
+                  // Set new location immediately to prevent duplicate switches
                   selectedLocationId.value = value;
                   final selected = availableLocations.value.firstWhere(
                     (loc) => loc['id'] == value,
                     orElse: () => <String, String>{'name': 'Unknown Location'},
                   );
                   selectedLocationName.value = selected['name'];
+
                   // Reset missed tasks location so they reload for the new location
                   missedTasksLocationId.value = null;
+
+                  // Clear current data immediately to prevent showing stale data during transition
+                  assignedShifts.value = [];
+                  allChecklists.value = [];
+                  selectedLocationIds.value = [];
+                  shifts.value = [];
+                  missedTasksSections.value = [];
+
                   // Persist globally so other pages adopt the change
                   try {
                     LocationSelectionService.instance.setLocation(value);
-                  } catch (_) {}
+                  } catch (e) {
+                    logger.w('[Dashboard] Failed to set global location: $e');
+                  }
 
                   // Persist to user doc so selection survives across devices
                   try {
@@ -1036,9 +1185,13 @@ class UserDashboardPage extends HookConsumerWidget {
                     logger.w('[Dashboard] Failed to persist current location to user doc: $e');
                   }
 
+                  // Debounced reload to allow all listeners to update before loading data
+                  await Future.delayed(const Duration(milliseconds: 500));
+
                   // Reload dashboard data with proper error handling to prevent crashes
                   try {
                     await loadDashboardData(resetData: true); // explicit reset for location switch
+                    logger.d('[Dashboard] Location switch completed successfully');
                   } catch (e) {
                     logger.e('[Dashboard] Failed to reload dashboard data after location switch: $e');
                     // Show error message to user but don't crash the app
@@ -1348,10 +1501,13 @@ class UserDashboardPage extends HookConsumerWidget {
                                 // Guard against transient mismatch between assignedShifts and selectedLocationIds
                                 // (listeners may update these lists at different times). Use the per-page
                                 // selectedLocationId as a safe fallback when per-shift ids are not yet available.
-                                final locationId =
-                                    (selectedLocationIds.value.length > shiftIndex)
-                                        ? selectedLocationIds.value[shiftIndex]
-                                        : (selectedLocationId.value ?? '');
+                                final locationId = effectiveLocationForShift(
+                                  shift,
+                                  (selectedLocationIds.value.length > shiftIndex)
+                                      ? selectedLocationIds.value[shiftIndex]
+                                      : null,
+                                  selectedLocationId.value,
+                                );
                                 final checklists =
                                     allChecklists.value.length > shiftIndex ? allChecklists.value[shiftIndex] : [];
                                 return Column(
@@ -1850,12 +2006,23 @@ Future<List<DailyChecklist>> _loadChecklistsForShiftSimple(
 
     // After the above checks, userRole and userJobTypes are guaranteed to be non-null
 
+    // Ensure we never use an empty document id for location; derive a safe fallback if needed
+    final String locId =
+        locationId.trim().isNotEmpty
+            ? locationId
+            : (() {
+              final locs = coerceToLocationIds(shift.locationIds);
+              final derived = locs.isNotEmpty ? locs.first : 'default';
+              logger.w('[Dashboard] Empty locationId provided; using derived "$derived" for shift ${shift.shiftId}');
+              return derived;
+            })();
+
     // Build base query for daily_checklists for this shift/date/location
     var baseQuery = FirestoreEnforcer.instance
         .collection('organizations')
         .doc(organizationId)
         .collection('locations')
-        .doc(locationId)
+        .doc(locId)
         .collection('daily_checklists')
         .where('shiftId', isEqualTo: shift.shiftId)
         .where('date', isEqualTo: todayString);
@@ -1947,7 +2114,7 @@ Future<List<DailyChecklist>> _loadChecklistsForShiftSimple(
                 .collection('organizations')
                 .doc(organizationId)
                 .collection('locations')
-                .doc(locationId)
+                .doc(locId)
                 .collection('daily_checklists')
                 .doc(checklist.id)
                 .collection('tasks')
@@ -2171,10 +2338,7 @@ Future<void> _leaveVolunteerShift(
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Successfully left volunteer shift!'),
-          backgroundColor: Colors.green,
-        ),
+        const SnackBar(content: Text('Successfully left volunteer shift!'), backgroundColor: Colors.green),
       );
     }
   } catch (e) {

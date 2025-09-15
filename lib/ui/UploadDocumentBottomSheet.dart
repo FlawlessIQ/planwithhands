@@ -12,9 +12,16 @@ import 'package:hands_app/utils/firestore_enforcer.dart';
 class UploadDocumentBottomSheet extends HookConsumerWidget {
   final Map<String, dynamic>? documentData;
   final String? documentId;
+  final String? locationId;
   final VoidCallback? onDocumentUploaded;
 
-  const UploadDocumentBottomSheet({super.key, this.documentData, this.documentId, this.onDocumentUploaded});
+  const UploadDocumentBottomSheet({
+    super.key,
+    this.documentData,
+    this.documentId,
+    this.locationId,
+    this.onDocumentUploaded,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -245,6 +252,7 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
           'fileType': fileType,
           'fileSize': fileSize,
           'organizationId': orgId,
+          'locationId': locationId,
           'updatedAt': FieldValue.serverTimestamp(),
         };
         if (isEditMode) {

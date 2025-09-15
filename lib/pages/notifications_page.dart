@@ -414,82 +414,7 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
                         return Container(
                           margin: const EdgeInsets.symmetric(vertical: 6),
                           decoration: HandsDecorations.tertiaryBoxDecoration,
-                          child: ListTile(
-                            leading: Icon(
-                              isRead ? Icons.mark_email_read_outlined : Icons.mark_email_unread,
-                              color: isRead ? HandsColors.white70 : HandsColors.handsOrange,
-                            ),
-                            title: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    title,
-                                    style: GoogleFonts.comfortaa(
-                                      fontWeight: isRead ? FontWeight.w400 : FontWeight.bold,
-                                      color: HandsColors.white,
-                                    ),
-                                  ),
-                                ),
-                                if (timestamp.isNotEmpty)
-                                  Text(
-                                    timestamp,
-                                    style: GoogleFonts.comfortaa(
-                                      fontSize: 12,
-                                      color: HandsColors.white70,
-                                      fontWeight: FontWeight.w300,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            subtitle: Text(
-                              details,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 13),
-                            ),
-                            trailing: PopupMenuButton<String>(
-                              iconColor: HandsColors.white70,
-                              color: HandsColors.secondaryContainer,
-                              onSelected: (value) {
-                                if (value == 'archive') {
-                                  _archiveNotification(n['id']);
-                                } else if (value == 'unarchive') {
-                                  _unarchiveNotification(n['id']);
-                                } else if (value == 'delete') {
-                                  _deleteNotification(n['id']);
-                                }
-                              },
-                              itemBuilder:
-                                  (context) => [
-                                    PopupMenuItem(
-                                      value: isArchived ? 'unarchive' : 'archive',
-                                      child: Row(
-                                        children: [
-                                          Icon(
-                                            isArchived ? Icons.unarchive : Icons.archive,
-                                            color: HandsColors.white,
-                                            size: 16,
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            isArchived ? 'Unarchive' : 'Archive',
-                                            style: GoogleFonts.comfortaa(color: HandsColors.white),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    PopupMenuItem(
-                                      value: 'delete',
-                                      child: Row(
-                                        children: [
-                                          const Icon(Icons.delete, color: Colors.red, size: 16),
-                                          const SizedBox(width: 8),
-                                          Text('Delete', style: GoogleFonts.comfortaa(color: Colors.red)),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                            ),
+                          child: InkWell(
                             onTap: () {
                               if (widget.onMessageTap != null) {
                                 widget.onMessageTap!(title, details);
@@ -498,6 +423,105 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
                                 _markNotificationAsRead(n['id']);
                               }
                             },
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Row(
+                                children: [
+                                  // Leading icon
+                                  Icon(
+                                    isRead ? Icons.mark_email_read_outlined : Icons.mark_email_unread,
+                                    color: isRead ? HandsColors.white70 : HandsColors.handsOrange,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  // Content
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        // Title row
+                                        Text(
+                                          title,
+                                          style: GoogleFonts.comfortaa(
+                                            fontWeight: isRead ? FontWeight.w500 : FontWeight.bold,
+                                            color: HandsColors.white,
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        // Timestamp row
+                                        if (timestamp.isNotEmpty)
+                                          Text(
+                                            timestamp,
+                                            style: GoogleFonts.comfortaa(
+                                              fontSize: 11,
+                                              color: HandsColors.white70,
+                                              fontWeight: FontWeight.w300,
+                                            ),
+                                          ),
+                                        const SizedBox(height: 6),
+                                        // Message content
+                                        Text(
+                                          details,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: GoogleFonts.comfortaa(
+                                            color: HandsColors.white70,
+                                            fontSize: 13,
+                                            height: 1.3,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  // Trailing menu
+                                  PopupMenuButton<String>(
+                                    iconColor: HandsColors.white70,
+                                    color: HandsColors.secondaryContainer,
+                                    onSelected: (value) {
+                                      if (value == 'archive') {
+                                        _archiveNotification(n['id']);
+                                      } else if (value == 'unarchive') {
+                                        _unarchiveNotification(n['id']);
+                                      } else if (value == 'delete') {
+                                        _deleteNotification(n['id']);
+                                      }
+                                    },
+                                    itemBuilder:
+                                        (context) => [
+                                          PopupMenuItem(
+                                            value: isArchived ? 'unarchive' : 'archive',
+                                            child: Row(
+                                              children: [
+                                                Icon(
+                                                  isArchived ? Icons.unarchive : Icons.archive,
+                                                  color: HandsColors.white,
+                                                  size: 16,
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Text(
+                                                  isArchived ? 'Unarchive' : 'Archive',
+                                                  style: GoogleFonts.comfortaa(color: HandsColors.white),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          PopupMenuItem(
+                                            value: 'delete',
+                                            child: Row(
+                                              children: [
+                                                const Icon(Icons.delete, color: Colors.red, size: 16),
+                                                const SizedBox(width: 8),
+                                                Text('Delete', style: GoogleFonts.comfortaa(color: Colors.red)),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         );
                       },

@@ -4,7 +4,10 @@ export default function SEO({
   title = "Plan With Hands - Restaurant Operations Management Software",
   description = "Transform restaurant operations with Hands - digital checklists, team messaging, training documents, and real-time insights. No hardware needed. Start your free trial today.",
   canonical = "https://planwithhands.com/",
-  ogImage = "https://planwithhands.com/og-image.png",
+  // Prefer a dedicated hands OG image sized for social previews (1200x630).
+  // If you don't have this file deployed yet, create `/public/images/hands-og-1200x630.png`
+  // and deploy alongside the other images.
+  ogImage = "https://planwithhands.com/images/hands-og-1200x630.png",
   structuredData = null,
   keywords = "restaurant management, digital checklists, restaurant operations, team communication, food service software, restaurant technology, operational excellence"
 }) {
@@ -34,9 +37,10 @@ export default function SEO({
       "url": "https://planwithhands.com",
       "logo": {
         "@type": "ImageObject",
-        "url": "https://planwithhands.com/images/favicon-192.png",
-        "width": 192,
-        "height": 192
+  // Use the larger favicon as the structured-data logo to improve crawl visibility.
+  "url": "https://planwithhands.com/images/favicon-1024.png",
+  "width": 1024,
+  "height": 1024
       }
     },
     "aggregateRating": {

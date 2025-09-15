@@ -344,29 +344,33 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
     }
 
     // Mobile / non-dialog path: keep draggable behavior
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.9,
-      minChildSize: 0.5,
-      maxChildSize: 0.95,
-      builder: (context, scrollController) {
-        return SafeArea(
-          child: Material(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-            elevation: 8,
-            color: HandsColors.cardPrimary,
-            child: Column(
-              children: [
-                buildHeader(showHandle: true),
-                // FIX: Removed outer SingleChildScrollView; Stepper handles its own
-                // internal layout. Wrapping it in an additional scroll view inside
-                // Expanded led to unbounded height issues similar to shift editor.
-                Expanded(child: buildStepper()),
-              ],
+    return Padding(
+      padding: EdgeInsets.only(bottom: mediaQuery.viewInsets.bottom),
+      child: DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.9,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (context, scrollController) {
+          return SafeArea(
+            child: Material(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              elevation: 8,
+              color: HandsColors.cardPrimary,
+              child: Scaffold(
+                resizeToAvoidBottomInset: false,
+                backgroundColor: Colors.transparent,
+                body: Column(
+                  children: [
+                    buildHeader(showHandle: true),
+                    Expanded(child: SingleChildScrollView(controller: scrollController, child: buildStepper())),
+                  ],
+                ),
+              ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 

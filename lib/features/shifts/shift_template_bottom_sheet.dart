@@ -41,9 +41,9 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
   final Set<String> _selectedDays = {};
   final List<String> _weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-  // Step 2: Locations (selection of multiple locations removed)
-  // Use a single location context; multi-location duplication is no longer allowed.
-  List<String> selectedLocationIds = [];
+  // Step 2: Locations (REMOVED)
+  // Shift templates are now organization-wide and not tied to specific locations.
+  // List<String> selectedLocationIds = [];
 
   // Step 3: Roles & Staffing
   Map<String, int> staffingLevels = {};
@@ -58,10 +58,6 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
     if (isEditing && widget.shiftData != null) {
       _populateFields();
     }
-    // Auto-select single location if only one
-    if (!isEditing && widget.availableLocations.length == 1) {
-      selectedLocationIds = [widget.availableLocations.first['id'] as String];
-    }
   }
 
   void _populateFields() {
@@ -71,7 +67,7 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
     _endTimeController.text = shift.endTime;
     _repeatsDaily = shift.repeatsDaily;
     _selectedDays.addAll(shift.days);
-    selectedLocationIds = coerceToLocationIds(shift.locationIds);
+    // selectedLocationIds = coerceToLocationIds(shift.locationIds); // REMOVED
     selectedChecklistTemplateIds = List<String>.from(shift.checklistTemplateIds);
     staffingLevels = Map<String, int>.from(shift.staffingLevels);
   }
@@ -96,10 +92,10 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
 
   void _nextStep() {
     if (!_validateCurrentStep()) return;
-    // There are 3 steps (indices 0..2). Guard against incrementing
+    // There are 2 steps (indices 0..1). Guard against incrementing
     // past the last index which trips the Stepper assertion:
     // "0 <= currentStep && currentStep < steps.length"
-    const maxStepIndex = 2;
+    const maxStepIndex = 1;
     if (_currentStep < maxStepIndex) {
       setState(() => _currentStep++);
     } else {
@@ -156,13 +152,6 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
 
   bool _validateCurrentStep() {
     switch (_currentStep) {
-      case 1:
-        // Location selection is informational; require at least one location only when multiple exist and none auto-selected
-        if (widget.availableLocations.length > 1 && selectedLocationIds.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select a location')));
-          return false;
-        }
-        return true;
       case 0:
         if (!_formKey.currentState!.validate()) return false;
         if (!_repeatsDaily && _selectedDays.isEmpty) {
@@ -172,10 +161,8 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
           return false;
         }
         return true;
-      case 2:
-        // Roles step is informational; no validation required.
-        return true;
-      case 3:
+      case 1:
+        // Checklist step is informational; no validation required.
         return true;
       default:
         return false;
@@ -190,11 +177,8 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
       'endTime': _endTimeController.text.trim(),
       'days': _selectedDays.toList(),
       'repeatsDaily': _repeatsDaily,
-      // Persist a single location id list. If multiple were selected previously, only the first will be used.
-      'locationIds':
-          selectedLocationIds.isNotEmpty
-              ? [selectedLocationIds.first]
-              : [if (widget.availableLocations.isNotEmpty) widget.availableLocations.first['id'] as String],
+      // Persist all available location IDs since the step was removed.
+      'locationIds': widget.availableLocations.map((l) => l['id'] as String).toList(),
       'staffingLevels': staffingLevels,
       'checklistTemplateIds': selectedChecklistTemplateIds,
       'updatedAt': FieldValue.serverTimestamp(),
@@ -314,7 +298,7 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
                 ElevatedButton(
                   onPressed: details.onStepContinue,
                   style: BottomSheetStyles.primaryButtonStyle(),
-                  child: Text(_currentStep < 2 ? 'Next' : 'Save'),
+                  child: Text(_currentStep < 1 ? 'Next' : 'Save'),
                 ),
               ],
             ),
@@ -330,16 +314,8 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
             ),
           ),
           Step(
-            title: BottomSheetStyles.stepTitle('Locations'),
-            isActive: _currentStep >= 1,
-            content: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
-              child: _buildLocationStep(),
-            ),
-          ),
-          Step(
             title: BottomSheetStyles.stepTitle('Checklists'),
-            isActive: _currentStep >= 2,
+            isActive: _currentStep >= 1,
             content: Padding(
               padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
               child: _buildChecklistStep(),
@@ -359,26 +335,33 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
     }
 
     // Mobile / non-dialog: use DraggableScrollableSheet inside bottom sheet context
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.9,
-      minChildSize: 0.5,
-      maxChildSize: 0.95,
-      builder: (context, scrollController) {
-        return SafeArea(
-          child: Material(
-            color: HandsColors.cardPrimary,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-            child: Column(
-              children: [
-                header(showHandle: true),
-                // Directly use Stepper inside Expanded; Stepper internally scrolls.
-                Expanded(child: buildStepper()),
-              ],
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.9,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (context, scrollController) {
+          return SafeArea(
+            child: Material(
+              color: HandsColors.cardPrimary,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              child: Scaffold(
+                resizeToAvoidBottomInset: false,
+                backgroundColor: Colors.transparent,
+                body: Column(
+                  children: [
+                    header(showHandle: true),
+                    // Directly use Stepper inside Expanded; Stepper internally scrolls.
+                    Expanded(child: SingleChildScrollView(controller: scrollController, child: buildStepper())),
+                  ],
+                ),
+              ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
@@ -470,60 +453,11 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
     );
   }
 
-  Widget _buildLocationStep() {
-    // Hide location selection if only one location
-    if (widget.availableLocations.length <= 1) {
-      return const SizedBox.shrink();
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children:
-          widget.availableLocations.map((loc) {
-            final bool checked = selectedLocationIds.contains(loc['id']);
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 6.0),
-              child: CheckboxListTile(
-                dense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 8.0),
-                title: Text(
-                  loc['name'] as String,
-                  style: GoogleFonts.comfortaa(color: HandsColors.white, fontWeight: FontWeight.w500, fontSize: 14),
-                ),
-                value: checked,
-                checkColor: HandsColors.white,
-                activeColor: HandsColors.sageGreen,
-                onChanged: (v) {
-                  setState(() {
-                    if (v!) {
-                      selectedLocationIds.add(loc['id']);
-                    } else {
-                      selectedLocationIds.remove(loc['id']);
-                    }
-                  });
-                },
-              ),
-            );
-          }).toList(),
-    );
-  }
-
   // Roles step removed. Job type gating lives on checklist templates now.
 
   Widget _buildChecklistStep() {
-    // Determine which location(s) to show templates for. Prefer user-selected
-    // locations from the Locations step. If none selected and there is a single
-    // available location, use that one. If multiple locations exist and none
-    // are selected, prompt the user to select a location first.
-    final locationIdsToFilter = <String>[];
-    if (selectedLocationIds.isNotEmpty) {
-      locationIdsToFilter.addAll(selectedLocationIds);
-    } else if (widget.availableLocations.length == 1) {
-      locationIdsToFilter.add(widget.availableLocations.first['id'] as String);
-    }
-
-    if (widget.availableLocations.length > 1 && locationIdsToFilter.isEmpty) {
-      return const Center(child: Text('Select a location in the Locations step to view available checklists.'));
-    }
+    // Since the location step is removed, fetch checklists for all available locations.
+    final locationIdsToFilter = widget.availableLocations.map((l) => l['id'] as String).toList();
 
     // Build a Firestore query that filters checklist templates by the chosen
     // location(s). Use array-contains for a single id and array-contains-any
