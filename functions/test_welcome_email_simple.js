@@ -5,7 +5,7 @@ async function testWelcomeEmail() {
     console.log('Testing welcome email functionality...');
     
     // Set SendGrid API key
-    const sendgridApiKey = "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";
+    const sendgridApiKey = process.env.SENDGRID_API_KEY;
     sgMail.setApiKey(sendgridApiKey);
     
     // Test email data

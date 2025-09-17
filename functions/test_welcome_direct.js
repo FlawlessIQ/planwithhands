@@ -17,7 +17,7 @@ async function sendWelcomeEmail(session, orgId, subscription) {
     console.log("Sending welcome email for subscription:", subscription.id);
     
     // Get SendGrid API key from environment
-    const sendgridApiKey = "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";
+    const sendgridApiKey = process.env.SENDGRID_API_KEY;
     if (!sendgridApiKey) {
       console.log("SendGrid API key not configured - skipping welcome email");
       return;
