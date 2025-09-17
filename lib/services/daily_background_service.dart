@@ -1,10 +1,10 @@
 import 'dart:async';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:hands_app/services/daily_summary_service.dart';
-import 'package:hands_app/utils/firestore_enforcer.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/core/logging/logger.dart';
 
 /// Background service to handle daily operations like summary notifications
+/// Now primarily delegates to Cloud Functions for reliability
 class DailyBackgroundService {
   static DailyBackgroundService? _instance;
   static DailyBackgroundService get instance {
@@ -15,22 +15,22 @@ class DailyBackgroundService {
   DailyBackgroundService._();
 
   final DailySummaryService _summaryService = DailySummaryService();
-  final FirebaseFirestore _firestore = FirestoreEnforcer.instance;
+  final FirebaseFunctions _functions = FirebaseFunctions.instance;
 
   Timer? _dailySummaryTimer;
-  final Map<String, DateTime> _lastCheckedTimes = {};
 
   /// Start monitoring for end-of-day summary triggers
+  /// Note: This is now primarily a fallback since the main logic runs in Cloud Functions
   void startDailySummaryMonitoring() {
-    logger.d('[DailyBackgroundService] Starting daily summary monitoring');
+    logger.d('[DailyBackgroundService] Starting daily summary monitoring (fallback mode)');
 
-    // Check every 30 minutes if it's time to send daily summaries
-    _dailySummaryTimer = Timer.periodic(const Duration(minutes: 30), (timer) {
-      _checkAndSendDailySummaries();
+    // Check every 2 hours if Cloud Functions missed anything
+    _dailySummaryTimer = Timer.periodic(const Duration(hours: 2), (timer) {
+      _checkCloudFunctionFallback();
     });
 
     // Also check immediately
-    _checkAndSendDailySummaries();
+    _checkCloudFunctionFallback();
   }
 
   /// Stop monitoring
@@ -40,172 +40,72 @@ class DailyBackgroundService {
     _dailySummaryTimer = null;
   }
 
-  /// Check all organizations and send daily summaries if appropriate
-  Future<void> _checkAndSendDailySummaries() async {
-    try {
-      logger.d('[DailyBackgroundService] Checking for organizations that need daily summaries');
-
-      // Get all organizations that might need daily summaries
-      final orgIds = await _getActiveOrganizations();
-
-      for (final orgId in orgIds) {
-        await _checkOrganizationForDailySummary(orgId);
-      }
-    } catch (e, stackTrace) {
-      logger.e('[DailyBackgroundService] Error checking daily summaries', e, stackTrace);
-    }
-  }
-
-  /// Get list of active organization IDs
-  Future<List<String>> _getActiveOrganizations() async {
-    try {
-      // We'll get organizations by querying users and extracting unique org IDs
-      // This is more efficient than querying the organizations collection directly
-      final usersQuery =
-          await _firestore
-              .collection('users')
-              .where('isActive', isEqualTo: true)
-              .where('userRole', whereIn: [1, 2]) // Get orgs with manager/admin users
-              .get();
-
-      final orgIds = <String>{};
-      for (final doc in usersQuery.docs) {
-        final data = doc.data();
-        final orgId = data['organizationId'] as String?;
-        if (orgId != null) {
-          orgIds.add(orgId);
-        }
-      }
-
-      logger.d('[DailyBackgroundService] Found ${orgIds.length} active organizations with admin users');
-      return orgIds.toList();
-    } catch (e) {
-      logger.e('[DailyBackgroundService] Error getting active organizations', e);
-      return [];
-    }
-  }
-
-  /// Check if an organization needs a daily summary sent
-  Future<void> _checkOrganizationForDailySummary(String organizationId) async {
+  /// Fallback check - only runs if Cloud Functions aren't working
+  Future<void> _checkCloudFunctionFallback() async {
     try {
       final now = DateTime.now();
+      
+      // Only run fallback if it's late in the day (after 11 PM) 
+      // and Cloud Function should have already run
+      if (now.hour < 23) {
+        return;
+      }
+
+      logger.d('[DailyBackgroundService] Running fallback check for missed daily summaries');
+
+      // Get current user's organization
+      final orgId = await _getCurrentUserOrganization();
+      if (orgId == null) {
+        return;
+      }
+
+      // Check if summary was already sent today
       final today = DateTime(now.year, now.month, now.day);
-
-      // Only check each organization once per day
-      final lastChecked = _lastCheckedTimes[organizationId];
-      if (lastChecked != null && lastChecked.isAfter(today)) {
-        return; // Already checked today
+      final alreadySent = await _summaryService.hasDailySummaryBeenSent(orgId, today);
+      
+      if (!alreadySent) {
+        logger.w('[DailyBackgroundService] Daily summary not sent yet - triggering fallback');
+        await triggerDailySummary(organizationId: orgId);
       }
-
-      logger.d('[DailyBackgroundService] Checking organization $organizationId for daily summary');
-
-      // Determine if it's an appropriate time to send the daily summary
-      final shouldSend = await _shouldSendDailySummary(organizationId, now);
-
-      if (shouldSend) {
-        logger.d('[DailyBackgroundService] Sending daily summary for organization $organizationId');
-        await _summaryService.scheduleDailySummary(organizationId: organizationId);
-
-        // Mark as checked for today
-        _lastCheckedTimes[organizationId] = now;
-      }
+      
     } catch (e, stackTrace) {
-      logger.e('[DailyBackgroundService] Error checking organization $organizationId', e, stackTrace);
+      logger.e('[DailyBackgroundService] Error in fallback check', e, stackTrace);
     }
   }
 
-  /// Determine if daily summary should be sent
-  Future<bool> _shouldSendDailySummary(String organizationId, DateTime now) async {
-    try {
-      // Check if summary already sent today
-      final alreadySent = await _summaryService.hasDailySummaryBeenSent(organizationId, now);
-      if (alreadySent) {
-        logger.d('[DailyBackgroundService] Daily summary already sent for organization $organizationId');
-        return false;
-      }
-
-      // Get admin users for this organization to check their preferred time
-      final adminUsers = await _getAdminUsersWithPreferences(organizationId);
-
-      if (adminUsers.isEmpty) {
-        logger.w('[DailyBackgroundService] No admin users found for organization $organizationId');
-        return false;
-      }
-
-      // Check if any admin has daily summary enabled and it's time to send
-      bool shouldSend = false;
-      final currentHour = now.hour;
-      final currentMinute = now.minute;
-
-      for (final admin in adminUsers) {
-        final enabled = admin['dailySummaryEnabled'] as bool? ?? true;
-        if (!enabled) continue;
-
-        final preferredHour = admin['dailySummaryHour'] as int? ?? 20; // Default 8 PM
-        final preferredMinute = admin['dailySummaryMinute'] as int? ?? 0;
-
-        // Check if current time matches or is past the preferred time (within 30 minutes)
-        final preferredTimeInMinutes = preferredHour * 60 + preferredMinute;
-        final currentTimeInMinutes = currentHour * 60 + currentMinute;
-
-        // Send if current time is within 30 minutes after the preferred time
-        if (currentTimeInMinutes >= preferredTimeInMinutes && currentTimeInMinutes <= preferredTimeInMinutes + 30) {
-          logger.d(
-            '[DailyBackgroundService] Time matches admin ${admin['firstName']} ${admin['lastName']} preference: $preferredHour:${preferredMinute.toString().padLeft(2, '0')}',
-          );
-          shouldSend = true;
-          break;
-        }
-      }
-
-      if (!shouldSend) {
-        // Fallback: if it's after 10 PM, send regardless (to ensure summaries don't get missed)
-        if (currentHour >= 22) {
-          logger.d('[DailyBackgroundService] After 10 PM fallback - sending summary for org $organizationId');
-          shouldSend = true;
-        } else {
-          logger.d(
-            '[DailyBackgroundService] Not time to send daily summary yet for org $organizationId (current: $currentHour:${currentMinute.toString().padLeft(2, '0')})',
-          );
-          return false;
-        }
-      }
-
-      // Check if all shifts have ended (optional check)
-      final allShiftsEnded = await _summaryService.areAllShiftsEndedForDay(organizationId: organizationId);
-      if (allShiftsEnded) {
-        logger.d('[DailyBackgroundService] All shifts ended for organization $organizationId - ready to send summary');
-        return true;
-      }
-
-      // Send anyway if it's the right time, even if some shifts are still active
-      return shouldSend;
-    } catch (e) {
-      logger.e('[DailyBackgroundService] Error determining if should send daily summary', e);
-      return false;
-    }
-  }
-
-  /// Manually trigger daily summary for a specific organization
-  /// This can be called from the UI or when a specific event occurs
+  /// Manually trigger daily summary using Cloud Function
   Future<void> triggerDailySummary({required String organizationId, DateTime? targetDate}) async {
     try {
-      logger.d('[DailyBackgroundService] Manually triggering daily summary for organization $organizationId');
-      await _summaryService.generateAndSendDailySummary(organizationId: organizationId, targetDate: targetDate);
+      logger.d('[DailyBackgroundService] Triggering daily summary via Cloud Function for organization $organizationId');
+      
+      final callable = _functions.httpsCallable('triggerDailySummary');
+      
+      final result = await callable.call({
+        'orgId': organizationId,
+        if (targetDate != null) 'targetDate': targetDate.toIso8601String(),
+      });
+
+      logger.d('[DailyBackgroundService] Cloud Function result: ${result.data}');
+      
     } catch (e, stackTrace) {
-      logger.e('[DailyBackgroundService] Error manually triggering daily summary', e, stackTrace);
-      rethrow;
+      logger.e('[DailyBackgroundService] Error triggering daily summary via Cloud Function', e, stackTrace);
+      
+      // Fallback to local generation if Cloud Function fails
+      logger.w('[DailyBackgroundService] Falling back to local daily summary generation');
+      await _summaryService.generateAndSendDailySummary(
+        organizationId: organizationId, 
+        targetDate: targetDate
+      );
     }
   }
 
   /// Manually trigger daily summary for testing (bypasses time restrictions)
-  /// This can be called from debug tools or admin interface
   Future<void> triggerDailySummaryForTesting({required String organizationId, DateTime? targetDate}) async {
     try {
       logger.d('[DailyBackgroundService] Manually triggering daily summary for testing - organization $organizationId');
 
-      // Force send the summary regardless of time restrictions
-      await _summaryService.generateAndSendDailySummary(organizationId: organizationId, targetDate: targetDate);
+      // Always try Cloud Function first for testing
+      await triggerDailySummary(organizationId: organizationId, targetDate: targetDate);
 
       logger.d('[DailyBackgroundService] Daily summary sent successfully for testing');
     } catch (e, stackTrace) {
@@ -215,7 +115,6 @@ class DailyBackgroundService {
   }
 
   /// Trigger daily summary when a shift ends
-  /// This can be called from shift monitoring logic
   Future<void> onShiftEnded({required String organizationId, required String shiftId}) async {
     try {
       logger.d('[DailyBackgroundService] Shift $shiftId ended in organization $organizationId');
@@ -237,71 +136,56 @@ class DailyBackgroundService {
     }
   }
 
+  /// Get current user's organization ID
+  Future<String?> _getCurrentUserOrganization() async {
+    try {
+      // This would need to be implemented based on your auth system
+      // For now, return null to disable fallback
+      return null;
+    } catch (e) {
+      logger.e('[DailyBackgroundService] Error getting current user organization', e);
+      return null;
+    }
+  }
+
   /// Initialize the background service
-  /// This should be called when the app starts
   static void initialize() {
-    logger.d('[DailyBackgroundService] Initializing daily background service');
+    logger.d('[DailyBackgroundService] Initializing daily background service (Cloud Function mode)');
     instance.startDailySummaryMonitoring();
   }
 
-  /// Dispose the background service
-  /// This should be called when the app is disposed
+  /// Trigger daily summary for testing purposes
+  /// This method allows manual triggering with optional target date
+  Future<void> triggerDailySummaryForTesting({
+    required String organizationId,
+    DateTime? targetDate,
+  }) async {
+    try {
+      logger.d('[DailyBackgroundService] Triggering daily summary for testing - Org: $organizationId');
+      
+      // Call the Cloud Function with the target date
+      final result = await _functions.httpsCallable('triggerDailySummary').call({
+        'organizationId': organizationId,
+        'targetDate': targetDate?.toIso8601String(),
+      });
+      
+      logger.d('[DailyBackgroundService] Cloud Function result: ${result.data}');
+      
+      // Also attempt local fallback if needed
+      if (result.data['success'] != true) {
+        logger.w('[DailyBackgroundService] Cloud Function failed, attempting local fallback');
+        await triggerDailySummary(organizationId: organizationId);
+      }
+    } catch (e, stackTrace) {
+      logger.e('[DailyBackgroundService] Error in triggerDailySummaryForTesting', e, stackTrace);
+      
+      // Fallback to local method if Cloud Function fails
+      logger.w('[DailyBackgroundService] Falling back to local daily summary');
+      await triggerDailySummary(organizationId: organizationId);
+    }
+  }
   static void dispose() {
     logger.d('[DailyBackgroundService] Disposing daily background service');
     instance.stopDailySummaryMonitoring();
     _instance = null;
   }
-
-  /// Get admin users for an organization with their daily summary preferences
-  Future<List<Map<String, dynamic>>> _getAdminUsersWithPreferences(String organizationId) async {
-    try {
-      final usersQuery =
-          await _firestore
-              .collection('users')
-              .where('organizationId', isEqualTo: organizationId)
-              .where('userRole', whereIn: [1, 2]) // Manager and admin users
-              .get();
-
-      final managerAdminUsers = <Map<String, dynamic>>[];
-
-      for (final userDoc in usersQuery.docs) {
-        final userData = userDoc.data();
-        final userId = userDoc.id;
-
-        // Get user's daily summary preferences
-        try {
-          final prefsDoc =
-              await _firestore.collection('users').doc(userId).collection('preferences').doc('notifications').get();
-
-          final prefs = prefsDoc.exists ? prefsDoc.data() ?? {} : {};
-          final timeData = prefs['dailySummaryTime'] as Map<String, dynamic>?;
-
-          managerAdminUsers.add({
-            'userId': userId,
-            'firstName': userData['firstName'] ?? '',
-            'lastName': userData['lastName'] ?? '',
-            'dailySummaryEnabled': prefs['dailySummaryEnabled'] ?? true,
-            'dailySummaryHour': timeData?['hour'] ?? 20, // Default 8 PM
-            'dailySummaryMinute': timeData?['minute'] ?? 0,
-          });
-        } catch (e) {
-          logger.w('[DailyBackgroundService] Error loading preferences for user $userId: $e');
-          // Add user with default preferences if we can't load their prefs
-          managerAdminUsers.add({
-            'userId': userId,
-            'firstName': userData['firstName'] ?? '',
-            'lastName': userData['lastName'] ?? '',
-            'dailySummaryEnabled': true,
-            'dailySummaryHour': 20, // Default 8 PM
-            'dailySummaryMinute': 0,
-          });
-        }
-      }
-
-      return managerAdminUsers;
-    } catch (e) {
-      logger.e('[DailyBackgroundService] Error getting admin users with preferences', e);
-      return [];
-    }
-  }
-}

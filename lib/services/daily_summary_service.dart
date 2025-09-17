@@ -623,38 +623,58 @@ class DailySummaryService {
     required String content,
   }) async {
     try {
+      // Use the new outbox notification system for consistent delivery
+      final outboxRef = _firestore
+          .collection('organizations')
+          .doc(organizationId)
+          .collection('notificationOutbox')
+          .doc();
+
+      final outboxData = {
+        'title': title,
+        'message': content,
+        'type': 'daily_summary',
+        'targetType': 'all_users', // Will be filtered to admin users by the function
+        'createdAt': FieldValue.serverTimestamp(),
+        'expiresAt': DateTime.now().add(const Duration(days: 30)),
+      };
+
+      // Create outbox notification - this will trigger the fan-out function
+      await FirestoreTTLHelper.setWithTTL(outboxRef, outboxData);
+
+      // Also create individual user notifications for immediate delivery to admin users
       final batch = _firestore.batch();
       final timestamp = FieldValue.serverTimestamp();
 
       for (final admin in adminUsers) {
-        final notificationRef =
-            _firestore.collection('organizations').doc(organizationId).collection('notifications').doc();
+        final userNotificationRef = _firestore
+            .collection('userNotifications')
+            .doc(admin['userId'])
+            .collection('notifications')
+            .doc();
 
-        final notificationData = {
+        final userNotificationData = {
+          'userId': admin['userId'],
+          'orgId': organizationId,
+          'type': 'daily_summary',
           'title': title,
           'message': content,
-          'userId': admin['userId'], // Changed from recipientId to userId for trigger compatibility
-          'type': 'general', // Changed from 'daily_summary' to 'general' for trigger compatibility
-          'createdAt': timestamp,
           'readBy': <String>[],
           'archivedBy': <String>[],
-          'targetType': 'user', // Added for trigger compatibility
-          'targetId': admin['userId'], // Added for trigger compatibility
-          // Keep targets for backward compatibility with existing UI
-          'targets': {
-            'userRole': [1, 2], // Target managers and admins
-            'userId': [admin['userId']],
-          },
+          'createdAt': timestamp,
+          'targetType': 'user',
+          'targetId': admin['userId'],
+          'outboxId': outboxRef.id,
         };
 
-        // Use TTL helper to automatically add expiresAt field
-        FirestoreTTLHelper.batchSetWithTTL(batch, notificationRef, notificationData);
+        // Use TTL helper for user notifications too
+        FirestoreTTLHelper.batchSetWithTTL(batch, userNotificationRef, userNotificationData);
 
-        logger.d('[DailySummaryService] Queued notification for admin: ${admin['firstName']} ${admin['lastName']}');
+        logger.d('[DailySummaryService] Queued user notification for admin: ${admin['firstName']} ${admin['lastName']}');
       }
 
       await batch.commit();
-      logger.d('[DailySummaryService] Successfully sent notifications to ${adminUsers.length} admin(s)');
+      logger.d('[DailySummaryService] Successfully sent notifications to ${adminUsers.length} admin(s) via outbox and direct delivery');
     } catch (e, stackTrace) {
       logger.e('[DailySummaryService] Error sending notifications to admins', e, stackTrace);
       rethrow;

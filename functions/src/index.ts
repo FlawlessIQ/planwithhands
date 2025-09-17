@@ -76,6 +76,9 @@ export {onNotificationOutboxCreated} from "./messagingNotifications";
 // Export daily generator (scheduled function to create daily checklists)
 export {scheduledDailyGenerator} from "./dailyGenerator";
 
+// Export scheduled daily summary (sends daily summary notifications to admins)
+export {scheduledDailySummary, triggerDailySummary} from "./scheduledDailySummary";
+
 
 // Export new Payment Element Stripe functions
 export {
