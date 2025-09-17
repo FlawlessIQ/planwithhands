@@ -16,6 +16,27 @@ import 'package:hands_app/services/firebase_initializer_v6.dart';
 import 'package:hands_app/services/push_notification_service.dart';
 import 'config/release_config.dart';
 
+// Add Stripe import
+import 'package:flutter_stripe/flutter_stripe.dart';
+import 'package:hands_app/services/stripe_web_helpers_stub.dart'
+    if (dart.library.html) 'package:hands_app/services/stripe_web_helpers.dart'
+    as web_helpers;
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:hands_app/services/pk_fetcher_stub.dart'
+    if (dart.library.html) 'package:hands_app/services/pk_fetcher_web.dart'
+    as pk_fetch;
+
+Future<Map<String, dynamic>> _fetchStripePublishableKey() async {
+  final callable = FirebaseFunctions.instance.httpsCallable('getStripePublishableKey');
+  final result = await callable.call({});
+  final data = result.data;
+  if (data is Map) {
+    return Map<String, dynamic>.from(data);
+  }
+  return {'publishableKey': null};
+}
+
 void main() async {
   // Run the app inside a guarded zone and ensure the Flutter binding is
   // initialized inside that same zone to avoid the "Zone mismatch" error.
@@ -38,6 +59,54 @@ void main() async {
         }
 
         await FirebaseInitializerV6().initialize();
+
+        // Let Flutter's generated plugin registrant handle web plugin registration.
+
+        // Initialize Stripe on web before runApp
+        try {
+          if (kIsWeb) {
+            // Try compile-time key first, then callable, then HTTP fallback
+            String? pk = const String.fromEnvironment('STRIPE_PUBLISHABLE_KEY');
+            if (pk.isEmpty) {
+              pk = null;
+            }
+
+            if (pk == null) {
+              try {
+                final pkResp = await _fetchStripePublishableKey();
+                pk = pkResp['publishableKey'] as String?;
+              } catch (e) {
+                print('⚠️ [STRIPE] Failed to fetch publishable key from callable: $e');
+              }
+            }
+
+            if (pk == null || pk.isEmpty) {
+              try {
+                final projectId = Firebase.app().options.projectId;
+                final fbPk = await pk_fetch.fetchPkHttpFallback(projectId);
+                if (fbPk != null && fbPk.isNotEmpty) {
+                  pk = fbPk;
+                }
+              } catch (e) {
+                print('⚠️ [STRIPE] HTTP fallback for publishable key failed: $e');
+              }
+            }
+
+            if (pk != null && pk.isNotEmpty) {
+              Stripe.publishableKey = pk;
+              await Stripe.instance.applySettings();
+              // Store pk for embedded checkout page consumption
+              try {
+                web_helpers.setStripePkForEmbedded(pk);
+              } catch (_) {}
+              print('✅ [STRIPE] Web settings applied with key: ${pk.substring(0, 12)}...');
+            } else {
+              print('⚠️ [STRIPE] No publishable key available - Stripe disabled');
+            }
+          }
+        } catch (e) {
+          print('⚠️ [STRIPE] Initialization failed: $e');
+        }
 
         // Initialize push notifications (may fail on web in some browsers)
         try {

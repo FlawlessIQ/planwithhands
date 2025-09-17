@@ -6,6 +6,7 @@ import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/shared/components/hands_buttons.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:hands_app/widgets/hands_text_field.dart';
 
 class SendNotificationSheet extends ConsumerStatefulWidget {
   const SendNotificationSheet({super.key});
@@ -328,7 +329,7 @@ class _SendNotificationSheetState extends ConsumerState<SendNotificationSheet> {
                 ],
 
                 const SizedBox(height: 16),
-                TextFormField(
+                HandsTextFormField(
                   controller: _titleController,
                   decoration: InputDecoration(
                     labelText: 'Title',
@@ -352,7 +353,7 @@ class _SendNotificationSheetState extends ConsumerState<SendNotificationSheet> {
                   validator: (v) => v == null || v.isEmpty ? 'Enter a title' : null,
                 ),
                 const SizedBox(height: 12),
-                TextFormField(
+                HandsTextFormField(
                   controller: _messageController,
                   decoration: InputDecoration(
                     labelText: 'Message',

@@ -186,10 +186,13 @@ exports.onNotificationOutboxCreated = functions.firestore
         }
     });
     const userTokens = await Promise.all(tokenPromises);
-    const allTokens = [];
+    // Flatten and de-duplicate tokens to avoid duplicate sends
+    const tokenSet = new Set();
     userTokens.forEach(({ tokens }) => {
-        allTokens.push(...tokens);
+        for (const t of tokens)
+            tokenSet.add(t);
     });
+    const allTokens = Array.from(tokenSet);
     // Write inbox notifications
     for (const userId of recipientUserIds) {
         const inboxRef = db.collection("userNotifications").doc(userId)
@@ -212,8 +215,9 @@ exports.onNotificationOutboxCreated = functions.firestore
     await writer.close();
     // Send push notifications if we have tokens
     if (allTokens.length > 0) {
-        console.log(`🔔 [Outbox] Sending push notifications to ${allTokens.length} tokens`);
-        const fcmMessage = {
+        console.log(`🔔 [Outbox] Preparing to send push notifications to ${allTokens.length} unique tokens`);
+        // Build the base message (without tokens) to reuse per chunk
+        const baseMessage = {
             notification: {
                 title: notif.title || "Hands Notification",
                 body: notif.message || "",
@@ -223,15 +227,38 @@ exports.onNotificationOutboxCreated = functions.firestore
                 orgId: orgId,
                 outboxId: notifId,
             },
-            tokens: allTokens,
         };
-        try {
-            const response = await admin.messaging().sendMulticast(fcmMessage);
-            console.log(`✅ [Outbox] Push notifications sent: ${response.successCount} successful, ${response.failureCount} failed`);
+        // FCM enforces a 500-token limit per multicast send. Chunk accordingly.
+        const chunkSize = 500;
+        let totalSuccess = 0;
+        let totalFailure = 0;
+        for (let i = 0; i < allTokens.length; i += chunkSize) {
+            const chunk = allTokens.slice(i, i + chunkSize);
+            const fcmMessage = { ...baseMessage, tokens: chunk };
+            try {
+                // Use sendEachForMulticast to avoid deprecated legacy /batch endpoint.
+                const response = await admin.messaging().sendEachForMulticast(fcmMessage);
+                totalSuccess += response.successCount;
+                totalFailure += response.failureCount;
+                // Log up to first 3 errors in this chunk for diagnostics
+                const sampleErrors = response.responses
+                    .map((r, idx) => ({ idx, error: r.error }))
+                    .filter((x) => !!x.error)
+                    .slice(0, 3);
+                if (sampleErrors.length > 0) {
+                    console.warn(`⚠️ [Outbox] Chunk ${Math.floor(i / chunkSize) + 1}: sample errors:`, sampleErrors.map(e => ({ index: e.idx, code: e.error?.code, message: e.error?.message })));
+                }
+            }
+            catch (error) {
+                totalFailure += chunk.length;
+                console.error(`❌ [Outbox] Error sending chunk ${Math.floor(i / chunkSize) + 1}:`, {
+                    message: error?.message,
+                    code: error?.code,
+                    stack: error?.stack,
+                });
+            }
         }
-        catch (error) {
-            console.error(`❌ [Outbox] Error sending push notifications:`, error);
-        }
+        console.log(`✅ [Outbox] Push notifications summary: ${totalSuccess} successful, ${totalFailure} failed`);
     }
     else {
         console.log(`📱 [Outbox] No FCM tokens found for push notifications`);

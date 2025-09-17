@@ -75,3 +75,21 @@ export {onNotificationOutboxCreated} from "./messagingNotifications";
 
 // Export daily generator (scheduled function to create daily checklists)
 export {scheduledDailyGenerator} from "./dailyGenerator";
+
+
+// Export new Payment Element Stripe functions
+export {
+  ensureStripeCustomer,
+  createSubscriptionElements,
+  createSetupIntentForCustomer,
+  createEmbeddedCheckoutSession,
+  getCheckoutSessionStatus,
+  // Expose both callable and HTTP publishable-key endpoints
+  getStripePublishableKey,
+  getStripePublishableKeyHttp,
+  updateSubscriptionQuantity,
+  cancelSubscription as cancelSubscriptionElements,
+  createBillingPortalSession as createBillingPortalSessionElements,
+  getSubscriptionData,
+  validateCoupon,
+} from "./stripe";

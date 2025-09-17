@@ -320,7 +320,32 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
             return;
           }
 
-          final subscriptionStatus = orgData['subscriptionStatus'] as String? ?? 'pending';
+          // Determine subscription status with multiple fallbacks
+          String? subscriptionStatus = orgData['subscriptionStatus'] as String?;
+          if (subscriptionStatus == null || subscriptionStatus.isEmpty) {
+            final settings = orgData['settings'];
+            if (settings is Map<String, dynamic>) {
+              subscriptionStatus = settings['subscriptionStatus'] as String?;
+            }
+          }
+          if (subscriptionStatus == null || subscriptionStatus.isEmpty) {
+            // Fallback to Stripe sub-document if present
+            try {
+              final subDoc =
+                  await FirestoreEnforcer.instance
+                      .collection('organizations')
+                      .doc(orgId)
+                      .collection('stripe')
+                      .doc('subscription')
+                      .get();
+              if (subDoc.exists) {
+                subscriptionStatus = (subDoc.data()?['status'] as String?) ?? subscriptionStatus;
+              }
+            } catch (e) {
+              logger.w('[AdminDashboard] Unable to fetch stripe/subscription doc: $e');
+            }
+          }
+          subscriptionStatus ??= 'pending';
 
           logger.d('[AdminDashboard] Organization data keys: ${orgData.keys.toList()}');
           logger.d('[AdminDashboard] Subscription status: $subscriptionStatus');

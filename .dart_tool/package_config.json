@@ -422,6 +422,12 @@
       "languageVersion": "3.0"
     },
     {
+      "name": "flutter_stripe_web",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/flutter_stripe_web-6.5.1",
+      "packageUri": "lib/",
+      "languageVersion": "3.3"
+    },
+    {
       "name": "flutter_test",
       "rootUri": "file:///Users/conorlawless/Development/flutter/packages/flutter_test",
       "packageUri": "lib/",
@@ -948,6 +954,12 @@
       "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/stripe_ios-11.5.0",
       "packageUri": "lib/",
       "languageVersion": "3.0"
+    },
+    {
+      "name": "stripe_js",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/stripe_js-6.4.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.3"
     },
     {
       "name": "stripe_platform_interface",

@@ -9,6 +9,7 @@ import 'package:hands_app/config/feature_flags.dart';
 import 'package:hands_app/services/stripe_service.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/widgets/hands_text_field.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:hands_app/widgets/responsive_appbar_title.dart';
@@ -682,13 +683,13 @@ class _LocationRowState extends State<_LocationRow> {
         padding: const EdgeInsets.all(12.0),
         child: Column(
           children: [
-            TextField(
+            HandsTextField(
               controller: widget.draft.nameController,
               decoration: const InputDecoration(labelText: 'Location Name', border: OutlineInputBorder()),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 8),
-            TextField(
+            HandsTextField(
               controller: widget.draft.addressController,
               focusNode: _addrFocus,
               decoration: InputDecoration(

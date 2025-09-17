@@ -1,6 +1,7 @@
 const functions = require("firebase-functions");
 const {admin, db} = require("./firebase_config");
 const stripe = require("stripe")(functions.config().stripe.secret);
+const sgMail = require("@sendgrid/mail");
 
 // Create Stripe Checkout Session
 exports.createCheckoutSession = functions
@@ -176,13 +177,20 @@ exports.stripeWebhook = functions
         return res.status(400).send(`Webhook Error: ${err.message}`);
       }
 
-      if (event.type === "checkout.session.completed") {
+  if (event.type === "checkout.session.completed") {
         const session = event.data.object;
         const orgId = session.metadata.orgId;
+        
+        console.log("Processing checkout.session.completed event for orgId:", orgId);
+        console.log("Session mode:", session.mode);
+        console.log("Has subscription:", !!session.subscription);
 
         if (session.mode === "subscription" && session.subscription) {
+          console.log("Processing subscription creation for:", session.subscription);
+          
           // Retrieve the subscription to get trial details
           const subscription = await stripe.subscriptions.retrieve(session.subscription);
+          console.log("Retrieved subscription:", subscription.id, "status:", subscription.status);
 
           const subscriptionData = {
             status: subscription.status, // "trialing" or "active"
@@ -204,6 +212,15 @@ exports.stripeWebhook = functions
               .collection("stripe")
               .doc("subscription")
               .set(subscriptionData, {merge: true});
+
+          console.log("Subscription data saved to Firestore");
+
+          // Send welcome email after successful subscription creation
+          console.log("Calling sendWelcomeEmail function...");
+          await sendWelcomeEmail(session, orgId, subscription);
+          console.log("sendWelcomeEmail function completed");
+        } else {
+          console.log("Skipping welcome email - not a subscription or missing subscription ID");
         }
       }
 
@@ -246,7 +263,143 @@ exports.stripeWebhook = functions
         }
       }
 
+      // New: Handle subscription created events (Elements and direct API)
+      if (event.type === "customer.subscription.created") {
+        const subscription = event.data.object;
+        const orgId = subscription.metadata?.orgId;
+
+        console.log("Processing customer.subscription.created for orgId:", orgId);
+
+        if (orgId) {
+          const subscriptionData = {
+            status: subscription.status,
+            subscriptionId: subscription.id,
+            stripeCustomerId: subscription.customer,
+            priceId: subscription.items.data[0]?.price?.id,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          };
+
+          if (subscription.status === "trialing" && subscription.trial_end) {
+            subscriptionData.trialEnd = subscription.trial_end;
+          }
+
+          // Preserve cancellationRequested if it exists already
+          try {
+            const existingDoc = await db
+              .collection("organizations")
+              .doc(orgId)
+              .collection("stripe")
+              .doc("subscription")
+              .get();
+            if (existingDoc.exists) {
+              subscriptionData.cancellationRequested = existingDoc.data().cancellationRequested || false;
+            }
+          } catch (e) {
+            console.warn("Unable to read existing subscription doc for preservation:", e?.message || e);
+          }
+
+          await db
+            .collection("organizations")
+            .doc(orgId)
+            .collection("stripe")
+            .doc("subscription")
+            .set(subscriptionData, { merge: true });
+
+          console.log("Subscription created data saved to Firestore");
+
+          // Send welcome email for newly created subscriptions
+          try {
+            await sendWelcomeEmail({ customer_details: {} }, orgId, subscription);
+            console.log("Welcome email sent via subscription.created");
+          } catch (e) {
+            console.error("Failed sending welcome email on subscription.created:", e);
+          }
+        } else {
+          console.log("subscription.created missing orgId metadata; skipping welcome email");
+        }
+      }
+
       res.json({received: true});
+    });
+
+// Create Subscription for Elements (Web)
+exports.createSubscriptionElements = functions
+    .region("us-central1")
+    .https.onCall(async (data, context) => {
+      const {orgId, email, priceId, quantity = 1, couponId} = data;
+
+      if (!orgId || !email || !priceId) {
+        throw new functions.https.HttpsError(
+            "invalid-argument",
+            "Missing required parameters: orgId, email, priceId"
+        );
+      }
+
+      try {
+        console.log("Creating Elements subscription for:", {orgId, email, priceId, quantity, couponId});
+
+        const orgRef = db.collection("organizations").doc(orgId);
+        const orgDoc = await orgRef.get();
+
+        // Get or create customer
+        let customerId = orgDoc.exists && orgDoc.data().stripeCustomerId;
+        if (!customerId) {
+          const customer = await stripe.customers.create({
+            email,
+            metadata: {orgId}
+          });
+          customerId = customer.id;
+          await orgRef.collection("stripe").doc("customer").set({
+            stripeCustomerId: customerId,
+            email: email,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          }, {merge: true});
+        }
+
+        // Create subscription with metadata including orgId
+        const subscriptionParams = {
+          customer: customerId,
+          items: [{
+            price: priceId,
+            quantity: quantity,
+          }],
+          metadata: {
+            orgId: orgId,
+            email: email,
+          },
+          payment_behavior: 'default_incomplete',
+          payment_settings: {
+            save_default_payment_method: 'on_subscription',
+          },
+          expand: ['latest_invoice.payment_intent'],
+        };
+
+        // Add coupon if provided
+        if (couponId) {
+          subscriptionParams.coupon = couponId;
+        }
+
+        const subscription = await stripe.subscriptions.create(subscriptionParams);
+
+        console.log("Subscription created with ID:", subscription.id);
+        console.log("Subscription metadata:", subscription.metadata);
+
+        // Return client secret for frontend payment confirmation
+        const clientSecret = subscription.latest_invoice?.payment_intent?.client_secret;
+
+        return {
+          subscriptionId: subscription.id,
+          clientSecret: clientSecret,
+          status: subscription.status
+        };
+
+      } catch (error) {
+        console.error("Error creating Elements subscription:", error);
+        throw new functions.https.HttpsError(
+            "internal",
+            `Failed to create subscription: ${error.message}`
+        );
+      }
     });
 
 // Update subscription quantity (e.g., number of locations)
@@ -274,5 +427,184 @@ exports.updateSubscription = functions
         return {success: true};
       } catch (error) {
         throw new functions.https.HttpsError("internal", `Failed to update subscription: ${error.message}`);
+      }
+    });
+
+// Helper function to send welcome email after subscription creation
+async function sendWelcomeEmail(session, orgId, subscription) {
+  try {
+    console.log("=== WELCOME EMAIL FUNCTION START ===");
+    console.log("Sending welcome email for subscription:", subscription.id);
+    console.log("Organization ID:", orgId);
+    
+    // Get SendGrid API key from environment
+    const sendgridApiKey = functions.config().sendgrid?.key || functions.config().sendgrid?.api_key;
+    console.log("SendGrid API key configured:", !!sendgridApiKey);
+    
+    if (!sendgridApiKey) {
+      console.log("SendGrid API key not configured - skipping welcome email");
+      return;
+    }
+
+    // Set SendGrid API key
+    sgMail.setApiKey(sendgridApiKey);
+    console.log("SendGrid API key set successfully");
+
+    // Get organization details
+    console.log("Fetching organization details for:", orgId);
+    const orgDoc = await db.collection("organizations").doc(orgId).get();
+    if (!orgDoc.exists) {
+      console.log("Organization not found:", orgId);
+      return;
+    }
+
+    const orgData = orgDoc.data();
+    const orgName = orgData.organizationName || "Your Organization";
+    console.log("Organization name:", orgName);
+
+    // Get customer details from Stripe
+    console.log("Retrieving Stripe customer:", subscription.customer);
+    const customer = await stripe.customers.retrieve(subscription.customer);
+    const customerEmail = customer.email || session.customer_details?.email;
+    const customerName = customer.name || session.customer_details?.name || "Valued Customer";
+    
+    console.log("Customer email:", customerEmail);
+    console.log("Customer name:", customerName);
+
+    if (!customerEmail) {
+      console.log("Customer email not found for subscription:", subscription.id);
+      return;
+    }
+
+  // Prepare welcome email with the correct dynamic template
+  const templateId = "d-93870b1c6d6943419a15117c553858da";
+    
+    const templateData = {
+      firstName: customerName.split(' ')[0] || customerName,
+      orgName: orgName,
+      email: customerEmail,
+      temporaryPassword: "N/A", // Not applicable for subscription customers
+      welcomeUrl: "https://plan-with-hands.web.app/dashboard",
+      adminEmail: "support@planwithhands.com",
+    };
+    
+    const msg = {
+      to: customerEmail,
+      from: "noreply@em5998.planwithhands.com",
+      templateId: templateId,
+      dynamicTemplateData: templateData,
+    };
+
+    console.log("Email configuration:");
+    console.log("- To:", customerEmail);
+    console.log("- Template ID:", templateId);
+    console.log("- Template data:", JSON.stringify(templateData, null, 2));
+    
+    console.log("Sending welcome email...");
+    const result = await sgMail.send(msg);
+    console.log("Welcome email sent successfully!");
+    console.log("SendGrid response status:", result[0].statusCode);
+    console.log("=== WELCOME EMAIL FUNCTION END ===");
+
+  } catch (error) {
+    console.error("=== WELCOME EMAIL ERROR ===");
+    console.error("Failed to send welcome email:", error);
+    console.error("Error message:", error.message);
+    if (error.response) {
+      console.error("SendGrid error response:", error.response.body);
+    }
+    console.error("=== WELCOME EMAIL ERROR END ===");
+    // Don't throw error to avoid failing the webhook
+  }
+}
+
+// Validate Coupon Function
+exports.validateCoupon = functions
+    .region("us-central1")
+    .https.onCall(async (data, context) => {
+      const {couponCode} = data;
+      
+      console.log("=== COUPON VALIDATION START ===");
+      console.log("Input couponCode:", couponCode);
+      console.log("Data received:", JSON.stringify(data, null, 2));
+
+      if (!couponCode) {
+        console.log("ERROR: No coupon code provided");
+        throw new functions.https.HttpsError("invalid-argument", "Coupon code is required");
+      }
+
+      try {
+        console.log("Validating coupon:", couponCode);
+        
+        // Retrieve coupon from Stripe
+        const coupon = await stripe.coupons.retrieve(couponCode);
+        console.log("Stripe response:", JSON.stringify(coupon, null, 2));
+        
+        // Check if coupon is valid (not deleted and meets basic criteria)
+        const isValid = coupon && 
+                       !coupon.deleted && 
+                       (!coupon.redeem_by || coupon.redeem_by * 1000 > Date.now()) &&
+                       (!coupon.max_redemptions || !coupon.times_redeemed || coupon.times_redeemed < coupon.max_redemptions);
+        
+        console.log("Validation checks:");
+        console.log("- Coupon exists:", !!coupon);
+        console.log("- Not deleted:", !coupon?.deleted);
+        console.log("- Redeem by check:", !coupon?.redeem_by || coupon.redeem_by * 1000 > Date.now());
+        console.log("- Max redemptions check:", !coupon?.max_redemptions || !coupon?.times_redeemed || coupon.times_redeemed < coupon.max_redemptions);
+        console.log("- Overall valid:", isValid);
+
+        if (isValid) {
+          console.log("Coupon is valid:", coupon.id);
+          const result = {
+            success: true,
+            coupon: {
+              id: coupon.id,
+              percent_off: coupon.percent_off,
+              amount_off: coupon.amount_off,
+              currency: coupon.currency,
+              name: coupon.name,
+              duration: coupon.duration,
+              duration_in_months: coupon.duration_in_months,
+              times_redeemed: coupon.times_redeemed,
+              max_redemptions: coupon.max_redemptions,
+              redeem_by: coupon.redeem_by,
+              valid: isValid,
+            },
+          };
+          console.log("Returning success result:", JSON.stringify(result, null, 2));
+          return result;
+        } else {
+          console.log("Coupon is not valid or expired:", couponCode);
+          const result = {
+            success: false,
+            error: "Coupon is not valid or has expired",
+          };
+          console.log("Returning error result:", JSON.stringify(result, null, 2));
+          return result;
+        }
+      } catch (error) {
+        console.error("=== COUPON VALIDATION ERROR ===");
+        console.error("Error validating coupon:", error);
+        console.error("Error message:", error.message);
+        console.error("Error type:", error.type);
+        console.error("Error code:", error.code);
+        
+        // Handle specific Stripe errors
+        if (error.type === "StripeInvalidRequestError" && error.code === "resource_missing") {
+          const result = {
+            success: false,
+            error: "Coupon code not found",
+          };
+          console.log("Returning not found result:", JSON.stringify(result, null, 2));
+          return result;
+        }
+        
+        const result = {
+          success: false,
+          error: "Failed to validate coupon code",
+        };
+        console.log("Returning generic error result:", JSON.stringify(result, null, 2));
+        console.log("=== COUPON VALIDATION END ===");
+        return result;
       }
     });

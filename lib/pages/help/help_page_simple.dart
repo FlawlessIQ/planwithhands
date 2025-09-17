@@ -6,6 +6,7 @@ import 'package:hands_app/theme/theme.dart';
 
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/core/logging/logger.dart';
+import 'package:hands_app/widgets/hands_text_field.dart';
 
 class HelpPage extends StatefulWidget {
   final int? userRole;
@@ -132,7 +133,7 @@ class _HelpPageState extends State<HelpPage> {
               const SizedBox(height: 24),
 
               // Email Field
-              TextFormField(
+              HandsTextFormField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
                 style: GoogleFonts.inter(color: HandsColors.white),
@@ -156,7 +157,7 @@ class _HelpPageState extends State<HelpPage> {
               const SizedBox(height: 16),
 
               // Subject Field
-              TextFormField(
+              HandsTextFormField(
                 controller: _subjectController,
                 style: GoogleFonts.inter(color: HandsColors.white),
                 decoration: InputDecoration(
@@ -177,7 +178,7 @@ class _HelpPageState extends State<HelpPage> {
               const SizedBox(height: 16),
 
               // Message Field
-              TextFormField(
+              HandsTextFormField(
                 controller: _messageController,
                 maxLines: 6,
                 style: GoogleFonts.inter(color: HandsColors.white),

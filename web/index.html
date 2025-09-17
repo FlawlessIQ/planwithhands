@@ -9,9 +9,14 @@
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="Plan with Hands - Task management made simple">
+  <meta name="flutter-web-renderer" content="html" />
+  
+  <!-- Content Security Policy for Stripe, Firebase, and Flutter Web -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://js.stripe.com https://www.gstatic.com 'unsafe-inline' 'unsafe-eval'; frame-src https://js.stripe.com https://hooks.stripe.com; connect-src 'self' https://api.stripe.com https://r.stripe.com https://m.stripe.network https://fonts.gstatic.com https://www.gstatic.com https://firebase.googleapis.com https://firestore.googleapis.com https://firebaseinstallations.googleapis.com https://firebaseremoteconfig.googleapis.com https://firebasestorage.googleapis.com https://fcm.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://us-central1-plan-with-hands.cloudfunctions.net https://fcmregistrations.googleapis.com; img-src 'self' data: https://q.stripe.com https://m.stripe.network; style-src 'self' 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com;"
 
   <!-- iOS meta tags & icons -->
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Plan with Hands">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
@@ -36,23 +41,58 @@
   <title>Plan with Hands</title>
   <link rel="manifest" href="manifest.json">
 
-  <script>
-    // The value below is injected by flutter build, do not touch.
-    var serviceWorkerVersion = null;
-  </script>
+  <!-- Stripe.js -->
+  <script src="https://js.stripe.com/v3/"></script>
+
+  <!-- Custom CSS to force white background for Stripe Elements -->
+  <style>
+    /* Force white background and black text for all Stripe elements */
+    iframe[name^="__privateStripeFrame"] {
+      background-color: white !important;
+    }
+    
+    /* Stripe Elements styling overrides */
+    .StripeElement {
+      background-color: white !important;
+      color: black !important;
+      border: none !important;
+      padding: 0 !important;
+    }
+    
+    .StripeElement--focus {
+      background-color: white !important;
+      color: black !important;
+    }
+    
+    .StripeElement--invalid {
+      background-color: white !important;
+      color: #dc3545 !important;
+    }
+    
+    /* Platform view container styling */
+    flt-platform-view {
+      background-color: white !important;
+    }
+    
+    /* Flutter CardField specific styling */
+    div[data-testid="card-number-element"],
+    div[data-testid="card-expiry-element"], 
+    div[data-testid="card-cvc-element"] {
+      background-color: white !important;
+      color: black !important;
+    }
+  </style>
+
   <!-- This script adds the flutter initialization JS inline -->
   <script src="flutter.js" defer></script>
 </head>
 <body>
   <script>
-    window.addEventListener('load', function(ev) {
-      // Download main.dart.js
+    // Initialize Flutter using the backward-compatible API that works in debug.
+    window.addEventListener('load', function () {
       _flutter.loader.loadEntrypoint({
-        serviceWorker: {
-          serviceWorkerVersion: serviceWorkerVersion,
-        },
-        onEntrypointLoaded: function(engineInitializer) {
-          engineInitializer.initializeEngine().then(function(appRunner) {
+        onEntrypointLoaded: function (engineInitializer) {
+          engineInitializer.initializeEngine().then(function (appRunner) {
             appRunner.runApp();
           });
         }

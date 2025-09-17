@@ -12,6 +12,7 @@ import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
 import 'package:hands_app/widgets/welcome_organization_dialog.dart';
+import 'package:hands_app/widgets/hands_text_field.dart';
 
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/utils/location_helper.dart';
@@ -129,7 +130,31 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
 
   // Show welcome dialog for new organization setup
   void _showWelcomeDialog() {
-    showDialog(context: context, barrierDismissible: true, builder: (context) => const WelcomeOrganizationDialog());
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => WelcomeOrganizationDialog(onProceedToLocationSetup: _showLocationWizard),
+    );
+  }
+
+  // Show location wizard for first location setup
+  void _showLocationWizard() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: false, // Don't allow dismissing during setup
+      enableDrag: false, // Don't allow dragging to dismiss
+      builder:
+          (context) => LocationWizard(
+            organizationId: widget.organizationId,
+            onCompleted: () async {
+              // Close the bottom sheet first
+              Navigator.of(context).pop();
+              // Refresh the page data after location is created
+              await _reloadAllTables();
+            },
+          ),
+    );
   }
 
   // Reload on mount after access check sets up org
@@ -690,7 +715,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               // Search field
               Expanded(
                 flex: 3,
-                child: TextField(
+                child: HandsTextField(
                   controller: _searchController,
                   style: GoogleFonts.comfortaa(color: HandsColors.white),
                   decoration: InputDecoration(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:hands_app/widgets/hands_text_field.dart';
 
 class EmployeePricingWidget extends StatefulWidget {
   final TextEditingController? controller;
@@ -22,10 +23,7 @@ class _EmployeePricingWidgetState extends State<EmployeePricingWidget> {
   ];
 
   _Tier get _currentTier {
-    return _tiers.firstWhere(
-      (t) => (t.max ?? double.infinity) >= _count && _count >= t.min,
-      orElse: () => _tiers.last,
-    );
+    return _tiers.firstWhere((t) => (t.max ?? double.infinity) >= _count && _count >= t.min, orElse: () => _tiers.last);
   }
 
   @override
@@ -47,21 +45,15 @@ class _EmployeePricingWidgetState extends State<EmployeePricingWidget> {
     final tier = _currentTier;
     final isCustom = tier.max == null;
     final monthly = isCustom ? '--' : '\$${tier.price.toStringAsFixed(0)}';
-    final perEmp =
-        isCustom
-            ? 'Contact Us'
-            : '\$${(tier.price / tier.max!).toStringAsFixed(2)}';
+    final perEmp = isCustom ? 'Contact Us' : '\$${(tier.price / tier.max!).toStringAsFixed(2)}';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        TextField(
+        HandsTextField(
           controller: _controller,
           keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            labelText: 'Number of Employees',
-            border: OutlineInputBorder(),
-          ),
+          decoration: const InputDecoration(labelText: 'Number of Employees', border: OutlineInputBorder()),
           onChanged: (v) {
             final n = int.tryParse(v) ?? 0;
             setState(() => _count = n);
@@ -70,17 +62,11 @@ class _EmployeePricingWidgetState extends State<EmployeePricingWidget> {
         const SizedBox(height: 12),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            _metricTile('Monthly', monthly, context),
-            _metricTile('Per Employee', perEmp, context),
-          ],
+          children: [_metricTile('Monthly', monthly, context), _metricTile('Per Employee', perEmp, context)],
         ),
         Align(
           alignment: Alignment.centerRight,
-          child: TextButton(
-            child: const Text('View Pricing Details'),
-            onPressed: () => _showPricingTable(context),
-          ),
+          child: TextButton(child: const Text('View Pricing Details'), onPressed: () => _showPricingTable(context)),
         ),
       ],
     );
@@ -88,11 +74,7 @@ class _EmployeePricingWidgetState extends State<EmployeePricingWidget> {
 
   Widget _metricTile(String label, String value, BuildContext context) {
     return Column(
-      children: [
-        Text(value, style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 4),
-        Text(label),
-      ],
+      children: [Text(value, style: Theme.of(context).textTheme.titleLarge), const SizedBox(height: 4), Text(label)],
     );
   }
 
@@ -111,32 +93,16 @@ class _EmployeePricingWidgetState extends State<EmployeePricingWidget> {
                 ],
                 rows:
                     _tiers.map((t) {
-                      final empRange =
-                          t.max == null ? '${t.min}+' : '${t.min}-${t.max}';
-                      final priceText =
-                          t.max == null
-                              ? 'Custom Pricing'
-                              : '\$${t.price.toStringAsFixed(0)}';
-                      final perEmpText =
-                          t.max == null
-                              ? 'Contact Us'
-                              : '\$${(t.price / t.max!).toStringAsFixed(2)}';
+                      final empRange = t.max == null ? '${t.min}+' : '${t.min}-${t.max}';
+                      final priceText = t.max == null ? 'Custom Pricing' : '\$${t.price.toStringAsFixed(0)}';
+                      final perEmpText = t.max == null ? 'Contact Us' : '\$${(t.price / t.max!).toStringAsFixed(2)}';
                       return DataRow(
-                        cells: [
-                          DataCell(Text(empRange)),
-                          DataCell(Text(priceText)),
-                          DataCell(Text(perEmpText)),
-                        ],
+                        cells: [DataCell(Text(empRange)), DataCell(Text(priceText)), DataCell(Text(perEmpText))],
                       );
                     }).toList(),
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Close'),
-              ),
-            ],
+            actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
           ),
     );
   }

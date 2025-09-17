@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:go_router/go_router.dart';
+import 'package:hands_app/utils/app_platform.dart';
 import 'package:hands_app/features/dashboard/pages/user_dashboard_page.dart';
 import 'package:hands_app/features/dashboard/pages/admin_dashboard_page.dart';
 import 'package:hands_app/features/dashboard/pages/WEB_admin_dashboard_page.dart'
@@ -11,17 +12,16 @@ import 'package:hands_app/features/auth/pages/login_page.dart';
 import 'package:hands_app/features/auth/pages/account_creation_page_simple_branded.dart' as branded;
 // import 'package:hands_app/features/auth/pages/invitation_page.dart';
 import 'package:hands_app/features/settings/pages/settings_page.dart';
+import 'package:hands_app/features/subscription/pages/subscription_management_page.dart';
 import 'package:hands_app/features/training/pages/training_materials_page.dart';
 import 'package:hands_app/pages/notifications_page.dart';
 import 'package:hands_app/pages/messages_page.dart';
 import 'package:hands_app/features/messaging/pages/message_thread_page.dart';
 import 'package:hands_app/pages/sign_in_page.dart';
 import 'package:hands_app/pages/welcome_page.dart';
-import 'package:hands_app/pages/payment_success_page.dart';
-import 'package:hands_app/pages/payment_cancelled_page.dart';
 import 'package:hands_app/pages/not_available_ios_page.dart';
 import 'package:hands_app/ui/schedule_page.dart';
-import 'package:hands_app/core/platform_ios.dart';
+import 'package:hands_app/pages/checkout_complete_page.dart';
 
 // Make sure that the NotificationsPage class is defined in notifications_page.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -31,6 +31,9 @@ import 'package:hands_app/constants/firestore_names.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/services/push_notification_service.dart';
 import 'package:hands_app/core/logging/logger.dart';
+import 'package:hands_app/config/feature_flags.dart';
+import 'package:hands_app/debug/stripe_probe_page.dart';
+import 'package:hands_app/billing/embedded_payment_page.dart';
 
 // Helper function to build the appropriate admin setup page based on platform
 Widget _buildAdminSetupPage(BuildContext ctx, {required String organizationId, String? tab}) {
@@ -118,6 +121,7 @@ enum AppRoutes {
   // invitePage('/invite'),
   trainingMaterialsPage('/training_materials'),
   settingsPage('/settings'),
+  subscriptionManagementPage('/subscription-management'),
   userDashboardPage('/user_dashboard'),
   adminDashboardPage('/admin_dashboard'),
   adminPage('/admin'),
@@ -128,7 +132,9 @@ enum AppRoutes {
   threadPage('/threads/:threadId'),
   notificationsPage('/notifications'),
   paymentSuccessPage('/payment-success'),
-  paymentCancelledPage('/payment-cancelled');
+  paymentCancelledPage('/payment-cancelled'),
+  checkoutComplete('/billing/checkout-complete'),
+  embeddedPaymentPage('/embedded-payment');
 
   final String path;
   const AppRoutes(this.path);
@@ -201,24 +207,99 @@ class AuthGateWithOrg extends ConsumerWidget {
             }
 
             final userRole = userData['userRole'] as int? ?? 0;
+            final orgId = userData['organizationId'] as String?;
+            final userEmail = userData['email'] as String? ?? user.email ?? '';
 
             // Route users to appropriate dashboard based on role
             if (userRole >= 2) {
-              // Admin - redirect to admin dashboard
+              // Admin - redirect to admin dashboard WITHOUT subscription check here
+              // The admin dashboard will handle its own subscription requirements
+              logger.d('[AuthGateWithOrg] Admin user, redirecting to admin dashboard');
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                context.go(AppRoutes.adminDashboardPage.path);
+                if (context.mounted) {
+                  context.go(AppRoutes.adminDashboardPage.path);
+                }
               });
               return const Scaffold(body: Center(child: CircularProgressIndicator()));
             } else if (userRole >= 1) {
-              // Manager - redirect to manager dashboard
+              // Manager - redirect to manager dashboard (will check subscription separately)
+              logger.d('[AuthGateWithOrg] Manager user, redirecting to manager dashboard');
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                context.go(AppRoutes.managerDashboardPage.path);
+                if (context.mounted) {
+                  context.go(AppRoutes.managerDashboardPage.path);
+                }
               });
               return const Scaffold(body: Center(child: CircularProgressIndicator()));
             }
 
-            // Regular user - show user dashboard
-            return const UserDashboardPage();
+            // Regular user - check subscription before showing user dashboard
+            if (orgId == null) {
+              return const LoginPage();
+            }
+
+            // Check subscription status for regular users
+            return FutureBuilder<DocumentSnapshot>(
+              future:
+                  FirestoreEnforcer.instance
+                      .collection('organizations')
+                      .doc(orgId)
+                      .collection('stripe')
+                      .doc('subscription')
+                      .get(),
+              builder: (context, subSnap) {
+                if (subSnap.connectionState != ConnectionState.done) {
+                  return const Scaffold(body: Center(child: CircularProgressIndicator()));
+                }
+
+                // If subscription document doesn't exist, redirect to payment
+                if (!subSnap.hasData || !(subSnap.data?.exists ?? false)) {
+                  logger.d('[AuthGateWithOrg] No subscription doc, redirecting to payment for orgId: $orgId');
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (context.mounted) {
+                      final paymentUrl =
+                          '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=1';
+                      logger.d('[AuthGateWithOrg] Redirecting to: $paymentUrl');
+                      context.go(paymentUrl);
+                    }
+                  });
+                  return const Scaffold(body: Center(child: CircularProgressIndicator()));
+                }
+
+                final subscriptionData = subSnap.data?.data() as Map<String, dynamic>?;
+                if (subscriptionData == null) {
+                  logger.d('[AuthGateWithOrg] Subscription data is null, redirecting to payment');
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (context.mounted) {
+                      final paymentUrl =
+                          '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=1';
+                      context.go(paymentUrl);
+                    }
+                  });
+                  return const Scaffold(body: Center(child: CircularProgressIndicator()));
+                }
+
+                final status = subscriptionData['status'] as String?;
+                logger.d('[AuthGateWithOrg] Subscription status: $status');
+
+                // Check if subscription is active, trialing, or trial
+                final validStatuses = ['active', 'trialing', 'trial'];
+                if (status == null || !validStatuses.contains(status)) {
+                  logger.d('[AuthGateWithOrg] Invalid subscription status: $status, redirecting to payment');
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (context.mounted) {
+                      final paymentUrl =
+                          '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=1';
+                      context.go(paymentUrl);
+                    }
+                  });
+                  return const Scaffold(body: Center(child: CircularProgressIndicator()));
+                }
+
+                logger.d('[AuthGateWithOrg] Valid subscription, showing user dashboard');
+                // Subscription is valid, show user dashboard
+                return const UserDashboardPage();
+              },
+            );
           },
         );
       },
@@ -259,6 +340,7 @@ class AuthGateWithOrgForManager extends ConsumerWidget {
 
             final userRole = userData['userRole'] as int? ?? 0;
             final orgId = userData['organizationId'] as String? ?? '';
+            final userEmail = userData['email'] as String? ?? user.email ?? '';
 
             // Only block access for non-managers
             if (userRole < 1 || orgId.isEmpty) {
@@ -267,8 +349,68 @@ class AuthGateWithOrgForManager extends ConsumerWidget {
               });
               return const Scaffold(body: Center(child: CircularProgressIndicator()));
             }
-            // Allow both managers and admins to view this page
-            return _buildManagerDashboardPage(context, organizationId: orgId);
+
+            // Check subscription status before allowing manager access
+            return FutureBuilder<DocumentSnapshot>(
+              future:
+                  FirestoreEnforcer.instance
+                      .collection('organizations')
+                      .doc(orgId)
+                      .collection('stripe')
+                      .doc('subscription')
+                      .get(),
+              builder: (context, subSnap) {
+                if (subSnap.connectionState != ConnectionState.done) {
+                  return const Scaffold(body: Center(child: CircularProgressIndicator()));
+                }
+
+                // If subscription document doesn't exist, redirect to payment
+                if (!subSnap.hasData || !(subSnap.data?.exists ?? false)) {
+                  logger.d('[AuthGateWithOrgForManager] No subscription doc, redirecting to payment');
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (context.mounted) {
+                      final paymentUrl =
+                          '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=1';
+                      context.go(paymentUrl);
+                    }
+                  });
+                  return const Scaffold(body: Center(child: CircularProgressIndicator()));
+                }
+
+                final subscriptionData = subSnap.data?.data() as Map<String, dynamic>?;
+                if (subscriptionData == null) {
+                  logger.d('[AuthGateWithOrgForManager] Subscription data is null, redirecting to payment');
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (context.mounted) {
+                      final paymentUrl =
+                          '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=1';
+                      context.go(paymentUrl);
+                    }
+                  });
+                  return const Scaffold(body: Center(child: CircularProgressIndicator()));
+                }
+
+                final status = subscriptionData['status'] as String?;
+                logger.d('[AuthGateWithOrgForManager] Subscription status: $status');
+
+                // Check if subscription is active, trialing, or trial
+                final validStatuses = ['active', 'trialing', 'trial'];
+                if (status == null || !validStatuses.contains(status)) {
+                  logger.d('[AuthGateWithOrgForManager] Invalid subscription status: $status, redirecting to payment');
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (context.mounted) {
+                      final paymentUrl =
+                          '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=1';
+                      context.go(paymentUrl);
+                    }
+                  });
+                  return const Scaffold(body: Center(child: CircularProgressIndicator()));
+                }
+
+                // Subscription is valid, allow manager access
+                return _buildManagerDashboardPage(context, organizationId: orgId);
+              },
+            );
           },
         );
       },
@@ -435,9 +577,59 @@ class AuthGateForAdminSetup extends ConsumerWidget {
               return const Scaffold(body: Center(child: CircularProgressIndicator()));
             }
 
-            logger.d('[AUTH_GATE_ADMIN_SETUP] Authorized admin -> Admin setup page (web: $kIsWeb)');
-            // Use the helper function to build the appropriate page
-            return _buildAdminSetupPage(context, organizationId: orgId, tab: initialTab);
+            // Check subscription status for admin access
+            // BYPASS: If user has setup=true in URL, they just completed payment - allow access
+            final isNewUserSetup = GoRouterState.of(context).uri.queryParameters['setup'] == 'true';
+            if (isNewUserSetup) {
+              logger.d('[AUTH_GATE_ADMIN_SETUP] setup=true detected - bypassing subscription check for new user');
+              // Use the helper function to build the appropriate page
+              return _buildAdminSetupPage(context, organizationId: orgId, tab: initialTab);
+            }
+
+            return FutureBuilder<DocumentSnapshot>(
+              future:
+                  FirestoreEnforcer.instance
+                      .collection(FirestoreCollectionNames.organizationTable)
+                      .doc(orgId)
+                      .collection('stripe')
+                      .doc('subscription')
+                      .get(),
+              builder: (context, subscriptionSnap) {
+                logger.d('[AUTH_GATE_ADMIN_SETUP] Checking subscription for orgId=$orgId');
+
+                if (subscriptionSnap.connectionState != ConnectionState.done) {
+                  return const Scaffold(body: Center(child: CircularProgressIndicator()));
+                }
+
+                bool hasValidSubscription = false;
+                if (subscriptionSnap.hasData && subscriptionSnap.data!.exists) {
+                  final subscriptionData = subscriptionSnap.data!.data() as Map<String, dynamic>?;
+                  final status = subscriptionData?['status'] as String?;
+                  hasValidSubscription = status == 'active' || status == 'trialing' || status == 'trial';
+                  logger.d('[AUTH_GATE_ADMIN_SETUP] Subscription status: $status, valid: $hasValidSubscription');
+                } else {
+                  logger.d('[AUTH_GATE_ADMIN_SETUP] No subscription document found');
+                }
+
+                if (!hasValidSubscription) {
+                  logger.d('[AUTH_GATE_ADMIN_SETUP] Invalid subscription -> Redirecting to payment');
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (context.mounted) {
+                      final userEmail = userData['email'] as String? ?? '';
+                      final paymentUrl =
+                          '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=1';
+                      logger.d('[AUTH_GATE_ADMIN_SETUP] Redirecting to: $paymentUrl');
+                      context.go(paymentUrl);
+                    }
+                  });
+                  return const Scaffold(body: Center(child: CircularProgressIndicator()));
+                }
+
+                logger.d('[AUTH_GATE_ADMIN_SETUP] Valid subscription -> Admin setup page (web: $kIsWeb)');
+                // Use the helper function to build the appropriate page
+                return _buildAdminSetupPage(context, organizationId: orgId, tab: initialTab);
+              },
+            );
           },
         );
       },
@@ -477,6 +669,14 @@ GoRouter buildAppRouter(Ref ref) {
             logger.d('[ROUTER] iOS compliance: blocking restricted path $routerPath');
             return '/not-available-ios';
           }
+        }
+
+        // CRITICAL: Don't redirect when on payment pages or return handler to prevent loops
+        if (routerPath.startsWith('/embedded-payment') ||
+            routerPath.startsWith('/billing/embedded-payment') ||
+            routerPath.startsWith('/billing/checkout-complete')) {
+          logger.d('[ROUTER] On payment page, skipping redirect checks to prevent loops');
+          return null;
         }
 
         // AGGRESSIVE BROWSER URL PARSING
@@ -532,11 +732,29 @@ GoRouter buildAppRouter(Ref ref) {
 
       // IMPROVED: Use browser URL path as initial location when available
       // Simplified logic to avoid potential null issues
-      initialLocation: kIsWeb && Uri.base.path.isNotEmpty ? Uri.base.path : AppRoutes.homePage.path,
+      // Special handling for payment pages to prevent redirect loops
+      initialLocation:
+          (() {
+            if (kIsWeb && Uri.base.path.isNotEmpty) {
+              final browserPath = Uri.base.path;
+              logger.d('[ROUTER_INIT] Browser path for initial location: $browserPath');
+
+              // If browser is on payment page, respect it
+              if (browserPath.startsWith('/embedded-payment') || browserPath.startsWith('/billing/embedded-payment')) {
+                logger.d('[ROUTER_INIT] Browser on payment page, using as initial location');
+                return browserPath;
+              }
+
+              return browserPath;
+            }
+            return AppRoutes.homePage.path;
+          })(),
       // Add observer for detailed route tracking
       observers: [],
       routes: [
         GoRoute(path: AppRoutes.homePage.path, builder: (context, state) => const AuthGateWithOrg()),
+        // Debug: Stripe probe (not linked in UI)
+        GoRoute(path: '/debug/stripe-probe', builder: (context, state) => const StripeProbePage()),
         // Invite route removed
         GoRoute(
           path: AppRoutes.accountCreationPage.path,
@@ -565,6 +783,17 @@ GoRouter buildAppRouter(Ref ref) {
         GoRoute(
           path: AppRoutes.settingsPage.path,
           builder: (context, state) => const AuthGate(child: HandsSettingsPage()),
+        ),
+        GoRoute(
+          path: AppRoutes.subscriptionManagementPage.path,
+          builder: (context, state) {
+            // Get orgId from query parameter or user data
+            final orgId = state.uri.queryParameters['orgId'];
+            if (orgId == null || orgId.isEmpty) {
+              return const Scaffold(body: Center(child: Text('Organization ID required for subscription management')));
+            }
+            return AuthGate(child: SubscriptionManagementPage(orgId: orgId));
+          },
         ),
         GoRoute(
           path: AppRoutes.userDashboardPage.path,
@@ -616,8 +845,38 @@ GoRouter buildAppRouter(Ref ref) {
             return const AuthGate(child: ViewDocumentsPage());
           },
         ),
-        GoRoute(path: AppRoutes.paymentSuccessPage.path, builder: (context, state) => const PaymentSuccessPage()),
-        GoRoute(path: AppRoutes.paymentCancelledPage.path, builder: (context, state) => const PaymentCancelledPage()),
+        GoRoute(
+          path: AppRoutes.embeddedPaymentPage.path,
+          builder: (context, state) {
+            final orgId = state.uri.queryParameters['orgId'];
+            final priceIdMonthly = state.uri.queryParameters['priceIdMonthly'] ?? kStripePriceMonthly;
+            final priceIdAnnual = state.uri.queryParameters['priceIdAnnual'] ?? kStripePriceAnnual;
+            final quantity = int.tryParse(state.uri.queryParameters['quantity'] ?? '1') ?? 1;
+            final email = state.uri.queryParameters['email'];
+
+            if (orgId == null) {
+              return const Scaffold(body: Center(child: Text('Organization ID required for payment')));
+            }
+
+            // If email is missing, we can still proceed - the payment form will handle this
+            final userEmail = email ?? '';
+
+            return EmbeddedPaymentPage(
+              orgId: orgId,
+              email: userEmail,
+              priceIdMonthly: priceIdMonthly,
+              priceIdAnnual: priceIdAnnual,
+              quantity: quantity,
+            );
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.checkoutComplete.path,
+          builder: (context, state) {
+            final sessionId = state.uri.queryParameters['session_id'];
+            return CheckoutCompletePage(sessionId: sessionId);
+          },
+        ),
       ],
     );
   } catch (e, st) {

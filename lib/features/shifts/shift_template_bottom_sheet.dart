@@ -6,6 +6,7 @@ import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/ui/bottom_sheet_styles.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:hands_app/widgets/hands_text_field.dart';
 
 class ShiftTemplateBottomSheet extends StatefulWidget {
   final String? shiftId;
@@ -369,7 +370,7 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        TextFormField(
+        HandsTextFormField(
           controller: _shiftNameController,
           decoration: BottomSheetStyles.inputDecoration(label: 'Shift name *'),
           validator: (v) => v != null && v.trim().isNotEmpty ? null : 'Enter shift name',
@@ -378,7 +379,7 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
         Row(
           children: [
             Expanded(
-              child: TextFormField(
+              child: HandsTextFormField(
                 controller: _startTimeController,
                 decoration: BottomSheetStyles.inputDecoration(label: 'Start time *'),
                 readOnly: true,
@@ -388,7 +389,7 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: TextFormField(
+              child: HandsTextFormField(
                 controller: _endTimeController,
                 decoration: BottomSheetStyles.inputDecoration(label: 'End time *'),
                 readOnly: true,

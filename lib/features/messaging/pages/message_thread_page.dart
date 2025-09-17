@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:hands_app/features/messaging/models/message.dart';
 import 'package:hands_app/features/messaging/services/messaging_service.dart';
 import 'package:hands_app/widgets/responsive_appbar_title.dart';
+import 'package:hands_app/widgets/hands_text_field.dart';
 
 class MessageThreadPage extends StatefulWidget {
   final String orgId;
@@ -106,7 +107,7 @@ class _MessageThreadPageState extends State<MessageThreadPage> {
             child: Row(
               children: [
                 Expanded(
-                  child: TextField(
+                  child: HandsTextField(
                     controller: _msgCtrl,
                     decoration: const InputDecoration(
                       contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),

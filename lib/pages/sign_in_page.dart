@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/utils/jobtype_helper.dart';
+import 'package:hands_app/widgets/hands_text_field.dart';
 
 class SignInPage extends StatefulWidget {
   const SignInPage({super.key});
@@ -463,7 +464,7 @@ class _SignInPageState extends State<SignInPage> {
                       const SizedBox(height: 24),
 
                       // Email field (read-only)
-                      TextFormField(
+                      HandsTextFormField(
                         initialValue: email ?? '',
                         readOnly: true,
                         decoration: InputDecoration(
@@ -477,8 +478,9 @@ class _SignInPageState extends State<SignInPage> {
                       const SizedBox(height: 16),
 
                       // New Password field
-                      TextFormField(
+                      HandsTextFormField(
                         controller: _passwordController,
+                        textCapitalization: TextCapitalization.none, // Passwords don't need capitalization
                         obscureText: true,
                         validator: _validatePassword,
                         decoration: const InputDecoration(
@@ -491,8 +493,9 @@ class _SignInPageState extends State<SignInPage> {
                       const SizedBox(height: 16),
 
                       // Confirm Password field
-                      TextFormField(
+                      HandsTextFormField(
                         controller: _confirmPasswordController,
+                        textCapitalization: TextCapitalization.none, // Passwords don't need capitalization
                         obscureText: true,
                         validator: _validateConfirmPassword,
                         decoration: const InputDecoration(

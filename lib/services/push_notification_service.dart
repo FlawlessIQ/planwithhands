@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -10,6 +9,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/utils/app_platform.dart';
 
 /// Top-level function for handling background messages
 /// Must be annotated with @pragma('vm:entry-point') for Flutter 3.3+
@@ -66,12 +66,12 @@ class PushNotificationService {
       logger.d('[PushNotificationService] Initializing...');
 
       // Initialize local notifications for Android
-      if (!kIsWeb && Platform.isAndroid) {
+      if (!kIsWeb && isAndroid) {
         await _initializeLocalNotifications();
       }
 
       // Configure FCM for iOS foreground presentation
-      if (!kIsWeb && Platform.isIOS) {
+      if (!kIsWeb && isIOS) {
         await _firebaseMessaging.setForegroundNotificationPresentationOptions(alert: true, badge: true, sound: true);
 
         // Check permission status; if not determined, request once on first init to register device token
@@ -125,7 +125,7 @@ class PushNotificationService {
     await _localNotifications.initialize(initSettings, onDidReceiveNotificationResponse: _onNotificationTapped);
 
     // Create notification channel for Android
-    if (!kIsWeb && Platform.isAndroid) {
+    if (!kIsWeb && isAndroid) {
       await _createNotificationChannel();
     }
   }
@@ -251,14 +251,7 @@ class PushNotificationService {
         'fcmToken': token,
         'isActive': true,
         'updatedAt': FieldValue.serverTimestamp(),
-        'platform':
-            kIsWeb
-                ? 'web'
-                : Platform.isIOS
-                ? 'ios'
-                : Platform.isAndroid
-                ? 'android'
-                : 'other',
+        'platform': kIsWeb ? 'web' : (isIOS ? 'ios' : (isAndroid ? 'android' : 'other')),
         'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
       }, SetOptions(merge: true));
 
@@ -354,7 +347,7 @@ class PushNotificationService {
       debugPrint('[PushNotificationService] Permission result: ${settings.authorizationStatus}');
 
       // Also request permission for local notifications on Android
-      if (!kIsWeb && Platform.isAndroid) {
+      if (!kIsWeb && isAndroid) {
         final status = await Permission.notification.request();
         debugPrint('[PushNotificationService] Android notification permission: $status');
       }
@@ -420,7 +413,7 @@ class PushNotificationService {
   /// Foreground message handler -> optionally show local notification
   void _onForegroundMessage(RemoteMessage message) {
     // Show local notification for foreground messages on mobile to aid visibility
-    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+    if (!kIsWeb && (isAndroid || isIOS)) {
       _showLocalNotification(message, foreground: true);
     }
     _messageStreamController.add(message);
@@ -613,7 +606,7 @@ class PushNotificationService {
       logger.d('[PushNotificationService] Permission result: ${settings.authorizationStatus}');
 
       // Also request permission for local notifications on Android
-      if (!kIsWeb && Platform.isAndroid) {
+      if (!kIsWeb && isAndroid) {
         final status = await Permission.notification.request();
         logger.d('[PushNotificationService] Android notification permission: $status');
       }

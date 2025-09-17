@@ -70,6 +70,7 @@ dependencies:
   photo_view: ^0.15.0
   table_calendar: ^3.2.0
   flutter_stripe: ^11.5.0
+  flutter_stripe_web: ^6.5.1
   permission_handler: ^11.3.1
   timezone: ^0.9.4
   crypto: ^3.0.3

@@ -6,6 +6,7 @@ import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/shared/components/hands_buttons.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:hands_app/widgets/hands_text_field.dart';
 
 class CreateGroupSheet extends ConsumerStatefulWidget {
   const CreateGroupSheet({super.key});
@@ -146,7 +147,7 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      TextFormField(
+                      HandsTextFormField(
                         controller: editController,
                         decoration: InputDecoration(
                           labelText: 'Group Name',
@@ -381,7 +382,7 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
                 ),
               ),
               const SizedBox(height: 8),
-              TextFormField(
+              HandsTextFormField(
                 controller: _groupNameController,
                 decoration: InputDecoration(
                   labelText: 'Group Name',
@@ -404,7 +405,7 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
                 style: GoogleFonts.comfortaa(color: HandsColors.white, fontSize: 14),
               ),
               const SizedBox(height: 16),
-              TextFormField(
+              HandsTextFormField(
                 controller: _searchController,
                 decoration: InputDecoration(
                   labelText: 'Search users',

@@ -230,10 +230,29 @@ exports.sendOrganizationSignupNotification = functions.https.onCall(async (data,
           from: "noreply@em5998.planwithhands.com", // Using your verified SendGrid domain
           templateId: templateId,
           dynamicTemplateData: {
+            // Variables that match the SendGrid template
+            orgName: organizationName,
+            adminEmail: adminEmail,
+            createdDate: createdAt ? new Date(createdAt).toLocaleDateString('en-US', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric'
+            }) : new Date().toLocaleDateString('en-US', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric'
+            }),
+            planType: `${subscriptionType || 'Trial'} Plan`,
+            
+            // Additional variables for URLs
+            webPortalUrl: "https://app.planwithhands.com",
+            stripeUrl: "https://dashboard.stripe.com",
+            helpUrl: "https://docs.planwithhands.com",
+            
+            // Keep original variables for backward compatibility
             organizationName: organizationName,
             adminFirstName: adminFirstName,
             adminLastName: adminLastName,
-            adminEmail: adminEmail,
             businessType: businessType || "Not specified",
             numberOfEmployees: numberOfEmployees || "Not specified",
             numberOfLocations: numberOfLocations || "Not specified",
@@ -241,8 +260,6 @@ exports.sendOrganizationSignupNotification = functions.https.onCall(async (data,
             organizationId: organizationId,
             signupDate: createdAt ? new Date(createdAt).toLocaleDateString() : new Date().toLocaleDateString(),
             adminFullName: `${adminFirstName} ${adminLastName}`,
-            webPortalUrl: "https://app.planwithhands.com",
-            stripeUrl: "https://dashboard.stripe.com",
             firestoreUrl: `https://console.firebase.google.com/project/hands-d31f9/firestore/data/organizations/${organizationId}`,
           },
         };

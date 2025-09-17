@@ -274,6 +274,10 @@ flutter_stripe
 3.0
 file:///Users/conorlawless/.pub-cache/hosted/pub.dev/flutter_stripe-11.5.0/
 file:///Users/conorlawless/.pub-cache/hosted/pub.dev/flutter_stripe-11.5.0/lib/
+flutter_stripe_web
+3.3
+file:///Users/conorlawless/.pub-cache/hosted/pub.dev/flutter_stripe_web-6.5.1/
+file:///Users/conorlawless/.pub-cache/hosted/pub.dev/flutter_stripe_web-6.5.1/lib/
 freezed
 3.0
 file:///Users/conorlawless/.pub-cache/hosted/pub.dev/freezed-2.5.8/
@@ -614,6 +618,10 @@ stripe_ios
 3.0
 file:///Users/conorlawless/.pub-cache/hosted/pub.dev/stripe_ios-11.5.0/
 file:///Users/conorlawless/.pub-cache/hosted/pub.dev/stripe_ios-11.5.0/lib/
+stripe_js
+3.3
+file:///Users/conorlawless/.pub-cache/hosted/pub.dev/stripe_js-6.4.0/
+file:///Users/conorlawless/.pub-cache/hosted/pub.dev/stripe_js-6.4.0/lib/
 stripe_platform_interface
 3.0
 file:///Users/conorlawless/.pub-cache/hosted/pub.dev/stripe_platform_interface-11.5.0/

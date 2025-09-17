@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hands_app/features/messaging/services/messaging_service.dart';
+import 'package:hands_app/widgets/hands_text_field.dart';
 
 class ThreadComposer extends StatefulWidget {
   final String orgId;
@@ -42,7 +43,7 @@ class _ThreadComposerState extends State<ThreadComposer> {
               onChanged: (v) => setState(() => _pushOnLogin = v),
               title: const Text('Push on login'),
             ),
-            TextFormField(
+            HandsTextFormField(
               controller: _messageCtrl,
               maxLines: 4,
               decoration: const InputDecoration(labelText: 'Message', border: OutlineInputBorder()),

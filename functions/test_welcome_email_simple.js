@@ -1,0 +1,45 @@
+const sgMail = require('@sendgrid/mail');
+
+async function testWelcomeEmail() {
+  try {
+    console.log('Testing welcome email functionality...');
+    
+    // Set SendGrid API key
+    const sendgridApiKey = "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";
+    sgMail.setApiKey(sendgridApiKey);
+    
+    // Test email data
+    const testData = {
+      firstName: 'John',
+      orgName: 'Test Restaurant',
+      email: 'conorlawless@gmail.com', // Changed to your email for testing
+      temporaryPassword: 'N/A',
+      welcomeUrl: 'https://plan-with-hands.web.app/dashboard',
+      adminEmail: 'support@planwithhands.com',
+    };
+    
+    const msg = {
+      to: testData.email,
+      from: 'noreply@em5998.planwithhands.com',
+      templateId: 'd-575968e4e0c449f59ca89c1decdc8abc',
+      dynamicTemplateData: testData,
+    };
+    
+    console.log('Sending test email to:', testData.email);
+    console.log('Using template ID:', msg.templateId);
+    console.log('Template data:', JSON.stringify(testData, null, 2));
+    
+    const result = await sgMail.send(msg);
+    console.log('✅ Welcome email sent successfully!');
+    console.log('SendGrid response status:', result[0].statusCode);
+    
+  } catch (error) {
+    console.error('❌ Failed to send welcome email:', error);
+    if (error.response) {
+      console.error('SendGrid error response:', error.response.body);
+    }
+  }
+}
+
+// Run the test
+testWelcomeEmail();

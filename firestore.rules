@@ -32,8 +32,13 @@ service cloud.firestore {
             : null);
     }
 
+    function isOrgOwner(orgId) {
+      return request.auth != null && exists(/databases/$(database)/documents/organizations/$(orgId)) 
+        && get(/databases/$(database)/documents/organizations/$(orgId)).data.createdBy == request.auth.uid;
+    }
+
     function isOrgManagerOrAdmin(orgId) {
-      return ['admin','manager'].hasAny([ roleInOrg(orgId) ]);
+      return ['admin','manager'].hasAny([ roleInOrg(orgId) ]) || isOrgOwner(orgId);
     }
 
     // Users

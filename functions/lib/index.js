@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.scheduledDailyGenerator = exports.onNotificationOutboxCreated = exports.proxyDownload = exports.proxyUpload = exports.getSignedUploadUrl = exports.placeDetailsHttp = exports.placesAutocompleteHttp = exports.createBillingPortalSession = exports.updateSubscription = exports.cancelSubscription = exports.stripeWebhook = exports.createCheckoutSession = exports.sendOrganizationSignupNotification = exports.deleteUser = exports.createUser = exports.repairTaskTitlesFromCsv = exports.repairTemplateTaskTitles = exports.migrateChecklistTemplates = exports.syncTodayOnShiftChange = exports.syncTodayOnTemplateChange = void 0;
+exports.validateCoupon = exports.getSubscriptionData = exports.createBillingPortalSessionElements = exports.cancelSubscriptionElements = exports.updateSubscriptionQuantity = exports.getStripePublishableKeyHttp = exports.getStripePublishableKey = exports.getCheckoutSessionStatus = exports.createEmbeddedCheckoutSession = exports.createSetupIntentForCustomer = exports.createSubscriptionElements = exports.ensureStripeCustomer = exports.scheduledDailyGenerator = exports.onNotificationOutboxCreated = exports.proxyDownload = exports.proxyUpload = exports.getSignedUploadUrl = exports.placeDetailsHttp = exports.placesAutocompleteHttp = exports.createBillingPortalSession = exports.updateSubscription = exports.cancelSubscription = exports.stripeWebhook = exports.createCheckoutSession = exports.sendOrganizationSignupNotification = exports.deleteUser = exports.createUser = exports.repairTaskTitlesFromCsv = exports.repairTemplateTaskTitles = exports.migrateChecklistTemplates = exports.syncTodayOnShiftChange = exports.syncTodayOnTemplateChange = void 0;
 /* eslint-disable @typescript-eslint/no-require-imports */
 const admin = __importStar(require("firebase-admin"));
 // Ensure admin is initialized (idempotent)
@@ -98,3 +98,18 @@ Object.defineProperty(exports, "onNotificationOutboxCreated", { enumerable: true
 // Export daily generator (scheduled function to create daily checklists)
 var dailyGenerator_1 = require("./dailyGenerator");
 Object.defineProperty(exports, "scheduledDailyGenerator", { enumerable: true, get: function () { return dailyGenerator_1.scheduledDailyGenerator; } });
+// Export new Payment Element Stripe functions
+var stripe_1 = require("./stripe");
+Object.defineProperty(exports, "ensureStripeCustomer", { enumerable: true, get: function () { return stripe_1.ensureStripeCustomer; } });
+Object.defineProperty(exports, "createSubscriptionElements", { enumerable: true, get: function () { return stripe_1.createSubscriptionElements; } });
+Object.defineProperty(exports, "createSetupIntentForCustomer", { enumerable: true, get: function () { return stripe_1.createSetupIntentForCustomer; } });
+Object.defineProperty(exports, "createEmbeddedCheckoutSession", { enumerable: true, get: function () { return stripe_1.createEmbeddedCheckoutSession; } });
+Object.defineProperty(exports, "getCheckoutSessionStatus", { enumerable: true, get: function () { return stripe_1.getCheckoutSessionStatus; } });
+// Expose both callable and HTTP publishable-key endpoints
+Object.defineProperty(exports, "getStripePublishableKey", { enumerable: true, get: function () { return stripe_1.getStripePublishableKey; } });
+Object.defineProperty(exports, "getStripePublishableKeyHttp", { enumerable: true, get: function () { return stripe_1.getStripePublishableKeyHttp; } });
+Object.defineProperty(exports, "updateSubscriptionQuantity", { enumerable: true, get: function () { return stripe_1.updateSubscriptionQuantity; } });
+Object.defineProperty(exports, "cancelSubscriptionElements", { enumerable: true, get: function () { return stripe_1.cancelSubscription; } });
+Object.defineProperty(exports, "createBillingPortalSessionElements", { enumerable: true, get: function () { return stripe_1.createBillingPortalSession; } });
+Object.defineProperty(exports, "getSubscriptionData", { enumerable: true, get: function () { return stripe_1.getSubscriptionData; } });
+Object.defineProperty(exports, "validateCoupon", { enumerable: true, get: function () { return stripe_1.validateCoupon; } });

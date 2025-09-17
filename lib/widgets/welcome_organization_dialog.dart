@@ -3,7 +3,9 @@ import 'package:hands_app/theme/theme.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class WelcomeOrganizationDialog extends StatelessWidget {
-  const WelcomeOrganizationDialog({super.key});
+  final VoidCallback? onProceedToLocationSetup;
+
+  const WelcomeOrganizationDialog({super.key, this.onProceedToLocationSetup});
 
   @override
   Widget build(BuildContext context) {
@@ -60,21 +62,35 @@ class WelcomeOrganizationDialog extends StatelessWidget {
             ),
             const SizedBox(height: 20),
 
+            // Help & Support Section
+            _buildSection(
+              icon: Icons.help_outline,
+              title: 'Need Help?',
+              content:
+                  'Access our FAQ and step-by-step guides by clicking the menu button (☰) in the top right corner and selecting "Help".',
+            ),
+            const SizedBox(height: 20),
+
             // Get Started Section
             _buildSection(
               icon: Icons.rocket_launch,
               title: 'Get Started',
               content:
-                  'You can now start adding locations, creating shifts, and inviting team members. Need help? Contact our support team.',
+                  'You can now start adding locations, creating shifts, and inviting team members. We\'ll guide you through setting up your first location next.',
             ),
           ],
         ),
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () {
+            Navigator.of(context).pop();
+            if (onProceedToLocationSetup != null) {
+              onProceedToLocationSetup!();
+            }
+          },
           child: Text(
-            'Got it!',
+            'Proceed and Set Up First Location',
             style: TextStyle(color: HandsColors.handsOrange, fontSize: 16, fontWeight: FontWeight.w600),
           ),
         ),

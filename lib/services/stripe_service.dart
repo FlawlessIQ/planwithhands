@@ -1,10 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/config/feature_flags.dart';
+import 'package:hands_app/services/stripe_web_helpers_stub.dart'
+    if (dart.library.html) 'package:hands_app/services/stripe_web_helpers.dart'
+    as web_helpers;
 
 class StripeService {
   // Injectable dependencies for testing
@@ -85,13 +87,72 @@ class StripeService {
     await launcher(uri, mode: LaunchMode.externalApplication);
   }
 
-  /// Set Stripe publishable key (call this at app startup)
-  static void initStripe() {
-    Stripe.publishableKey =
-        'pk_live_51QpYFkFzroJ5o7DACsVjbkUhzJ0fy8vLS2G517jlVJAwwKWtJDp0ZQAU3BY9ci5ItwPCfS1aF8dnu0zR26wAwl5R00wohDkexI';
+  /// Create subscription using Stripe Elements (embedded payment)
+  static Future<Map<String, dynamic>> createSubscriptionElements({
+    required String orgId,
+    required String priceId,
+    required int quantity,
+    required String email,
+    int? trialDays,
+    String? couponId,
+  }) async {
+    try {
+      final Map<String, dynamic> payload = {
+        'orgId': orgId,
+        'priceId': priceId,
+        'quantity': quantity,
+        'email': email,
+        if (trialDays != null) 'trialDays': trialDays,
+        if (couponId != null && couponId.isNotEmpty) 'couponId': couponId,
+      };
+      final response = await _call('createSubscriptionElements', payload);
+      return response;
+    } catch (e) {
+      debugPrint('Error creating subscription with Elements: $e');
+      rethrow;
+    }
+  }
+
+  /// WEB ONLY: Start Stripe Embedded Checkout in the same tab.
+  static Future<void> startEmbeddedCheckoutWeb({
+    required String orgId,
+    required String priceId,
+    int quantity = 1,
+    int? trialDays,
+    String? couponId,
+  }) async {
+    assert(kIsWeb, 'startEmbeddedCheckoutWeb should only be called on web');
+    // Use compile-time variable for the publishable key.
+    // This avoids the CORS issue with the Cloud Function.
+    const publishableKey = String.fromEnvironment('STRIPE_PUBLISHABLE_KEY');
+    if (publishableKey.isNotEmpty) {
+      web_helpers.setStripePkForEmbedded(publishableKey);
+    } else {
+      // It's recommended to always have a key.
+      debugPrint('[StripeService] WARNING: STRIPE_PUBLISHABLE_KEY is not set. Stripe may not work.');
+    }
+
+    final resp = await _call('createEmbeddedCheckoutSession', {
+      'orgId': orgId,
+      'priceId': priceId,
+      'quantity': quantity,
+      'returnBaseUrl': web_helpers.currentOrigin(),
+      if (couponId != null && couponId.isNotEmpty) 'couponId': couponId,
+      if (trialDays != null) 'trialDays': trialDays,
+    });
+    final clientSecret = resp['client_secret'] as String?;
+    if (clientSecret == null || clientSecret.isEmpty) {
+      throw Exception('Missing client_secret from createEmbeddedCheckoutSession');
+    }
+    if (publishableKey.isNotEmpty) {
+      web_helpers.navigateToEmbeddedCheckoutWithPk(clientSecret, publishableKey);
+    } else {
+      web_helpers.navigateToEmbeddedCheckout(clientSecret);
+    }
   }
 
   /// Start Stripe Checkout for per-location price, returning the session URL.
+  /// NOT SUPPORTED ON WEB - use createSubscriptionElements instead.
   ///
   /// Use the tiered pricing price IDs:
   /// - Monthly: kStripePriceMonthly (price_1S2zhQFzroJ5o7DAEj914UgN)
@@ -107,6 +168,10 @@ class StripeService {
     required String priceId,
     required int quantity,
   }) async {
+    if (kIsWeb) {
+      throw UnsupportedError('startCheckout is not supported on web. Use createSubscriptionElements instead.');
+    }
+
     try {
       final Map<String, dynamic> payload = {'orgId': orgId, 'email': email, 'priceId': priceId, 'quantity': quantity};
       final response = await _call('createCheckoutSession', payload);
@@ -122,6 +187,7 @@ class StripeService {
   }
 
   /// Convenience wrapper that both creates and launches the Checkout URL.
+  /// NOT SUPPORTED ON WEB - use createSubscriptionElements instead.
   ///
   /// Example usage:
   /// ```dart
@@ -138,6 +204,10 @@ class StripeService {
     required String priceId,
     required int quantity,
   }) async {
+    if (kIsWeb) {
+      throw UnsupportedError('startCheckoutAndLaunch is not supported on web. Use createSubscriptionElements instead.');
+    }
+
     final url = await startCheckout(orgId: orgId, email: email, priceId: priceId, quantity: quantity);
     await _openUrlExternal(url);
   }
@@ -228,6 +298,12 @@ class StripeService {
     required String email,
     required int employeeCount,
   }) async {
+    if (kIsWeb) {
+      throw UnsupportedError(
+        'redirectToStripeCheckout is not supported on web. Use createSubscriptionElements instead.',
+      );
+    }
+
     // Legacy method - redirects to the new per-location pricing
     debugPrint('[StripeService] WARNING: Using deprecated redirectToStripeCheckout method');
     try {
@@ -252,6 +328,72 @@ class StripeService {
       });
     } catch (e) {
       debugPrint('Error activating free tier: $e');
+      rethrow;
+    }
+  }
+
+  /// Validates a coupon code with Stripe and returns coupon details
+  static Future<Map<String, dynamic>?> validateCoupon(String couponCode) async {
+    try {
+      debugPrint('[StripeService] Validating coupon: $couponCode');
+      final result = await _call('validateCoupon', {'couponCode': couponCode.trim().toUpperCase()});
+      debugPrint('[StripeService] Coupon validation result: $result');
+
+      // Accept multiple backend response shapes: { success, coupon }, { valid, promotion }, etc.
+      final success = (result['success'] == true) || (result['valid'] == true);
+      final raw =
+          (result['coupon'] is Map)
+              ? Map<String, dynamic>.from(result['coupon'])
+              : (result['promotion'] is Map)
+              ? Map<String, dynamic>.from(result['promotion'])
+              : (result['promotionCode'] is Map)
+              ? Map<String, dynamic>.from(result['promotionCode'])
+              : (result['data'] is Map)
+              ? Map<String, dynamic>.from(result['data'])
+              : result.isNotEmpty
+              ? result
+              : null;
+
+      debugPrint('[StripeService] Success: $success, Raw data: $raw');
+
+      if (success && raw != null) {
+        // Normalize numeric fields to int to satisfy UI expectations
+        final num? percentOffNum = (raw['percent_off'] ?? raw['percentOff']) as num?;
+        final num? amountOffNum = (raw['amount_off'] ?? raw['amountOff']) as num?;
+
+        final validatedCoupon = {
+          'valid': true,
+          'id': raw['id'] ?? raw['code'],
+          'percentOff': percentOffNum?.round(),
+          'amountOff': amountOffNum?.round(),
+          'currency': raw['currency'],
+          'name': raw['name'] ?? raw['code'] ?? raw['id'],
+          'duration': raw['duration'],
+          'durationInMonths': raw['duration_in_months'] ?? raw['durationInMonths'],
+          'timesRedeemed': raw['times_redeemed'] ?? raw['timesRedeemed'],
+          'maxRedemptions': raw['max_redemptions'] ?? raw['maxRedemptions'],
+          'redeemBy': raw['redeem_by'] ?? raw['redeemBy'],
+          'isValid': raw['valid'] ?? true,
+        };
+        debugPrint('[StripeService] Returning validated coupon: $validatedCoupon');
+        return validatedCoupon;
+      }
+
+      debugPrint('[StripeService] Coupon validation failed');
+      return {'valid': false, 'error': result['error'] ?? 'Invalid coupon code'};
+    } catch (e) {
+      debugPrint('[StripeService] Error validating coupon: $e');
+      return {'valid': false, 'error': 'Failed to validate coupon. Please try again.'};
+    }
+  }
+
+  /// Get checkout session status
+  static Future<Map<String, dynamic>> getCheckoutSessionStatus(String sessionId) async {
+    try {
+      final result = await _call('getCheckoutSessionStatus', {'sessionId': sessionId});
+      return Map<String, dynamic>.from(result);
+    } catch (e) {
+      debugPrint('Error getting checkout session status: $e');
       rethrow;
     }
   }

@@ -4,7 +4,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hands_app/routing/routes.dart';
-import 'package:hands_app/services/stripe_service.dart';
 import 'package:hands_app/services/pricing_service.dart';
 import 'package:hands_app/config/feature_flags.dart';
 import 'package:flutter/services.dart';
@@ -14,7 +13,8 @@ import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'dart:io';
+import 'package:hands_app/utils/app_platform.dart';
+import 'package:hands_app/widgets/hands_text_field.dart';
 
 class SimpleSignUpPage extends StatefulWidget {
   final String? email;
@@ -30,6 +30,7 @@ class SimpleSignUpPage extends StatefulWidget {
 class SimpleSignUpPageState extends State<SimpleSignUpPage> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
+  bool _hasShownWelcomePopup = false;
 
   // Define charcoal/black theme color
   static const Color primaryColor = Color(0xFF2D2D2D); // Charcoal/dark gray
@@ -132,6 +133,230 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
         _locations = (v == null || v <= 0) ? 1 : v;
       });
     });
+
+    // Show welcome popup for new organization signups (not for invited users)
+    if (widget.organizationId == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showWelcomePopup();
+      });
+    }
+  }
+
+  void _showWelcomePopup() {
+    if (_hasShownWelcomePopup) return;
+    _hasShownWelcomePopup = true;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        final screenHeight = MediaQuery.of(context).size.height;
+        final screenWidth = MediaQuery.of(context).size.width;
+        final isMobile = screenWidth < 600;
+        final isSmallScreen = screenHeight < 700;
+
+        return Dialog(
+          backgroundColor: HandsColors.cardPrimary,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          insetPadding: EdgeInsets.all(isMobile ? 16 : 40),
+          child: Container(
+            constraints: BoxConstraints(
+              maxWidth: isMobile ? double.infinity : 520,
+              maxHeight: screenHeight * (isMobile ? 0.85 : 0.9),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: SingleChildScrollView(
+                child: Container(
+                  padding: EdgeInsets.all(isMobile ? 16 : 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // Celebration header with emojis - more compact
+                      Container(
+                        padding: EdgeInsets.all(isMobile ? 12 : 16),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              HandsColors.handsOrange.withOpacity(0.1),
+                              HandsColors.handsOrange.withOpacity(0.05),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          children: [
+                            Text('🎉', style: TextStyle(fontSize: isMobile ? 24 : 28)),
+                            SizedBox(height: 4),
+                            Text(
+                              'Welcome to Hands!',
+                              style: TextStyle(
+                                fontSize: isMobile ? 18 : 22,
+                                fontWeight: FontWeight.bold,
+                                color: HandsColors.white,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'We\'re excited you\'re here! Let\'s get your team set up for success.',
+                              style: TextStyle(fontSize: isMobile ? 13 : 15, color: HandsColors.white70, height: 1.3),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(height: isMobile ? 12 : 16),
+
+                      // Quick setup guide
+                      Text(
+                        'Here\'s what happens next:',
+                        style: TextStyle(
+                          fontSize: isMobile ? 13 : 15,
+                          fontWeight: FontWeight.w600,
+                          color: HandsColors.white,
+                        ),
+                      ),
+                      SizedBox(height: isMobile ? 8 : 12),
+
+                      // Steps list with icons - very compact for mobile
+                      _buildCelebratoryStep(
+                        '📝',
+                        'Tell us about your business',
+                        isSmallScreen ? null : 'Just a few details about your company and team',
+                        isMobile: isMobile,
+                        isCompact: isSmallScreen,
+                      ),
+                      SizedBox(height: isMobile ? 6 : 10),
+                      _buildCelebratoryStep(
+                        '🔒',
+                        'Start your free 14-day trial',
+                        isSmallScreen ? null : 'Secure payment setup (card required, but no charge today!)',
+                        isMobile: isMobile,
+                        isCompact: isSmallScreen,
+                      ),
+                      SizedBox(height: isMobile ? 6 : 10),
+                      _buildCelebratoryStep(
+                        '⚡',
+                        'Jump right in',
+                        isSmallScreen ? null : 'Add your shifts, create checklists, and invite your team',
+                        isMobile: isMobile,
+                        isCompact: isSmallScreen,
+                      ),
+                      SizedBox(height: isMobile ? 6 : 10),
+                      _buildCelebratoryStep(
+                        '🚀',
+                        'Watch your team thrive',
+                        isSmallScreen ? null : 'Better communication, streamlined tasks, happier staff',
+                        isMobile: isMobile,
+                        isCompact: isSmallScreen,
+                      ),
+                      SizedBox(height: isMobile ? 12 : 20),
+
+                      // Encouraging note - only show on larger screens
+                      if (!isSmallScreen && !isMobile) ...[
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: HandsColors.sageGreen.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: HandsColors.sageGreen.withOpacity(0.3), width: 1),
+                          ),
+                          child: Row(
+                            children: [
+                              Text('💡', style: TextStyle(fontSize: 16)),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Cancel anytime during your trial. No commitments, no hassle!',
+                                  style: TextStyle(
+                                    color: HandsColors.sageGreen,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+
+                      // Action button with enthusiasm
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: HandsColors.handsOrange,
+                            foregroundColor: HandsColors.white,
+                            padding: EdgeInsets.symmetric(vertical: isMobile ? 12 : 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            elevation: 2,
+                          ),
+                          child: Text(
+                            'Let\'s get started! 🎯',
+                            style: TextStyle(fontSize: isMobile ? 14 : 16, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildCelebratoryStep(
+    String emoji,
+    String title,
+    String? description, {
+    required bool isMobile,
+    bool isCompact = false,
+  }) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 10 : 12, vertical: isMobile ? 8 : 10),
+      decoration: BoxDecoration(
+        color: HandsColors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: HandsColors.white.withOpacity(0.1), width: 1),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(emoji, style: TextStyle(fontSize: isMobile ? 14 : 16)),
+          SizedBox(width: isMobile ? 8 : 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(color: HandsColors.white, fontSize: isMobile ? 12 : 14, fontWeight: FontWeight.w600),
+                ),
+                if (description != null && !isCompact) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    description,
+                    style: TextStyle(color: HandsColors.white70, fontSize: isMobile ? 10 : 11, height: 1.2),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -316,7 +541,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Account created successfully! Redirecting to Stripe...'),
+            content: Text('Account created successfully! Setting up payment...'),
             backgroundColor: Colors.green,
           ),
         );
@@ -329,13 +554,13 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
         return;
       }
 
-      // Proceed to Stripe Checkout: per-location pricing and billing period
-      await StripeService.startCheckoutAndLaunch(
-        orgId: orgId,
-        email: emailController.text.trim(),
-        priceId: _isAnnual ? kStripePriceAnnual : kStripePriceMonthly,
-        quantity: _locations,
-      );
+      // Navigate to embedded payment page instead of old redirect method
+      if (mounted) {
+        final priceId = _isAnnual ? kStripePriceAnnual : kStripePriceMonthly;
+        context.go(
+          '/embedded-payment?orgId=$orgId&priceId=$priceId&quantity=$_locations&email=${emailController.text.trim()}&setup=true',
+        );
+      }
     } catch (e) {
       logger.e('Error in _createNewOrganization: $e', e);
       rethrow;
@@ -348,7 +573,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
 
     // iOS platform check: Prevent account creation for Apple Store compliance
     // Apple doesn't allow Stripe checkout for new account signups on iOS apps
-    if (!kIsWeb && Platform.isIOS && !isInvitedUser) {
+    if (!kIsWeb && isIOS && !isInvitedUser) {
       return Scaffold(
         appBar: AppBar(
           backgroundColor: HandsColors.cardPrimary,
@@ -444,7 +669,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                     ),
                     const SizedBox(height: 12),
                     const Text(
-                      '✓ Task management\n✓ Time tracking\n✓ Team communication\n✓ Shift planning',
+                      '✓ Digital task management\n✓ Real-time team messaging\n✓ Streamlined operations\n✓ Boost productivity & profit',
                       style: TextStyle(fontSize: 14, color: Colors.white),
                     ),
                   ],
@@ -480,18 +705,18 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                 children: [
                   // Show organization-related fields only for new org sign-up
                   if (!isInvitedUser) ...[
-                    TextFormField(
+                    HandsTextFormField(
                       controller: businessNameController,
                       decoration: const InputDecoration(labelText: 'Business/LLC Name', border: OutlineInputBorder()),
-                      textCapitalization: TextCapitalization.words,
                       validator: (v) => (v?.isEmpty ?? true) ? 'Enter business name' : null,
                     ),
                     const SizedBox(height: 16),
 
                     // Approx. Employees (optional)
-                    TextFormField(
+                    HandsTextFormField(
                       controller: numberOfEmployeesController,
                       keyboardType: TextInputType.number,
+                      textCapitalization: TextCapitalization.none, // Numbers don't need capitalization
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       decoration: const InputDecoration(labelText: 'Approx. Employees', border: OutlineInputBorder()),
                       onChanged: (v) {
@@ -501,9 +726,10 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                     const SizedBox(height: 16),
 
                     // Number of Locations (required, min 1)
-                    TextFormField(
+                    HandsTextFormField(
                       controller: _locCtrl,
                       keyboardType: TextInputType.number,
+                      textCapitalization: TextCapitalization.none, // Numbers don't need capitalization
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       decoration: const InputDecoration(labelText: 'Locations', border: OutlineInputBorder()),
                       onChanged: (value) {
@@ -620,19 +846,17 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                   Row(
                     children: [
                       Expanded(
-                        child: TextFormField(
+                        child: HandsTextFormField(
                           controller: firstNameController,
                           decoration: const InputDecoration(labelText: 'First Name', border: OutlineInputBorder()),
-                          textCapitalization: TextCapitalization.words,
                           validator: (v) => (v?.isEmpty ?? true) ? 'Enter first name' : null,
                         ),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
-                        child: TextFormField(
+                        child: HandsTextFormField(
                           controller: lastNameController,
                           decoration: const InputDecoration(labelText: 'Last Name', border: OutlineInputBorder()),
-                          textCapitalization: TextCapitalization.words,
                           validator: (v) => (v?.isEmpty ?? true) ? 'Enter last name' : null,
                         ),
                       ),
@@ -640,7 +864,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                   ),
                   const SizedBox(height: 16),
 
-                  TextFormField(
+                  HandsTextFormField(
                     controller: emailController,
                     decoration: const InputDecoration(labelText: 'Email Address', border: OutlineInputBorder()),
                     keyboardType: TextInputType.emailAddress,
@@ -669,8 +893,9 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                     const SizedBox(height: 16),
                   ],
 
-                  TextFormField(
+                  HandsTextFormField(
                     controller: passwordController,
+                    textCapitalization: TextCapitalization.none, // Passwords don't need capitalization
                     decoration: InputDecoration(
                       labelText: 'Password',
                       border: const OutlineInputBorder(),
@@ -690,8 +915,9 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                   ),
                   const SizedBox(height: 16),
 
-                  TextFormField(
+                  HandsTextFormField(
                     controller: confirmPasswordController,
+                    textCapitalization: TextCapitalization.none, // Passwords don't need capitalization
                     decoration: const InputDecoration(labelText: 'Confirm Password', border: OutlineInputBorder()),
                     obscureText: true,
                     validator: (v) {

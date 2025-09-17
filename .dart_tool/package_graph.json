@@ -24,6 +24,7 @@
         "flutter_pdfview",
         "flutter_riverpod",
         "flutter_stripe",
+        "flutter_stripe_web",
         "flutter_web_plugins",
         "freezed_annotation",
         "go_router",
@@ -226,6 +227,18 @@
         "permission_handler_html",
         "permission_handler_platform_interface",
         "permission_handler_windows"
+      ]
+    },
+    {
+      "name": "flutter_stripe_web",
+      "version": "6.5.1",
+      "dependencies": [
+        "flutter",
+        "flutter_web_plugins",
+        "freezed_annotation",
+        "stripe_js",
+        "stripe_platform_interface",
+        "web"
       ]
     },
     {
@@ -1155,6 +1168,16 @@
       "dependencies": [
         "flutter",
         "permission_handler_platform_interface"
+      ]
+    },
+    {
+      "name": "stripe_js",
+      "version": "6.4.0",
+      "dependencies": [
+        "freezed_annotation",
+        "json_annotation",
+        "meta",
+        "web"
       ]
     },
     {

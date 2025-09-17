@@ -9,6 +9,7 @@ import 'package:hands_app/utils/jobtype_helper.dart';
 import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:hands_app/widgets/hands_text_field.dart';
 
 class WelcomePage extends ConsumerStatefulWidget {
   final String? email;
@@ -505,7 +506,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                         const SizedBox(height: 16),
 
                         // Temporary password field
-                        TextFormField(
+                        HandsTextFormField(
                           controller: _tempPasswordController,
                           obscureText: _obscureTempPassword,
                           style: const TextStyle(color: HandsColors.white),
@@ -550,7 +551,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                         const SizedBox(height: 16),
 
                         // New password field
-                        TextFormField(
+                        HandsTextFormField(
                           controller: _passwordController,
                           obscureText: _obscurePassword,
                           style: const TextStyle(color: HandsColors.white),
@@ -598,7 +599,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                         const SizedBox(height: 16),
 
                         // Confirm password field
-                        TextFormField(
+                        HandsTextFormField(
                           controller: _confirmPasswordController,
                           obscureText: _obscureConfirmPassword,
                           style: const TextStyle(color: HandsColors.white),

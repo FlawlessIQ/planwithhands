@@ -11,6 +11,7 @@ import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/utils/firestore_ttl_helper.dart';
 import 'package:hands_app/utils/jobtype_helper.dart';
 import 'package:hands_app/core/logging/logger.dart';
+import 'package:hands_app/widgets/hands_text_field.dart';
 
 /// Dialog for managing job types with full CRUD functionality.
 class JobTypeManagementDialog extends StatefulWidget {
@@ -121,7 +122,7 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
       builder:
           (context) => AlertDialog(
             title: const Text('Edit Job Type'),
-            content: TextFormField(
+            content: HandsTextFormField(
               controller: _editJobTypeController,
               decoration: const InputDecoration(labelText: 'Job Type Name', border: OutlineInputBorder()),
               autofocus: true,
@@ -247,7 +248,7 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
                     Row(
                       children: [
                         Expanded(
-                          child: TextFormField(
+                          child: HandsTextFormField(
                             controller: _newJobTypeController,
                             decoration: const InputDecoration(
                               labelText: 'Job Type Name',
@@ -470,14 +471,13 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                 const SizedBox(height: 24),
 
                 // First Name
-                TextFormField(
+                HandsTextFormField(
                   controller: firstNameController,
                   decoration: const InputDecoration(
                     labelText: 'First Name',
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.person_outline),
                   ),
-                  textCapitalization: TextCapitalization.words,
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
                       return 'Please enter first name';
@@ -488,7 +488,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                 const SizedBox(height: 16),
 
                 // Last Name
-                TextFormField(
+                HandsTextFormField(
                   controller: lastNameController,
                   decoration: const InputDecoration(
                     labelText: 'Last Name',
@@ -506,7 +506,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                 const SizedBox(height: 16),
 
                 // Email
-                TextFormField(
+                HandsTextFormField(
                   controller: emailController,
                   decoration: const InputDecoration(
                     labelText: 'Email Address',

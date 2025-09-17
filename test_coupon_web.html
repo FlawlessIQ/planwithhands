@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Coupon Validation</title>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-functions.js"></script>
+</head>
+<body>
+    <h1>Coupon Validation Test</h1>
+    <input type="text" id="couponInput" placeholder="Enter coupon code" value="TEST10">
+    <button onclick="testCoupon()">Test Coupon</button>
+    <div id="result"></div>
+
+    <script>
+        // Initialize Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyAXlJw4FIK-L90ciE8lkBEouIcg6ylwdcg",
+            authDomain: "plan-with-hands.firebaseapp.com",
+            projectId: "plan-with-hands",
+            storageBucket: "plan-with-hands.appspot.com",
+            messagingSenderId: "948527720669",
+            appId: "1:948527720669:web:6c46317a79c64ea0ba9334"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const functions = firebase.functions();
+
+        async function testCoupon() {
+            const couponCode = document.getElementById('couponInput').value;
+            const resultDiv = document.getElementById('result');
+            
+            resultDiv.innerHTML = 'Testing coupon: ' + couponCode + '...';
+            
+            try {
+                const validateCoupon = functions.httpsCallable('validateCoupon');
+                const result = await validateCoupon({ couponCode: couponCode });
+                
+                resultDiv.innerHTML = '<pre>' + JSON.stringify(result.data, null, 2) + '</pre>';
+            } catch (error) {
+                resultDiv.innerHTML = 'Error: ' + error.message + '<br><pre>' + JSON.stringify(error, null, 2) + '</pre>';
+            }
+        }
+
+        // Test on page load
+        window.onload = function() {
+            testCoupon();
+        }
+    </script>
+</body>
+</html>

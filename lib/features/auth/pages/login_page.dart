@@ -12,7 +12,8 @@ import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/global_widgets/hands_icon.dart';
 import 'package:hands_app/state/user_state.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
-import 'package:hands_app/core/platform_ios.dart';
+import 'package:hands_app/utils/app_platform.dart';
+import 'package:hands_app/widgets/hands_text_field.dart';
 
 class LoginPage extends HookConsumerWidget {
   const LoginPage({super.key});
@@ -401,7 +402,7 @@ class LoginPage extends HookConsumerWidget {
                         child: Column(
                           children: [
                             // Email Field
-                            TextFormField(
+                            HandsTextFormField(
                               controller: emailController,
                               decoration: InputDecoration(
                                 hintText: 'Email',
@@ -437,7 +438,6 @@ class LoginPage extends HookConsumerWidget {
                               ),
                               keyboardType: TextInputType.emailAddress,
                               textInputAction: TextInputAction.next,
-                              autofillHints: const [AutofillHints.email],
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
                                   return 'Please enter your email';
@@ -450,8 +450,9 @@ class LoginPage extends HookConsumerWidget {
                             ),
                             const SizedBox(height: 20),
                             // Password Field
-                            TextFormField(
+                            HandsTextFormField(
                               controller: passwordController,
+                              textCapitalization: TextCapitalization.none, // Passwords don't need capitalization
                               decoration: InputDecoration(
                                 hintText: 'Password',
                                 prefixIcon: Icon(Icons.lock_outlined, color: HandsColors.white70),
@@ -496,7 +497,6 @@ class LoginPage extends HookConsumerWidget {
                               ),
                               obscureText: !isPasswordVisible.value,
                               textInputAction: TextInputAction.done,
-                              autofillHints: const [AutofillHints.password],
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
                                   return 'Please enter your password';

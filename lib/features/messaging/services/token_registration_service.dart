@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'package:hands_app/utils/app_platform.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -15,14 +15,7 @@ class TokenRegistrationService {
       await FirestoreEnforcer.instance.collection('users').doc(userId).collection('deviceTokens').doc(tokenHash).set({
         'fcmToken': token,
         'isActive': true,
-        'platform':
-            kIsWeb
-                ? 'web'
-                : Platform.isIOS
-                ? 'ios'
-                : Platform.isAndroid
-                ? 'android'
-                : 'other',
+        'platform': kIsWeb ? 'web' : (isIOS ? 'ios' : (isAndroid ? 'android' : 'other')),
         'updatedAt': FieldValue.serverTimestamp(),
         // TTL: Automatically expires after 30 days for cleanup.
         // Configure TTL policy in Firebase Console → Firestore → TTL to use this field.
