@@ -64,7 +64,7 @@ export const ensureStripeCustomer = addCallable<
 
 export const createSubscriptionElements = addCallable<
   {orgId: string; priceId: string; email: string; quantity?: number; trialDays?: number; couponId?: string},
-  {subscriptionId: string; clientSecret: string | null}
+  {subscriptionId: string; clientSecret: string | null; setupClientSecret?: string}
 >("createSubscriptionElements", async (data) => {
   const {orgId, priceId, email, quantity = 1, trialDays, couponId} = data;
   if (!orgId || !priceId || !email) {
@@ -89,6 +89,23 @@ export const createSubscriptionElements = addCallable<
   // When a free trial is applied or the first invoice totals $0, Stripe may not create a PaymentIntent.
   // In that case we return the subscription id and a null clientSecret so the client can treat it as success.
   const clientSecret: string | null = paymentIntent?.client_secret || null;
+  
+  // For free trials or when no payment is required, create a SetupIntent to save payment method
+  let setupClientSecret: string | undefined;
+  if (!clientSecret) {
+    try {
+      const setupIntent = await stripe.setupIntents.create({
+        customer: customerId,
+        usage: "off_session",
+        payment_method_types: ["card"],
+        metadata: {orgId, subscriptionId: subscription.id},
+      });
+      setupClientSecret = setupIntent.client_secret || undefined;
+    } catch (setupErr) {
+      console.warn('[createSubscriptionElements] Failed to create SetupIntent for payment method saving:', setupErr);
+    }
+  }
+  
   // Persist subscription status immediately so the app can react without waiting for webhooks
   try {
     const subStatus = subscription.status; // e.g., 'trialing', 'active', 'incomplete'
@@ -116,6 +133,7 @@ export const createSubscriptionElements = addCallable<
   return {
     subscriptionId: subscription.id,
     clientSecret,
+    setupClientSecret,
   };
 });
 
@@ -134,6 +152,7 @@ export const createSetupIntentForCustomer = addCallable<
   const setupIntent = await stripe.setupIntents.create({
     customer: customerId,
     usage: "off_session",
+    payment_method_types: ["card"],
   });
   if (!setupIntent.client_secret) {
     throw new functions.https.HttpsError("internal", "Failed to create setup intent");
@@ -184,6 +203,9 @@ export const createEmbeddedCheckoutSession = addCallable<
         trial_period_days: trialDays || undefined,
         metadata: { orgId },
       },
+      payment_method_types: ["card"],
+      // Ensure payment method is collected even if first invoice is $0 (trial)
+      payment_method_collection: 'always',
       return_url: `${APP_BASE_URL}/#/billing/checkout-complete?session_id={CHECKOUT_SESSION_ID}`,
       automatic_tax: { enabled: true },
     };
@@ -318,9 +340,14 @@ export const createBillingPortalSession = addCallable<
   const orgDoc = await orgRef.get();
   const email = (orgDoc.exists ? (orgDoc.data()?.email as string | undefined) : undefined) || "";
   const customerId = await ensureCustomer(orgId, email);
+  // Prefer configured base URL to ensure we land back in the correct environment
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const appBaseCfg = (functions.config() as any)?.app?.base_url as string | undefined;
+  const appBaseEnv = process.env.APP_BASE_URL;
+  const returnBase = appBaseEnv || appBaseCfg || "https://plan-with-hands.web.app";
   const portalSession = await stripe.billingPortal.sessions.create({
     customer: customerId,
-    return_url: "https://plan-with-hands.web.app/settings",
+    return_url: `${returnBase}/#/settings`,
   });
   return {url: portalSession.url};
 });
@@ -370,6 +397,61 @@ export const getSubscriptionData = addCallable<
     }
   }
   return result;
+});
+
+// Admin/backfill: Force Stripe subscription quantity to match intended location count
+export const backfillSubscriptionQuantityForOrg = addCallable<
+  { orgId: string },
+  { updated: boolean; before?: number; after?: number; subscriptionId?: string }
+>("backfillSubscriptionQuantityForOrg", async (data) => {
+  const { orgId } = data;
+  if (!orgId) {
+    throw new functions.https.HttpsError("invalid-argument", "orgId is required");
+  }
+
+  const orgRef = db.collection("organizations").doc(orgId);
+  const orgDoc = await orgRef.get();
+  if (!orgDoc.exists) {
+    throw new functions.https.HttpsError("not-found", `Organization ${orgId} not found`);
+  }
+
+  const subDoc = await orgRef.collection("stripe").doc("subscription").get();
+  if (!subDoc.exists || !subDoc.data()?.subscriptionId) {
+    return { updated: false };
+  }
+
+  const subscriptionId = subDoc.data()!.subscriptionId as string;
+
+  // Determine intended quantity: prefer intendedLocationQuantity, fallback to current locations count, default 1
+  let intendedQty = (orgDoc.data()?.intendedLocationQuantity as number) || 0;
+  if (!intendedQty || intendedQty <= 0) {
+    const locSnap = await orgRef.collection("locations").get();
+    intendedQty = locSnap.size > 0 ? locSnap.size : 1;
+  }
+
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const item = subscription.items.data[0];
+  const beforeQty = (item?.quantity as number | undefined) || 1;
+  if (beforeQty === intendedQty) {
+    // Still write back to Firestore if missing
+    await orgRef.collection("stripe").doc("subscription").set({ quantity: intendedQty }, { merge: true });
+    return { updated: false, before: beforeQty, after: intendedQty, subscriptionId };
+  }
+
+  const updated = await stripe.subscriptions.update(subscriptionId, {
+    items: [{ id: item!.id, quantity: intendedQty }],
+  });
+
+  await orgRef.collection("stripe").doc("subscription").set(
+    {
+      quantity: intendedQty,
+      status: updated.status,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  return { updated: true, before: beforeQty, after: intendedQty, subscriptionId };
 });
 
 export const validateCoupon = addCallable<

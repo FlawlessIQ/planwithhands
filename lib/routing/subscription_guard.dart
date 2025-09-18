@@ -123,13 +123,56 @@ class SubscriptionGuard extends ConsumerWidget {
     );
   }
 
+  /// Helper method to get the appropriate quantity for payment redirect
+  static Future<int> _getQuantityForPayment(String orgId) async {
+    try {
+      // First try to get the organization document to check for intended quantity
+      final orgDoc = await FirestoreEnforcer.instance.collection('organizations').doc(orgId).get();
+
+      if (orgDoc.exists) {
+        final orgData = orgDoc.data();
+        final intendedQuantity = orgData?['intendedLocationQuantity'] as int?;
+
+        if (intendedQuantity != null && intendedQuantity > 0) {
+          logger.d('[SubscriptionGuard] Using intended location quantity: $intendedQuantity');
+          return intendedQuantity;
+        }
+      }
+
+      // Fallback to counting existing locations for existing organizations
+      final locationQuery =
+          await FirestoreEnforcer.instance.collection('organizations').doc(orgId).collection('locations').get();
+
+      final locationCount = locationQuery.size;
+      final quantity = locationCount > 0 ? locationCount : 1;
+
+      logger.d('[SubscriptionGuard] No intended quantity found, using location count: $quantity');
+      return quantity;
+    } catch (e) {
+      logger.e('[SubscriptionGuard] Error getting quantity for payment: $e');
+      return 1; // Safe fallback
+    }
+  }
+
   Widget _buildPaymentRedirect({required String orgId, required String email}) {
-    return EmbeddedPaymentPage(
-      orgId: orgId,
-      email: email,
-      priceIdMonthly: kStripePriceMonthly,
-      priceIdAnnual: kStripePriceAnnual,
-      quantity: 1,
+    return FutureBuilder<int>(
+      future: SubscriptionGuard._getQuantityForPayment(orgId),
+      builder: (context, quantitySnap) {
+        if (quantitySnap.connectionState != ConnectionState.done) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+
+        final quantity = quantitySnap.data ?? 1;
+        logger.d('[SubscriptionGuard] Using quantity: $quantity');
+
+        return EmbeddedPaymentPage(
+          orgId: orgId,
+          email: email,
+          priceIdMonthly: kStripePriceMonthly,
+          priceIdAnnual: kStripePriceAnnual,
+          quantity: quantity,
+        );
+      },
     );
   }
 }
@@ -215,9 +258,12 @@ class SubscriptionGuardWithContext extends ConsumerWidget {
 
                 // If subscription document doesn't exist, redirect to payment
                 if (!subSnap.hasData || !(subSnap.data?.exists ?? false)) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                  // Get appropriate quantity before redirecting
+                  SubscriptionGuard._getQuantityForPayment(orgId).then((quantity) {
                     if (context.mounted) {
-                      context.go('${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=1');
+                      context.go(
+                        '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=$quantity',
+                      );
                     }
                   });
                   return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -225,9 +271,12 @@ class SubscriptionGuardWithContext extends ConsumerWidget {
 
                 final subscriptionData = subSnap.data?.data() as Map<String, dynamic>?;
                 if (subscriptionData == null) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                  // Get appropriate quantity before redirecting
+                  SubscriptionGuard._getQuantityForPayment(orgId).then((quantity) {
                     if (context.mounted) {
-                      context.go('${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=1');
+                      context.go(
+                        '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=$quantity',
+                      );
                     }
                   });
                   return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -238,9 +287,12 @@ class SubscriptionGuardWithContext extends ConsumerWidget {
                 // Check if subscription is active, trialing, or trial
                 final validStatuses = ['active', 'trialing', 'trial'];
                 if (status == null || !validStatuses.contains(status)) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                  // Get appropriate quantity before redirecting
+                  SubscriptionGuard._getQuantityForPayment(orgId).then((quantity) {
                     if (context.mounted) {
-                      context.go('${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=1');
+                      context.go(
+                        '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=$quantity',
+                      );
                     }
                   });
                   return const Scaffold(body: Center(child: CircularProgressIndicator()));

@@ -394,10 +394,7 @@ class LoginPage extends HookConsumerWidget {
                     padding: const EdgeInsets.all(24.0),
                     child: Form(
                       key: formKey,
-                      onChanged: () {
-                        // Force form state update
-                        formKey.currentState?.validate();
-                      },
+                      autovalidateMode: AutovalidateMode.disabled,
                       child: AutofillGroup(
                         child: Column(
                           children: [
@@ -440,9 +437,14 @@ class LoginPage extends HookConsumerWidget {
                               textInputAction: TextInputAction.next,
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
+                                  // With onUserInteraction, this will appear only after the user focuses/types
                                   return 'Please enter your email';
                                 }
-                                if (!value.contains('@') || !value.contains('.')) {
+                                final text = value.trim();
+                                // Basic, forgiving email check
+                                final hasAt = text.contains('@');
+                                final hasDot = text.contains('.');
+                                if (!hasAt || !hasDot) {
                                   return 'Please enter a valid email';
                                 }
                                 return null;

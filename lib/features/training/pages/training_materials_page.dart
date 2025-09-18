@@ -5,6 +5,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hands_app/state/user_state.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:html' as html;
 // Ensure userStateProvider is exported from user_state.dart
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
@@ -18,9 +19,7 @@ import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/global_widgets/hands_icon.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/ui/UploadDocumentBottomSheet.dart';
-import 'package:hands_app/widgets/pdf_inline_viewer.dart';
 import 'package:hands_app/services/location_selection_service.dart';
-import 'package:hands_app/global_widgets/location_selector.dart' show setCurrentLocation;
 
 class ViewDocumentsPage extends HookConsumerWidget {
   const ViewDocumentsPage({super.key});
@@ -48,10 +47,8 @@ class ViewDocumentsPage extends HookConsumerWidget {
     final organizationId = useState<String?>(null);
     final isLoadingOrgId = useState<bool>(true);
 
-    // Location selector state
-    final selectedLocationId = useState<String?>(null);
-    final selectedLocationName = useState<String>('All Locations');
-    final availableLocations = useState<List<Map<String, dynamic>>>([]);
+    // Use LocationSelectionService instead of local state
+    final currentLocationId = useValueListenable(LocationSelectionService.instance.listenable);
 
     logger.d('DEBUG: userState: $userState');
     logger.d('DEBUG: userState.userData: ${userState.userData}');
@@ -97,86 +94,6 @@ class ViewDocumentsPage extends HookConsumerWidget {
       loadOrganizationId();
       return null;
     }, [userState.userData?.organizationId]);
-
-    // Load available locations
-    useEffect(() {
-      Future<void> loadLocations() async {
-        if (organizationId.value == null) return;
-
-        try {
-          final currentUser = FirebaseAuth.instance.currentUser;
-          if (currentUser == null) return;
-
-          List<String> locationIds = [];
-
-          if (userRole == 2) {
-            // Admin - get all locations
-            final locationsSnapshot =
-                await FirestoreEnforcer.instance
-                    .collection('organizations')
-                    .doc(organizationId.value!)
-                    .collection('locations')
-                    .get();
-            locationIds = locationsSnapshot.docs.map((doc) => doc.id).toList();
-          } else {
-            // Non-admin users: get assigned locations from user document
-            final userDoc = await FirestoreEnforcer.instance.collection('users').doc(currentUser.uid).get();
-
-            if (userDoc.exists) {
-              final userData = userDoc.data()!;
-              if (userData['locationIds'] != null) {
-                locationIds = List<String>.from(userData['locationIds']);
-              } else if (userData['locationId'] != null) {
-                locationIds = [userData['locationId']];
-              }
-            }
-          }
-
-          // Load location details for all locations
-          final locations = <Map<String, dynamic>>[];
-          for (final locationId in locationIds) {
-            final locationDoc =
-                await FirestoreEnforcer.instance
-                    .collection('organizations')
-                    .doc(organizationId.value!)
-                    .collection('locations')
-                    .doc(locationId)
-                    .get();
-
-            if (locationDoc.exists) {
-              final data = locationDoc.data()!;
-              locations.add({
-                'id': locationId,
-                'name': data['locationName'] ?? 'Unnamed Location',
-                'isPrimary': data['isPrimary'] ?? false,
-              });
-            }
-          }
-
-          // Sort so primary location comes first
-          locations.sort((a, b) {
-            if (a['isPrimary'] == true && b['isPrimary'] != true) return -1;
-            if (b['isPrimary'] == true && a['isPrimary'] != true) return 1;
-            return (a['name'] as String).compareTo(b['name'] as String);
-          });
-
-          availableLocations.value = locations;
-
-          // Set initial selection to first location if available, or keep "All"
-          if (locations.isNotEmpty && selectedLocationId.value == null) {
-            selectedLocationId.value = locations.first['id'];
-            selectedLocationName.value = locations.first['name'];
-          }
-        } catch (e) {
-          logger.e('Error loading locations: $e');
-        }
-      }
-
-      if (organizationId.value != null) {
-        loadLocations();
-      }
-      return null;
-    }, [organizationId.value, userRole]);
 
     final categories = [
       'All',
@@ -249,7 +166,7 @@ class ViewDocumentsPage extends HookConsumerWidget {
           return UploadDocumentBottomSheet(
             documentId: docId,
             documentData: docData,
-            locationId: selectedLocationId.value, // Pass the selected location ID
+            locationId: currentLocationId, // Pass the current location ID from LocationSelectionService
             onDocumentUploaded: () {
               // Close the sheet from the parent on the next frame to avoid Navigator lock.
               WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -312,116 +229,7 @@ class ViewDocumentsPage extends HookConsumerWidget {
         toolbarHeight: kToolbarHeight,
         title: GenericAppBarContent(appBarTitle: 'Training Materials', userRole: userRole),
         automaticallyImplyLeading: false,
-        actions: [
-          // Only show location selector if there are multiple locations
-          if (availableLocations.value.length > 1)
-            Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: PopupMenuButton<String>(
-                onSelected: (value) async {
-                  selectedLocationId.value = value;
-                  final selected = availableLocations.value.firstWhere(
-                    (loc) => loc['id'] == value,
-                    orElse: () => <String, String>{'name': 'Unknown Location'},
-                  );
-                  selectedLocationName.value = selected['name'];
-
-                  // Persist globally so other pages adopt the change
-                  try {
-                    LocationSelectionService.instance.setLocation(value);
-                  } catch (_) {}
-
-                  // Persist to user doc so selection survives across devices
-                  try {
-                    final user = FirebaseAuth.instance.currentUser;
-                    if (user != null) {
-                      final locRef = FirestoreEnforcer.instance
-                          .collection('organizations')
-                          .doc(organizationId.value)
-                          .collection('locations')
-                          .doc(value);
-                      await setCurrentLocation(uid: user.uid, locationRef: locRef, locationName: selected['name']);
-                      logger.d('[Analytics] location_switch_selected: user=${user.uid}, location=${locRef.id}');
-                    }
-                  } catch (e) {
-                    logger.w('[TrainingMaterials] Failed to persist current location to user doc: $e');
-                  }
-                },
-                itemBuilder:
-                    (context) =>
-                        availableLocations.value.map((location) {
-                          return PopupMenuItem<String>(
-                            value: location['id'],
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.location_on,
-                                  color:
-                                      location['id'] == selectedLocationId.value
-                                          ? Theme.of(context).primaryColor
-                                          : Colors.grey[600],
-                                  size: 16,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    location['name'],
-                                    style: TextStyle(
-                                      fontWeight:
-                                          location['id'] == selectedLocationId.value
-                                              ? FontWeight.bold
-                                              : FontWeight.normal,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                if (location['id'] == selectedLocationId.value)
-                                  const Padding(padding: EdgeInsets.only(left: 8), child: Icon(Icons.check, size: 16)),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                child: Builder(
-                  builder: (context) {
-                    if (kIsWeb) {
-                      // Full web version - show location name
-                      return Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.location_on, color: Colors.white, size: 18),
-                            const SizedBox(width: 6),
-                            Text(
-                              selectedLocationName.value.isNotEmpty ? selectedLocationName.value : 'Select Location',
-                              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
-                            ),
-                            const SizedBox(width: 4),
-                            const Icon(Icons.arrow_drop_down, color: Colors.white, size: 16),
-                          ],
-                        ),
-                      );
-                    } else {
-                      // Mobile version - just location icon
-                      return Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Icon(Icons.location_on, color: Colors.white, size: 20),
-                      );
-                    }
-                  },
-                ),
-              ),
-            ),
-          UnifiedMenuButton(userRole: userRole),
-        ],
+        actions: [UnifiedMenuButton(userRole: userRole, organizationId: organizationId.value)],
       ),
       floatingActionButton:
           userRole == 2
@@ -463,7 +271,7 @@ class ViewDocumentsPage extends HookConsumerWidget {
           // Documents List
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: _getDocumentsStream(organizationId.value!, selectedCategory.value, selectedLocationId.value),
+              stream: _getDocumentsStream(organizationId.value!, selectedCategory.value, currentLocationId),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
@@ -482,7 +290,39 @@ class ViewDocumentsPage extends HookConsumerWidget {
                   return _buildEmptyState(context, userRole, showUploadSheet);
                 }
 
-                final docs = snapshotData.docs;
+                // Apply client-side location filtering
+                final allDocs = snapshotData.docs;
+
+                if (kDebugMode) {
+                  print('[TrainingMaterials] Total documents retrieved: ${allDocs.length}');
+                  print('[TrainingMaterials] Selected location ID: $currentLocationId');
+                  for (var doc in allDocs) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    print(
+                      '[TrainingMaterials] Document ${doc.id}: locationId=${data['locationId']}, title=${data['title']}',
+                    );
+                  }
+                }
+
+                final docs =
+                    allDocs.where((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final docLocationId = data['locationId'] as String?;
+                      final selectedLoc = currentLocationId;
+
+                      // If "All Locations" is selected (selectedLoc is null), show all documents
+                      if (selectedLoc == null) {
+                        return true;
+                      }
+
+                      // If a specific location is selected, only show documents for that location
+                      // Documents without a locationId are treated as unassigned and won't show unless "All" is selected
+                      return docLocationId == selectedLoc;
+                    }).toList();
+
+                if (kDebugMode) {
+                  print('[TrainingMaterials] Filtered documents: ${docs.length}');
+                }
 
                 return ListView.separated(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -575,7 +415,8 @@ class ViewDocumentsPage extends HookConsumerWidget {
                                             url: url,
                                             title: title,
                                             fileType: type,
-                                            userRole: userRole, // Pass userRole to viewer
+                                            fileName: fileName,
+                                            userRole: userRole,
                                           ),
                                     ),
                                   );
@@ -604,11 +445,8 @@ class ViewDocumentsPage extends HookConsumerWidget {
         .doc(organizationId)
         .collection('training_documents');
 
-    // Filter by location if specified
-    if (locationId != null) {
-      logger.d('DEBUG: Filtering by locationId: $locationId');
-      query = query.where('locationId', isEqualTo: locationId);
-    }
+    // Do NOT filter by location in Firestore so we can include global docs (missing/empty locationId) client-side
+    // Filtering by location here would exclude global documents from results.
 
     if (category != 'All') {
       logger.d('DEBUG: Filtering by category: $category');
@@ -699,6 +537,7 @@ class DocumentViewerPage extends HookWidget {
   final String title;
   final String fileType;
   final int userRole;
+  final String? fileName;
 
   const DocumentViewerPage({
     super.key,
@@ -706,6 +545,7 @@ class DocumentViewerPage extends HookWidget {
     required this.title,
     required this.fileType,
     required this.userRole,
+    this.fileName,
   });
 
   @override
@@ -716,28 +556,29 @@ class DocumentViewerPage extends HookWidget {
 
     Future<String?> downloadAndCacheFile() async {
       try {
-        // For web platform or any file type, just return URL directly
+        // Validate URL first
+        if (url.isEmpty) {
+          throw Exception('Document URL is empty');
+        }
+
+        final uri = Uri.tryParse(url);
+        if (uri == null) {
+          throw Exception('Invalid document URL format');
+        }
+
+        debugPrint('[DocumentViewer] Processing URL: $url');
+        debugPrint('[DocumentViewer] File type: $fileType, Platform: ${kIsWeb ? 'web' : 'mobile'}');
+
+        // For web platform, we just return the URL for direct access
         if (kIsWeb) {
           return url;
         }
 
-        // For images and videos, we can use the URL directly
-        if (fileType.toLowerCase() == 'image') {
-          return url;
-        }
-
-        // For videos, return the URL directly
-        if (fileType.toLowerCase() == 'video') {
-          return url;
-        }
-
-        // For PDFs on mobile, we'll also just use the URL for now
-        // TODO: Implement proper mobile file caching if needed
+        // For mobile platforms, return URL for native viewers
         return url;
       } catch (e) {
         debugPrint('Error in downloadAndCacheFile: $e');
-        // Fallback to direct URL
-        return url;
+        throw Exception('Failed to process document URL: ${e.toString()}');
       }
     }
 
@@ -772,6 +613,14 @@ class DocumentViewerPage extends HookWidget {
             onPressed: openInBrowser,
             tooltip: 'Open in external app',
           ),
+          IconButton(
+            icon: const Icon(Icons.download),
+            onPressed: () async {
+              final uri = Uri.parse(url);
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            },
+            tooltip: 'Download',
+          ),
         ],
       ),
       body:
@@ -796,11 +645,44 @@ class DocumentViewerPage extends HookWidget {
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
                     ),
-                    const SizedBox(height: 24),
-                    ElevatedButton.icon(
-                      onPressed: openInBrowser,
-                      icon: const Icon(Icons.open_in_browser),
-                      label: const Text('Open in Browser'),
+                    const SizedBox(height: 8),
+                    if (url.isNotEmpty) ...[
+                      Text(
+                        'URL: ${url.length > 100 ? '${url.substring(0, 100)}...' : url}',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodySmall?.copyWith(color: Colors.grey.shade500, fontFamily: 'monospace'),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    Wrap(
+                      spacing: 12,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: openInBrowser,
+                          icon: const Icon(Icons.open_in_browser),
+                          label: const Text('Test URL in Browser'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            // Retry loading
+                            isLoading.value = true;
+                            errorMessage.value = null;
+                            downloadAndCacheFile()
+                                .then((path) {
+                                  localPath.value = path;
+                                  isLoading.value = false;
+                                })
+                                .catchError((error) {
+                                  errorMessage.value = error.toString();
+                                  isLoading.value = false;
+                                });
+                          },
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Retry'),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -816,8 +698,16 @@ class DocumentViewerPage extends HookWidget {
       return const Center(child: Text('No document path available'));
     }
 
-    switch (fileType.toLowerCase()) {
+    final lowerType = fileType.toLowerCase();
+    final ext = _inferExtension();
+    final isPdf = ext == 'pdf';
+    final isDoc = ext == 'doc' || ext == 'docx';
+    debugPrint('[DocumentViewer] type=$lowerType, ext=$ext, isWeb=$kIsWeb, isDoc=$isDoc, isPdf=$isPdf');
+    switch (lowerType) {
       case 'document':
+        if (kIsWeb && isDoc) {
+          return _buildOfficeDocViewerWeb(context, path);
+        }
         return _buildPDFViewer(context, path);
       case 'image':
         return _buildImageViewer(path);
@@ -828,29 +718,147 @@ class DocumentViewerPage extends HookWidget {
     }
   }
 
+  String _inferExtension() {
+    // Prefer explicit fileName when present
+    if ((fileName != null) && fileName!.contains('.')) {
+      final parts = fileName!.split('.');
+      return parts.isNotEmpty ? parts.last.toLowerCase() : '';
+    }
+    // Fallback: try to parse from URL path (Firebase Storage keeps original name in path)
+    try {
+      final uri = Uri.parse(url);
+      if (uri.pathSegments.isNotEmpty) {
+        final lastSeg = Uri.decodeComponent(uri.pathSegments.last);
+        if (lastSeg.contains('.')) {
+          return lastSeg.split('.').last.toLowerCase();
+        }
+      }
+    } catch (_) {}
+    return '';
+  }
+
   Widget _buildPDFViewer(BuildContext context, String path) {
-    // Use inline viewer on web; fallback to native PDFView elsewhere.
+    // For web, use a direct access approach instead of iframe
     if (kIsWeb) {
       return Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           children: [
-            Expanded(child: PdfInlineViewer(url: path)),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    final uri = Uri.parse(path);
-                    if (await canLaunchUrl(uri)) {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
-                    }
-                  },
-                  icon: const Icon(Icons.open_in_new),
-                  label: const Text('Open in New Tab'),
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade300),
                 ),
-              ],
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Document icon
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(color: Colors.red.shade100, borderRadius: BorderRadius.circular(50)),
+                      child: Icon(Icons.picture_as_pdf, size: 80, color: Colors.red.shade600),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Document title
+                    Text(
+                      'PDF Document',
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Info text
+                    Text(
+                      'Click below to view or download this document',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 32),
+
+                    // Action buttons
+                    Column(
+                      children: [
+                        // Primary action - View in new tab
+                        SizedBox(
+                          width: 250,
+                          child: ElevatedButton.icon(
+                            onPressed: () async {
+                              final uri = Uri.parse(path);
+                              if (await canLaunchUrl(uri)) {
+                                await launchUrl(uri, mode: LaunchMode.externalApplication);
+                              }
+                            },
+                            icon: const Icon(Icons.open_in_new, size: 20),
+                            label: const Text('View Document'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Theme.of(context).primaryColor,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Secondary actions
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: () => _copyUrlToClipboard(context, path),
+                              icon: const Icon(Icons.copy, size: 18),
+                              label: const Text('Copy Link'),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            OutlinedButton.icon(
+                              onPressed: () async {
+                                final uri = Uri.parse(path);
+                                if (await canLaunchUrl(uri)) {
+                                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                }
+                              },
+                              icon: const Icon(Icons.download, size: 18),
+                              label: const Text('Download'),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+
+                    // Technical info for troubleshooting
+                    const SizedBox(height: 32),
+                    ExpansionTile(
+                      title: const Text('Technical Information', style: TextStyle(fontSize: 14)),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Document URL:', style: TextStyle(fontWeight: FontWeight.bold)),
+                              const SizedBox(height: 4),
+                              SelectableText(path, style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'Note: Documents open in a new tab due to browser security policies.',
+                                style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),
@@ -876,6 +884,132 @@ class DocumentViewerPage extends HookWidget {
       onPageError: (page, error) {
         debugPrint('PDF page $page error: $error');
       },
+    );
+  }
+
+  Widget _buildOfficeDocViewerWeb(BuildContext context, String path) {
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        children: [
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Document icon
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(color: Colors.blue.shade100, borderRadius: BorderRadius.circular(50)),
+                    child: Icon(Icons.description, size: 80, color: Colors.blue.shade600),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Document title
+                  Text(
+                    'Office Document',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Info text
+                  Text(
+                    'Click below to view or download this document',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 32),
+
+                  // Action buttons
+                  Column(
+                    children: [
+                      // Primary action - View in new tab
+                      SizedBox(
+                        width: 250,
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            final uri = Uri.parse(path);
+                            if (await canLaunchUrl(uri)) {
+                              await launchUrl(uri, mode: LaunchMode.externalApplication);
+                            }
+                          },
+                          icon: const Icon(Icons.open_in_new, size: 20),
+                          label: const Text('View Document'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Theme.of(context).primaryColor,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Secondary actions
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () => _copyUrlToClipboard(context, path),
+                            icon: const Icon(Icons.copy, size: 18),
+                            label: const Text('Copy Link'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          OutlinedButton.icon(
+                            onPressed: () async {
+                              final uri = Uri.parse(path);
+                              if (await canLaunchUrl(uri)) {
+                                await launchUrl(uri, mode: LaunchMode.externalApplication);
+                              }
+                            },
+                            icon: const Icon(Icons.download, size: 18),
+                            label: const Text('Download'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+
+                  // Technical info for troubleshooting
+                  const SizedBox(height: 32),
+                  ExpansionTile(
+                    title: const Text('Technical Information', style: TextStyle(fontSize: 14)),
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Document URL:', style: TextStyle(fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 4),
+                            SelectableText(path, style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Note: Documents open in a new tab due to browser security policies.',
+                              style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -952,6 +1086,22 @@ class DocumentViewerPage extends HookWidget {
             ),
           ),
     );
+  }
+
+  void _copyUrlToClipboard(BuildContext context, String url) async {
+    try {
+      // Use the Clipboard API on web
+      if (kIsWeb) {
+        await html.window.navigator.clipboard?.writeText(url);
+      }
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('URL copied to clipboard')));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to copy URL')));
+      }
+    }
   }
 }
 

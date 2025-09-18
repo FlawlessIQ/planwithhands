@@ -57,7 +57,7 @@ class _DailySummaryDebugWidgetState extends State<DailySummaryDebugWidget> {
 
     try {
       logger.d('[DailySummaryDebug] Triggering daily summary for org: $_currentOrgId');
-      
+
       await DailyBackgroundService.instance.triggerDailySummaryForTesting(
         organizationId: _currentOrgId!,
         targetDate: targetDate,
@@ -93,28 +93,31 @@ class _DailySummaryDebugWidgetState extends State<DailySummaryDebugWidget> {
 
     try {
       final today = DateTime.now();
-      final dateStr = '${today.year.toString().padLeft(4, '0')}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-      
+      final dateStr =
+          '${today.year.toString().padLeft(4, '0')}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+
       // Check if summary was sent today
-      final logDoc = await _firestore
-          .collection('organizations')
-          .doc(_currentOrgId!)
-          .collection('daily_summary_logs')
-          .doc(dateStr)
-          .get();
+      final logDoc =
+          await _firestore
+              .collection('organizations')
+              .doc(_currentOrgId!)
+              .collection('daily_summary_logs')
+              .doc(dateStr)
+              .get();
 
       final wasSeentToday = logDoc.exists;
       final sentAt = logDoc.exists ? (logDoc.data()?['sentAt'] as Timestamp?) : null;
 
       // Check recent notifications
-      final notificationsQuery = await _firestore
-          .collection('userNotifications')
-          .doc(FirebaseAuth.instance.currentUser!.uid)
-          .collection('notifications')
-          .where('type', isEqualTo: 'daily_summary')
-          .orderBy('createdAt', descending: true)
-          .limit(5)
-          .get();
+      final notificationsQuery =
+          await _firestore
+              .collection('userNotifications')
+              .doc(FirebaseAuth.instance.currentUser!.uid)
+              .collection('notifications')
+              .where('type', isEqualTo: 'daily_summary')
+              .orderBy('createdAt', descending: true)
+              .limit(5)
+              .get();
 
       final recentNotifications = notificationsQuery.docs.length;
 
@@ -129,7 +132,6 @@ ${sentAt != null ? '- Sent at: ${sentAt.toDate()}' : ''}
         ''';
         _isLoading = false;
       });
-
     } catch (e, stackTrace) {
       logger.e('[DailySummaryDebug] Error checking summary status', e, stackTrace);
       setState(() {
@@ -148,12 +150,9 @@ ${sentAt != null ? '- Sent at: ${sentAt.toDate()}' : ''}
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Daily Summary Debug',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
+            const Text('Daily Summary Debug', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
-            
+
             if (_currentOrgId != null) ...[
               Text('Organization ID: $_currentOrgId'),
               const SizedBox(height: 16),
@@ -165,50 +164,47 @@ ${sentAt != null ? '- Sent at: ${sentAt.toDate()}' : ''}
             Row(
               children: [
                 ElevatedButton(
-                  onPressed: _isLoading || _currentOrgId == null 
-                      ? null 
-                      : () => _triggerDailySummary(),
+                  onPressed: _isLoading || _currentOrgId == null ? null : () => _triggerDailySummary(),
                   child: const Text('Trigger Today\'s Summary'),
                 ),
                 const SizedBox(width: 8),
                 ElevatedButton(
-                  onPressed: _isLoading || _currentOrgId == null 
-                      ? null 
-                      : () => _triggerDailySummary(targetDate: DateTime.now().subtract(const Duration(days: 1))),
+                  onPressed:
+                      _isLoading || _currentOrgId == null
+                          ? null
+                          : () => _triggerDailySummary(targetDate: DateTime.now().subtract(const Duration(days: 1))),
                   child: const Text('Trigger Yesterday\'s Summary'),
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 8),
-            
+
             ElevatedButton(
-              onPressed: _isLoading || _currentOrgId == null 
-                  ? null 
-                  : _checkSummaryStatus,
+              onPressed: _isLoading || _currentOrgId == null ? null : _checkSummaryStatus,
               child: const Text('Check Summary Status'),
             ),
 
             const SizedBox(height: 16),
 
             if (_isLoading) ...[
-              const Center(
-                child: CircularProgressIndicator(),
-              ),
+              const Center(child: CircularProgressIndicator()),
             ] else if (_lastResult != null) ...[
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: _lastResult!.startsWith('Success') 
-                      ? Colors.green.withOpacity(0.1)
-                      : _lastResult!.startsWith('Error')
+                  color:
+                      _lastResult!.startsWith('Success')
+                          ? Colors.green.withOpacity(0.1)
+                          : _lastResult!.startsWith('Error')
                           ? Colors.red.withOpacity(0.1)
                           : Colors.blue.withOpacity(0.1),
                   border: Border.all(
-                    color: _lastResult!.startsWith('Success') 
-                        ? Colors.green
-                        : _lastResult!.startsWith('Error')
+                    color:
+                        _lastResult!.startsWith('Success')
+                            ? Colors.green
+                            : _lastResult!.startsWith('Error')
                             ? Colors.red
                             : Colors.blue,
                   ),
@@ -219,9 +215,10 @@ ${sentAt != null ? '- Sent at: ${sentAt.toDate()}' : ''}
                   style: TextStyle(
                     fontFamily: 'monospace',
                     fontSize: 12,
-                    color: _lastResult!.startsWith('Success') 
-                        ? Colors.green.shade700
-                        : _lastResult!.startsWith('Error')
+                    color:
+                        _lastResult!.startsWith('Success')
+                            ? Colors.green.shade700
+                            : _lastResult!.startsWith('Error')
                             ? Colors.red.shade700
                             : Colors.blue.shade700,
                   ),
@@ -230,11 +227,8 @@ ${sentAt != null ? '- Sent at: ${sentAt.toDate()}' : ''}
             ],
 
             const SizedBox(height: 16),
-            
-            const Text(
-              'Instructions:',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
+
+            const Text('Instructions:', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
             const Text(
               '''1. "Trigger Today's Summary" - Forces a daily summary for today

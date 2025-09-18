@@ -22,11 +22,11 @@ export default function SEO({
     "operatingSystem": "iOS, Android, Web",
     "offers": {
       "@type": "Offer",
-      "price": "69.99",
+      "price": "49.99",
       "priceCurrency": "USD",
       "priceSpecification": {
         "@type": "UnitPriceSpecification",
-        "price": "69.99",
+        "price": "49.99",
         "priceCurrency": "USD",
         "unitText": "MONTH"
       }

@@ -5,7 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:permission_handler/permission_handler.dart' as perm;
 import 'package:go_router/go_router.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
@@ -348,7 +348,7 @@ class PushNotificationService {
 
       // Also request permission for local notifications on Android
       if (!kIsWeb && isAndroid) {
-        final status = await Permission.notification.request();
+        final status = await perm.Permission.notification.request();
         debugPrint('[PushNotificationService] Android notification permission: $status');
       }
 
@@ -607,7 +607,7 @@ class PushNotificationService {
 
       // Also request permission for local notifications on Android
       if (!kIsWeb && isAndroid) {
-        final status = await Permission.notification.request();
+        final status = await perm.Permission.notification.request();
         logger.d('[PushNotificationService] Android notification permission: $status');
       }
 
@@ -641,10 +641,8 @@ class PushNotificationService {
   /// Open app settings for permission management
   Future<void> openAppSettings() async {
     try {
-      await Permission.notification.request();
-      // If the above doesn't open settings, try this alternative
       if (!kIsWeb) {
-        await openAppSettings();
+        await perm.openAppSettings();
       }
     } catch (e) {
       logger.e('[PushNotificationService] Error opening app settings', e);

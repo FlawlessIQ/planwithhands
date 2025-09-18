@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/utils/app_platform.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hands_app/services/stripe_service.dart';
@@ -28,35 +29,46 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
   }
 
   Future<void> _loadData() async {
+    setState(() {
+      _isLoadingSubscription = true;
+      _isLoadingUsage = true;
+    });
+
     await Future.wait([_loadSubscriptionData(), _loadLocationUsage()]);
   }
 
   Future<void> _loadSubscriptionData() async {
-    if (widget.orgId.isEmpty) return;
-
-    setState(() => _isLoadingSubscription = true);
     try {
-      _subscriptionData = await StripeService.getSubscriptionData(widget.orgId);
+      final data = await StripeService.getSubscriptionDataHydrated(widget.orgId);
+      if (!mounted) return;
+      setState(() {
+        _subscriptionData = data;
+        _isLoadingSubscription = false;
+      });
     } catch (e) {
-      debugPrint('Error loading subscription data: $e');
-    } finally {
+      if (!mounted) return;
       setState(() => _isLoadingSubscription = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to load subscription: $e'), backgroundColor: Colors.red));
     }
   }
 
   Future<void> _loadLocationUsage() async {
-    if (widget.orgId.isEmpty) return;
-
-    setState(() => _isLoadingUsage = true);
     try {
-      final snapshot =
+      final query =
           await FirestoreEnforcer.instance.collection('organizations').doc(widget.orgId).collection('locations').get();
-      _actualLocationUsage = snapshot.size;
+      if (!mounted) return;
+      setState(() {
+        _actualLocationUsage = query.size;
+        _isLoadingUsage = false;
+      });
     } catch (e) {
-      debugPrint('Error loading location usage: $e');
-      _actualLocationUsage = 0;
-    } finally {
+      if (!mounted) return;
       setState(() => _isLoadingUsage = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to load usage: $e'), backgroundColor: Colors.red));
     }
   }
 
@@ -64,146 +76,236 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
     try {
       await StripeService.openBillingPortal(widget.orgId);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to open billing portal: $e'), backgroundColor: Colors.red));
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to open billing portal: $e'), backgroundColor: Colors.red));
     }
   }
 
   Future<void> _cancelSubscription() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Cancel Subscription'),
-            content: const Text(
-              'Are you sure you want to cancel your subscription? You\'ll continue to have access until the end of your current billing period or trial.',
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep Subscription')),
-              TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: TextButton.styleFrom(foregroundColor: Colors.red),
-                child: const Text('Cancel Subscription'),
+    final confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder:
+              (context) => AlertDialog(
+                title: const Text('Cancel Subscription'),
+                content: const Text(
+                  'Are you sure you want to cancel your subscription? You\'ll continue to have access until the end of your current billing period or trial.',
+                ),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep Subscription')),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Cancel Subscription'),
+                  ),
+                ],
               ),
-            ],
-          ),
-    );
+        ) ??
+        false;
 
-    if (confirmed == true) {
-      try {
-        await StripeService.cancelSubscription(widget.orgId);
-        await _loadSubscriptionData(); // Reload to show updated status
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Subscription will be canceled at the end of the current period'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Failed to cancel subscription: $e'), backgroundColor: Colors.red));
-        }
-      }
+    if (!confirmed) return;
+
+    try {
+      await StripeService.cancelSubscription(widget.orgId);
+      await _loadSubscriptionData();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Subscription canceled successfully. You\'ll continue to have access until the end of your current period.',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to cancel subscription: $e'), backgroundColor: Colors.red));
     }
   }
 
   Future<void> _showQuantityManagementSheet() async {
-    if (_subscriptionData == null) return;
+    if (_subscriptionData == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No subscription found'), backgroundColor: Colors.red));
+      return;
+    }
 
-    final subscriptionId = _subscriptionData!['subscriptionId'] as String? ?? '';
+    final subscriptionId = (_subscriptionData!['subscriptionId'] as String?) ?? '';
     final currentQuantity = (_subscriptionData!['quantity'] as int?) ?? 1;
     final currentUsage = _actualLocationUsage ?? 0;
 
     if (subscriptionId.isEmpty) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('No active subscription found'), backgroundColor: Colors.red));
+      ).showSnackBar(const SnackBar(content: Text('Missing subscription ID'), backgroundColor: Colors.red));
       return;
     }
 
-    final result = await showModalBottomSheet<int>(
+    final newQty = await showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder:
-          (context) => _QuantityManagementSheet(
-            orgId: widget.orgId,
-            subscriptionId: subscriptionId,
-            currentQuantity: currentQuantity,
-            currentUsage: currentUsage,
+          (context) => Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+            child: _QuantityManagementSheet(
+              orgId: widget.orgId,
+              subscriptionId: subscriptionId,
+              currentQuantity: currentQuantity,
+              currentUsage: currentUsage,
+            ),
           ),
     );
 
-    if (result != null) {
-      await _loadData();
+    if (newQty != null) {
+      await _loadSubscriptionData();
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Subscription Management'), backgroundColor: Colors.transparent, elevation: 0),
-      body: RefreshIndicator(
-        onRefresh: _loadData,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
+  // New concise subscription summary card with key details
+  Widget _buildSubscriptionSummaryCard(BuildContext context) {
+    if (_isLoadingSubscription) {
+      return Card(
+        child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              // Header
-              Row(
-                children: [
-                  Icon(Icons.credit_card, size: 32, color: Theme.of(context).primaryColor),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Subscription Management',
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-                        ),
-                        Text(
-                          'Manage your subscription, billing, and usage',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              // Current Subscription Status
-              _buildSubscriptionStatusCard(),
-              const SizedBox(height: 16),
-
-              // Quick Actions
-              _buildQuickActionsCard(),
-              const SizedBox(height: 16),
-
-              // Billing Management
-              _buildBillingManagementCard(),
-              const SizedBox(height: 16),
-
-              // Usage Information
-              _buildUsageInformationCard(),
+              const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+              const SizedBox(width: 12),
+              Text('Loading subscription data...', style: Theme.of(context).textTheme.bodyMedium),
             ],
           ),
+        ),
+      );
+    }
+
+    final status = _subscriptionData!['status'] as String?;
+    final quantity = (_subscriptionData!['quantity'] as int?) ?? 1;
+    final trialEnd = _subscriptionData!['trialEnd'] as int?;
+    final cancellationRequested = _subscriptionData!['cancellationRequested'] as bool? ?? false;
+    final monthlyTotal = PricingService.calcMonthly(quantity);
+
+    String? trialText;
+    if (status == 'trialing' && trialEnd != null) {
+      trialText = 'Trial ends ${_formatDate(DateTime.fromMillisecondsSinceEpoch(trialEnd * 1000))}';
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Current Subscription',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Subscribed locations:'),
+                          Text('$quantity', style: const TextStyle(fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                      if (_actualLocationUsage != null) ...[
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Locations in use:'),
+                            Text(
+                              '$_actualLocationUsage',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: _actualLocationUsage! <= quantity ? Colors.green : Colors.red,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Monthly cost:'),
+                          Text(
+                            '\$${monthlyTotal.toStringAsFixed(2)}',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                      if (trialText != null) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            const Icon(Icons.timer, size: 16, color: Colors.blue),
+                            const SizedBox(width: 6),
+                            Text(trialText, style: const TextStyle(color: Colors.blue)),
+                          ],
+                        ),
+                      ],
+                      if (cancellationRequested) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            const Icon(Icons.schedule, size: 16, color: Colors.orange),
+                            const SizedBox(width: 6),
+                            const Expanded(
+                              child: Text(
+                                'Cancellation scheduled at period end',
+                                style: TextStyle(color: Colors.orange),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  children: [
+                    SizedBox(
+                      width: 180,
+                      child: ElevatedButton.icon(
+                        onPressed: _showQuantityManagementSheet,
+                        icon: const Icon(Icons.tune),
+                        label: const Text('Change Quantity'),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: 180,
+                      child: OutlinedButton.icon(
+                        onPressed: (kIsWeb || !isIOS) ? _openBillingPortal : null,
+                        icon: const Icon(Icons.receipt_long),
+                        label: const Text('Billing & Invoices'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
   }
 
   Widget _buildSubscriptionStatusCard() {
+    // kept for compatibility (unused by new layout)
     if (_isLoadingSubscription) {
       return Card(
         child: Padding(
@@ -245,8 +347,9 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: () {
-                    // Navigate to embedded payment page with current org ID and user email
-                    context.go('/embedded-payment?orgId=${widget.orgId}&email=&quantity=1');
+                    final int quantity =
+                        (_actualLocationUsage != null && _actualLocationUsage! > 0) ? _actualLocationUsage! : 1;
+                    context.go('/embedded-payment?orgId=${widget.orgId}&email=&quantity=$quantity');
                   },
                   icon: const Icon(Icons.add_shopping_cart),
                   label: const Text('Start Subscription'),
@@ -646,6 +749,19 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                         ),
                       ],
                     ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _showQuantityManagementSheet,
+                        icon: const Icon(Icons.upgrade),
+                        label: const Text('Increase Quantity to Match Usage'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red[600],
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ),
                   ] else if (remainingLocations > 0) ...[
                     Row(
                       children: [
@@ -663,6 +779,32 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                 ],
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Subscription Management'), backgroundColor: HandsColors.cardPrimary),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_subscriptionData == null) ...[
+              _buildSubscriptionStatusCard(),
+            ] else ...[
+              _buildSubscriptionSummaryCard(context),
+              const SizedBox(height: 12),
+              _buildUsageInformationCard(),
+              const SizedBox(height: 12),
+              _buildQuickActionsCard(),
+              const SizedBox(height: 12),
+              _buildBillingManagementCard(),
+            ],
           ],
         ),
       ),

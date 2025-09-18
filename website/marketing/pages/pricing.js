@@ -9,9 +9,8 @@ export default function Pricing() {
   const [cycle, setCycle] = useState(MONTHLY)
 
   const { monthly, annual } = useMemo(() => {
-    const first = 69.99
-    const additional = 49.99
-    const monthly = locations <= 1 ? first : first + (locations - 1) * additional
+    const perLocation = 49.99
+    const monthly = locations * perLocation
     const annualBeforeDiscount = monthly * 12
     const annual = annualBeforeDiscount * 0.9 // 10% discount
     return { monthly, annual }
@@ -33,11 +32,11 @@ export default function Pricing() {
       {
         "@type": "Offer",
         "name": "Monthly Plan",
-        "price": "69.99",
+        "price": "49.99",
         "priceCurrency": "USD",
         "priceSpecification": {
           "@type": "UnitPriceSpecification",
-          "price": "69.99",
+          "price": "49.99",
           "priceCurrency": "USD",
           "unitText": "MONTH"
         },
@@ -47,11 +46,11 @@ export default function Pricing() {
       {
         "@type": "Offer",
         "name": "Annual Plan (10% Discount)",
-        "price": (69.99 * 12 * 0.9).toFixed(2),
+        "price": (49.99 * 12 * 0.9).toFixed(2),
         "priceCurrency": "USD",
         "priceSpecification": {
           "@type": "UnitPriceSpecification",
-          "price": (69.99 * 12 * 0.9).toFixed(2),
+          "price": (49.99 * 12 * 0.9).toFixed(2),
           "priceCurrency": "USD",
           "unitText": "YEAR"
         },
@@ -65,7 +64,7 @@ export default function Pricing() {
     <>
       <SEO
         title="Pricing - Plan With Hands | Restaurant Management Software"
-        description="Simple, transparent pricing for restaurant management software. $69.99/month for first location, $49.99 for additional locations. Save 10% with annual billing. Free 14-day trial."
+        description="Simple, transparent pricing for restaurant management software. $49.99/month per location. Save 10% with annual billing. Free 14-day trial."
         canonical="https://planwithhands.com/pricing/"
         structuredData={structuredData}
         keywords="restaurant management software pricing, restaurant operations cost, digital checklist software price, restaurant technology pricing, food service software cost"
@@ -75,8 +74,8 @@ export default function Pricing() {
       <p className="text-white/80 mb-6 sm:mb-8 text-sm sm:text-base">Pay per location. Save 10% with annual billing.</p>
 
       <div className="bg-surface text-white rounded-xl sm:rounded-2xl shadow-xl p-6 sm:p-8 md:p-10 max-w-xl mx-auto">
-        <h2 className="text-xl sm:text-2xl font-semibold mb-1">Hands Plan</h2>
-        <p className="text-white/70 mb-4 text-xs sm:text-sm">First location: $69.99/mo • Additional: $49.99/mo each</p>
+  <h2 className="text-xl sm:text-2xl font-semibold mb-1">Hands Plan</h2>
+  <p className="text-white/70 mb-4 text-xs sm:text-sm">$49.99 per location per month • Save 10% with annual</p>
         
         {/* Locations control */}
         <div className="flex items-center justify-center gap-3 mb-6">
@@ -91,8 +90,8 @@ export default function Pricing() {
           <button onClick={()=>setCycle(ANNUAL)} className={`px-3 sm:px-4 py-2 rounded-xl transition-colors duration-200 flex-1 sm:flex-none text-xs sm:text-sm ${cycle===ANNUAL?'bg-accent text-primary font-semibold shadow-soft':'text-white hover:bg-white/20'}`}>Annual (10% off)</button>
         </div>
 
-        <div className="text-3xl sm:text-4xl font-bold mb-1">${price.toFixed(2)}</div>
-        <div className="text-xs sm:text-sm text-white/60 mb-6">{suffix} for {locations} {locations>1?'locations':'location'}</div>
+  <div className="text-3xl sm:text-4xl font-bold mb-1">${price.toFixed(2)}</div>
+  <div className="text-xs sm:text-sm text-white/60 mb-6">{suffix} for {locations} {locations>1?'locations':'location'}</div>
 
         <button className="bg-accent text-primary px-6 py-3 rounded-xl font-semibold w-full hover:opacity-90 transition-colors duration-200 min-h-[48px] text-sm sm:text-base" onClick={() => window.location.href = 'https://plan-with-hands.web.app/create_account'}>Start free trial</button>
 
@@ -111,7 +110,7 @@ export default function Pricing() {
         <div className="space-y-3 sm:space-y-4">
           <details className="bg-surface text-white rounded-xl p-4 sm:p-5">
             <summary className="font-semibold text-sm sm:text-base cursor-pointer">How does billing work per location?</summary>
-            <p className="mt-2 text-sm sm:text-base text-white/90">We bill $69.99 for your first location and $49.99 for each additional location. Annual billing applies a 10% discount to the yearly total.</p>
+            <p className="mt-2 text-sm sm:text-base text-white/90">We bill a flat $49.99 per location each month. Annual billing applies a 10% discount to the yearly total.</p>
           </details>
           <details className="bg-surface text-white rounded-xl p-4 sm:p-5">
             <summary className="font-semibold text-sm sm:text-base cursor-pointer">Is there a free trial?</summary>

@@ -82,6 +82,8 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
 
   // Scroll controllers (web scrolling fix)
   final ScrollController _verticalTableController = ScrollController();
+  // Guard to avoid repeatedly showing the welcome dialog
+  bool _welcomeShown = false;
 
   @override
   void initState() {
@@ -94,12 +96,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
     _checkUserAccess();
     _searchController.addListener(_onSearchChanged);
 
-    // Show welcome popup for new organization setup
-    if (widget.isNewOrganizationSetup) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _showWelcomeDialog();
-      });
-    }
+    // Do not show welcome here; defer until locations have been loaded
   }
 
   void _onGlobalLocationChanged() {
@@ -148,8 +145,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           (context) => LocationWizard(
             organizationId: widget.organizationId,
             onCompleted: () async {
-              // Close the bottom sheet first
-              Navigator.of(context).pop();
+              // LocationWizard now handles closing automatically
               // Refresh the page data after location is created
               await _reloadAllTables();
             },
@@ -261,7 +257,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
                   as String?;
         });
         // Persist globally so other pages adopt the change
-        LocationSelectionService.instance.setLocation(value);
+        await LocationSelectionService.instance.setLocationAsync(value);
         await _reloadAllTables();
       },
       itemBuilder:
@@ -430,13 +426,10 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
 
       setState(() {
         _availableLocations = locations;
-        // If a selected location id already exists and is in the loaded list, set its name
         if (_selectedLocationId != null && _availableLocations.any((l) => l['id'] == _selectedLocationId)) {
           _selectedLocationName =
               _availableLocations.firstWhere((l) => l['id'] == _selectedLocationId)['name'] as String?;
-        }
-        // Otherwise, if no valid selection exists, auto-select the primary/first location
-        else if ((_selectedLocationId == null || !_availableLocations.any((l) => l['id'] == _selectedLocationId)) &&
+        } else if ((_selectedLocationId == null || !_availableLocations.any((l) => l['id'] == _selectedLocationId)) &&
             _availableLocations.isNotEmpty) {
           final primary = _availableLocations.firstWhere(
             (l) => l['isPrimary'] == true,
@@ -446,6 +439,16 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           _selectedLocationName = primary['name'] as String?;
         }
       });
+
+      // If this is a new organization setup and there are no locations, show welcome once
+      if (mounted && widget.isNewOrganizationSetup && !_welcomeShown && _availableLocations.isEmpty) {
+        _welcomeShown = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _showWelcomeDialog();
+          }
+        });
+      }
 
       // Reload dependent tables
       await _reloadAllTables();
@@ -506,87 +509,8 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
         title: GenericAppBarContent(appBarTitle: 'Admin Dashboard', userRole: userRole),
         automaticallyImplyLeading: false,
         actions: [
-          // Location selector dropdown - only show if multiple locations
-          if (_availableLocations.length > 1) ...[
-            Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: PopupMenuButton<String>(
-                onSelected: (value) {
-                  setState(() {
-                    _selectedLocationId = value;
-                    _selectedLocationName =
-                        _availableLocations.firstWhere(
-                              (loc) => loc['id'] == value,
-                              orElse: () => {'name': 'Unknown Location'},
-                            )['name']
-                            as String?;
-                  });
-                },
-                itemBuilder:
-                    (context) =>
-                        _availableLocations.map((location) {
-                          return PopupMenuItem<String>(
-                            value: location['id'],
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.location_on,
-                                  color:
-                                      location['id'] == _selectedLocationId
-                                          ? HandsColors.handsOrange
-                                          : HandsColors.white70,
-                                  size: 16,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    location['name'],
-                                    style: GoogleFonts.comfortaa(
-                                      fontWeight:
-                                          location['id'] == _selectedLocationId ? FontWeight.bold : FontWeight.normal,
-                                      color: HandsColors.white,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                if (location['id'] == _selectedLocationId)
-                                  const Padding(
-                                    padding: EdgeInsets.only(left: 8),
-                                    child: Icon(Icons.check, color: HandsColors.handsOrange, size: 16),
-                                  ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: HandsColors.handsOrange.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.location_on, color: HandsColors.white, size: 18),
-                      const SizedBox(width: 6),
-                      Text(
-                        _selectedLocationName?.isNotEmpty == true ? _selectedLocationName! : 'Select Location',
-                        style: GoogleFonts.comfortaa(
-                          color: HandsColors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      const Icon(Icons.arrow_drop_down, color: HandsColors.white, size: 16),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
           // Unified menu button
-          UnifiedMenuButton(userRole: userRole),
+          UnifiedMenuButton(userRole: userRole, organizationId: widget.organizationId),
         ],
       ),
       body: Row(
@@ -2495,7 +2419,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
         locationId: location?['id'],
         initialData: location,
         onCompleted: () {
-          Navigator.of(context).pop();
+          // LocationWizard now handles closing automatically
           _showSnackBar(location == null ? 'Location created successfully' : 'Location updated successfully');
           _loadLocations(); // Refresh locations list
         },

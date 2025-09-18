@@ -98,7 +98,7 @@ Future<void> setCurrentLocation({
   });
   // Also update global service
   try {
-    LocationSelectionService.instance.setLocation(locationRef.id);
+    await LocationSelectionService.instance.setLocationAsync(locationRef.id);
   } catch (_) {}
 }
 
@@ -119,14 +119,28 @@ class LocationSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Determine current selection (fallback to global service if none provided)
-    final effectiveSelectedId = selectedLocationId ?? LocationSelectionService.instance.currentLocationId;
+    // Build dropdown items first
+    final items =
+        availableLocations
+            .map(
+              (location) => DropdownMenuItem<String>(
+                value: location['id'] as String,
+                child: Text(location['name'] as String, overflow: TextOverflow.ellipsis),
+              ),
+            )
+            .toList();
+
+    // Determine effective selection; ensure value exists in items to avoid exceptions
+    final initialSelected = selectedLocationId ?? LocationSelectionService.instance.currentLocationId;
+    final effectiveSelectedId = items.any((it) => it.value == initialSelected) ? initialSelected : null;
 
     // Don't show if only one location
     if (availableLocations.length <= 1) {
       // Still update global so other pages remain consistent
       if (effectiveSelectedId == null && availableLocations.isNotEmpty) {
-        LocationSelectionService.instance.setLocation(availableLocations.first['id'] as String?);
+        // Persist first location as default asynchronously
+        // ignore: discarded_futures
+        LocationSelectionService.instance.setLocationAsync(availableLocations.first['id'] as String?);
       }
       return const SizedBox.shrink();
     }
@@ -155,23 +169,15 @@ class LocationSelector extends StatelessWidget {
                         isExpanded: true,
                         hint: const Text('Select location'),
                         style: Theme.of(context).textTheme.bodyMedium,
-                        onChanged: (value) {
+                        onChanged: (value) async {
                           if (value != null) {
                             // Update caller
                             onLocationChanged(value);
                             // Persist globally
-                            LocationSelectionService.instance.setLocation(value);
+                            await LocationSelectionService.instance.setLocationAsync(value);
                           }
                         },
-                        items:
-                            availableLocations
-                                .map(
-                                  (location) => DropdownMenuItem<String>(
-                                    value: location['id'] as String,
-                                    child: Text(location['name'] as String, overflow: TextOverflow.ellipsis),
-                                  ),
-                                )
-                                .toList(),
+                        items: items,
                       ),
                     ),
           ),

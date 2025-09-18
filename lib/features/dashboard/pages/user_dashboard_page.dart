@@ -11,8 +11,6 @@ import 'package:hands_app/services/daily_checklist_service.dart';
 // removed unused imports - dialogs now use DailyChecklistService directly
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:hands_app/global_widgets/location_selector.dart' show setCurrentLocation;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
@@ -57,6 +55,9 @@ class UserDashboardPage extends HookConsumerWidget {
     final shifts = useState<List<Map<String, dynamic>>>(const []);
     final missedGroups = useState<List<Map<String, dynamic>>>(const []);
     final loadingMissed = useState<bool>(false);
+
+    // Prevent double-triggering of location switches
+    final isSwitchingLocation = useState<bool>(false);
 
     // Location selection state
     final selectedLocationId = useState<String?>(null);
@@ -235,7 +236,7 @@ class UserDashboardPage extends HookConsumerWidget {
           selectedLocationName.value = locationToSelect['name'];
           // Always sync global state to the chosen location
           try {
-            LocationSelectionService.instance.setLocation(locationToSelect['id']);
+            await LocationSelectionService.instance.setLocationAsync(locationToSelect['id']);
           } catch (e) {
             logger.w("[Dashboard] Failed to set global location: $e");
           }
@@ -1130,159 +1131,7 @@ class UserDashboardPage extends HookConsumerWidget {
         toolbarHeight: kToolbarHeight,
         title: GenericAppBarContent(appBarTitle: 'Plan with Hands', userRole: userRole.value),
         automaticallyImplyLeading: false,
-        actions: [
-          // Only show location selector if there are multiple locations
-          if (availableLocations.value.length > 1)
-            // Compact location selector for mobile
-            Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: PopupMenuButton<String>(
-                onSelected: (value) async {
-                  // Prevent rapid location switches that can cause race conditions
-                  if (selectedLocationId.value == value) return;
-
-                  logger.d('[Dashboard] Location switch initiated: ${selectedLocationId.value} -> $value');
-
-                  // Set new location immediately to prevent duplicate switches
-                  selectedLocationId.value = value;
-                  final selected = availableLocations.value.firstWhere(
-                    (loc) => loc['id'] == value,
-                    orElse: () => <String, String>{'name': 'Unknown Location'},
-                  );
-                  selectedLocationName.value = selected['name'];
-
-                  // Reset missed tasks location so they reload for the new location
-                  missedTasksLocationId.value = null;
-
-                  // Clear current data immediately to prevent showing stale data during transition
-                  assignedShifts.value = [];
-                  allChecklists.value = [];
-                  selectedLocationIds.value = [];
-                  shifts.value = [];
-                  missedTasksSections.value = [];
-
-                  // Persist globally so other pages adopt the change
-                  try {
-                    LocationSelectionService.instance.setLocation(value);
-                  } catch (e) {
-                    logger.w('[Dashboard] Failed to set global location: $e');
-                  }
-
-                  // Persist to user doc so selection survives across devices
-                  try {
-                    final user = FirebaseAuth.instance.currentUser;
-                    if (user != null) {
-                      final locRef = FirestoreEnforcer.instance
-                          .collection('organizations')
-                          .doc(organizationId.value)
-                          .collection('locations')
-                          .doc(value);
-                      await setCurrentLocation(uid: user.uid, locationRef: locRef, locationName: selected['name']);
-                      // Telemetry: location switch selected
-                      logger.d('[Analytics] location_switch_selected: user=${user.uid}, location=${locRef.id}');
-                    }
-                  } catch (e) {
-                    logger.w('[Dashboard] Failed to persist current location to user doc: $e');
-                  }
-
-                  // Debounced reload to allow all listeners to update before loading data
-                  await Future.delayed(const Duration(milliseconds: 500));
-
-                  // Reload dashboard data with proper error handling to prevent crashes
-                  try {
-                    await loadDashboardData(resetData: true); // explicit reset for location switch
-                    logger.d('[Dashboard] Location switch completed successfully');
-                  } catch (e) {
-                    logger.e('[Dashboard] Failed to reload dashboard data after location switch: $e');
-                    // Show error message to user but don't crash the app
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Failed to load data for selected location. Please try again.'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  }
-                },
-                itemBuilder:
-                    (context) =>
-                        availableLocations.value.map((location) {
-                          return PopupMenuItem<String>(
-                            value: location['id'],
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.location_on,
-                                  color:
-                                      location['id'] == selectedLocationId.value
-                                          ? Theme.of(context).primaryColor
-                                          : Colors.grey[600],
-                                  size: 16,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    location['name'],
-                                    style: TextStyle(
-                                      fontWeight:
-                                          location['id'] == selectedLocationId.value
-                                              ? FontWeight.bold
-                                              : FontWeight.normal,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                if (location['id'] == selectedLocationId.value)
-                                  const Padding(padding: EdgeInsets.only(left: 8), child: Icon(Icons.check, size: 16)),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                child: Builder(
-                  builder: (context) {
-                    if (kIsWeb) {
-                      // Full web version - show location name
-                      return Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.location_on, color: Colors.white, size: 18),
-                            const SizedBox(width: 6),
-                            Text(
-                              selectedLocationName.value?.isNotEmpty == true
-                                  ? selectedLocationName.value!
-                                  : 'Select Location',
-                              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
-                            ),
-                            const SizedBox(width: 4),
-                            const Icon(Icons.arrow_drop_down, color: Colors.white, size: 16),
-                          ],
-                        ),
-                      );
-                    } else {
-                      // Mobile version - just location icon
-                      return Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Icon(Icons.location_on, color: Colors.white, size: 20),
-                      );
-                    }
-                  },
-                ),
-              ),
-            ),
-          // Menu button
-          UnifiedMenuButton(userRole: userRole.value),
-        ],
+        actions: [UnifiedMenuButton(userRole: userRole.value, organizationId: organizationId.value)],
       ),
       body:
           isLoading.value
@@ -1447,7 +1296,7 @@ class UserDashboardPage extends HookConsumerWidget {
                                       logger.d('[Dashboard] Adopted shift location $adoptLoc as selectedLocationId');
                                       // Persist this selection globally so other pages and future visits honor it
                                       try {
-                                        LocationSelectionService.instance.setLocation(adoptLoc);
+                                        await LocationSelectionService.instance.setLocationAsync(adoptLoc);
                                       } catch (e) {
                                         logger.w('[Dashboard] Failed to persist adopted location: $e');
                                       }

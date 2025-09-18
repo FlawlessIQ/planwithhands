@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
@@ -261,7 +260,9 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
 
       // Sync global selection
       if (_selectedLocationId != null && LocationSelectionService.instance.currentLocationId != _selectedLocationId) {
-        LocationSelectionService.instance.setLocation(_selectedLocationId!);
+        try {
+          await LocationSelectionService.instance.setLocationAsync(_selectedLocationId!);
+        } catch (_) {}
       }
 
       if (_selectedLocationId != null) {
@@ -982,106 +983,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
         toolbarHeight: kToolbarHeight,
         title: GenericAppBarContent(appBarTitle: 'Manager Dashboard', userRole: userRole),
         automaticallyImplyLeading: false,
-        actions: [
-          // Only show location selector if there are multiple locations
-          if (_availableLocations.length > 1)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: PopupMenuButton<String>(
-                onSelected: (value) async {
-                  logger.i('[ManagerDashboard][DEBUG] Location selected from header: $value');
-                  setState(() {
-                    _selectedLocationId = value;
-                    final matches = _availableLocations.where((loc) => loc['id'] == value).toList();
-                    _selectedLocationName =
-                        matches.isNotEmpty ? (matches.first['name'] as String?) : 'Unknown Location';
-                  });
-                  // Persist globally
-                  LocationSelectionService.instance.setLocation(value);
-                  logger.i(
-                    '[ManagerDashboard][DEBUG] Updated _selectedLocationId: $_selectedLocationId, name: $_selectedLocationName',
-                  );
-                  await _loadFilterOptions();
-                  await _loadAll();
-                },
-                itemBuilder:
-                    (context) =>
-                        _availableLocations.map((loc) {
-                          final selected = loc['id'] == _selectedLocationId;
-                          return PopupMenuItem<String>(
-                            value: loc['id'],
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.location_on,
-                                  size: 16,
-                                  color: selected ? HandsColors.handsOrange : HandsColors.white70,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    '${loc['name']}',
-                                    overflow: TextOverflow.ellipsis,
-                                    style: GoogleFonts.comfortaa(
-                                      fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-                                      color: selected ? HandsColors.handsOrange : HandsColors.white,
-                                    ),
-                                  ),
-                                ),
-                                if (selected)
-                                  const Padding(
-                                    padding: EdgeInsets.only(left: 8),
-                                    child: Icon(Icons.check, size: 16, color: HandsColors.handsOrange),
-                                  ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                child: Builder(
-                  builder: (context) {
-                    if (!kIsWeb) {
-                      // Compact mobile version - just location icon
-                      return Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: HandsColors.handsOrange.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(Icons.location_on, color: HandsColors.white, size: 20),
-                      );
-                    } else {
-                      // Full desktop version
-                      return Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: HandsColors.handsOrange.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.location_on, color: HandsColors.white, size: 18),
-                            const SizedBox(width: 6),
-                            Text(
-                              _selectedLocationName?.isNotEmpty == true ? _selectedLocationName! : 'Select Location',
-                              style: GoogleFonts.comfortaa(
-                                color: HandsColors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            const Icon(Icons.arrow_drop_down, color: HandsColors.white, size: 16),
-                          ],
-                        ),
-                      );
-                    }
-                  },
-                ),
-              ),
-            ),
-          UnifiedMenuButton(userRole: userRole),
-        ],
+        actions: [UnifiedMenuButton(userRole: userRole, organizationId: widget.organizationId)],
       ),
       bottomNavigationBar: BottomNavBar(currentIndex: 1, userRole: userRole),
       body: Builder(

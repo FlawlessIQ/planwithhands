@@ -44,8 +44,8 @@ class DailyBackgroundService {
   Future<void> _checkCloudFunctionFallback() async {
     try {
       final now = DateTime.now();
-      
-      // Only run fallback if it's late in the day (after 11 PM) 
+
+      // Only run fallback if it's late in the day (after 11 PM)
       // and Cloud Function should have already run
       if (now.hour < 23) {
         return;
@@ -62,12 +62,11 @@ class DailyBackgroundService {
       // Check if summary was already sent today
       final today = DateTime(now.year, now.month, now.day);
       final alreadySent = await _summaryService.hasDailySummaryBeenSent(orgId, today);
-      
+
       if (!alreadySent) {
         logger.w('[DailyBackgroundService] Daily summary not sent yet - triggering fallback');
         await triggerDailySummary(organizationId: orgId);
       }
-      
     } catch (e, stackTrace) {
       logger.e('[DailyBackgroundService] Error in fallback check', e, stackTrace);
     }
@@ -77,25 +76,21 @@ class DailyBackgroundService {
   Future<void> triggerDailySummary({required String organizationId, DateTime? targetDate}) async {
     try {
       logger.d('[DailyBackgroundService] Triggering daily summary via Cloud Function for organization $organizationId');
-      
+
       final callable = _functions.httpsCallable('triggerDailySummary');
-      
+
       final result = await callable.call({
         'orgId': organizationId,
         if (targetDate != null) 'targetDate': targetDate.toIso8601String(),
       });
 
       logger.d('[DailyBackgroundService] Cloud Function result: ${result.data}');
-      
     } catch (e, stackTrace) {
       logger.e('[DailyBackgroundService] Error triggering daily summary via Cloud Function', e, stackTrace);
-      
+
       // Fallback to local generation if Cloud Function fails
       logger.w('[DailyBackgroundService] Falling back to local daily summary generation');
-      await _summaryService.generateAndSendDailySummary(
-        organizationId: organizationId, 
-        targetDate: targetDate
-      );
+      await _summaryService.generateAndSendDailySummary(organizationId: organizationId, targetDate: targetDate);
     }
   }
 
@@ -154,38 +149,10 @@ class DailyBackgroundService {
     instance.startDailySummaryMonitoring();
   }
 
-  /// Trigger daily summary for testing purposes
-  /// This method allows manual triggering with optional target date
-  Future<void> triggerDailySummaryForTesting({
-    required String organizationId,
-    DateTime? targetDate,
-  }) async {
-    try {
-      logger.d('[DailyBackgroundService] Triggering daily summary for testing - Org: $organizationId');
-      
-      // Call the Cloud Function with the target date
-      final result = await _functions.httpsCallable('triggerDailySummary').call({
-        'organizationId': organizationId,
-        'targetDate': targetDate?.toIso8601String(),
-      });
-      
-      logger.d('[DailyBackgroundService] Cloud Function result: ${result.data}');
-      
-      // Also attempt local fallback if needed
-      if (result.data['success'] != true) {
-        logger.w('[DailyBackgroundService] Cloud Function failed, attempting local fallback');
-        await triggerDailySummary(organizationId: organizationId);
-      }
-    } catch (e, stackTrace) {
-      logger.e('[DailyBackgroundService] Error in triggerDailySummaryForTesting', e, stackTrace);
-      
-      // Fallback to local method if Cloud Function fails
-      logger.w('[DailyBackgroundService] Falling back to local daily summary');
-      await triggerDailySummary(organizationId: organizationId);
-    }
-  }
+  /// Dispose resources
   static void dispose() {
     logger.d('[DailyBackgroundService] Disposing daily background service');
     instance.stopDailySummaryMonitoring();
     _instance = null;
   }
+}

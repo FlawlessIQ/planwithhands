@@ -8,6 +8,8 @@ import 'package:hands_app/state/user_state.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/widgets/hands_text_field.dart';
+import 'package:hands_app/routing/routes.dart';
+import 'package:go_router/go_router.dart';
 
 class HelpPage extends ConsumerStatefulWidget {
   final int? userRole;
@@ -138,6 +140,63 @@ class _HelpPageState extends ConsumerState<HelpPage> {
                       'Having trouble with the Hands app? We\'re here to help! Send us a message and we\'ll get back to you within 24 hours.',
                       textAlign: TextAlign.center,
                       style: GoogleFonts.inter(fontSize: 14, color: HandsColors.white.withOpacity(0.8)),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // Quick Navigation Section
+              Container(
+                decoration: BoxDecoration(color: HandsColors.cardPrimary, borderRadius: BorderRadius.circular(12)),
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: Icon(Icons.help_center, color: HandsColors.handsOrange),
+                      title: Text(
+                        'How to use Hands',
+                        style: GoogleFonts.comfortaa(color: HandsColors.white, fontWeight: FontWeight.w500),
+                      ),
+                      subtitle: Text(
+                        'Step-by-step guides for your role',
+                        style: GoogleFonts.inter(color: HandsColors.white.withOpacity(0.7), fontSize: 12),
+                      ),
+                      trailing: Icon(Icons.arrow_forward_ios, color: HandsColors.white.withOpacity(0.7), size: 16),
+                      onTap: () => context.go(AppRoutes.howToUsePage.path),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // Contact Support Header
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(color: HandsColors.cardPrimary, borderRadius: BorderRadius.circular(12)),
+                child: Row(
+                  children: [
+                    Icon(Icons.email, color: HandsColors.handsOrange),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Contact Support',
+                            style: GoogleFonts.comfortaa(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: HandsColors.white,
+                            ),
+                          ),
+                          Text(
+                            'Can\'t find what you\'re looking for? Send us a message.',
+                            style: GoogleFonts.inter(fontSize: 12, color: HandsColors.white.withOpacity(0.8)),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),

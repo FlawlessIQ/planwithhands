@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -34,8 +34,9 @@ enum AdminView { shiftsChecklists, usersLocations }
 
 class AdminDashboardPage extends ConsumerStatefulWidget {
   final WidgetBuilder? overrideBodyBuilder;
+  final bool isNewOrganizationSetup;
 
-  const AdminDashboardPage({super.key, this.overrideBodyBuilder});
+  const AdminDashboardPage({super.key, this.overrideBodyBuilder, this.isNewOrganizationSetup = false});
 
   @override
   ConsumerState<AdminDashboardPage> createState() => _AdminDashboardPageState();
@@ -58,18 +59,22 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
 
   /// Get the currently selected location ID from shared state
   String? get _selectedLocationId {
-    return ref.read(appStateProvider).selectedLocation?.locationId;
+    // Mirror training page behavior by reading from the global LocationSelectionService
+    return LocationSelectionService.instance.currentLocationId;
   }
 
   /// Get the currently selected location name from shared state
   String? get _selectedLocationName {
-    return ref.read(appStateProvider).selectedLocation?.locationName;
+    // Mirror training page behavior by reading from the global LocationSelectionService
+    return LocationSelectionService.instance.currentLocationName;
   }
 
   @override
   void initState() {
     super.initState();
     _checkUserAccess();
+    // Listen for global location changes (from UnifiedMenuButton)
+    LocationSelectionService.instance.listenable.addListener(_onGlobalLocationChanged);
   }
 
   @override
@@ -255,8 +260,42 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
 
   @override
   void dispose() {
+    // Remove listener
+    try {
+      LocationSelectionService.instance.listenable.removeListener(_onGlobalLocationChanged);
+    } catch (_) {}
     _refreshTrigger.dispose();
     super.dispose();
+  }
+
+  void _onGlobalLocationChanged() {
+    // Keep Riverpod app state in sync for other consumers
+    final id = LocationSelectionService.instance.currentLocationId;
+    final name = LocationSelectionService.instance.currentLocationName;
+
+    final current = ref.read(appStateProvider).selectedLocation;
+    final currentId = current?.locationId;
+
+    if (id != currentId) {
+      if (id == null) {
+        ref.read(appStateProvider.notifier).setSelectedLocation(null);
+      } else {
+        ref
+            .read(appStateProvider.notifier)
+            .setSelectedLocation(
+              LocationData(
+                locationId: id,
+                locationName: name ?? 'Selected Location',
+                createdAt: DateTime.now(),
+                locationAddress: '',
+              ),
+            );
+      }
+    }
+
+    // Trigger UI updates for StreamBuilders and lists
+    _triggerRefresh();
+    if (mounted) setState(() {});
   }
 
   Future<void> _checkUserAccess() async {
@@ -445,107 +484,8 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
         title: GenericAppBarContent(appBarTitle: 'Setup', userRole: userRole),
         automaticallyImplyLeading: false,
         actions: [
-          // Only show location selector if there are multiple locations
-          if (_availableLocations.length > 1)
-            // Compact location selector for mobile
-            Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: PopupMenuButton<String>(
-                onSelected: (value) async {
-                  // Find the selected location details
-                  final selectedLoc = _availableLocations.firstWhere(
-                    (loc) => loc['id'] == value,
-                    orElse: () => {'id': value, 'name': 'Unknown Location'},
-                  );
-
-                  // Update shared state with selected location
-                  final locationData = LocationData(
-                    locationId: selectedLoc['id'],
-                    locationName: selectedLoc['name'],
-                    createdAt: DateTime.now(),
-                    locationAddress: '',
-                  );
-                  ref.read(appStateProvider.notifier).setSelectedLocation(locationData);
-                  // Also persist to global notifier so other pages without Riverpod can react
-                  try {
-                    LocationSelectionService.instance.setLocation(selectedLoc['id']);
-                  } catch (_) {}
-
-                  _triggerRefresh();
-                },
-                itemBuilder:
-                    (context) =>
-                        _availableLocations.map((location) {
-                          return PopupMenuItem<String>(
-                            value: location['id'],
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.location_on,
-                                  color:
-                                      location['id'] == _selectedLocationId
-                                          ? HandsColors.handsOrange
-                                          : HandsColors.white30,
-                                  size: 16,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    location['name'],
-                                    style: TextStyle(
-                                      fontWeight:
-                                          location['id'] == _selectedLocationId ? FontWeight.bold : FontWeight.normal,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                if (location['id'] == _selectedLocationId)
-                                  const Padding(padding: EdgeInsets.only(left: 8), child: Icon(Icons.check, size: 16)),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                child: Builder(
-                  builder: (context) {
-                    if (!kIsWeb) {
-                      // Compact mobile version - just location icon
-                      return Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(color: HandsColors.white12, borderRadius: BorderRadius.circular(6)),
-                        child: const Icon(Icons.location_on, color: HandsColors.white, size: 20),
-                      );
-                    } else {
-                      // Full desktop version
-                      return Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(color: HandsColors.white12, borderRadius: BorderRadius.circular(8)),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.location_on, color: HandsColors.white, size: 18),
-                            const SizedBox(width: 6),
-                            Text(
-                              _selectedLocationName?.isNotEmpty == true ? _selectedLocationName! : 'Select Location',
-                              style: GoogleFonts.comfortaa(
-                                color: HandsColors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w400,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            const Icon(Icons.arrow_drop_down, color: HandsColors.white, size: 16),
-                          ],
-                        ),
-                      );
-                    }
-                  },
-                ),
-              ),
-            ),
-          // Debug button removed
-
           // Menu button
-          UnifiedMenuButton(userRole: userRole),
+          UnifiedMenuButton(userRole: userRole, organizationId: organizationId),
         ],
       ),
       body: body,
@@ -868,108 +808,115 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
 
             // Filter users by selected location
             final usersToShow =
-                users
-                    .where((doc) {
-                      final userData = doc.data() as Map<String, dynamic>;
-                      final role = userData['userRole'] ?? 0;
-                      if (_selectedLocationId == null) return true;
-                      if (role == 2) return true; // Admins always show
-                      if (role == 0) {
-                        // General user: show if their locationIds contain the selected location
-                        // OR if they have no location data (include) or their locations are orphaned (include)
-                        final locIds = coerceToLocationIds(userData['locationIds'] ?? userData['locationId']);
+                users.where((doc) {
+                  final userData = doc.data() as Map<String, dynamic>;
+                  final role = userData['userRole'] ?? 0;
 
-                        if (locIds.isEmpty) return true; // No location data
-                        if (_selectedLocationId == null) return true; // No filter applied
-                        if (locIds.contains(_selectedLocationId)) return true; // Matches selected
+                  // If no location is selected, show all users
+                  if (_selectedLocationId == null) return true;
 
-                        // If none of the user's locations exist in current available locations, treat as orphan and include
-                        final anyMatch = locIds.any((id) => _availableLocations.any((loc) => loc['id'] == id));
-                        if (!anyMatch) {
-                          logger.d(
-                            '[AdminDashboard] User ${doc.id} has orphaned locationIds: $locIds - including anyway',
-                          );
-                          return true;
-                        }
+                  // Admin users (role 2) always show regardless of location
+                  if (role == 2) return true;
 
-                        return false;
-                      }
-                      if (role == 1) {
-                        // Manager: only show if any of their locationIds contains selected location
-                        final locIds = coerceToLocationIds(userData['locationIds'] ?? userData['locationId']);
-                        if (_selectedLocationId == null) return true;
-                        return locIds.contains(_selectedLocationId);
-                      }
-                      return false;
-                    })
-                    .map((doc) {
-                      final userData = doc.data() as Map<String, dynamic>;
-                      final name = '${userData['firstName'] ?? ''} ${userData['lastName'] ?? ''}'.trim();
-                      final email =
-                          userData['emailAddress'] ?? userData['userEmail'] ?? userData['email'] ?? 'No email';
-                      final role = userData['userRole'] ?? 0;
-                      final roleText =
-                          role == 2
-                              ? 'Admin'
-                              : role == 1
-                              ? 'Manager'
-                              : 'General User';
+                  if (role == 0) {
+                    // General user: show ONLY if their locationIds contain the selected location
+                    final locIds = coerceToLocationIds(userData['locationIds'] ?? userData['locationId']);
 
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        decoration: HandsDecorations.tertiaryBoxDecoration,
-                        child: ListTile(
-                          leading: const Icon(Icons.person, color: HandsColors.white),
-                          title: Text(
-                            name.isEmpty ? 'Unnamed User' : name,
-                            style: GoogleFonts.comfortaa(
-                              color: HandsColors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w400,
-                            ),
-                          ),
-                          subtitle: Text(
-                            '$email • $roleText',
-                            style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11),
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.edit, color: HandsColors.white),
-                                iconSize: 18,
-                                onPressed: () => _showUserBottomSheet(doc.id, doc.data() as Map<String, dynamic>),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete, color: HandsColors.white),
-                                iconSize: 18,
-                                onPressed:
-                                    () => _showDeleteConfirmation(
-                                      context: context,
-                                      title: 'Delete User',
-                                      content:
-                                          'Are you sure you want to delete this user? This action cannot be undone.',
-                                      onConfirm: () => _deleteUser(doc.id),
-                                    ),
-                              ),
-                            ],
-                          ),
-                        ),
+                    if (kDebugMode) {
+                      print(
+                        '[AdminDashboard] User ${userData['email']} has locations: $locIds, selected: $_selectedLocationId',
                       );
-                    })
-                    .toList();
+                    }
 
-            // Use a constrained, shrink-wrapped ListView so the list scrolls when
-            // the content is taller than the available area, but doesn't force
-            // a large empty area for short lists.
-            final usersList = ListView.builder(
-              shrinkWrap: true,
-              physics: const AlwaysScrollableScrollPhysics(),
-              itemCount: usersToShow.length,
-              itemBuilder: (context, index) => usersToShow[index],
+                    // If user has no location data, don't show them when a location is selected
+                    if (locIds.isEmpty) return false;
+
+                    // Show only if user is assigned to the selected location
+                    return locIds.contains(_selectedLocationId);
+                  }
+
+                  if (role == 1) {
+                    // Manager: only show if any of their locationIds contains selected location
+                    final locIds = coerceToLocationIds(userData['locationIds'] ?? userData['locationId']);
+
+                    if (kDebugMode) {
+                      print(
+                        '[AdminDashboard] Manager ${userData['email']} has locations: $locIds, selected: $_selectedLocationId',
+                      );
+                    }
+
+                    return locIds.contains(_selectedLocationId);
+                  }
+
+                  return false;
+                }).toList();
+
+            if (kDebugMode) {
+              print(
+                '[AdminDashboard] Total users: ${users.length}, Filtered users: ${usersToShow.length} for location: $_selectedLocationId',
+              );
+            }
+
+            return Container(
+              constraints: const BoxConstraints(maxHeight: 200),
+              child: ListView.builder(
+                itemCount: usersToShow.length,
+                itemBuilder: (context, index) {
+                  final doc = usersToShow[index];
+                  final userData = doc.data() as Map<String, dynamic>;
+                  final name = '${userData['firstName'] ?? ''} ${userData['lastName'] ?? ''}'.trim();
+                  final email = userData['emailAddress'] ?? userData['userEmail'] ?? userData['email'] ?? 'No email';
+                  final role = userData['userRole'] ?? 0;
+                  final roleText =
+                      role == 2
+                          ? 'Admin'
+                          : role == 1
+                          ? 'Manager'
+                          : 'General User';
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: HandsDecorations.tertiaryBoxDecoration,
+                    child: ListTile(
+                      leading: const Icon(Icons.person, color: HandsColors.white),
+                      title: Text(
+                        name.isEmpty ? 'Unnamed User' : name,
+                        style: GoogleFonts.comfortaa(
+                          color: HandsColors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                      subtitle: Text(
+                        '$email • $roleText',
+                        style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit, color: HandsColors.white),
+                            iconSize: 18,
+                            onPressed: () => _showUserBottomSheet(doc.id, doc.data() as Map<String, dynamic>),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete, color: HandsColors.white),
+                            iconSize: 18,
+                            onPressed:
+                                () => _showDeleteConfirmation(
+                                  context: context,
+                                  title: 'Delete User',
+                                  content: 'Are you sure you want to delete this user? This action cannot be undone.',
+                                  onConfirm: () => _deleteUser(doc.id),
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
             );
-
-            return ConstrainedBox(constraints: const BoxConstraints(maxHeight: 300), child: usersList);
           },
         );
       },

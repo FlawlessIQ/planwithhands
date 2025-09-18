@@ -483,6 +483,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
         'businessType': businessType,
         // Store approx employees if provided; default to 0
         'numberOfEmployees': _approxEmployees ?? int.tryParse(numberOfEmployeesController.text) ?? 0,
+        'intendedLocationQuantity': _locations, // Store the intended location quantity for subscription
         'createdAt': FieldValue.serverTimestamp(),
         'createdBy': user.uid,
         'isActive': true,
@@ -556,9 +557,10 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
 
       // Navigate to embedded payment page instead of old redirect method
       if (mounted) {
-        final priceId = _isAnnual ? kStripePriceAnnual : kStripePriceMonthly;
+        final priceIdMonthly = kStripePriceMonthly;
+        final priceIdAnnual = kStripePriceAnnual;
         context.go(
-          '/embedded-payment?orgId=$orgId&priceId=$priceId&quantity=$_locations&email=${emailController.text.trim()}&setup=true',
+          '/embedded-payment?orgId=$orgId&priceIdMonthly=$priceIdMonthly&priceIdAnnual=$priceIdAnnual&quantity=$_locations&email=${emailController.text.trim()}&setup=true',
         );
       }
     } catch (e) {
@@ -796,19 +798,14 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                                 ],
                               ),
                               const SizedBox(height: 8),
+                              Text('\$49.99 per location', style: TextStyle(fontSize: 12, color: Colors.white70)),
+                              const SizedBox(height: 4),
                               Text(
-                                _locations == 1
-                                    ? '\$69.99 for the first location'
-                                    : '\$69.99 for the first location, \$49.99 for ${_locations - 1} additional location${_locations > 2 ? 's' : ''}',
+                                _isAnnual
+                                    ? 'Annual billing selected — 10% discount applied at checkout'
+                                    : 'Save 10% with annual billing',
                                 style: TextStyle(fontSize: 12, color: Colors.white70),
                               ),
-                              if (_isAnnual) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Annual billing selected — billed annually at checkout',
-                                  style: TextStyle(fontSize: 12, color: Colors.white70),
-                                ),
-                              ],
                             ],
                           ),
                         );

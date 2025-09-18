@@ -6,6 +6,44 @@ import 'package:hands_app/ui/bottom_sheet_styles.dart';
 import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:hands_app/custom_code/widgets/UserManagementBottomSheet.dart' show JobTypeManagementDialog;
+
+class _InfoTip extends StatefulWidget {
+  final String text;
+  const _InfoTip({required this.text});
+
+  @override
+  State<_InfoTip> createState() => _InfoTipState();
+}
+
+class _InfoTipState extends State<_InfoTip> {
+  bool _visible = true;
+  @override
+  Widget build(BuildContext context) {
+    if (!_visible) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+    final textStyle = Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(4)),
+      child: Row(
+        children: [
+          Semantics(label: 'Info', child: Icon(Icons.info_outline, size: 16, color: cs.onSurfaceVariant)),
+          const SizedBox(width: 6),
+          Expanded(child: Text(widget.text, maxLines: 4, overflow: TextOverflow.ellipsis, style: textStyle)),
+          IconButton(
+            tooltip: 'Dismiss',
+            onPressed: () => setState(() => _visible = false),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+            icon: Icon(Icons.close, size: 16, color: cs.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class ChecklistBottomSheet extends StatefulWidget {
   final String organizationId;
@@ -108,6 +146,26 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
     } catch (e) {
       // ignore errors; suggestions are optional
     }
+  }
+
+  Future<void> _addJobTypeToOrganization(String name) async {
+    final target = _findCanonicalJobTypeName(name);
+    try {
+      // Avoid duplicate by case-insensitive local check
+      final exists = _availableJobTypeSuggestions.any((t) => _normalizeJobType(t) == _normalizeJobType(target));
+      if (!exists) {
+        final coll = FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(widget.organizationId)
+            .collection('jobTypes');
+        await coll.add({
+          'name': target.trim(),
+          'createdAt': FieldValue.serverTimestamp(),
+          'organizationId': widget.organizationId,
+        });
+      }
+      await _loadAvailableJobTypes();
+    } catch (_) {}
   }
 
   Future<void> _loadShiftsForCurrentLocation() async {
@@ -424,6 +482,7 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        const _InfoTip(text: 'Name your checklist and add a short description.'),
         const Text('Enter basic information for your checklist:'),
         const SizedBox(height: BottomSheetStyles.verticalSectionSpacing),
         TextFormField(
@@ -460,6 +519,10 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        const _InfoTip(
+          text:
+              'Select shifts where this checklist appears. To create shifts, go to Setup > Shifts on the Setup page and add your first shift. You can then return here and link that shift to this checklist. You can change this later.',
+        ),
         const Text('Select which shifts at this location this checklist applies to:'),
         const SizedBox(height: BottomSheetStyles.verticalSectionSpacing),
         ...(_availableShifts.map((shift) {
@@ -499,6 +562,9 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        const _InfoTip(
+          text: 'Tap the camera to require a photo. If a photo is not uploaded by staff, admins are notified.',
+        ),
         const Text('Add tasks to your checklist. Drag to reorder:'),
         const SizedBox(height: BottomSheetStyles.verticalSectionSpacing),
         if (_tasks.isEmpty)
@@ -570,30 +636,69 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Optionally restrict this checklist to people with these job types. Leave empty to make it visible to all.',
+        const _InfoTip(
+          text:
+              'Job types control who will see this checklist. These should match the job types assigned to each user. When a person starts a shift, they only see checklists that include their job type. For example, a Bartender will only see checklists that list “Bartender”. Leave this empty to show the checklist to everyone.',
+        ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Optionally restrict this checklist to people with these job types. Leave empty to make it visible to all.',
+            ),
+            TextButton.icon(
+              onPressed: () async {
+                await showDialog(
+                  context: context,
+                  builder:
+                      (ctx) => JobTypeManagementDialog(
+                        onJobTypesUpdated: () async {
+                          await _loadAvailableJobTypes();
+                          setState(() {});
+                        },
+                      ),
+                );
+                await _loadAvailableJobTypes();
+              },
+              icon: const Icon(Icons.settings, size: 16),
+              label: const Text('Manage', style: TextStyle(fontSize: 12)),
+            ),
+          ],
         ),
         const SizedBox(height: BottomSheetStyles.verticalSectionSpacing),
-        Wrap(
-          spacing: 8,
-          runSpacing: 6,
-          children:
-              _jobTypes.map((jt) {
-                return Chip(
-                  label: Text(jt),
-                  onDeleted: () {
-                    setState(() => _jobTypes.remove(jt));
-                  },
-                );
-              }).toList(),
-        ),
-        const SizedBox(height: 8),
+        // Use org job types as togglable chips (like User Management)
+        if (_availableJobTypeSuggestions.isEmpty)
+          const Text('No job types found yet. Use Manage to create your first one.')
+        else
+          Container(
+            decoration: BoxDecoration(
+              border: Border.all(color: Theme.of(context).dividerColor),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            padding: const EdgeInsets.all(12),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children:
+                  _availableJobTypeSuggestions.map((type) {
+                    final isSelected = _containsJobType(type);
+                    return FilterChip(
+                      label: Text(type),
+                      selected: isSelected,
+                      onSelected: (sel) {
+                        setState(() => _toggleJobType(type, sel));
+                      },
+                    );
+                  }).toList(),
+            ),
+          ),
+        const SizedBox(height: 12),
         Row(
           children: [
             Expanded(
               child: TextField(
                 controller: _jobTypeController,
-                decoration: BottomSheetStyles.inputDecoration(label: 'Add job type', hint: 'e.g., cleaner'),
+                decoration: BottomSheetStyles.inputDecoration(label: 'Add job type', hint: 'e.g., Dishwasher'),
                 onSubmitted: (_) => _addJobTypeFromField(),
               ),
             ),
@@ -601,27 +706,6 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
             ElevatedButton(onPressed: _addJobTypeFromField, child: const Text('Add')),
           ],
         ),
-        const SizedBox(height: 12),
-        if (_availableJobTypeSuggestions.isNotEmpty) ...[
-          const Text('Suggestions:'),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 8,
-            children:
-                _availableJobTypeSuggestions.map((sugg) {
-                  final already = _jobTypes.contains(sugg);
-                  return ActionChip(
-                    label: Text(sugg),
-                    onPressed:
-                        already
-                            ? null
-                            : () {
-                              setState(() => _jobTypes.add(sugg));
-                            },
-                  );
-                }).toList(),
-          ),
-        ],
       ],
     );
   }
@@ -766,19 +850,53 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
   void _addJobTypeFromField() {
     final raw = _jobTypeController.text.trim();
     if (raw.isEmpty) return;
-    final normalized = _normalizeJobType(raw);
+    final canonical = _findCanonicalJobTypeName(raw);
     setState(() {
-      _jobTypes.add(normalized);
+      // Ensure selection is case-insensitive unique
+      _removeJobTypeCaseInsensitive(canonical);
+      _jobTypes.add(canonical);
       _jobTypeController.clear();
     });
+    // Persist to org so both this sheet and User Management stay in sync
+    _addJobTypeToOrganization(canonical);
   }
 
   String _normalizeJobType(String s) => s.trim().toLowerCase();
+
+  bool _containsJobType(String name) {
+    final key = _normalizeJobType(name);
+    return _jobTypes.any((t) => _normalizeJobType(t) == key);
+  }
+
+  void _removeJobTypeCaseInsensitive(String name) {
+    final key = _normalizeJobType(name);
+    _jobTypes.removeWhere((t) => _normalizeJobType(t) == key);
+  }
+
+  void _toggleJobType(String name, bool select) {
+    if (select) {
+      _removeJobTypeCaseInsensitive(name);
+      _jobTypes.add(_findCanonicalJobTypeName(name));
+    } else {
+      _removeJobTypeCaseInsensitive(name);
+    }
+  }
+
+  String _findCanonicalJobTypeName(String input) {
+    final key = _normalizeJobType(input);
+    final match = _availableJobTypeSuggestions.firstWhere(
+      (t) => _normalizeJobType(t) == key,
+      orElse: () => input.trim(),
+    );
+    return match;
+  }
 
   void _saveChecklist() {
     if (!_validateCurrentStep()) return;
 
     setState(() => _loading = true);
+
+    final dedupedJobTypes = _dedupeJobTypesPreserveCase(_jobTypes.toList());
 
     final checklistPayload = {
       'name': _titleController.text.trim(),
@@ -789,8 +907,8 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
             Map<String, dynamic> task = entry.value;
             return {'name': task['name'] ?? '', 'photoRequired': task['photoRequired'] ?? false, 'order': idx};
           }).toList(),
-      'jobTypes': _jobTypes.toList(),
-      if (_jobTypes.isNotEmpty) 'jobType': _jobTypes.first,
+      'jobTypes': dedupedJobTypes,
+      if (dedupedJobTypes.isNotEmpty) 'jobType': dedupedJobTypes.first,
       'updatedAt': FieldValue.serverTimestamp(),
     };
 
@@ -826,6 +944,20 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
       }
     }
   }
+}
+
+List<String> _dedupeJobTypesPreserveCase(List<String> items) {
+  final seen = <String>{};
+  final result = <String>[];
+  for (final item in items) {
+    final key = item.trim().toLowerCase();
+    if (key.isEmpty) continue;
+    if (!seen.contains(key)) {
+      seen.add(key);
+      result.add(item.trim());
+    }
+  }
+  return result;
 }
 
 String _to12h(String hhmm) {

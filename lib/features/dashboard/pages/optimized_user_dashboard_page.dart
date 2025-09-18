@@ -227,23 +227,16 @@ class OptimizedUserDashboardPage extends HookWidget {
           const Text('Location: ', style: TextStyle(fontWeight: FontWeight.w500)),
           Expanded(
             child: DropdownButtonFormField<String?>(
-              value: selectedLocationId ?? LocationSelectionService.instance.currentLocationId,
+              value: _effectiveSelectedId(snapshot),
               decoration: const InputDecoration(
                 contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 border: OutlineInputBorder(),
               ),
-              items: [
-                const DropdownMenuItem<String?>(value: null, child: Text('All Locations')),
-                ...snapshot.session.availableLocations.map(
-                  (location) => DropdownMenuItem<String?>(
-                    value: location['id'],
-                    child: Text(location['name'] ?? 'Unknown Location'),
-                  ),
-                ),
-              ],
-              onChanged: (value) {
-                // Update global persisted selection (null allowed -> all)
-                LocationSelectionService.instance.setLocation(value);
+              items: _buildLocationItems(snapshot),
+              onChanged: (value) async {
+                try {
+                  await LocationSelectionService.instance.setLocationAsync(value);
+                } catch (_) {}
                 onLocationChanged?.call(value);
               },
             ),
@@ -251,6 +244,28 @@ class OptimizedUserDashboardPage extends HookWidget {
         ],
       ),
     );
+  }
+
+  String? _effectiveSelectedId(DashboardSnapshot snapshot) {
+    final itemsIds = snapshot.session.availableLocations.map((l) => l['id'] as String?).toSet();
+    final initial = selectedLocationId ?? LocationSelectionService.instance.currentLocationId;
+    if (initial == null) return null; // allow 'All Locations'
+    return itemsIds.contains(initial) ? initial : null;
+  }
+
+  List<DropdownMenuItem<String?>> _buildLocationItems(DashboardSnapshot snapshot) {
+    final items = <DropdownMenuItem<String?>>[
+      const DropdownMenuItem<String?>(value: null, child: Text('All Locations')),
+    ];
+    items.addAll(
+      snapshot.session.availableLocations.map(
+        (location) => DropdownMenuItem<String?>(
+          value: location['id'] as String?,
+          child: Text(location['name'] ?? 'Unknown Location'),
+        ),
+      ),
+    );
+    return items;
   }
 
   Widget _buildShiftCard(BuildContext context, ShiftData shift, List<DailyChecklist> checklists) {

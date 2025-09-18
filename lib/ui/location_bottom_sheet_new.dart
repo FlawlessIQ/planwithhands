@@ -77,7 +77,7 @@ class _LocationWizardState extends State<LocationWizard> {
     if (!mounted) return;
     setState(() => _loading = true);
     try {
-      final sub = await StripeService.getSubscriptionData(widget.organizationId);
+      final sub = await StripeService.getSubscriptionDataHydrated(widget.organizationId);
       _subscriptionQuantity = (sub?['quantity'] as int?) ?? 1;
 
       final orgDoc = await FirestoreEnforcer.instance.collection('organizations').doc(widget.organizationId).get();
@@ -167,18 +167,15 @@ class _LocationWizardState extends State<LocationWizard> {
         }
       }
 
-      // If a parent supplies onCompleted it is responsible for closing the dialog / route.
-      // Previously we always called Navigator.pop() here AND most callers (e.g. admin dashboard)
-      // also popped inside their onCompleted callback, resulting in a double pop that
-      // triggered GoRouter's `currentConfiguration.isNotEmpty` assertion and subsequent
-      // setState-after-dispose errors when async loads completed on the disposed page.
-      final hasExternalCompletionHandler = widget.onCompleted != null;
+      // Call the completion handler if provided
       try {
         widget.onCompleted?.call();
       } catch (e) {
         debugPrint('[LocationWizard] onCompleted handler threw: $e');
       }
-      if (!hasExternalCompletionHandler && mounted) {
+
+      // Always close the bottom sheet/navigator after successful completion
+      if (mounted) {
         Navigator.of(context).pop(true);
       }
     } catch (e) {
@@ -204,7 +201,7 @@ class _LocationWizardState extends State<LocationWizard> {
 
   Future<void> _openUpgradeQuantitySheet() async {
     try {
-      final sub = await StripeService.getSubscriptionData(widget.organizationId);
+      final sub = await StripeService.getSubscriptionDataHydrated(widget.organizationId);
       final subscriptionId = sub?['subscriptionId'] as String?;
       final currentQty = (sub?['quantity'] as int?) ?? _subscriptionQuantity;
       if (subscriptionId == null) {
@@ -334,6 +331,10 @@ class _LocationWizardState extends State<LocationWizard> {
                             isActive: _currentStep >= 1,
                             content: Column(
                               children: [
+                                _InfoTip(
+                                  text:
+                                      'Add or manage locations in the Web Portal → Settings → Manage Locations. Update subscription there too.',
+                                ),
                                 ListView.builder(
                                   shrinkWrap: true,
                                   physics: const NeverScrollableScrollPhysics(),
@@ -405,6 +406,53 @@ class _LocationWizardState extends State<LocationWizard> {
                           ),
                         ],
               ),
+    );
+  }
+}
+
+class _InfoTip extends StatefulWidget {
+  final String text;
+  const _InfoTip({required this.text});
+
+  @override
+  State<_InfoTip> createState() => _InfoTipState();
+}
+
+class _InfoTipState extends State<_InfoTip> {
+  bool _visible = true;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_visible) return const SizedBox.shrink();
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(Icons.info_outline, size: 16, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              widget.text,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+          ),
+          IconButton(
+            onPressed: () => setState(() => _visible = false),
+            icon: Icon(Icons.close, size: 16, color: scheme.onSurfaceVariant),
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            tooltip: 'Dismiss',
+          ),
+        ],
+      ),
     );
   }
 }

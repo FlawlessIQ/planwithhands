@@ -1,12 +1,10 @@
-import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
-import 'package:hands_app/utils/app_platform.dart';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:go_router/go_router.dart';
-import 'package:hands_app/routing/routes.dart';
 import 'package:hands_app/services/auth_service.dart';
 import 'package:hands_app/services/stripe_service.dart';
 import 'package:hands_app/services/pricing_service.dart';
@@ -17,9 +15,8 @@ import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/ui/contact_sales_dialog.dart';
 import 'package:hands_app/ui/location_bottom_sheet_new.dart';
 import 'package:hands_app/theme/theme.dart';
-import 'package:hands_app/debug/notification_debug_widget.dart';
+import 'package:hands_app/core/platform_ios.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:hands_app/widgets/hands_text_field.dart';
 
 class HandsSettingsPage extends StatefulWidget {
   const HandsSettingsPage({super.key});
@@ -1056,7 +1053,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
 
     setState(() => _isLoadingSubscription = true);
     try {
-      _subscriptionData = await StripeService.getSubscriptionData(_organizationId);
+      _subscriptionData = await StripeService.getSubscriptionDataHydrated(_organizationId);
     } catch (e) {
       debugPrint('Error loading subscription data: $e');
     } finally {
@@ -1310,12 +1307,18 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
-                    onPressed: () {
-                      // Navigate to subscription management page instead of opening external billing portal
-                      context.push('${AppRoutes.subscriptionManagementPage.path}?orgId=$_organizationId');
+                    onPressed: () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      try {
+                        await StripeService.openBillingPortal(_organizationId);
+                      } catch (e) {
+                        messenger.showSnackBar(
+                          SnackBar(content: Text('Failed to open billing portal: $e'), backgroundColor: Colors.red),
+                        );
+                      }
                     },
                     icon: const Icon(Icons.settings, color: Colors.blue),
-                    label: const Text('Manage Billing & Subscription'),
+                    label: const Text('Manage Billing'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.blue,
                       side: const BorderSide(color: Colors.blue),
@@ -1335,7 +1338,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
     if (_organizationId.isEmpty) return const SizedBox.shrink();
 
     return FutureBuilder<Map<String, dynamic>?>(
-      future: StripeService.getSubscriptionData(_organizationId),
+      future: StripeService.getSubscriptionDataHydrated(_organizationId),
       builder: (context, snapshot) {
         final billing = snapshot.data;
         final subscriptionId = billing?['subscriptionId'] as String? ?? '';
@@ -1537,7 +1540,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       // iOS platform check - show message instead of manage subscription button
-                      if (!kIsWeb && isIOS) ...[
+                      if (!kIsWeb && Platform.isIOS) ...[
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                           child: Text(
@@ -1549,9 +1552,22 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                         SizedBox(
                           width: double.infinity,
                           child: OutlinedButton.icon(
-                            onPressed: () {
-                              // Navigate to the new subscription management page
-                              context.push('${AppRoutes.subscriptionManagementPage.path}?orgId=$_organizationId');
+                            onPressed: () async {
+                              final result = await showDialog<int>(
+                                context: context,
+                                builder:
+                                    (context) => _SubscriptionManagementDialog(
+                                      orgId: _organizationId,
+                                      subscriptionId: subscriptionId,
+                                      currentQuantity: quantity,
+                                      currentUsage: currentUsage,
+                                    ),
+                              );
+
+                              if (result != null) {
+                                await _loadSubscriptionData();
+                                if (mounted) setState(() {});
+                              }
                             },
                             icon: const Icon(Icons.tune, size: 18),
                             label: Text(
@@ -1567,7 +1583,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                       const SizedBox(height: 10),
                       // Only show billing portal button when running in a web browser
                       // (kIsWeb) or on non-iOS platforms. Hide it for in-app iOS (TestFlight / App Store)
-                      if (kIsWeb || !isIOS) ...[
+                      if (kIsWeb || !Platform.isIOS) ...[
                         SizedBox(
                           width: double.infinity,
                           child: OutlinedButton.icon(
@@ -1584,16 +1600,21 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                                 return;
                               }
 
-                              // Navigate to subscription management page instead of opening external billing portal
-                              context.push('${AppRoutes.subscriptionManagementPage.path}?orgId=$_organizationId');
+                              try {
+                                await StripeService.openBillingPortal(_organizationId);
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Failed to open billing portal: $e'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              }
                             },
                             icon: const Icon(Icons.receipt_long, size: 18),
-                            label: Text(
-                              'Manage Billing & Subscription',
-                              softWrap: true,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                            label: Text('Billing Portal', softWrap: true, maxLines: 2, overflow: TextOverflow.ellipsis),
                             style: billingStyle,
                           ),
                         ),
@@ -1612,7 +1633,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                 }
 
                 // Wide layout: keep side-by-side but make spacing adaptive
-                if (!kIsWeb && isIOS) {
+                if (!kIsWeb && Platform.isIOS) {
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                     child: Text(
@@ -1626,9 +1647,23 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                   children: [
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: () {
-                          // Navigate to the new subscription management page
-                          context.push('${AppRoutes.subscriptionManagementPage.path}?orgId=$_organizationId');
+                        onPressed: () async {
+                          final result = await showDialog<int>(
+                            context: context,
+                            builder:
+                                (context) => _SubscriptionManagementDialog(
+                                  orgId: _organizationId,
+                                  subscriptionId: subscriptionId,
+                                  currentQuantity: quantity,
+                                  currentUsage: currentUsage,
+                                ),
+                          );
+
+                          if (result != null) {
+                            // Refresh the data after subscription change
+                            await _loadSubscriptionData();
+                            if (mounted) setState(() {});
+                          }
                         },
                         icon: const Icon(Icons.tune, size: 18),
                         label: Text(
@@ -1645,7 +1680,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                     // When running inside the iOS app (TestFlight/App Store), show instructions instead.
                     Expanded(
                       child:
-                          kIsWeb || !isIOS
+                          kIsWeb || !Platform.isIOS
                               ? OutlinedButton.icon(
                                 onPressed: () async {
                                   if (_organizationId.isEmpty) {
@@ -1660,12 +1695,22 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                                     return;
                                   }
 
-                                  // Navigate to subscription management page instead of opening external billing portal
-                                  context.push('${AppRoutes.subscriptionManagementPage.path}?orgId=$_organizationId');
+                                  try {
+                                    await StripeService.openBillingPortal(_organizationId);
+                                  } catch (e) {
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Failed to open billing portal: $e'),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                    }
+                                  }
                                 },
                                 icon: const Icon(Icons.receipt_long, size: 18),
                                 label: Text(
-                                  'Manage Billing & Subscription',
+                                  'Billing Portal',
                                   softWrap: true,
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
@@ -1867,7 +1912,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
     final orgCount = locationsQuery.size;
     debugPrint('[SettingsPage] _onAddLocation: Actual location count: $orgCount');
 
-    final sub = await StripeService.getSubscriptionData(_organizationId);
+    final sub = await StripeService.getSubscriptionDataHydrated(_organizationId);
     final quantity = (sub?['quantity'] as int?) ?? 1;
     final subscriptionId = (sub?['subscriptionId'] as String?) ?? '';
     debugPrint('[SettingsPage] _onAddLocation: Subscription quantity: $quantity');
@@ -2143,9 +2188,6 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                         ),
                       ),
                       const SizedBox(height: 32),
-
-                      // Debug widget for red indicator issue - TEMPORARY
-                      if (kDebugMode) ...[const NotificationDebugWidget(), const SizedBox(height: 32)],
                     ],
                   ),
                 ),

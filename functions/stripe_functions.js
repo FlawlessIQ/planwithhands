@@ -111,9 +111,12 @@ exports.createBillingPortalSession = functions
           }, {merge: true});
         }
 
+        // Prefer configured base URL if available
+        const cfg = functions.config() || {};
+        const appBase = (cfg.app && cfg.app.base_url) || process.env.APP_BASE_URL || "https://plan-with-hands.web.app";
         const portalSession = await stripe.billingPortal.sessions.create({
           customer: stripeCustomerId,
-          return_url: "https://plan-with-hands.web.app/settings",
+          return_url: `${appBase}/#/settings`,
         });
         return {url: portalSession.url};
       } catch (err) {
@@ -197,6 +200,7 @@ exports.stripeWebhook = functions
             subscriptionId: subscription.id,
             stripeCustomerId: subscription.customer,
             priceId: subscription.items.data[0].price.id,
+            quantity: (subscription.items.data[0] && subscription.items.data[0].quantity) || 1,
             cancellationRequested: false,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           };
@@ -212,6 +216,17 @@ exports.stripeWebhook = functions
               .collection("stripe")
               .doc("subscription")
               .set(subscriptionData, {merge: true});
+
+          // Also update the organization document for backward compatibility
+          await db
+              .collection("organizations")
+              .doc(orgId)
+              .update({
+                subscriptionStatus: subscription.status,
+                stripeSubscriptionId: subscription.id,
+                stripeCustomerId: subscription.customer,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              });
 
           console.log("Subscription data saved to Firestore");
 
@@ -234,6 +249,7 @@ exports.stripeWebhook = functions
             subscriptionId: subscription.id,
             stripeCustomerId: subscription.customer,
             priceId: subscription.items.data[0].price.id,
+            quantity: (subscription.items.data[0] && subscription.items.data[0].quantity) || 1,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           };
 
@@ -260,6 +276,106 @@ exports.stripeWebhook = functions
               .collection("stripe")
               .doc("subscription")
               .set(subscriptionData, {merge: true});
+
+          // Also update the organization document for backward compatibility
+          await db
+              .collection("organizations")
+              .doc(orgId)
+              .update({
+                subscriptionStatus: subscription.status,
+                stripeSubscriptionId: subscription.id,
+                stripeCustomerId: subscription.customer,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              });
+        }
+      }
+
+      // Ensure default payment method and status when SetupIntent completes (Elements trial path)
+      if (event.type === "setup_intent.succeeded") {
+        const si = event.data.object;
+        const customerId = si.customer;
+        const paymentMethodId = si.payment_method;
+        const orgId = si.metadata && si.metadata.orgId;
+        const subscriptionId = si.metadata && si.metadata.subscriptionId;
+
+        try {
+          if (customerId && paymentMethodId) {
+            try {
+              await stripe.paymentMethods.attach(paymentMethodId, {customer: customerId});
+            } catch (attachErr) {
+              if (!(attachErr && attachErr.code === 'resource_already_exists')) {
+                console.warn('paymentMethods.attach failed:', attachErr && attachErr.message);
+              }
+            }
+
+            if (subscriptionId) {
+              try {
+                await stripe.subscriptions.update(subscriptionId, {default_payment_method: paymentMethodId});
+              } catch (e) {
+                console.warn('Failed setting default_payment_method on subscription:', e && e.message);
+              }
+            } else {
+              try {
+                await stripe.customers.update(customerId, {invoice_settings: {default_payment_method: paymentMethodId}});
+              } catch (e) {
+                console.warn('Failed setting default_payment_method on customer:', e && e.message);
+              }
+            }
+          }
+
+          if (orgId && subscriptionId) {
+            const sub = await stripe.subscriptions.retrieve(subscriptionId);
+            await db.collection('organizations').doc(orgId).collection('stripe').doc('subscription').set({
+              status: sub.status,
+              subscriptionId: sub.id,
+              stripeCustomerId: sub.customer,
+              priceId: sub.items.data[0] && sub.items.data[0].price && sub.items.data[0].price.id,
+              quantity: (sub.items.data[0] && sub.items.data[0].quantity) || 1,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              ...(sub.trial_end ? {trialEnd: sub.trial_end} : {}),
+            }, {merge: true});
+
+            await db.collection('organizations').doc(orgId).set({
+              subscriptionStatus: sub.status,
+              stripeSubscriptionId: sub.id,
+              stripeCustomerId: sub.customer,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            }, {merge: true});
+          }
+        } catch (err) {
+          console.error('Error processing setup_intent.succeeded:', err);
+        }
+      }
+
+      // Keep Firestore in sync when invoice is paid (e.g., after initial payment)
+      if (event.type === "invoice.payment_succeeded") {
+        const invoice = event.data.object;
+        const subscriptionId = invoice.subscription;
+        try {
+          if (subscriptionId) {
+            const sub = await stripe.subscriptions.retrieve(subscriptionId);
+            const orgId = sub.metadata && sub.metadata.orgId;
+            if (orgId) {
+              await db.collection('organizations').doc(orgId).collection('stripe').doc('subscription').set({
+                status: sub.status,
+                subscriptionId: sub.id,
+                stripeCustomerId: sub.customer,
+                priceId: sub.items.data[0] && sub.items.data[0].price && sub.items.data[0].price.id,
+                quantity: (sub.items.data[0] && sub.items.data[0].quantity) || 1,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                ...(sub.trial_end ? {trialEnd: sub.trial_end} : {}),
+              }, {merge: true});
+
+              await db.collection('organizations').doc(orgId).set({
+                subscriptionStatus: sub.status,
+                stripeSubscriptionId: sub.id,
+                stripeCustomerId: sub.customer,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              }, {merge: true});
+            }
+          }
+        } catch (err) {
+          console.error('Error processing invoice.payment_succeeded:', err);
         }
       }
 
@@ -276,6 +392,7 @@ exports.stripeWebhook = functions
             subscriptionId: subscription.id,
             stripeCustomerId: subscription.customer,
             priceId: subscription.items.data[0]?.price?.id,
+            quantity: (subscription.items.data[0] && subscription.items.data[0].quantity) || 1,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           };
 
@@ -304,6 +421,17 @@ exports.stripeWebhook = functions
             .collection("stripe")
             .doc("subscription")
             .set(subscriptionData, { merge: true });
+
+          // Also update the organization document for backward compatibility
+          await db
+            .collection("organizations")
+            .doc(orgId)
+            .update({
+              subscriptionStatus: subscription.status,
+              stripeSubscriptionId: subscription.id,
+              stripeCustomerId: subscription.customer,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
 
           console.log("Subscription created data saved to Firestore");
 
@@ -459,10 +587,19 @@ async function sendWelcomeEmail(session, orgId, subscription) {
     }
 
     const orgData = orgDoc.data();
-    const orgName = orgData.organizationName || "Your Organization";
+    const orgName = orgData.organizationName || orgData.name || `Org ${orgId}`;
+    // Derive created date from explicit field if present; fall back to server time
+    const createdTs = orgData.createdAt || orgData.created || orgDoc.createTime || null;
+    const createdDate = (() => {
+      try {
+        const d = createdTs && createdTs.toDate ? createdTs.toDate() : (createdTs instanceof Date ? createdTs : new Date());
+        const fmt = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+        return fmt.format(d);
+      } catch (_) { return new Date().toISOString().substring(0, 10); }
+    })();
     console.log("Organization name:", orgName);
 
-    // Get customer details from Stripe
+  // Get customer details from Stripe
     console.log("Retrieving Stripe customer:", subscription.customer);
     const customer = await stripe.customers.retrieve(subscription.customer);
     const customerEmail = customer.email || session.customer_details?.email;
@@ -476,16 +613,31 @@ async function sendWelcomeEmail(session, orgId, subscription) {
       return;
     }
 
-  // Prepare welcome email with the correct dynamic template
-  const templateId = "d-93870b1c6d6943419a15117c553858da";
+    // Prepare plan description from subscription
+    let planType = "Hands – Location License";
+    try {
+      const item = subscription.items && subscription.items.data && subscription.items.data[0];
+      const qty = (item && item.quantity) || 1;
+      const interval = (item && item.price && item.price.recurring && item.price.recurring.interval) || 'month';
+      const label = interval === 'year' ? 'Annual' : 'Monthly';
+      planType = `${qty} Location${qty > 1 ? 's' : ''} (${label})`;
+    } catch (e) {
+      console.warn('Failed to compute planType:', e && e.message);
+    }
+
+    // Prepare welcome email with the correct dynamic template
+    const templateId = "d-93870b1c6d6943419a15117c553858da";
     
     const templateData = {
-      firstName: customerName.split(' ')[0] || customerName,
-      orgName: orgName,
+      firstName: (customerName && customerName.split(' ')[0]) || customerName,
+      orgName,
       email: customerEmail,
-      temporaryPassword: "N/A", // Not applicable for subscription customers
-      welcomeUrl: "https://plan-with-hands.web.app/dashboard",
-      adminEmail: "support@planwithhands.com",
+      adminEmail: customerEmail,
+      temporaryPassword: "N/A",
+      welcomeUrl: "https://plan-with-hands.web.app/login?src=marketing_redirect",
+      webPortalUrl: "https://plan-with-hands.web.app/login?src=marketing_redirect",
+      createdDate,
+      planType,
     };
     
     const msg = {

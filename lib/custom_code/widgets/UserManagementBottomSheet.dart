@@ -603,7 +603,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Staff will only see shifts which align with these job types',
+                    'Staff will only see checklists which align with these job types',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.textTheme.bodyMedium?.color?.withOpacity(0.8),
                     ),

@@ -8,6 +8,7 @@ import 'dart:async';
 
 // ⬇️ UPDATE this import path if needed
 import 'package:hands_app/services/stripe_service.dart';
+import 'package:hands_app/services/pricing_service.dart';
 import 'package:hands_app/widgets/hands_text_field.dart';
 
 class EmbeddedPaymentPage extends StatefulWidget {
@@ -37,16 +38,17 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
   final _emailCtrl = TextEditingController();
   final _promoCtrl = TextEditingController();
 
-  // Enhanced card field controllers
-  final _cardNumberCtrl = TextEditingController();
-  final _expiryCtrl = TextEditingController();
-  final _cvcCtrl = TextEditingController();
+  // Enhanced card field controllers (unused with CardField-only flow)
 
-  CardFieldInputDetails? _card;
-  String _detectedCardType = '';
+  // Payment state
   bool _isAnnual = false;
   bool _busy = false;
   String? _error;
+
+  // Custom card validation state (updated by CardField)
+  bool _cardNumberValid = false;
+  bool _expiryValid = false;
+  bool _cvcValid = false;
 
   // Promo code state
   bool _promoLoading = false;
@@ -56,7 +58,7 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
   Timer? _promoDebounce;
   int _promoRequestId = 0;
 
-  // Web card form tracking - removed, using _isWebCardComplete() method instead
+  // Web card form tracking removed; CardField handles completion state
 
   // Animation controllers
   late AnimationController _fadeController;
@@ -68,56 +70,9 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
   bool get _formComplete =>
       _nameCtrl.text.trim().isNotEmpty &&
       _emailCtrl.text.trim().isNotEmpty &&
-      (kIsWeb ? _isWebCardComplete() : (_card?.complete ?? false));
-
-  bool _isWebCardComplete() {
-    return _cardNumberCtrl.text.replaceAll(' ', '').length >= 13 &&
-        _expiryCtrl.text.length >= 5 &&
-        _cvcCtrl.text.length >= 3;
-  }
-
-  String _detectCardType(String number) {
-    // Remove spaces and get first few digits
-    String cleanNumber = number.replaceAll(' ', '');
-    if (cleanNumber.isEmpty) return '';
-
-    // Visa
-    if (cleanNumber.startsWith('4')) return 'Visa';
-
-    // Mastercard
-    if (cleanNumber.startsWith(RegExp(r'^5[1-5]')) ||
-        cleanNumber.startsWith(RegExp(r'^2(2[2-9]|[3-6][0-9]|7[0-1]|720)'))) {
-      return 'Mastercard';
-    }
-
-    // American Express
-    if (cleanNumber.startsWith(RegExp(r'^3[47]'))) return 'Amex';
-
-    // Discover
-    if (cleanNumber.startsWith('6011') ||
-        cleanNumber.startsWith('65') ||
-        cleanNumber.startsWith(RegExp(r'^64[4-9]')) ||
-        cleanNumber.startsWith(RegExp(r'^622(1(2[6-9]|[3-9][0-9])|[2-8][0-9]{2}|9([01][0-9]|2[0-5]))'))) {
-      return 'Discover';
-    }
-
-    return '';
-  }
-
-  Widget _getCardIcon(String cardType) {
-    switch (cardType) {
-      case 'Visa':
-        return Text('VISA', style: TextStyle(color: Colors.blue.shade700, fontWeight: FontWeight.bold, fontSize: 12));
-      case 'Mastercard':
-        return Text('MC', style: TextStyle(color: Colors.red.shade700, fontWeight: FontWeight.bold, fontSize: 12));
-      case 'Amex':
-        return Text('AMEX', style: TextStyle(color: Colors.green.shade700, fontWeight: FontWeight.bold, fontSize: 12));
-      case 'Discover':
-        return Text('DISC', style: TextStyle(color: Colors.orange.shade700, fontWeight: FontWeight.bold, fontSize: 12));
-      default:
-        return Icon(Icons.credit_card_outlined, color: Colors.grey.shade600);
-    }
-  }
+      _cardNumberValid &&
+      _expiryValid &&
+      _cvcValid;
 
   void _popSuccess({String? message}) {
     if (!mounted) return;
@@ -190,9 +145,6 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
     _nameCtrl.dispose();
     _emailCtrl.dispose();
     _promoCtrl.dispose();
-    _cardNumberCtrl.dispose();
-    _expiryCtrl.dispose();
-    _cvcCtrl.dispose();
     _promoDebounce?.cancel();
     _fadeController.dispose();
     _slideController.dispose();
@@ -386,7 +338,8 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
 
   Widget _buildSummary() {
     final isAnnual = _isAnnual && _hasAnnual;
-    final basePrice = isAnnual ? 755.90 : 69.99;
+    final basePrice =
+        isAnnual ? PricingService.calcAnnual(widget.quantity) : PricingService.calcMonthly(widget.quantity);
     final period = isAnnual ? 'year' : 'month';
     final discount = _validPromo != null ? _calculateDiscount(basePrice) : 0.0;
     final finalPrice = basePrice - discount;
@@ -468,229 +421,39 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
   }
 
   Widget _enhancedCardField({bool isNarrow = false}) {
-    // For web, use regular TextFields as CardField has integration issues
-    if (kIsWeb) {
-      return Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade300),
-        ),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Card Number', style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 8),
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade400, width: 0.8),
-                  ),
-                  child: HandsTextField(
-                    controller: _cardNumberCtrl,
-                    keyboardType: TextInputType.number,
-                    textCapitalization: TextCapitalization.none, // No capitalization for card numbers
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(19), // 16 digits + 3 spaces
-                      CardNumberInputFormatter(),
-                    ],
-                    decoration: InputDecoration(
-                      hintText: '1234 1234 1234 1234',
-                      hintStyle: TextStyle(color: Colors.grey.shade500),
-                      prefixIcon: _getCardIcon(_detectedCardType),
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    ),
-                    style: const TextStyle(color: Colors.black, fontSize: 16),
-                    onChanged: (value) {
-                      setState(() {
-                        _detectedCardType = _detectCardType(value);
-                      });
-                    },
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (!isNarrow)
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Expiry', style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 8),
-                        Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.grey.shade400, width: 0.8),
-                          ),
-                          child: HandsTextField(
-                            controller: _expiryCtrl,
-                            keyboardType: TextInputType.number,
-                            textCapitalization: TextCapitalization.none, // No capitalization for dates
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                              LengthLimitingTextInputFormatter(5), // MM/YY
-                              ExpiryDateInputFormatter(),
-                            ],
-                            decoration: InputDecoration(
-                              hintText: 'MM/YY',
-                              hintStyle: TextStyle(color: Colors.grey.shade500),
-                              prefixIcon: Icon(Icons.calendar_today_outlined, size: 20, color: Colors.grey.shade600),
-                              filled: true,
-                              fillColor: Colors.white,
-                              border: InputBorder.none,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                            ),
-                            style: const TextStyle(color: Colors.black, fontSize: 16),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Security Code',
-                          style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 8),
-                        Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.grey.shade400, width: 0.8),
-                          ),
-                          child: HandsTextField(
-                            controller: _cvcCtrl,
-                            keyboardType: TextInputType.number,
-                            textCapitalization: TextCapitalization.none, // No capitalization for security codes
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                              LengthLimitingTextInputFormatter(4), // CVC can be 3-4 digits
-                            ],
-                            decoration: InputDecoration(
-                              hintText: 'CVC',
-                              hintStyle: TextStyle(color: Colors.grey.shade500),
-                              prefixIcon: Icon(Icons.lock_outline, color: Colors.grey.shade600),
-                              filled: true,
-                              fillColor: Colors.white,
-                              border: InputBorder.none,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                            ),
-                            style: const TextStyle(color: Colors.black, fontSize: 16),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              )
-            else ...[
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Expiry', style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 8),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade400, width: 0.8),
-                    ),
-                    child: HandsTextField(
-                      controller: _expiryCtrl,
-                      keyboardType: TextInputType.number,
-                      textCapitalization: TextCapitalization.none, // No capitalization for dates
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                        LengthLimitingTextInputFormatter(5), // MM/YY
-                        ExpiryDateInputFormatter(),
-                      ],
-                      decoration: InputDecoration(
-                        hintText: 'MM/YY',
-                        hintStyle: TextStyle(color: Colors.grey.shade500),
-                        prefixIcon: Icon(Icons.calendar_today_outlined, size: 20, color: Colors.grey.shade600),
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      ),
-                      style: const TextStyle(color: Colors.black, fontSize: 16),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text('Security Code', style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 8),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade400, width: 0.8),
-                    ),
-                    child: HandsTextField(
-                      controller: _cvcCtrl,
-                      keyboardType: TextInputType.number,
-                      textCapitalization: TextCapitalization.none, // No capitalization for security codes
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                        LengthLimitingTextInputFormatter(4), // CVC can be 3-4 digits
-                      ],
-                      decoration: InputDecoration(
-                        hintText: 'CVC',
-                        hintStyle: TextStyle(color: Colors.grey.shade500),
-                        prefixIcon: Icon(Icons.lock_outline, color: Colors.grey.shade600),
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      ),
-                      style: const TextStyle(color: Colors.black, fontSize: 16),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      );
-    }
-
-    // Mobile implementation using CardField
+    // Use a clipped container to hide any black bars from CardField
     return Container(
+      height: 76,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade300),
+        border: Border.all(color: Colors.grey.shade200, width: 1),
       ),
-      padding: const EdgeInsets.all(16),
-      child: CardField(
-        onCardChanged: (card) {
-          setState(() {
-            _card = card;
-          });
-        },
-        enablePostalCode: false,
-        decoration: const InputDecoration(
-          border: InputBorder.none,
-          focusedBorder: InputBorder.none,
-          enabledBorder: InputBorder.none,
-          errorBorder: InputBorder.none,
-          disabledBorder: InputBorder.none,
-          contentPadding: EdgeInsets.zero,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: CardField(
+            onCardChanged: (card) {
+              setState(() {
+                // Update our validation state based on CardField
+                final isValid = card?.complete == true;
+                _cardNumberValid = isValid;
+                _expiryValid = isValid;
+                _cvcValid = isValid;
+              });
+            },
+            enablePostalCode: false,
+            decoration: const InputDecoration(
+              border: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              errorBorder: InputBorder.none,
+              disabledBorder: InputBorder.none,
+              contentPadding: EdgeInsets.symmetric(vertical: 22),
+              hintStyle: TextStyle(color: Colors.grey),
+            ),
+          ),
         ),
       ),
     );
@@ -703,7 +466,7 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
           child: _enhancedPillButton(
             label: 'Monthly',
             subtitle: 'Pay monthly',
-            price: '\$69.99/mo',
+            price: '\$49.99 per location/mo',
             selected: !_isAnnual,
             onTap: () => setState(() => _isAnnual = false),
           ),
@@ -712,8 +475,8 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
         Expanded(
           child: _enhancedPillButton(
             label: 'Annual',
-            subtitle: 'Save 10%',
-            price: '\$755.90/yr',
+            subtitle: 'Pay annually',
+            price: '\$${PricingService.calcAnnual(widget.quantity).toStringAsFixed(2)} per year',
             trailingChip: '10% OFF',
             selected: _isAnnual,
             onTap: () => setState(() => _isAnnual = true),
@@ -1081,15 +844,15 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
               _enhancedPillButton(
                 label: 'Monthly',
                 subtitle: 'Pay monthly',
-                price: '\$69.99/mo',
+                price: '\$49.99 per location/mo',
                 selected: !_isAnnual,
                 onTap: () => setState(() => _isAnnual = false),
               ),
               const SizedBox(height: 12),
               _enhancedPillButton(
                 label: 'Annual',
-                subtitle: 'Save 10%',
-                price: '\$755.90/yr',
+                subtitle: 'Pay annually',
+                price: '\$${PricingService.calcAnnual(widget.quantity).toStringAsFixed(2)} per year',
                 trailingChip: '10% OFF',
                 selected: _isAnnual,
                 onTap: () => setState(() => _isAnnual = true),
@@ -1427,41 +1190,49 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
       final priceId = (_isAnnual && _hasAnnual) ? widget.priceIdAnnual! : widget.priceIdMonthly;
       final String? couponId = (_validPromo?['valid'] == true) ? (_validPromo?['id'] as String?) : null;
 
-      // 1) Create the subscription on the backend.
-      // This returns a client_secret that we'll use to confirm the payment on the frontend.
+      // Use the existing CardField flow
       final sub = await StripeService.createSubscriptionElements(
         orgId: widget.orgId,
         priceId: priceId,
         quantity: widget.quantity,
         email: widget.email,
-        // Do not force trial here; let backend/Stripe decide. Trials or $0 invoices may return no client secret.
-        // trialDays: 14,
+        // Ensure a 14-day free trial is applied
+        trialDays: 14,
         couponId: couponId,
       );
-      final clientSecret = sub['clientSecret'] as String?;
 
-      // If there is no clientSecret, it means no upfront payment is required (trial or $0 invoice).
-      if (clientSecret == null || clientSecret.isEmpty) {
-        _popSuccess(message: 'Subscription started. No payment due today.');
-        return;
+      final clientSecret = sub['clientSecret'] as String?;
+      final setupClientSecret = sub['setupClientSecret'] as String?;
+
+      // If there's an immediate invoice to pay, confirm it inline via Elements
+      if (clientSecret != null && clientSecret.isNotEmpty) {
+        await Stripe.instance.confirmPayment(
+          paymentIntentClientSecret: clientSecret,
+          data: const PaymentMethodParams.card(paymentMethodData: PaymentMethodData()),
+        );
+      }
+      // If there's no payment required but we have a SetupIntent, confirm it to save the payment method
+      else if (setupClientSecret != null && setupClientSecret.isNotEmpty) {
+        await Stripe.instance.confirmSetupIntent(
+          paymentIntentClientSecret: setupClientSecret,
+          params: const PaymentMethodParams.card(paymentMethodData: PaymentMethodData()),
+        );
       }
 
-      // 2) Confirm the payment with card details.
-      // This uses the card details entered in the UI and handles 3D Secure authentication.
-      await Stripe.instance.confirmPayment(
-        paymentIntentClientSecret: clientSecret,
-        data: PaymentMethodParams.card(
-          paymentMethodData: PaymentMethodData(
-            billingDetails: BillingDetails(email: _emailCtrl.text.trim(), name: _nameCtrl.text.trim()),
-          ),
-        ),
-      );
+      // Hydrate subscription data right away to reflect final status/quantity
+      try {
+        await StripeService.getSubscriptionDataHydrated(widget.orgId);
+      } catch (_) {}
 
-      // 3) If payment is successful, show a confirmation and navigate back.
       _popSuccess(message: 'Subscription activated!');
     } catch (e) {
-      // If there's an error, display it to the user.
-      setState(() => _error = e.toString());
+      final msg = e.toString();
+      // Map Stripe unsupported payment method errors to a clearer message
+      final mapped =
+          msg.contains('is not one of the supported values')
+              ? 'Only card payments are supported for signup. Please use a standard credit or debit card.'
+              : msg;
+      setState(() => _error = mapped);
     } finally {
       // Ensure the busy indicator is turned off.
       if (mounted) setState(() => _busy = false);

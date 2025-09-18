@@ -8,51 +8,65 @@ class LocationSelectionService {
   static final LocationSelectionService instance = LocationSelectionService._();
 
   static const String _preferenceKey = 'selected_location_id';
+  static const String _preferenceNameKey = 'selected_location_name';
 
   /// Persists to SharedPreferences for cross-session persistence
   final ValueNotifier<String?> _currentLocationId = ValueNotifier<String?>(null);
+  final ValueNotifier<String?> _currentLocationName = ValueNotifier<String?>(null);
 
   ValueListenable<String?> get listenable => _currentLocationId;
+  ValueListenable<String?> get nameListenable => _currentLocationName;
   String? get currentLocationId => _currentLocationId.value;
+  String? get currentLocationName => _currentLocationName.value;
 
   /// Initialize by loading saved location from SharedPreferences
   Future<void> initialize() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final savedLocationId = prefs.getString(_preferenceKey);
+      final savedLocationName = prefs.getString(_preferenceNameKey);
       if (savedLocationId != null && savedLocationId.isNotEmpty) {
         _currentLocationId.value = savedLocationId;
+        _currentLocationName.value = savedLocationName; // May be null for legacy data
       }
     } catch (e) {
       // Ignore errors during initialization, just use null
     }
   }
 
-  void setLocation(String? locationId) {
+  void setLocation(String? locationId, {String? locationName}) {
     if (_currentLocationId.value == locationId) return;
 
     _currentLocationId.value = locationId;
+    _currentLocationName.value = locationName;
 
     // Persist to SharedPreferences asynchronously (fire and forget)
-    _persistToSharedPreferences(locationId);
+    _persistToSharedPreferences(locationId, locationName);
   }
 
-  Future<void> setLocationAsync(String? locationId) async {
+  Future<void> setLocationAsync(String? locationId, {String? locationName}) async {
     if (_currentLocationId.value == locationId) return;
 
     _currentLocationId.value = locationId;
+    _currentLocationName.value = locationName;
 
     // Persist to SharedPreferences and wait
-    await _persistToSharedPreferences(locationId);
+    await _persistToSharedPreferences(locationId, locationName);
   }
 
-  Future<void> _persistToSharedPreferences(String? locationId) async {
+  Future<void> _persistToSharedPreferences(String? locationId, String? locationName) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       if (locationId != null && locationId.isNotEmpty) {
         await prefs.setString(_preferenceKey, locationId);
+        if (locationName != null && locationName.isNotEmpty) {
+          await prefs.setString(_preferenceNameKey, locationName);
+        } else {
+          await prefs.remove(_preferenceNameKey);
+        }
       } else {
         await prefs.remove(_preferenceKey);
+        await prefs.remove(_preferenceNameKey);
       }
     } catch (e) {
       // Log but don't fail if SharedPreferences isn't available
@@ -62,6 +76,6 @@ class LocationSelectionService {
 
   /// Clear the saved location (useful for logout)
   Future<void> clearLocation() async {
-    await setLocationAsync(null);
+    await setLocationAsync(null, locationName: null);
   }
 }

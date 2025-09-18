@@ -365,6 +365,9 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      const _InfoTip(
+                        text: 'Upload training/ops docs. PDF, images, DOCX (max 20 MB). Choose a category.',
+                      ),
                       // Document Title
                       TextFormField(
                         controller: titleController,
@@ -598,6 +601,50 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _InfoTip extends StatefulWidget {
+  final String text;
+  const _InfoTip({required this.text});
+
+  @override
+  State<_InfoTip> createState() => _InfoTipState();
+}
+
+class _InfoTipState extends State<_InfoTip> {
+  bool _visible = true;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_visible) return const SizedBox.shrink();
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(color: scheme.surfaceContainerHighest.withOpacity(0.5), borderRadius: BorderRadius.circular(6)),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(Icons.info_outline, size: 16, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              widget.text,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+          ),
+          IconButton(
+            onPressed: () => setState(() => _visible = false),
+            icon: Icon(Icons.close, size: 16, color: scheme.onSurfaceVariant),
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            tooltip: 'Dismiss',
+          ),
+        ],
       ),
     );
   }

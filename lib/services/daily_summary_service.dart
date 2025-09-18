@@ -624,11 +624,8 @@ class DailySummaryService {
   }) async {
     try {
       // Use the new outbox notification system for consistent delivery
-      final outboxRef = _firestore
-          .collection('organizations')
-          .doc(organizationId)
-          .collection('notificationOutbox')
-          .doc();
+      final outboxRef =
+          _firestore.collection('organizations').doc(organizationId).collection('notificationOutbox').doc();
 
       final outboxData = {
         'title': title,
@@ -647,11 +644,8 @@ class DailySummaryService {
       final timestamp = FieldValue.serverTimestamp();
 
       for (final admin in adminUsers) {
-        final userNotificationRef = _firestore
-            .collection('userNotifications')
-            .doc(admin['userId'])
-            .collection('notifications')
-            .doc();
+        final userNotificationRef =
+            _firestore.collection('userNotifications').doc(admin['userId']).collection('notifications').doc();
 
         final userNotificationData = {
           'userId': admin['userId'],
@@ -670,11 +664,15 @@ class DailySummaryService {
         // Use TTL helper for user notifications too
         FirestoreTTLHelper.batchSetWithTTL(batch, userNotificationRef, userNotificationData);
 
-        logger.d('[DailySummaryService] Queued user notification for admin: ${admin['firstName']} ${admin['lastName']}');
+        logger.d(
+          '[DailySummaryService] Queued user notification for admin: ${admin['firstName']} ${admin['lastName']}',
+        );
       }
 
       await batch.commit();
-      logger.d('[DailySummaryService] Successfully sent notifications to ${adminUsers.length} admin(s) via outbox and direct delivery');
+      logger.d(
+        '[DailySummaryService] Successfully sent notifications to ${adminUsers.length} admin(s) via outbox and direct delivery',
+      );
     } catch (e, stackTrace) {
       logger.e('[DailySummaryService] Error sending notifications to admins', e, stackTrace);
       rethrow;

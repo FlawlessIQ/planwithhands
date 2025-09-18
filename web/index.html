@@ -12,7 +12,7 @@
   <meta name="flutter-web-renderer" content="html" />
   
   <!-- Content Security Policy for Stripe, Firebase, and Flutter Web -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://js.stripe.com https://www.gstatic.com 'unsafe-inline' 'unsafe-eval'; frame-src https://js.stripe.com https://hooks.stripe.com; connect-src 'self' https://api.stripe.com https://r.stripe.com https://m.stripe.network https://fonts.gstatic.com https://www.gstatic.com https://firebase.googleapis.com https://firestore.googleapis.com https://firebaseinstallations.googleapis.com https://firebaseremoteconfig.googleapis.com https://firebasestorage.googleapis.com https://fcm.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://us-central1-plan-with-hands.cloudfunctions.net https://fcmregistrations.googleapis.com; img-src 'self' data: https://q.stripe.com https://m.stripe.network; style-src 'self' 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com;"
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://js.stripe.com https://www.gstatic.com 'unsafe-inline' 'unsafe-eval'; frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://firebasestorage.googleapis.com https://view.officeapps.live.com; child-src 'self' https://firebasestorage.googleapis.com https://view.officeapps.live.com; connect-src 'self' https://api.stripe.com https://r.stripe.com https://m.stripe.network https://fonts.gstatic.com https://www.gstatic.com https://firebase.googleapis.com https://firestore.googleapis.com https://firebaseinstallations.googleapis.com https://firebaseremoteconfig.googleapis.com https://firebasestorage.googleapis.com https://fcm.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://us-central1-plan-with-hands.cloudfunctions.net https://fcmregistrations.googleapis.com; img-src 'self' data: https://q.stripe.com https://m.stripe.network https://firebasestorage.googleapis.com; style-src 'self' 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com;"
 
   <!-- iOS meta tags & icons -->
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -47,8 +47,25 @@
   <!-- Custom CSS to force white background for Stripe Elements -->
   <style>
     /* Force white background and black text for all Stripe elements */
-    iframe[name^="__privateStripeFrame"] {
-      background-color: white !important;
+    :root {
+      /* Tune this to scale card input text and tap targets */
+      --stripe-scale: 1.25;
+    }
+    iframe[name^="__privateStripeFrame"],
+    iframe[src*="js.stripe.com"],
+    .__PrivateStripeElement,
+    .__PrivateStripeElement iframe,
+    .ElementsApp,
+    .ElementsApp input,
+    .PaymentElement,
+    .CardNumberField-input-wrapper,
+    .CardField,
+    .CardField-input-wrapper {
+      background-color: #ffffff !important;
+      color: #000000 !important;
+      border: none !important;
+      outline: none !important;
+      box-shadow: none !important;
     }
     
     /* Stripe Elements styling overrides */
@@ -57,6 +74,8 @@
       color: black !important;
       border: none !important;
       padding: 0 !important;
+      font-size: calc(16px * var(--stripe-scale)) !important;
+      line-height: 1.4 !important;
     }
     
     .StripeElement--focus {
@@ -80,7 +99,31 @@
     div[data-testid="card-cvc-element"] {
       background-color: white !important;
       color: black !important;
+      transform-origin: left center !important;
+      transform: scale(var(--stripe-scale)) !important;
     }
+
+    /* Reduce any default vertical paddings that may render as bars */
+    .__PrivateStripeElement, .__PrivateStripeElement iframe {
+      padding-top: 0 !important;
+      padding-bottom: 0 !important;
+      margin-top: 0 !important;
+      margin-bottom: 0 !important;
+    }
+
+    /* Ensure inner inputs scale as well */
+    .ElementsApp input, .ElementsApp select, .ElementsApp textarea {
+      font-size: calc(16px * var(--stripe-scale)) !important;
+      line-height: 1.4 !important;
+    }
+
+    /* Optional: dark appearance (not enabled by default)
+    .StripeElement, .ElementsApp, .CardField, .CardField-input-wrapper, div[data-testid="card-number-element"],
+    div[data-testid="card-expiry-element"], div[data-testid="card-cvc-element"] {
+      background-color: #1a1a1a !important;
+      color: #ffffff !important;
+    }
+    */
   </style>
 
   <!-- This script adds the flutter initialization JS inline -->

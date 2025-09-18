@@ -5,6 +5,7 @@ import 'package:hands_app/core/providers/crashlytics_provider.dart';
 import 'package:hands_app/routing/router_provider.dart';
 import 'package:hands_app/services/local_storage_service.dart';
 import 'package:hands_app/services/daily_background_service.dart';
+import 'package:hands_app/services/location_selection_service.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
@@ -59,6 +60,14 @@ void main() async {
         }
 
         await FirebaseInitializerV6().initialize();
+
+        // Initialize location selection service to load persisted location
+        try {
+          await LocationSelectionService.instance.initialize();
+        } catch (e) {
+          print('LocationSelectionService init failed (non-critical): $e');
+          // Continue without persisted location - the app can still function
+        }
 
         // Let Flutter's generated plugin registrant handle web plugin registration.
 

@@ -79,7 +79,6 @@ export {scheduledDailyGenerator} from "./dailyGenerator";
 // Export scheduled daily summary (sends daily summary notifications to admins)
 export {scheduledDailySummary, triggerDailySummary} from "./scheduledDailySummary";
 
-
 // Export new Payment Element Stripe functions
 export {
   ensureStripeCustomer,
@@ -95,4 +94,5 @@ export {
   createBillingPortalSession as createBillingPortalSessionElements,
   getSubscriptionData,
   validateCoupon,
+  backfillSubscriptionQuantityForOrg,
 } from "./stripe";

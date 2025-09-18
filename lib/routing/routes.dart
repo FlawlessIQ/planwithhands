@@ -14,6 +14,8 @@ import 'package:hands_app/features/auth/pages/account_creation_page_simple_brand
 import 'package:hands_app/features/settings/pages/settings_page.dart';
 import 'package:hands_app/features/subscription/pages/subscription_management_page.dart';
 import 'package:hands_app/features/training/pages/training_materials_page.dart';
+import 'package:hands_app/features/help/how_to_use_page.dart';
+import 'package:hands_app/features/help/contact_us_page.dart';
 import 'package:hands_app/pages/notifications_page.dart';
 import 'package:hands_app/pages/messages_page.dart';
 import 'package:hands_app/features/messaging/pages/message_thread_page.dart';
@@ -86,7 +88,7 @@ Widget _buildAdminSetupPage(BuildContext ctx, {required String organizationId, S
         initialTab: webAdminTab,
         isNewOrganizationSetup: isNewOrganizationSetup,
       )
-      : AdminDashboardPage();
+      : AdminDashboardPage(isNewOrganizationSetup: isNewOrganizationSetup);
 }
 
 // Helper function to build the appropriate manager dashboard page based on platform
@@ -120,6 +122,8 @@ enum AppRoutes {
   welcomePage('/welcome'),
   // invitePage('/invite'),
   trainingMaterialsPage('/training_materials'),
+  howToUsePage('/how-to-use'),
+  contactUsPage('/contact-us'),
   settingsPage('/settings'),
   subscriptionManagementPage('/subscription-management'),
   userDashboardPage('/user_dashboard'),
@@ -255,12 +259,14 @@ class AuthGateWithOrg extends ConsumerWidget {
                 if (!subSnap.hasData || !(subSnap.data?.exists ?? false)) {
                   logger.d('[AuthGateWithOrg] No subscription doc, redirecting to payment for orgId: $orgId');
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (context.mounted) {
+                    if (!context.mounted) return;
+                    _resolveQuantityForPayment(orgId).then((quantity) {
+                      if (!context.mounted) return;
                       final paymentUrl =
-                          '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=1';
+                          '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=$quantity';
                       logger.d('[AuthGateWithOrg] Redirecting to: $paymentUrl');
                       context.go(paymentUrl);
-                    }
+                    });
                   });
                   return const Scaffold(body: Center(child: CircularProgressIndicator()));
                 }
@@ -269,11 +275,13 @@ class AuthGateWithOrg extends ConsumerWidget {
                 if (subscriptionData == null) {
                   logger.d('[AuthGateWithOrg] Subscription data is null, redirecting to payment');
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (context.mounted) {
+                    if (!context.mounted) return;
+                    _resolveQuantityForPayment(orgId).then((quantity) {
+                      if (!context.mounted) return;
                       final paymentUrl =
-                          '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=1';
+                          '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=$quantity';
                       context.go(paymentUrl);
-                    }
+                    });
                   });
                   return const Scaffold(body: Center(child: CircularProgressIndicator()));
                 }
@@ -286,11 +294,13 @@ class AuthGateWithOrg extends ConsumerWidget {
                 if (status == null || !validStatuses.contains(status)) {
                   logger.d('[AuthGateWithOrg] Invalid subscription status: $status, redirecting to payment');
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (context.mounted) {
+                    if (!context.mounted) return;
+                    _resolveQuantityForPayment(orgId).then((quantity) {
+                      if (!context.mounted) return;
                       final paymentUrl =
-                          '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=1';
+                          '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=$quantity';
                       context.go(paymentUrl);
-                    }
+                    });
                   });
                   return const Scaffold(body: Center(child: CircularProgressIndicator()));
                 }
@@ -368,11 +378,13 @@ class AuthGateWithOrgForManager extends ConsumerWidget {
                 if (!subSnap.hasData || !(subSnap.data?.exists ?? false)) {
                   logger.d('[AuthGateWithOrgForManager] No subscription doc, redirecting to payment');
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (context.mounted) {
+                    if (!context.mounted) return;
+                    _resolveQuantityForPayment(orgId).then((quantity) {
+                      if (!context.mounted) return;
                       final paymentUrl =
-                          '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=1';
+                          '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=$quantity';
                       context.go(paymentUrl);
-                    }
+                    });
                   });
                   return const Scaffold(body: Center(child: CircularProgressIndicator()));
                 }
@@ -381,11 +393,13 @@ class AuthGateWithOrgForManager extends ConsumerWidget {
                 if (subscriptionData == null) {
                   logger.d('[AuthGateWithOrgForManager] Subscription data is null, redirecting to payment');
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (context.mounted) {
+                    if (!context.mounted) return;
+                    _resolveQuantityForPayment(orgId).then((quantity) {
+                      if (!context.mounted) return;
                       final paymentUrl =
-                          '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=1';
+                          '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=$quantity';
                       context.go(paymentUrl);
-                    }
+                    });
                   });
                   return const Scaffold(body: Center(child: CircularProgressIndicator()));
                 }
@@ -398,11 +412,13 @@ class AuthGateWithOrgForManager extends ConsumerWidget {
                 if (status == null || !validStatuses.contains(status)) {
                   logger.d('[AuthGateWithOrgForManager] Invalid subscription status: $status, redirecting to payment');
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (context.mounted) {
+                    if (!context.mounted) return;
+                    _resolveQuantityForPayment(orgId).then((quantity) {
+                      if (!context.mounted) return;
                       final paymentUrl =
-                          '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=1';
+                          '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=$quantity';
                       context.go(paymentUrl);
-                    }
+                    });
                   });
                   return const Scaffold(body: Center(child: CircularProgressIndicator()));
                 }
@@ -616,10 +632,13 @@ class AuthGateForAdminSetup extends ConsumerWidget {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     if (context.mounted) {
                       final userEmail = userData['email'] as String? ?? '';
-                      final paymentUrl =
-                          '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=1';
-                      logger.d('[AUTH_GATE_ADMIN_SETUP] Redirecting to: $paymentUrl');
-                      context.go(paymentUrl);
+                      _resolveQuantityForPayment(orgId).then((quantity) {
+                        if (!context.mounted) return;
+                        final paymentUrl =
+                            '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=$quantity';
+                        logger.d('[AUTH_GATE_ADMIN_SETUP] Redirecting to: $paymentUrl');
+                        context.go(paymentUrl);
+                      });
                     }
                   });
                   return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -638,6 +657,25 @@ class AuthGateForAdminSetup extends ConsumerWidget {
 }
 
 GoRouter? _cachedRouter;
+
+// Local helper to determine payment quantity based on intendedLocationQuantity or existing locations
+Future<int> _resolveQuantityForPayment(String orgId) async {
+  try {
+    final orgDoc = await FirestoreEnforcer.instance.collection('organizations').doc(orgId).get();
+    if (orgDoc.exists) {
+      final data = orgDoc.data();
+      final intended = data?['intendedLocationQuantity'] as int?;
+      if (intended != null && intended > 0) return intended;
+    }
+
+    final locSnap =
+        await FirestoreEnforcer.instance.collection('organizations').doc(orgId).collection('locations').get();
+    final count = locSnap.size;
+    return count > 0 ? count : 1;
+  } catch (_) {
+    return 1;
+  }
+}
 
 GoRouter buildAppRouter(Ref ref) {
   if (_cachedRouter != null) {
@@ -844,6 +882,11 @@ GoRouter buildAppRouter(Ref ref) {
             // Pass any extra data (like userRole) to the page
             return const AuthGate(child: ViewDocumentsPage());
           },
+        ),
+        GoRoute(path: AppRoutes.howToUsePage.path, builder: (context, state) => const AuthGate(child: HowToUsePage())),
+        GoRoute(
+          path: AppRoutes.contactUsPage.path,
+          builder: (context, state) => const AuthGate(child: ContactUsPage()),
         ),
         GoRoute(
           path: AppRoutes.embeddedPaymentPage.path,

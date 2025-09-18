@@ -154,14 +154,11 @@ class StripeService {
   /// Start Stripe Checkout for per-location price, returning the session URL.
   /// NOT SUPPORTED ON WEB - use createSubscriptionElements instead.
   ///
-  /// Use the tiered pricing price IDs:
-  /// - Monthly: kStripePriceMonthly (price_1S2zhQFzroJ5o7DAEj914UgN)
-  /// - Annual: kStripePriceAnnual (price_1S2ziQFzroJ5o7DANERaDZ9r)
+  /// Use per-location price IDs (flat pricing):
+  /// - Monthly: kStripePriceMonthly (flat per-location)
+  /// - Annual: kStripePriceAnnual (flat per-location with annual discount)
   ///
-  /// The quantity parameter should be the number of locations.
-  /// Stripe will automatically apply tiered pricing:
-  /// - $69.99 for first location, $49.99 for each additional (monthly)
-  /// - $755.90 for first location, $539.90 for each additional (annual)
+  /// The quantity parameter must be the number of locations.
   static Future<String> startCheckout({
     required String orgId,
     required String email,
@@ -265,6 +262,44 @@ class StripeService {
       debugPrint('Error fetching subscription data: $e');
       return null;
     }
+  }
+
+  /// Get subscription data, hydrating from Stripe if Firestore shows missing or 'incomplete' status.
+  /// Also persists a minimal status/quantity update back to Firestore for consistency.
+  static Future<Map<String, dynamic>?> getSubscriptionDataHydrated(String orgId) async {
+    final fsData = await getSubscriptionData(orgId);
+    final status = fsData != null ? (fsData['status'] as String?) : null;
+    final qty = fsData != null ? (fsData['quantity'] as int?) : null;
+    final missingOrInvalidQuantity = (qty == null || qty <= 0);
+    final needsHydration = (status == null || status.isEmpty || status == 'incomplete' || missingOrInvalidQuantity);
+
+    if (!needsHydration) return fsData;
+
+    try {
+      final live = await _call('getSubscriptionData', {'orgId': orgId});
+      if (live.isNotEmpty) {
+        // Write back minimal fields to Firestore to fix stale status
+        try {
+          await FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(orgId)
+              .collection('stripe')
+              .doc('subscription')
+              .set({
+                if (live['status'] != null) 'status': live['status'],
+                if (live['quantity'] != null) 'quantity': live['quantity'],
+                'updatedAt': FieldValue.serverTimestamp(),
+              }, SetOptions(merge: true));
+        } catch (persistErr) {
+          debugPrint('[StripeService] Failed to write hydrated status: $persistErr');
+        }
+        // Merge live into fs snapshot for richer data where present
+        return {if (fsData != null) ...fsData, ...Map<String, dynamic>.from(live)};
+      }
+    } catch (e) {
+      debugPrint('[StripeService] Hydration call failed: $e');
+    }
+    return fsData;
   }
 
   /// Cancel subscription at period end
