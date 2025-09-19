@@ -19,15 +19,16 @@ if (process.env.SENDGRID_API_KEY) {
  * Send help request email to support team
  */
 exports.sendHelpRequest = functions.https.onRequest(async (req, res) => {
-  // Handle CORS
-  res.set('Access-Control-Allow-Origin', '*');
+  // Robust CORS handling
+  const origin = req.get('origin') || '*';
+  const reqHeaders = req.get('Access-Control-Request-Headers');
+  res.set('Vary', 'Origin');
+  res.set('Access-Control-Allow-Origin', origin);
   res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.set('Access-Control-Allow-Headers', reqHeaders || 'Content-Type, Authorization');
 
-  // Handle preflight request
   if (req.method === 'OPTIONS') {
-    res.status(204).send('');
-    return;
+    return res.status(204).send('');
   }
 
   if (req.method !== 'POST') {
@@ -85,8 +86,8 @@ exports.sendHelpRequest = functions.https.onRequest(async (req, res) => {
     if (process.env.SENDGRID_API_KEY) {
       try {
         const supportEmail = {
-          to: 'support@planwithhands.com',
-          from: 'noreply@planwithhands.com',
+          to: 'conor@planwithhands.com',
+          from: 'noreply@em5998.planwithhands.com',
           subject: `Help Request: ${subject}`,
           html: `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">

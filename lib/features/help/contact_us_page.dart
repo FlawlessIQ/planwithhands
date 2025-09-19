@@ -55,7 +55,7 @@ class _ContactUsPageState extends ConsumerState<ContactUsPage> {
       final userData = userState.userData;
 
       final response = await http.post(
-        Uri.parse('https://us-central1-planwithhands.cloudfunctions.net/sendHelpRequest'),
+        Uri.parse('https://us-central1-plan-with-hands.cloudfunctions.net/sendHelpRequest'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'email': _emailController.text.trim(),

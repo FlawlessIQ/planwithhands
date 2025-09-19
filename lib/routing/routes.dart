@@ -14,7 +14,7 @@ import 'package:hands_app/features/auth/pages/account_creation_page_simple_brand
 import 'package:hands_app/features/settings/pages/settings_page.dart';
 import 'package:hands_app/features/subscription/pages/subscription_management_page.dart';
 import 'package:hands_app/features/training/pages/training_materials_page.dart';
-import 'package:hands_app/features/help/how_to_use_page.dart';
+import 'package:hands_app/features/help/recipe_help_page.dart';
 import 'package:hands_app/features/help/contact_us_page.dart';
 import 'package:hands_app/pages/notifications_page.dart';
 import 'package:hands_app/pages/messages_page.dart';
@@ -883,7 +883,16 @@ GoRouter buildAppRouter(Ref ref) {
             return const AuthGate(child: ViewDocumentsPage());
           },
         ),
-        GoRoute(path: AppRoutes.howToUsePage.path, builder: (context, state) => const AuthGate(child: HowToUsePage())),
+        GoRoute(
+          path: AppRoutes.howToUsePage.path,
+          builder: (context, state) {
+            // Extract role query parameter and convert to int
+            final roleParam = state.uri.queryParameters['role'];
+            final role = roleParam != null ? int.tryParse(roleParam) : null;
+
+            return AuthGate(child: RecipeHelpPage(userRole: role));
+          },
+        ),
         GoRoute(
           path: AppRoutes.contactUsPage.path,
           builder: (context, state) => const AuthGate(child: ContactUsPage()),

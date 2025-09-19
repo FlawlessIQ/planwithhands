@@ -56,6 +56,11 @@ const placesModule = require("../places_functions");
 export const placesAutocompleteHttp = placesModule.placesAutocompleteHttp as any;
 export const placeDetailsHttp = placesModule.placeDetailsHttp as any;
 
+// Export help functions
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const helpModule = require("../help_functions");
+export const sendHelpRequest = helpModule.sendHelpRequest as any;
+
 // Signed upload URL provider
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const signedUploadModule = require("./signedUpload");

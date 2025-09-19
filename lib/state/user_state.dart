@@ -5,7 +5,7 @@ import 'package:hands_app/data/models/user_data.dart';
 part 'user_state.freezed.dart';
 part 'user_state.g.dart';
 
-@riverpod
+@Riverpod(keepAlive: true)
 class UserState extends _$UserState {
   @override
   UserStateData build() {
@@ -19,14 +19,9 @@ class UserState extends _$UserState {
   void addLocationIdToUser(String locationId) {
     if (state.userData == null) return;
 
-    List<String> updatedLocationIds = [
-      ...state.userData!.locationIds,
-      locationId,
-    ];
+    List<String> updatedLocationIds = [...state.userData!.locationIds, locationId];
 
-    state = state.copyWith(
-      userData: state.userData!.copyWith(locationIds: updatedLocationIds),
-    );
+    state = state.copyWith(userData: state.userData!.copyWith(locationIds: updatedLocationIds));
   }
 }
 
@@ -34,6 +29,5 @@ class UserState extends _$UserState {
 class UserStateData with _$UserStateData {
   factory UserStateData({UserData? userData}) = _UserStateData;
 
-  factory UserStateData.fromJson(Map<String, dynamic> json) =>
-      _$UserStateDataFromJson(json);
+  factory UserStateData.fromJson(Map<String, dynamic> json) => _$UserStateDataFromJson(json);
 }

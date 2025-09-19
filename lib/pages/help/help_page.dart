@@ -1,15 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'package:hands_app/theme/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hands_app/state/user_state.dart';
-import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
+import 'package:hands_app/models/recipe.dart';
 import 'package:hands_app/core/logging/logger.dart';
-import 'package:hands_app/widgets/hands_text_field.dart';
-import 'package:hands_app/routing/routes.dart';
-import 'package:go_router/go_router.dart';
 
 class HelpPage extends ConsumerStatefulWidget {
   final int? userRole;
@@ -21,314 +14,188 @@ class HelpPage extends ConsumerStatefulWidget {
 }
 
 class _HelpPageState extends ConsumerState<HelpPage> {
-  final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
-  final _subjectController = TextEditingController();
-  final _messageController = TextEditingController();
-  bool _isLoading = false;
+  String _selectedCategory = 'All';
 
-  @override
-  void initState() {
-    super.initState();
-    // Auto-populate user email on page load
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final userState = ref.read(userStateProvider);
-      if (userState.userData?.userEmail != null) {
-        _emailController.text = userState.userData!.userEmail;
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _subjectController.dispose();
-    _messageController.dispose();
-    _emailController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _sendHelpRequest() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _isLoading = true);
-
-    try {
-      final response = await http.post(
-        Uri.parse('https://us-central1-plan-with-hands.cloudfunctions.net/placesAutocompleteHttp'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'requestType': 'help',
-          'email': _emailController.text.trim(),
-          'subject': _subjectController.text.trim(),
-          'message': _messageController.text.trim(),
-        }),
-      );
-
-      if (mounted) {
-        if (response.statusCode == 200) {
-          final data = json.decode(response.body) as Map<String, dynamic>;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(data['message'] ?? 'Help request sent successfully!'),
-              backgroundColor: HandsColors.sageGreen,
-              duration: const Duration(seconds: 4),
-            ),
-          );
-          // Clear form
-          _subjectController.clear();
-          _messageController.clear();
-          _emailController.clear();
-        } else {
-          final errorData = json.decode(response.body) as Map<String, dynamic>;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(errorData['error'] ?? 'Failed to send help request'),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 4),
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      logger.e('[HelpPage] Error: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Network error. Please try again.'), backgroundColor: Colors.red));
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+  /// Get current user role from props or user state provider
+  AppRole get _currentUserRole {
+    // First try to use the role passed via route parameter
+    if (widget.userRole != null) {
+      logger.d('[HelpPage] Using role from route parameter: ${widget.userRole}');
+      return toAppRole(widget.userRole!);
     }
+
+    // Fall back to user state provider
+    final userState = ref.watch(userStateProvider);
+    final userRole = userState.userData?.userRole ?? 0;
+    logger.d('[HelpPage] Using role from user state: $userRole');
+    return toAppRole(userRole);
   }
 
   @override
   Widget build(BuildContext context) {
+    final currentRole = _currentUserRole;
+
+    // Get recipes for current user role using the new RecipeData class
+    final availableRecipes = RecipeData.getRecipesForRole(currentRole);
+
+    // Get unique categories
+    final categories = ['All', ...availableRecipes.map((r) => r.category).toSet()];
+
+    // Filter by selected category
+    final filteredRecipes =
+        _selectedCategory == 'All'
+            ? availableRecipes
+            : availableRecipes.where((r) => r.category == _selectedCategory).toList();
+
     return Scaffold(
-      backgroundColor: HandsColors.scaffoldBackground,
-      appBar: AppBar(
-        backgroundColor: HandsColors.cardPrimary,
-        elevation: 0,
-        title: GenericAppBarContent(appBarTitle: 'Help & Support', userRole: widget.userRole),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: HandsColors.white),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Header
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(color: HandsColors.cardPrimary, borderRadius: BorderRadius.circular(12)),
-                child: Column(
-                  children: [
-                    Icon(Icons.help_outline, size: 48, color: HandsColors.handsOrange),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Get Help & Support',
-                      style: GoogleFonts.comfortaa(fontSize: 20, fontWeight: FontWeight.w600, color: HandsColors.white),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Having trouble with the Hands app? We\'re here to help! Send us a message and we\'ll get back to you within 24 hours.',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.inter(fontSize: 14, color: HandsColors.white.withOpacity(0.8)),
-                    ),
-                  ],
-                ),
+      appBar: AppBar(title: const Text('Help Center'), backgroundColor: Theme.of(context).colorScheme.primaryContainer),
+      body: Column(
+        children: [
+          // Category filter chips
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children:
+                    categories.map((category) {
+                      final isSelected = category == _selectedCategory;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: FilterChip(
+                          label: Text(category),
+                          selected: isSelected,
+                          onSelected: (selected) {
+                            setState(() {
+                              _selectedCategory = category;
+                            });
+                          },
+                        ),
+                      );
+                    }).toList(),
               ),
+            ),
+          ),
 
-              const SizedBox(height: 24),
-
-              // Quick Navigation Section
-              Container(
-                decoration: BoxDecoration(color: HandsColors.cardPrimary, borderRadius: BorderRadius.circular(12)),
-                child: Column(
-                  children: [
-                    ListTile(
-                      leading: Icon(Icons.help_center, color: HandsColors.handsOrange),
-                      title: Text(
-                        'How to use Hands',
-                        style: GoogleFonts.comfortaa(color: HandsColors.white, fontWeight: FontWeight.w500),
-                      ),
-                      subtitle: Text(
-                        'Step-by-step guides for your role',
-                        style: GoogleFonts.inter(color: HandsColors.white.withOpacity(0.7), fontSize: 12),
-                      ),
-                      trailing: Icon(Icons.arrow_forward_ios, color: HandsColors.white.withOpacity(0.7), size: 16),
-                      onTap: () => context.go(AppRoutes.howToUsePage.path),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // Contact Support Header
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: HandsColors.cardPrimary, borderRadius: BorderRadius.circular(12)),
-                child: Row(
-                  children: [
-                    Icon(Icons.email, color: HandsColors.handsOrange),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+          // Recipe list
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: filteredRecipes.length,
+              itemBuilder: (context, index) {
+                final recipe = filteredRecipes[index];
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  child: ExpansionTile(
+                    leading: Icon(recipe.icon, color: Theme.of(context).colorScheme.primary),
+                    title: Text(recipe.title, style: Theme.of(context).textTheme.titleMedium),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${recipe.duration} • ${recipe.role} • ${recipe.category}',
+                          style: Theme.of(
+                            context,
+                          ).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        ),
+                        if (recipe.ctaLabel != null)
                           Text(
-                            'Contact Support',
-                            style: GoogleFonts.comfortaa(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: HandsColors.white,
+                            recipe.ctaLabel!,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
-                          Text(
-                            'Can\'t find what you\'re looking for? Send us a message.',
-                            style: GoogleFonts.inter(fontSize: 12, color: HandsColors.white.withOpacity(0.8)),
-                          ),
-                        ],
-                      ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Steps section
+                            Text(
+                              'Steps:',
+                              style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 8),
+                            ...recipe.steps.asMap().entries.map((entry) {
+                              final stepIndex = entry.key + 1;
+                              final step = entry.value;
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      width: 24,
+                                      height: 24,
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context).colorScheme.primary,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          stepIndex.toString(),
+                                          style: TextStyle(
+                                            color: Theme.of(context).colorScheme.onPrimary,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(child: Text(step, style: Theme.of(context).textTheme.bodyMedium)),
+                                  ],
+                                ),
+                              );
+                            }),
 
-              const SizedBox(height: 24),
-
-              // Email Field
-              HandsTextFormField(
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                style: GoogleFonts.inter(color: HandsColors.white),
-                decoration: InputDecoration(
-                  labelText: 'Your Email Address',
-                  labelStyle: GoogleFonts.inter(color: HandsColors.white.withOpacity(0.7)),
-                  prefixIcon: Icon(Icons.email, color: HandsColors.handsOrange),
-                  filled: true,
-                  fillColor: HandsColors.cardPrimary,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                ),
-                validator: (value) {
-                  if (value?.trim().isEmpty ?? true) return 'Email is required';
-                  if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(value!)) {
-                    return 'Please enter a valid email address';
-                  }
-                  return null;
-                },
-              ),
-
-              const SizedBox(height: 16),
-
-              // Subject Field
-              HandsTextFormField(
-                controller: _subjectController,
-                style: GoogleFonts.inter(color: HandsColors.white),
-                decoration: InputDecoration(
-                  labelText: 'Subject',
-                  labelStyle: GoogleFonts.inter(color: HandsColors.white.withOpacity(0.7)),
-                  prefixIcon: Icon(Icons.subject, color: HandsColors.handsOrange),
-                  filled: true,
-                  fillColor: HandsColors.cardPrimary,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                ),
-                validator: (value) {
-                  if (value?.trim().isEmpty ?? true) return 'Subject is required';
-                  if (value!.length < 5) return 'Subject must be at least 5 characters';
-                  return null;
-                },
-              ),
-
-              const SizedBox(height: 16),
-
-              // Message Field
-              HandsTextFormField(
-                controller: _messageController,
-                maxLines: 6,
-                style: GoogleFonts.inter(color: HandsColors.white),
-                decoration: InputDecoration(
-                  labelText: 'Message',
-                  labelStyle: GoogleFonts.inter(color: HandsColors.white.withOpacity(0.7)),
-                  alignLabelWithHint: true,
-                  prefixIcon: Padding(
-                    padding: const EdgeInsets.only(bottom: 90),
-                    child: Icon(Icons.message, color: HandsColors.handsOrange),
-                  ),
-                  filled: true,
-                  fillColor: HandsColors.cardPrimary,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                ),
-                validator: (value) {
-                  if (value?.trim().isEmpty ?? true) return 'Message is required';
-                  if (value!.length < 10) return 'Message must be at least 10 characters';
-                  return null;
-                },
-              ),
-
-              const SizedBox(height: 24),
-
-              // Send Button
-              ElevatedButton(
-                onPressed: _isLoading ? null : _sendHelpRequest,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: HandsColors.handsOrange,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                child:
-                    _isLoading
-                        ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                        : Text(
-                          'Send Help Request',
-                          style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white),
+                            // Troubleshoot section
+                            if (recipe.troubleshoot.isNotEmpty) ...[
+                              const SizedBox(height: 16),
+                              Text(
+                                'Troubleshooting:',
+                                style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 8),
+                              ...recipe.troubleshoot.map((troubleshootItem) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Icon(
+                                        Icons.help_outline,
+                                        size: 16,
+                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          troubleshootItem,
+                                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }),
+                            ],
+                          ],
                         ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Contact Info
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: HandsColors.cardPrimary.withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  children: [
-                    Text(
-                      'Or contact us directly:',
-                      style: GoogleFonts.inter(fontSize: 14, color: HandsColors.white.withOpacity(0.8)),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'support@planwithhands.com',
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        color: HandsColors.handsOrange,
-                        fontWeight: FontWeight.w500,
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+                    ],
+                  ),
+                );
+              },
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
