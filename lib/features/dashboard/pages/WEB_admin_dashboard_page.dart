@@ -76,7 +76,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
   String _searchQuery = '';
 
   // Loading state to prevent flashing during operations
-  bool _isDeleting = false;
+  final bool _isDeleting = false;
   String? _deletingChecklistId;
 
   // Pagination
@@ -2060,7 +2060,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               : <String>[];
 
       if (_selectedLocationId != null && _selectedLocationId!.isNotEmpty) {
-        print('🔴 SHIFT DELETE: Removing from location ${_selectedLocationId}');
+        print('🔴 SHIFT DELETE: Removing from location $_selectedLocationId');
         final newLocs = List<String>.from(locs)..remove(_selectedLocationId);
         if (newLocs.isEmpty) {
           print('🔴 SHIFT DELETE: No locations left, deleting entire shift');
