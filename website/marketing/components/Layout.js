@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import HandsPulsingLoader from './HandsPulsingLoader'
 
 export default function Layout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -17,9 +18,62 @@ export default function Layout({ children }) {
   // Append forceApp=1 to ensure full Flutter app loads (bypasses mobile Safari fallback)
   const loginUrl = '/app-login';
   const signupUrl = '/app-signup';
+  const [showTransition, setShowTransition] = useState(false);
+  const [nextHref, setNextHref] = useState(null);
+
+  // Start the transition overlay and navigate when video ends (or fallback after timeout)
+  const startTransition = (href) => {
+    setNextHref(href);
+    setShowTransition(true);
+  };
+
+  // Global click listener: intercept clicks on anchors that go to app-login/app-signup
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const onDocClick = (e) => {
+      const a = e.target.closest && e.target.closest('a[href]');
+      if (!a) return;
+      const href = a.getAttribute('href') || a.href || '';
+      if (!href) return;
+      // Match internal app-login/app-signup routes
+      if (href.includes('/app-signup') || href.includes('/app-login')) {
+        e.preventDefault();
+        // Use absolute URL if needed
+        const dest = href.startsWith('http') ? href : window.location.origin + href;
+        startTransition(dest);
+      }
+    };
+
+    document.addEventListener('click', onDocClick);
+    return () => document.removeEventListener('click', onDocClick);
+  }, []);
+
+  // Redirect after a short delay when the transition overlay is shown.
+  useEffect(() => {
+    if (!showTransition) return undefined;
+    const timeout = setTimeout(() => {
+      if (nextHref) window.location.href = nextHref;
+    }, 1200);
+    return () => {
+      clearTimeout(timeout);
+      setShowTransition(false);
+      setNextHref(null);
+    };
+  }, [showTransition, nextHref]);
 
   return (
     <div className="min-h-screen bg-black text-white flex flex-col">
+      {/* Transition overlay (global) */}
+      {showTransition && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black">
+          <div className="absolute inset-0 bg-black/90" />
+          <div className="relative z-10 w-full h-full flex items-center justify-center">
+            <div className="absolute inset-0 flex items-center justify-center">
+              <HandsPulsingLoader size={140} />
+            </div>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <header className="sticky top-0 z-50 bg-primary/95 border-b border-white/10 backdrop-blur">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between">

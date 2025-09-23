@@ -12,7 +12,7 @@
   <meta name="flutter-web-renderer" content="html" />
   
   <!-- Content Security Policy for Stripe, Firebase, and Flutter Web -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://js.stripe.com https://www.gstatic.com 'unsafe-inline' 'unsafe-eval'; frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://firebasestorage.googleapis.com https://view.officeapps.live.com; child-src 'self' https://firebasestorage.googleapis.com https://view.officeapps.live.com; connect-src 'self' https://api.stripe.com https://r.stripe.com https://m.stripe.network https://fonts.gstatic.com https://www.gstatic.com https://firebase.googleapis.com https://firestore.googleapis.com https://firebaseinstallations.googleapis.com https://firebaseremoteconfig.googleapis.com https://firebasestorage.googleapis.com https://fcm.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://us-central1-plan-with-hands.cloudfunctions.net https://us-central1-planwithhands.cloudfunctions.net https://fcmregistrations.googleapis.com; img-src 'self' data: https://q.stripe.com https://m.stripe.network https://firebasestorage.googleapis.com; style-src 'self' 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com;"
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://js.stripe.com https://www.gstatic.com 'unsafe-inline' 'unsafe-eval'; frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://firebasestorage.googleapis.com https://view.officeapps.live.com; child-src 'self' https://firebasestorage.googleapis.com https://view.officeapps.live.com; connect-src 'self' blob: https://api.stripe.com https://r.stripe.com https://m.stripe.network https://fonts.gstatic.com https://www.gstatic.com https://firebase.googleapis.com https://firestore.googleapis.com https://firebaseinstallations.googleapis.com https://firebaseremoteconfig.googleapis.com https://firebasestorage.googleapis.com https://fcm.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://us-central1-plan-with-hands.cloudfunctions.net https://us-central1-planwithhands.cloudfunctions.net https://fcmregistrations.googleapis.com; img-src 'self' data: blob: https://q.stripe.com https://m.stripe.network https://firebasestorage.googleapis.com; style-src 'self' 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com;"
 
   <!-- iOS meta tags & icons -->
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -43,6 +43,46 @@
 
   <!-- Stripe.js -->
   <script src="https://js.stripe.com/v3/"></script>
+
+  <!-- Firebase module preloader with compat fallback for environments where dynamic import fails -->
+  <script>
+    (function() {
+      // Attempt to dynamic-import the modern firebase modules used by the app.
+      // If this fails (CSP or network), fall back to loading the compat CDN bundles.
+      var tried = false;
+      function loadCompat() {
+        if (tried) return; tried = true;
+        var s1 = document.createElement('script');
+        s1.src = 'https://www.gstatic.com/firebasejs/11.9.1/firebase-app-compat.js';
+        s1.async = false;
+        document.head.appendChild(s1);
+        var libs = ['auth', 'firestore', 'functions', 'messaging', 'storage'];
+        libs.forEach(function(lib) {
+          var s = document.createElement('script');
+          s.src = 'https://www.gstatic.com/firebasejs/11.9.1/firebase-' + lib + '-compat.js';
+          s.async = false;
+          document.head.appendChild(s);
+        });
+      }
+
+      // Try a module import to warm the cache. Some browsers/environments block module fetches.
+      try {
+        import('https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js')
+          .then(function() {
+            // good — modules available
+          })
+          .catch(function(e) {
+            // dynamic import failed; fallback to compat bundle
+            console.warn('Firebase module import failed, falling back to compat:', e);
+            loadCompat();
+          });
+      } catch (e) {
+        // synchronous failures (older browsers) — use compat
+        console.warn('Firebase module import threw, loading compat bundle:', e);
+        loadCompat();
+      }
+    })();
+  </script>
 
   <!-- Custom CSS to force white background for Stripe Elements -->
   <style>
@@ -131,15 +171,58 @@
 </head>
 <body>
   <script>
-    // Initialize Flutter using the backward-compatible API that works in debug.
+    // Initialize Flutter safely in both `flutter run` (dev) and built (prod) modes.
+    // Call loader methods on the `_flutter.loader` object to preserve `this`.
     window.addEventListener('load', function () {
-      _flutter.loader.loadEntrypoint({
-        onEntrypointLoaded: function (engineInitializer) {
-          engineInitializer.initializeEngine().then(function (appRunner) {
-            appRunner.runApp();
-          });
-        }
-      });
+      try {
+        var attempts = 0;
+        var maxAttempts = 10;
+
+        var startApp = function(loaderFn) {
+          try {
+            loaderFn.call(_flutter.loader, {
+              onEntrypointLoaded: function (engineInitializer) {
+                engineInitializer.initializeEngine().then(function (appRunner) {
+                  appRunner.runApp();
+                });
+              }
+            });
+            return true;
+          } catch (e) {
+            console.warn('Flutter loader invocation failed:', e);
+            return false;
+          }
+        };
+
+        var tryInit = function() {
+          attempts++;
+          try {
+            if (typeof _flutter !== 'undefined' && _flutter && _flutter.loader) {
+              // Prefer modern API when buildConfig is available
+              if (typeof _flutter.buildConfig !== 'undefined' && typeof _flutter.loader.load === 'function') {
+                if (startApp(_flutter.loader.load)) return;
+              }
+
+              // Legacy fallback for development servers that expect loadEntrypoint
+              if (typeof _flutter.loader.loadEntrypoint === 'function') {
+                if (startApp(_flutter.loader.loadEntrypoint)) return;
+              }
+            }
+
+            if (attempts < maxAttempts) {
+              setTimeout(tryInit, 200);
+            } else {
+              console.error('Flutter loader not available after retries.');
+            }
+          } catch (err) {
+            if (attempts < maxAttempts) setTimeout(tryInit, 200);
+          }
+        };
+
+        tryInit();
+      } catch (e) {
+        console.error('Failed to initialize Flutter loader:', e);
+      }
     });
   </script>
 </body>

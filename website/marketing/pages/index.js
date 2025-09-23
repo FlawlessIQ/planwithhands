@@ -1,9 +1,70 @@
+import React, { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import SEO from '../components/SEO'
 
 export default function Home() {
   const signupUrl = '/app-signup';
+  const [showTransition, setShowTransition] = useState(false);
+  const [nextHref, setNextHref] = useState(null);
+  const videoRef = useRef(null);
+
+  // Start the transition: show overlay and attempt to play the video.
+  const startTransition = (href) => {
+    setNextHref(href);
+    setShowTransition(true);
+  };
+
+  // Intercept clicks and start transition
+  const handleNavigate = (e, href) => {
+    // Only operate in the browser
+    if (typeof document === 'undefined') return;
+    e.preventDefault();
+    startTransition(href);
+  };
+
+  useEffect(() => {
+    if (!showTransition) return;
+
+    let endedHandler = null;
+    let playTimeout = null;
+
+    const vid = videoRef.current;
+    if (vid) {
+      // When the video ends, navigate
+      endedHandler = () => {
+        if (nextHref) window.location.href = nextHref;
+      };
+      vid.addEventListener('ended', endedHandler);
+
+      // Try to play; if play() is rejected (autoplay policy), fallback to timed redirect
+      const tryPlay = async () => {
+        try {
+          // muted is required for autoplay on many mobile browsers
+          await vid.play();
+          // nothing else to do; ended handler will redirect
+        } catch (err) {
+          // If playing failed, redirect after a short delay
+          playTimeout = setTimeout(() => {
+            if (nextHref) window.location.href = nextHref;
+          }, 1200);
+        }
+      };
+
+      // Small delay to let the overlay render
+      setTimeout(tryPlay, 80);
+    } else {
+      // No video element available - fallback to timed redirect
+      playTimeout = setTimeout(() => {
+        if (nextHref) window.location.href = nextHref;
+      }, 700);
+    }
+
+    return () => {
+      if (vid && endedHandler) vid.removeEventListener('ended', endedHandler);
+      if (playTimeout) clearTimeout(playTimeout);
+    };
+  }, [showTransition, nextHref]);
   
   const structuredData = {
     "@context": "https://schema.org",
@@ -58,6 +119,7 @@ export default function Home() {
         keywords="restaurant management software, digital checklists, restaurant operations, team communication, food service software, restaurant technology, operational excellence, task management"
       />
       <div>
+      {/* Transition handled globally in Layout.js */}
       {/* Hero Section */}
       <section className="relative px-4 sm:px-6 py-16 sm:py-20 md:py-32 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-black via-primary to-surface"></div>
