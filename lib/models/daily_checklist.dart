@@ -227,6 +227,7 @@ class DailyChecklist {
   final DateTime createdAt;
   final DateTime updatedAt;
   final String? templateName; // Optional template name
+  final List<String> jobTypes;
 
   const DailyChecklist({
     required this.id,
@@ -245,6 +246,7 @@ class DailyChecklist {
     required this.createdAt,
     required this.updatedAt,
     this.templateName,
+    this.jobTypes = const [],
   });
 
   Map<String, dynamic> toMap() {
@@ -265,6 +267,7 @@ class DailyChecklist {
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
       'templateName': templateName,
+      'jobTypes': jobTypes,
       // Add metrics for Manager Dashboard
       'completedItems': tasks.where((task) => task.isCompleted).length,
       'totalItems': tasks.length,
@@ -365,6 +368,7 @@ class DailyChecklist {
       createdAt: createdAt,
       updatedAt: updatedAt,
       templateName: map['templateName']?.toString(),
+      jobTypes: (map['jobTypes'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
     );
   }
 
@@ -385,6 +389,7 @@ class DailyChecklist {
     DateTime? createdAt,
     DateTime? updatedAt,
     String? templateName,
+    List<String>? jobTypes,
   }) {
     return DailyChecklist(
       id: id ?? this.id,
@@ -403,6 +408,7 @@ class DailyChecklist {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       templateName: templateName ?? this.templateName,
+      jobTypes: jobTypes ?? this.jobTypes,
     );
   }
 

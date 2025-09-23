@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -6,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/widgets/professional_message_dialog.dart';
 import 'package:hands_app/theme/theme.dart';
+import 'package:hands_app/state/notification_state.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
@@ -169,30 +171,54 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
 
   Future<void> _archiveNotification(String id) async {
     if (_userId == null) return;
-    await FirestoreEnforcer.instance
-        .collection('userNotifications')
-        .doc(_userId!)
-        .collection('notifications')
-        .doc(id)
-        .update({
-          'archivedBy': FieldValue.arrayUnion([_userId]),
-        });
-    // Refresh current view
-    await _loadNotifications(isLoadMore: false);
+
+    try {
+      await FirestoreEnforcer.instance
+          .collection('userNotifications')
+          .doc(_userId!)
+          .collection('notifications')
+          .doc(id)
+          .update({
+            'archivedBy': FieldValue.arrayUnion([_userId]),
+          });
+
+      // Force refresh the unread count provider
+      if (mounted) {
+        ref.invalidate(unreadNotificationsCountProvider);
+        // Refresh current view
+        await _loadNotifications(isLoadMore: false);
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('[NotificationListSheet] Error archiving notification: $e');
+      }
+    }
   }
 
   Future<void> _unarchiveNotification(String id) async {
     if (_userId == null) return;
-    await FirestoreEnforcer.instance
-        .collection('userNotifications')
-        .doc(_userId!)
-        .collection('notifications')
-        .doc(id)
-        .update({
-          'archivedBy': FieldValue.arrayRemove([_userId]),
-        });
-    // Refresh current view
-    await _loadNotifications(isLoadMore: false);
+
+    try {
+      await FirestoreEnforcer.instance
+          .collection('userNotifications')
+          .doc(_userId!)
+          .collection('notifications')
+          .doc(id)
+          .update({
+            'archivedBy': FieldValue.arrayRemove([_userId]),
+          });
+
+      // Force refresh the unread count provider
+      if (mounted) {
+        ref.invalidate(unreadNotificationsCountProvider);
+        // Refresh current view
+        await _loadNotifications(isLoadMore: false);
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('[NotificationListSheet] Error unarchiving notification: $e');
+      }
+    }
   }
 
   Future<void> _deleteNotification(String id) async {
@@ -241,6 +267,8 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
               backgroundColor: HandsColors.primary,
             ),
           );
+          // Force refresh the unread count provider
+          ref.invalidate(unreadNotificationsCountProvider);
           // Refresh current view
           await _loadNotifications(isLoadMore: false);
         }
@@ -266,21 +294,35 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
   // Mark a single notification as read when user views it
   Future<void> _markNotificationAsRead(String id) async {
     if (_userId == null) return;
-    // Optimistically update local state
-    final idx = _notifications.indexWhere((n) => n['id'] == id);
-    if (idx != -1 && !(_notifications[idx]['readBy'] as List<String>).contains(_userId)) {
-      setState(() {
-        (_notifications[idx]['readBy'] as List<String>).add(_userId!);
-      });
-    }
-    await FirestoreEnforcer.instance
-        .collection('userNotifications')
-        .doc(_userId!)
-        .collection('notifications')
-        .doc(id)
-        .update({
-          'readBy': FieldValue.arrayUnion([_userId]),
+
+    try {
+      // Optimistically update local state
+      final idx = _notifications.indexWhere((n) => n['id'] == id);
+      if (idx != -1 && !(_notifications[idx]['readBy'] as List<String>).contains(_userId)) {
+        setState(() {
+          (_notifications[idx]['readBy'] as List<String>).add(_userId!);
         });
+      }
+
+      // Update Firestore
+      await FirestoreEnforcer.instance
+          .collection('userNotifications')
+          .doc(_userId!)
+          .collection('notifications')
+          .doc(id)
+          .update({
+            'readBy': FieldValue.arrayUnion([_userId]),
+          });
+
+      // Force refresh the unread count provider by invalidating it
+      if (mounted) {
+        ref.invalidate(unreadNotificationsCountProvider);
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('[NotificationListSheet] Error marking notification as read: $e');
+      }
+    }
   }
 
   void _onViewFilterChanged(String newFilter) {

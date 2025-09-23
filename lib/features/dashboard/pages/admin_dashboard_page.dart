@@ -47,6 +47,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
   String? organizationId;
   bool isLoading = true;
   bool _hasShownWelcomeDialog = false; // Prevent multiple welcome dialogs
+  bool _isDisposed = false; // Guard to prevent using disposed notifiers
 
   // Admin view toggle
   AdminView _currentView = AdminView.shiftsChecklists; // default
@@ -264,6 +265,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
     try {
       LocationSelectionService.instance.listenable.removeListener(_onGlobalLocationChanged);
     } catch (_) {}
+    _isDisposed = true;
     _refreshTrigger.dispose();
     super.dispose();
   }
@@ -464,7 +466,12 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
 
   // Helper method to trigger refresh
   void _triggerRefresh() {
-    _refreshTrigger.value++;
+    if (!mounted || _isDisposed) return;
+    try {
+      _refreshTrigger.value = _refreshTrigger.value + 1;
+    } catch (_) {
+      // Swallow if notifier already disposed due to racing callbacks
+    }
   }
 
   @override
@@ -1402,6 +1409,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
             shiftData: shiftData,
             organizationId: organizationId!,
             availableLocations: _availableLocations,
+            selectedLocationId: _selectedLocationId,
             onShiftSaved: () {
               // Refresh the dashboard
               _triggerRefresh();
@@ -1810,20 +1818,42 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
   }
 
   Future<void> _deleteShift(String shiftId) async {
+    // If a location is selected, unlink shift from that location instead of deleting globally.
     try {
-      await FirestoreEnforcer.instance
+      final shiftRef = FirestoreEnforcer.instance
           .collection('organizations')
           .doc(organizationId)
           .collection('shifts')
-          .doc(shiftId)
-          .delete();
+          .doc(shiftId);
+      final snap = await shiftRef.get();
+      if (!snap.exists) return;
+      final data = snap.data() as Map<String, dynamic>;
+      final List<String> locs =
+          (data['locationIds'] is Iterable)
+              ? List<String>.from(data['locationIds'])
+              : (data['locationIds'] is String && (data['locationIds'] as String).isNotEmpty)
+              ? [data['locationIds'] as String]
+              : <String>[];
+
+      if (_selectedLocationId != null && _selectedLocationId!.isNotEmpty) {
+        final newLocs = List<String>.from(locs)..remove(_selectedLocationId);
+        if (newLocs.isEmpty) {
+          await shiftRef.delete();
+        } else {
+          await shiftRef.update({'locationIds': newLocs, 'updatedAt': FieldValue.serverTimestamp()});
+        }
+      } else {
+        // No specific location context -> perform full delete as before
+        await shiftRef.delete();
+      }
+
       _triggerRefresh();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Shift deleted successfully')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Shift updated')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting shift: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error updating shift: $e')));
       }
     }
   }

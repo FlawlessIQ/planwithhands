@@ -401,64 +401,69 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
     if (kDebugMode) {
       print('[UnifiedMenuButton] build() called - context.mounted: ${context.mounted}');
     }
-    final unreadCountAsync = ref.watch(unreadNotificationsCountProvider);
 
-    final hasUnread = unreadCountAsync.maybeWhen(
-      data: (count) {
-        if (kDebugMode) {
-          print('[UnifiedMenuButton] Unread count: $count, hasUnread: ${count > 0}');
-        }
-        return count > 0;
-      },
-      loading: () {
-        if (kDebugMode) {
-          print('[UnifiedMenuButton] Provider loading...');
-        }
-        return false;
-      },
-      error: (error, stack) {
-        if (kDebugMode) {
-          print('[UnifiedMenuButton] Provider error: $error');
-        }
-        return false;
-      },
-      orElse: () => false,
-    );
+    return Consumer(
+      builder: (context, ref, child) {
+        final unreadCountAsync = ref.watch(unreadNotificationsCountProvider);
 
-    if (kDebugMode) {
-      print('[UnifiedMenuButton] Final hasUnread: $hasUnread');
-    }
+        final hasUnread = unreadCountAsync.when(
+          data: (count) {
+            if (kDebugMode) {
+              print('[UnifiedMenuButton] Unread count: $count, hasUnread: ${count > 0}');
+            }
+            return count > 0;
+          },
+          loading: () {
+            if (kDebugMode) {
+              print('[UnifiedMenuButton] Provider loading... showing no indicator');
+            }
+            return false;
+          },
+          error: (error, stack) {
+            if (kDebugMode) {
+              print('[UnifiedMenuButton] Provider error: $error - hiding indicator');
+            }
+            // Hide indicator on error to prevent confusion
+            return false;
+          },
+        );
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        key: _buttonKey,
-        onTap: () {
-          if (kDebugMode) {
-            print('[UnifiedMenuButton] Button tapped!');
-          }
-          _showMenu();
-        },
-        borderRadius: BorderRadius.circular(24),
-        child: Container(
-          padding: const EdgeInsets.all(8),
-          child: Stack(
-            children: [
-              const Icon(Icons.menu),
-              if (hasUnread)
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  child: Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                  ),
-                ),
-            ],
+        if (kDebugMode) {
+          print('[UnifiedMenuButton] Final hasUnread: $hasUnread');
+        }
+
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            key: _buttonKey,
+            onTap: () {
+              if (kDebugMode) {
+                print('[UnifiedMenuButton] Button tapped!');
+              }
+              _showMenu();
+            },
+            borderRadius: BorderRadius.circular(24),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              child: Stack(
+                children: [
+                  const Icon(Icons.menu),
+                  if (hasUnread)
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      child: Container(
+                        width: 10,
+                        height: 10,
+                        decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -631,7 +636,7 @@ class _MenuOverlayState extends State<_MenuOverlay> {
         // Location section
         items.add(_buildSectionHeader('Location'));
         items.add(
-          _buildMenuItem('$displayName', _MenuAction.changeLocation, Icons.location_on, subtitle: 'Switch location'),
+          _buildMenuItem(displayName, _MenuAction.changeLocation, Icons.location_on, subtitle: 'Switch location'),
         );
 
         // Communications section

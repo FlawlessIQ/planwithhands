@@ -5,7 +5,7 @@
   "packages": [
     {
       "name": "hands_app",
-      "version": "1.1.9+10",
+      "version": "1.1.12+14",
       "dependencies": [
         "cloud_firestore",
         "cloud_functions",
@@ -21,7 +21,6 @@
         "flutter",
         "flutter_hooks",
         "flutter_local_notifications",
-        "flutter_pdfview",
         "flutter_riverpod",
         "flutter_stripe",
         "flutter_stripe_web",
@@ -341,13 +340,6 @@
         "video_player_avfoundation",
         "video_player_platform_interface",
         "video_player_web"
-      ]
-    },
-    {
-      "name": "flutter_pdfview",
-      "version": "1.4.1+1",
-      "dependencies": [
-        "flutter"
       ]
     },
     {

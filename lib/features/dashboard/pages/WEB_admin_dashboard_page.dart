@@ -47,6 +47,8 @@ class WEBAdminDashboardPage extends StatefulWidget {
 }
 
 class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
+  // Persist the last selected tab across rebuilds to avoid unwanted resets
+  static WebAdminTab? _lastTab;
   int? userRole;
   bool isLoading = true;
 
@@ -67,10 +69,15 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
   final Map<String, String> _shiftNameById = {}; // shiftId -> name
   final Map<String, List<String>> _checklistsByShiftId = {}; // shiftId -> [templateIds]
   final Map<String, List<String>> _shiftsByChecklistId = {}; // checklistTemplateId -> [shiftIds]
+  final Map<String, List<String>> _locationIdsByShiftId = {}; // shiftId -> [locationIds]
 
   // Search and filtering
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+
+  // Loading state to prevent flashing during operations
+  bool _isDeleting = false;
+  String? _deletingChecklistId;
 
   // Pagination
   int _rowsPerPage = 10;
@@ -88,7 +95,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
   @override
   void initState() {
     super.initState();
-    _currentTab = widget.initialTab ?? WebAdminTab.shifts;
+    _currentTab = widget.initialTab ?? _lastTab ?? WebAdminTab.shifts;
     // Seed selected location from global persisted value if available
     _selectedLocationId = LocationSelectionService.instance.currentLocationId;
     // Keep in sync with global location selection changes from other pages/dialogs.
@@ -172,12 +179,16 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
       // Build lookups
       _shiftNameById.clear();
       _checklistsByShiftId.clear();
+      _locationIdsByShiftId.clear();
       for (final d in _shiftDocs) {
         final data = d.data();
         final sid = d.id;
-        _shiftNameById[sid] = (data['shiftName'] ?? '').toString();
+        final rawName = (data['name'] ?? data['shiftName'] ?? '').toString();
+        _shiftNameById[sid] = rawName;
         final tids = List<String>.from(data['checklistTemplateIds'] ?? const []);
         _checklistsByShiftId[sid] = tids;
+        final locIds = List<String>.from(data['locationIds'] ?? const []);
+        _locationIdsByShiftId[sid] = locIds;
       }
 
       // Build reverse index
@@ -187,6 +198,9 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           _shiftsByChecklistId.putIfAbsent(t, () => []).add(sid);
         }
       });
+      if (mounted) {
+        setState(() {});
+      }
     } catch (e, st) {
       logger.e('[WEBAdminDashboard] _loadShiftsTable error: $e\n$st');
     }
@@ -298,6 +312,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
     if (widget.initialTab != oldWidget.initialTab && widget.initialTab != null) {
       setState(() {
         _currentTab = widget.initialTab!;
+        _lastTab = _currentTab;
       });
     }
   }
@@ -599,6 +614,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           onTap: () {
             setState(() {
               _currentTab = tab;
+              _lastTab = _currentTab;
             });
           },
           child: Container(
@@ -1094,17 +1110,39 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
   }
 
   DataRow _buildChecklistRow(Map<String, dynamic> checklist) {
+    final isBeingDeleted = _isDeleting && _deletingChecklistId == checklist['id'];
+
     return DataRow(
       cells: [
-        DataCell(Text(checklist['name'], style: GoogleFonts.comfortaa(color: HandsColors.white))),
+        DataCell(
+          Row(
+            children: [
+              if (isBeingDeleted) ...[
+                const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                child: Text(
+                  checklist['name'],
+                  style: GoogleFonts.comfortaa(color: isBeingDeleted ? HandsColors.white30 : HandsColors.white),
+                ),
+              ),
+            ],
+          ),
+        ),
         DataCell(
           Text(
             checklist['description'].isNotEmpty ? checklist['description'] : 'No description',
-            style: GoogleFonts.comfortaa(color: HandsColors.white70),
+            style: GoogleFonts.comfortaa(color: isBeingDeleted ? HandsColors.white30 : HandsColors.white70),
             overflow: TextOverflow.ellipsis,
           ),
         ),
-        DataCell(Text('${checklist['taskCount']} tasks', style: GoogleFonts.comfortaa(color: HandsColors.white70))),
+        DataCell(
+          Text(
+            '${checklist['taskCount']} tasks',
+            style: GoogleFonts.comfortaa(color: isBeingDeleted ? HandsColors.white30 : HandsColors.white70),
+          ),
+        ),
         DataCell(
           Builder(
             builder: (context) {
@@ -1113,24 +1151,26 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               List<String> filteredUsed = used;
               if (_selectedLocationId != null) {
                 filteredUsed =
-                    used.where((sid) {
-                      final shiftDoc = _shiftDocs.firstWhere(
-                        (s) => s.id == sid,
-                        orElse: () => throw Exception('Not found'),
-                      );
-                      final shiftData = shiftDoc.data();
-                      final locationIds = List<String>.from(shiftData['locationIds'] ?? const []);
-                      return locationIds.contains(_selectedLocationId);
-                    }).toList();
+                    used
+                        .where((sid) => (_locationIdsByShiftId[sid] ?? const <String>[]).contains(_selectedLocationId))
+                        .toList();
               }
               final labels = filteredUsed.map((sid) => _shiftNameById[sid] ?? 'Shift').toList();
-              if (labels.isEmpty) return Text('—', style: GoogleFonts.comfortaa(color: HandsColors.white70));
+              if (labels.isEmpty) {
+                return Text(
+                  '—',
+                  style: GoogleFonts.comfortaa(color: isBeingDeleted ? HandsColors.white30 : HandsColors.white70),
+                );
+              }
               if (labels.length <= 3) {
-                return Text(labels.join(', '), style: GoogleFonts.comfortaa(color: HandsColors.white70));
+                return Text(
+                  labels.join(', '),
+                  style: GoogleFonts.comfortaa(color: isBeingDeleted ? HandsColors.white30 : HandsColors.white70),
+                );
               }
               return Text(
                 '${labels.take(3).join(', ')} +${labels.length - 3}',
-                style: GoogleFonts.comfortaa(color: HandsColors.white70),
+                style: GoogleFonts.comfortaa(color: isBeingDeleted ? HandsColors.white30 : HandsColors.white70),
               );
             },
           ),
@@ -1144,7 +1184,11 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
             ),
             child: Text(
               (checklist['archived'] ?? false) == true ? 'Archived' : 'Active',
-              style: GoogleFonts.comfortaa(color: HandsColors.white, fontSize: 12, fontWeight: FontWeight.w500),
+              style: GoogleFonts.comfortaa(
+                color: isBeingDeleted ? HandsColors.white30 : HandsColors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ),
@@ -1153,27 +1197,27 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               IconButton(
-                icon: const Icon(Icons.edit, color: HandsColors.handsOrange, size: 20),
-                onPressed: () => _editChecklist(checklist),
+                icon: Icon(Icons.edit, color: isBeingDeleted ? HandsColors.white30 : HandsColors.handsOrange, size: 20),
+                onPressed: isBeingDeleted ? null : () => _editChecklist(checklist),
                 tooltip: 'Edit',
               ),
               IconButton(
-                icon: const Icon(Icons.copy, color: HandsColors.white70, size: 20),
-                onPressed: () => _duplicateChecklist(checklist),
+                icon: Icon(Icons.copy, color: isBeingDeleted ? HandsColors.white30 : HandsColors.white70, size: 20),
+                onPressed: isBeingDeleted ? null : () => _duplicateChecklist(checklist),
                 tooltip: 'Duplicate',
               ),
               IconButton(
                 icon: Icon(
                   (checklist['archived'] ?? false) ? Icons.unarchive : Icons.archive,
-                  color: HandsColors.amber,
+                  color: isBeingDeleted ? HandsColors.white30 : HandsColors.amber,
                   size: 20,
                 ),
-                onPressed: () => _toggleChecklistArchived(checklist),
+                onPressed: isBeingDeleted ? null : () => _toggleChecklistArchived(checklist),
                 tooltip: (checklist['archived'] ?? false) ? 'Restore' : 'Archive',
               ),
               IconButton(
-                icon: const Icon(Icons.delete, color: HandsColors.error, size: 20),
-                onPressed: () => _deleteChecklist(checklist),
+                icon: Icon(Icons.delete, color: isBeingDeleted ? HandsColors.white30 : HandsColors.error, size: 20),
+                onPressed: isBeingDeleted ? null : () => _deleteChecklist(checklist),
                 tooltip: 'Delete',
               ),
             ],
@@ -1400,28 +1444,76 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
                 icon: const Icon(Icons.delete, color: HandsColors.error),
                 tooltip: 'Delete user',
                 onPressed: () async {
-                  final ok =
-                      await showDialog<bool>(
-                        context: context,
-                        builder:
-                            (_) => AlertDialog(
-                              title: const Text('Delete user?'),
-                              content: const Text('This action cannot be undone.'),
-                              actions: [
-                                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                                FilledButton(
-                                  onPressed: () => Navigator.pop(context, true),
-                                  child: const Text('Delete'),
-                                ),
-                              ],
-                            ),
-                      ) ??
-                      false;
-                  if (!ok) return;
-                  await _deleteUser(user['id']);
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('User deleted')));
+                  print(
+                    '🔴 DELETE USER BUTTON CLICKED! User: ${user['firstName']} ${user['lastName']} (${user['id']})',
+                  );
+
+                  // Capture context and user data before dialog
+                  final currentContext = context;
+                  final userId = user['id'] as String;
+                  final userName = '${user['firstName']} ${user['lastName']}';
+
+                  // Create standalone deletion function
+                  Future<void> executeUserDeletion() async {
+                    try {
+                      await _deleteUser(userId);
+                      if (currentContext.mounted) {
+                        try {
+                          ScaffoldMessenger.of(
+                            currentContext,
+                          ).showSnackBar(const SnackBar(content: Text('User deleted')));
+                        } catch (e) {
+                          print('🔴 USER DELETE: Could not show snackbar (context invalid): $e');
+                        }
+                      }
+                    } catch (e) {
+                      print('🔴 USER DELETE: Error during execution: $e');
+                      if (currentContext.mounted) {
+                        try {
+                          ScaffoldMessenger.of(
+                            currentContext,
+                          ).showSnackBar(SnackBar(content: Text('Failed to delete user: $e')));
+                        } catch (contextError) {
+                          print('🔴 USER DELETE: Could not show error snackbar (context invalid): $contextError');
+                        }
+                      }
+                    }
                   }
+
+                  final ok = await _showStableDialog(
+                    builder: (closeDialog) {
+                      print('🔴 USER DELETE DIALOG BUILDING!');
+                      return AlertDialog(
+                        title: const Text('Delete user?'),
+                        content: Text('Are you sure you want to delete "$userName"? This action cannot be undone.'),
+                        actions: [
+                          TextButton(
+                            onPressed: () {
+                              print('🔴 USER DELETE CANCELLED');
+                              closeDialog(false);
+                            },
+                            child: const Text('Cancel'),
+                          ),
+                          FilledButton(
+                            onPressed: () {
+                              print('🔴 USER DELETE CONFIRMED');
+                              closeDialog(true);
+                            },
+                            child: const Text('Delete'),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+
+                  if (ok != true) {
+                    print('🔴 USER DELETE CANCELLED BY USER');
+                    return;
+                  }
+
+                  // Execute deletion regardless of widget state
+                  print('🔴 USER DELETE PROCEEDING... (widget may be unmounted)');
+                  await executeUserDeletion();
                 },
               ),
             ],
@@ -1868,57 +1960,139 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
     }
   }
 
-  Future<void> _deleteShift(Map<String, dynamic> shift) async {
-    final ok =
-        await showDialog<bool>(
-          context: context,
-          builder:
-              (_) => AlertDialog(
-                title: const Text('Delete shift?'),
-                content: Text('Are you sure you want to delete "${shift['name']}"? This cannot be undone.'),
-                actions: [
-                  TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                  FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
-                ],
-              ),
-        ) ??
-        false;
-    if (!ok || !mounted) return;
+  // Global overlay dialog that completely bypasses navigation
+  Future<bool?> _showStableDialog({required Widget Function(void Function(bool?)) builder}) async {
+    final completer = Completer<bool?>();
+    OverlayEntry? overlayEntry;
 
-    // Show a modal loading indicator that cannot be dismissed by the user.
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return const Dialog(
-          child: Padding(
-            padding: EdgeInsets.all(20.0),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [CircularProgressIndicator(), SizedBox(width: 20), Text("Deleting...")],
+    void closeDialog(bool? result) {
+      if (!completer.isCompleted) {
+        overlayEntry?.remove();
+        completer.complete(result);
+      }
+    }
+
+    overlayEntry = OverlayEntry(
+      builder: (context) {
+        return Material(
+          color: Colors.black54,
+          child: GestureDetector(
+            onTap: () => closeDialog(false),
+            child: Container(
+              alignment: Alignment.center,
+              child: GestureDetector(
+                onTap: () {}, // Prevent tap through
+                child: builder(closeDialog),
+              ),
             ),
           ),
         );
       },
     );
 
-    try {
-      await FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(widget.organizationId)
-          .collection('shifts')
-          .doc(shift['id'])
-          .delete();
+    // Add overlay to the root overlay
+    Overlay.of(context, rootOverlay: true).insert(overlayEntry);
 
-      if (mounted) {
-        Navigator.pop(context); // Dismiss loading dialog
-        _showSnackBar('Shift deleted');
+    return completer.future;
+  }
+
+  Future<void> _deleteShift(Map<String, dynamic> shift) async {
+    print('🔴 DELETE SHIFT BUTTON CLICKED! Shift: ${shift['name']} (${shift['id']})');
+
+    // Capture context before dialog to avoid mounting issues
+    final currentContext = context;
+    final orgId = widget.organizationId;
+    final shiftId = shift['id'] as String;
+
+    final ok = await _showStableDialog(
+      builder: (closeDialog) {
+        print('🔴 SHIFT DELETE DIALOG BUILDING!');
+        return AlertDialog(
+          title: const Text('Delete shift?'),
+          content: Text('Are you sure you want to delete "${shift['name']}"? This cannot be undone.'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                print('🔴 SHIFT DELETE CANCELLED');
+                closeDialog(false);
+              },
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                print('🔴 SHIFT DELETE CONFIRMED');
+                closeDialog(true);
+              },
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (ok != true) {
+      print('🔴 SHIFT DELETE CANCELLED BY USER');
+      return;
+    }
+
+    // Execute deletion regardless of mounted state
+    print('🔴 SHIFT DELETE PROCEEDING... (ignoring mounted state: $mounted)');
+
+    // Use captured values instead of widget state
+    try {
+      print('🔴 SHIFT DELETE: Starting Firestore operation...');
+      final shiftRef = FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(orgId)
+          .collection('shifts')
+          .doc(shiftId);
+      final snap = await shiftRef.get();
+      if (!snap.exists) {
+        print('🔴 SHIFT DELETE: Document does not exist');
+        return;
+      }
+      final data = snap.data() as Map<String, dynamic>;
+      final List<String> locs =
+          (data['locationIds'] is Iterable)
+              ? List<String>.from(data['locationIds'])
+              : (data['locationIds'] is String && (data['locationIds'] as String).isNotEmpty)
+              ? [data['locationIds'] as String]
+              : <String>[];
+
+      if (_selectedLocationId != null && _selectedLocationId!.isNotEmpty) {
+        print('🔴 SHIFT DELETE: Removing from location ${_selectedLocationId}');
+        final newLocs = List<String>.from(locs)..remove(_selectedLocationId);
+        if (newLocs.isEmpty) {
+          print('🔴 SHIFT DELETE: No locations left, deleting entire shift');
+          await shiftRef.delete();
+        } else {
+          print('🔴 SHIFT DELETE: Updating locations list');
+          await shiftRef.update({'locationIds': newLocs, 'updatedAt': FieldValue.serverTimestamp()});
+        }
+      } else {
+        print('🔴 SHIFT DELETE: No location filter, deleting entire shift');
+        await shiftRef.delete();
+      }
+
+      print('🔴 SHIFT DELETE: Firestore operation completed successfully');
+
+      // Only show snackbar if context is still valid
+      if (currentContext.mounted) {
+        try {
+          ScaffoldMessenger.of(currentContext).showSnackBar(const SnackBar(content: Text('Shift updated')));
+        } catch (e) {
+          print('🔴 SHIFT DELETE: Could not show snackbar (context invalid): $e');
+        }
       }
     } catch (e, st) {
-      logger.e('Failed to delete shift', e, st);
-      if (mounted) {
-        Navigator.pop(context); // Dismiss loading dialog
-        _showSnackBar('Failed to delete shift: $e', isError: true);
+      print('🔴 SHIFT DELETE ERROR: $e');
+      logger.e('Failed to update shift', e, st);
+      if (currentContext.mounted) {
+        try {
+          ScaffoldMessenger.of(currentContext).showSnackBar(SnackBar(content: Text('Failed to update shift: $e')));
+        } catch (contextError) {
+          print('🔴 SHIFT DELETE: Could not show error snackbar (context invalid): $contextError');
+        }
       }
     }
   }
@@ -1936,6 +2110,125 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
     } catch (e) {
       _showSnackBar('Failed to update checklist');
     }
+  }
+
+  Future<void> _deleteChecklist(Map<String, dynamic> checklist) async {
+    print('🔴 DELETE BUTTON CLICKED! Checklist: ${checklist['name']} (${checklist['id']})');
+    logger.i('[WEBAdminDashboard] Starting checklist deletion for: ${checklist['id']} - "${checklist['name']}"');
+
+    // Capture all necessary data BEFORE showing dialog
+    final currentContext = context;
+    final currentOrgId = widget.organizationId;
+    final checklistId = checklist['id'] as String;
+    final checklistName = checklist['name'] as String;
+
+    // Create a standalone deletion function that doesn't depend on widget state
+    Future<void> executeChecklistDeletion() async {
+      try {
+        logger.i('[WEBAdminDashboard] User confirmed deletion, proceeding...');
+
+        final orgRef = FirestoreEnforcer.instance.collection('organizations').doc(currentOrgId);
+
+        // Delete the checklist template
+        logger.i('[WEBAdminDashboard] Attempting to delete checklist document: $checklistId');
+        final checklistRef = orgRef.collection('checklist_templates').doc(checklistId);
+        await checklistRef.delete();
+        logger.i('[WEBAdminDashboard] Delete operation completed, verifying...');
+
+        // Verify deletion (surface a clear error if blocked by rules)
+        final verifySnap = await checklistRef.get();
+        if (verifySnap.exists) {
+          logger.e('[WEBAdminDashboard] Verification failed: document still exists after delete');
+          throw Exception('Checklist still exists after delete; check Firestore rules or references');
+        }
+        logger.i('[WEBAdminDashboard] Verification passed: document successfully deleted');
+
+        // Remove references from shifts
+        logger.i('[WEBAdminDashboard] Removing checklist references from shifts...');
+        final shiftsSnap = await orgRef.collection('shifts').get();
+        WriteBatch batch = FirestoreEnforcer.instance.batch();
+        int ops = 0;
+        int shiftsUpdated = 0;
+        for (final s in shiftsSnap.docs) {
+          final data = s.data();
+          final List<dynamic> tidsDyn = (data['checklistTemplateIds'] as List?) ?? const [];
+          final filtered = tidsDyn.where((e) => e != checklistId).toList();
+          if (filtered.length != tidsDyn.length) {
+            batch.update(s.reference, {'checklistTemplateIds': filtered});
+            ops++;
+            shiftsUpdated++;
+            if (ops >= 450) {
+              await batch.commit();
+              batch = FirestoreEnforcer.instance.batch();
+              ops = 0;
+            }
+          }
+        }
+        if (ops > 0) await batch.commit();
+        logger.i('[WEBAdminDashboard] Updated $shiftsUpdated shifts to remove checklist references');
+
+        // Wait a moment for Firestore streams to propagate the deletion
+        await Future.delayed(const Duration(milliseconds: 500));
+
+        logger.i('[WEBAdminDashboard] Reloading checklists table...');
+
+        if (currentContext.mounted) {
+          try {
+            ScaffoldMessenger.of(currentContext).showSnackBar(const SnackBar(content: Text('Checklist deleted')));
+          } catch (e) {
+            print('🔴 CHECKLIST DELETE: Could not show snackbar (context invalid): $e');
+          }
+          logger.i('[WEBAdminDashboard] Success: checklist deletion completed');
+        }
+      } catch (e, st) {
+        logger.e('[WEBAdminDashboard] Failed to delete checklist: $e', e, st);
+        if (currentContext.mounted) {
+          try {
+            ScaffoldMessenger.of(
+              currentContext,
+            ).showSnackBar(SnackBar(content: Text('Failed to delete checklist: $e')));
+          } catch (contextError) {
+            print('🔴 CHECKLIST DELETE: Could not show error snackbar (context invalid): $contextError');
+          }
+        }
+      }
+    }
+
+    final confirm = await _showStableDialog(
+      builder: (closeDialog) {
+        print('🔴 DIALOG BUILDING! About to show delete confirmation');
+        return AlertDialog(
+          title: const Text('Delete checklist?'),
+          content: Text('Are you sure you want to delete "$checklistName"? This cannot be undone.'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                print('🔴 CANCEL CLICKED');
+                closeDialog(false);
+              },
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                print('🔴 DELETE CONFIRMED');
+                closeDialog(true);
+              },
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) {
+      print('🔴 CHECKLIST DELETE CANCELLED BY USER');
+      logger.i('[WEBAdminDashboard] Checklist deletion cancelled by user');
+      return;
+    }
+
+    // Execute deletion regardless of widget state
+    print('🔴 CHECKLIST DELETE PROCEEDING... (widget may be unmounted)');
+    await executeChecklistDeletion();
   }
 
   Future<void> _duplicateLocation(Map<String, dynamic> location) async {
@@ -2112,8 +2405,8 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           shiftId: shift?['id'],
           shiftData: shiftData,
           availableLocations: _availableLocations,
+          selectedLocationId: _selectedLocationId,
           onShiftSaved: () {
-            Navigator.of(context).pop();
             _showSnackBar(shift == null ? 'Shift created successfully' : 'Shift updated successfully');
           },
         ),
@@ -2319,82 +2612,6 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
     } catch (e, st) {
       logger.e('[WEBAdminDashboard] Error persisting checklist: $e\n$st');
       if (mounted) _showSnackBar('Failed to save checklist: $e', isError: true);
-      rethrow;
-    }
-  }
-
-  void _deleteChecklist(Map<String, dynamic> checklist) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            backgroundColor: HandsColors.cardPrimary,
-            title: Text('Delete Checklist', style: GoogleFonts.comfortaa(color: HandsColors.white)),
-            content: Text(
-              'Are you sure you want to delete "${checklist['name']}"? This action cannot be undone.',
-              style: GoogleFonts.comfortaa(color: HandsColors.white70),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: Text('Cancel', style: GoogleFonts.comfortaa(color: HandsColors.white70)),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: Text('Delete', style: GoogleFonts.comfortaa(color: HandsColors.error)),
-              ),
-            ],
-          ),
-    );
-
-    if (confirm == true) {
-      try {
-        final orgRef = FirestoreEnforcer.instance.collection('organizations').doc(widget.organizationId);
-        final checklistId = checklist['id'];
-
-        // 1. Delete the checklist template document
-        await orgRef.collection('checklist_templates').doc(checklistId).delete();
-
-        // 2. Remove the template id from any shift documents that reference it
-        try {
-          final shiftsSnap = await orgRef.collection('shifts').get();
-          WriteBatch batch = FirestoreEnforcer.instance.batch();
-          int ops = 0;
-          for (final s in shiftsSnap.docs) {
-            final data = s.data();
-            final List<dynamic> tidsDyn = (data['checklistTemplateIds'] as List?) ?? const [];
-            final originalLen = tidsDyn.length;
-            final filtered = tidsDyn.where((e) => e != checklistId).toList();
-            if (filtered.length != originalLen) {
-              batch.update(s.reference, {'checklistTemplateIds': filtered});
-              ops++;
-              if (ops == 450) {
-                await batch.commit();
-                batch = FirestoreEnforcer.instance.batch();
-                ops = 0;
-              }
-            }
-          }
-          if (ops > 0) await batch.commit();
-          logger.d('[WEBAdminDashboard] Removed deleted checklist $checklistId from affected shifts');
-        } catch (e, st) {
-          logger.e('[WEBAdminDashboard] Error removing checklist from shifts: $e\n$st');
-        }
-
-        // 3. Update local lookup maps to prevent displaying "Unknown Checklist"
-        _checklistNameById.remove(checklistId);
-        _shiftsByChecklistId.remove(checklistId);
-        // Also prune any cached shift -> checklist relationships
-        _checklistsByShiftId.updateAll((_, list) => list.where((id) => id != checklistId).toList());
-
-        // 4. Reload shifts table to reflect changes
-        await _loadShiftsTable();
-        if (mounted) setState(() {});
-
-        _showSnackBar('Checklist deleted successfully');
-      } catch (e) {
-        _showSnackBar('Failed to delete checklist: $e', isError: true);
-      }
     }
   }
 
@@ -2443,49 +2660,92 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
   }
 
   void _deleteLocation(Map<String, dynamic> location) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            backgroundColor: HandsColors.cardPrimary,
-            title: Text('Delete Location', style: GoogleFonts.comfortaa(color: HandsColors.white)),
-            content: Text(
-              'Are you sure you want to delete "${location['name']}"? This action cannot be undone and will affect any shifts or users assigned to this location.',
-              style: GoogleFonts.comfortaa(color: HandsColors.white70),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: Text('Cancel', style: GoogleFonts.comfortaa(color: HandsColors.white70)),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: Text('Delete', style: GoogleFonts.comfortaa(color: HandsColors.error)),
-              ),
-            ],
-          ),
-    );
+    print('🔴 DELETE LOCATION BUTTON CLICKED! Location: ${location['name']} (${location['id']})');
 
-    if (confirm == true) {
+    // Capture all necessary data BEFORE showing dialog
+    final currentContext = context;
+    final currentOrgId = widget.organizationId;
+    final locationId = location['id'] as String;
+    final locationName = location['name'] as String;
+
+    // Create a standalone deletion function that doesn't depend on widget state
+    Future<void> executeLocationDeletion() async {
       try {
+        print('🔴 CALLING FIRESTORE DELETE FOR LOCATION $locationId');
+
         await FirestoreEnforcer.instance
             .collection('organizations')
-            .doc(widget.organizationId)
+            .doc(currentOrgId)
             .collection('locations')
-            .doc(location['id'])
+            .doc(locationId)
             .delete();
 
-        _showSnackBar('Location deleted successfully');
+        print('🔴 LOCATION DELETE SUCCESSFUL');
 
-        // Refresh locations list and reload tables
-        await _loadLocations();
+        // Show success message using the captured context
+        if (currentContext.mounted) {
+          try {
+            ScaffoldMessenger.of(
+              currentContext,
+            ).showSnackBar(const SnackBar(content: Text('Location deleted successfully')));
+          } catch (e) {
+            print('🔴 LOCATION DELETE: Could not show snackbar (context invalid): $e');
+          }
+        }
       } catch (e) {
-        _showSnackBar('Failed to delete location: $e', isError: true);
+        print('🔴 LOCATION DELETE ERROR: $e');
+        if (currentContext.mounted) {
+          try {
+            ScaffoldMessenger.of(currentContext).showSnackBar(SnackBar(content: Text('Failed to delete location: $e')));
+          } catch (contextError) {
+            print('🔴 LOCATION DELETE: Could not show error snackbar (context invalid): $contextError');
+          }
+        }
       }
     }
+
+    final confirm = await _showStableDialog(
+      builder: (closeDialog) {
+        print('🔴 LOCATION DELETE DIALOG BUILDING!');
+        return AlertDialog(
+          backgroundColor: HandsColors.cardPrimary,
+          title: Text('Delete Location', style: GoogleFonts.comfortaa(color: HandsColors.white)),
+          content: Text(
+            'Are you sure you want to delete "$locationName"? This action cannot be undone and will affect any shifts or users assigned to this location.',
+            style: GoogleFonts.comfortaa(color: HandsColors.white70),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                print('🔴 LOCATION DELETE CANCELLED');
+                closeDialog(false);
+              },
+              child: Text('Cancel', style: GoogleFonts.comfortaa(color: HandsColors.white70)),
+            ),
+            TextButton(
+              onPressed: () {
+                print('🔴 LOCATION DELETE CONFIRMED');
+                closeDialog(true);
+              },
+              child: Text('Delete', style: GoogleFonts.comfortaa(color: HandsColors.error)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) {
+      print('🔴 LOCATION DELETE CANCELLED BY USER');
+      return;
+    }
+
+    // Execute deletion regardless of widget state
+    print('🔴 LOCATION DELETE PROCEEDING... (widget may be unmounted)');
+    await executeLocationDeletion();
   }
 
   Future<void> _deleteUser(String userId) async {
+    // Execute deletion operations completely independently of widget state
     try {
       logger.d('[WEBAdminDashboard] Starting user deletion for userId: $userId');
 
@@ -2500,10 +2760,10 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
 
       logger.d('[WEBAdminDashboard] deleteUser function response: $data');
 
+      // Reload data without depending on widget state
       await _reloadAllTables();
-      if (mounted) {
-        _showSnackBar(data != null && data['message'] != null ? data['message'] : 'User deleted successfully');
-      }
+
+      print('🔴 USER DELETE: Operation completed successfully');
     } on FirebaseFunctionsException catch (e) {
       logger.e(
         '[WEBAdminDashboard] FirebaseFunctionsException: code=${e.code}, message=${e.message}, details=${e.details}',
@@ -2515,9 +2775,8 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
         logger.w('[WEBAdminDashboard] Cloud function not found, attempting Firestore-only deletion');
         await _deleteUserFallback(userId);
       } else {
-        if (mounted) {
-          _showSnackBar('Error deleting user: ${e.message} (Code: ${e.code})', isError: true);
-        }
+        print('🔴 USER DELETE ERROR: ${e.message} (Code: ${e.code})');
+        rethrow;
       }
     } catch (e) {
       logger.e('[WEBAdminDashboard] deleteUser callable error: $e', e);
@@ -2538,14 +2797,11 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
       logger.d('[WEBAdminDashboard] User document deleted from Firestore: $userId');
 
       await _reloadAllTables();
-      if (mounted) {
-        _showSnackBar('User deleted from database. Note: Authentication record may still exist.');
-      }
+      print('🔴 USER DELETE FALLBACK: Operation completed successfully');
     } catch (e) {
       logger.e('[WEBAdminDashboard] Fallback deletion error: $e', e);
-      if (mounted) {
-        _showSnackBar('Failed to delete user: $e', isError: true);
-      }
+      print('🔴 USER DELETE FALLBACK ERROR: $e');
+      rethrow;
     }
   }
 }

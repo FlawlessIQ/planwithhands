@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:hands_app/utils/app_platform.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hands_app/state/user_state.dart';
 import 'package:hands_app/models/recipe.dart';
@@ -34,22 +35,50 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
   @override
   void initState() {
     super.initState();
-    // Initialize with defaults, role will be determined in build() when userState is available
-    _currentRole = AppRole.staff;
-    _visibleTabs = [AppRole.staff];
+
+    // Initialize with safe defaults - use provided role or fall back to staff
+    final initialRole = widget.userRole != null ? toAppRole(widget.userRole!) : AppRole.staff;
+    _currentRole = initialRole;
+    _visibleTabs = RecipeData.getVisibleTabs(initialRole);
+
+    // Ensure we have at least one tab to prevent controller errors
+    if (_visibleTabs.isEmpty) {
+      _visibleTabs = [AppRole.staff];
+      _currentRole = AppRole.staff;
+    }
+
     _tabController = TabController(length: _visibleTabs.length, vsync: this);
-    _fadeController = AnimationController(duration: const Duration(milliseconds: 600), vsync: this);
+
+    // Initialize animation with a longer duration for smoother experience
+    _fadeController = AnimationController(duration: const Duration(milliseconds: 800), vsync: this);
     _fadeAnimation = Tween<double>(
       begin: 0.0,
       end: 1.0,
     ).animate(CurvedAnimation(parent: _fadeController, curve: Curves.easeOutQuart));
-    _fadeController.forward();
+
+    // Start animation after a brief delay to ensure everything is ready
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _fadeController.forward();
+      }
+    });
+
+    debugPrint('HelpCenter: initState completed with role=$_currentRole, tabs=${_visibleTabs.length}');
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
-    _fadeController.dispose();
+    debugPrint('HelpCenter: Disposing controllers');
+    try {
+      _tabController.dispose();
+    } catch (e) {
+      debugPrint('HelpCenter: Error disposing tab controller: $e');
+    }
+    try {
+      _fadeController.dispose();
+    } catch (e) {
+      debugPrint('HelpCenter: Error disposing fade controller: $e');
+    }
     super.dispose();
   }
 
@@ -150,19 +179,116 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
   }
 
   void _launchWebPortal() async {
+    // Prevent opening the web portal on iOS (App Store review restriction).
+    if (isIOS) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Web portal access is not available in the iOS app.')));
+      return;
+    }
+
     final url = Uri.parse('https://portal.planwithhands.com/settings/locations');
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     }
   }
 
-  void _showRecipeDetails(Recipe recipe) {
+  void _showGuideDetails(Recipe recipe) {
     showDialog(
       context: context,
       barrierDismissible: true,
       builder:
-          (context) => Dialog.fullscreen(child: _RecipeDetailView(recipe: recipe, onAction: () => _handleCta(recipe))),
+          (context) => Dialog.fullscreen(child: _GuideDetailView(recipe: recipe, onAction: () => _handleCta(recipe))),
     );
+  }
+
+  void _showTroubleshootingDetails(String tip) {
+    final solution = _getTroubleshootingSolution(tip);
+
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.error.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.support_agent_rounded, color: Theme.of(context).colorScheme.error, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Troubleshooting',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.lightbulb_outline_rounded, size: 16, color: Theme.of(context).colorScheme.primary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          tip,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text('Solution:', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Text(solution, style: Theme.of(context).textTheme.bodyMedium),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text('Got it', style: TextStyle(color: Theme.of(context).colorScheme.primary)),
+              ),
+            ],
+          ),
+    );
+  }
+
+  String _getTroubleshootingSolution(String tip) {
+    if (tip.contains('push alerts') || tip.contains('notifications')) {
+      return '1. Go to your device Settings\n2. Find "Notifications" or "Apps"\n3. Look for "Hands" app\n4. Enable notifications and all notification types\n5. Make sure "Do Not Disturb" is off';
+    } else if (tip.contains('camera') || tip.contains('Camera')) {
+      return '1. Go to your device Settings\n2. Find "Privacy" or "App Permissions"\n3. Tap "Camera"\n4. Find "Hands" app and enable camera access\n5. Restart the app if needed';
+    } else if (tip.contains('location') || tip.contains('GPS')) {
+      return '1. Go to your device Settings\n2. Find "Privacy" or "Location Services"\n3. Enable Location Services\n4. Find "Hands" app and set to "While Using App"\n5. Make sure GPS is enabled';
+    } else if (tip.contains('login') || tip.contains('password')) {
+      return '1. Check your internet connection\n2. Try resetting your password\n3. Make sure you\'re using the correct email\n4. Contact your manager or admin if issues persist\n5. Try force-closing and reopening the app';
+    } else if (tip.contains('load') || tip.contains('restart')) {
+      return '1. Force close the app completely\n2. Wait 5 seconds\n3. Reopen the app\n4. Check your internet connection\n5. Try logging out and back in if needed';
+    } else if (tip.contains('photos') || tip.contains('uploading')) {
+      return '1. Check camera permissions (see Camera solution above)\n2. Ensure you have good internet connection\n3. Try taking a new photo\n4. Check available storage space\n5. Force close and restart the app';
+    } else if (tip.contains('shifts') || tip.contains('manager')) {
+      return '1. Pull down to refresh the screen\n2. Check if you\'re assigned to the correct location\n3. Contact your manager to verify your schedule\n4. Make sure you\'re not looking at the wrong date\n5. Try logging out and back in';
+    } else if (tip.contains('tasks') || tip.contains('refresh')) {
+      return '1. Pull down on the screen to refresh\n2. Check your internet connection\n3. Make sure you\'re in the right location\n4. Verify the date/time is correct\n5. Contact your manager if tasks are still missing';
+    } else if (tip.contains('location switching') || tip.contains('menu')) {
+      return '1. Tap the menu button (3 lines) in the top right\n2. Look for "Switch Location" or location name\n3. Select your desired location\n4. Wait for the app to reload\n5. Contact admin if you don\'t see your location';
+    } else {
+      return '1. Try restarting the app\n2. Check your internet connection\n3. Make sure you have the latest app version\n4. Contact your manager or admin for help\n5. If urgent, try using the web version';
+    }
   }
 
   Color _getRoleColor(AppRole role) {
@@ -181,37 +307,35 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
     // Get current user role reactively
     final userState = ref.watch(userStateProvider);
 
-    // Show loading screen if userData is not available yet
-    if (userState.userData == null) {
-      debugPrint('HelpCenter: === USER DATA NOT LOADED YET ===');
-      return Scaffold(
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        appBar: AppBar(
-          backgroundColor: Theme.of(context).colorScheme.surface,
-          elevation: 0,
-          leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.of(context).pop()),
-        ),
-        body: const Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    final userRole = widget.userRole ?? userState.userData!.userRole;
+    // Use provided role from route or fall back to user state with default
+    final userRole = widget.userRole ?? userState.userData?.userRole ?? 0; // Default to staff role
     final currentRole = toAppRole(userRole);
     final visibleTabs = RecipeData.getVisibleTabs(currentRole);
 
     // Debug output
     debugPrint('HelpCenter: === BUILD METHOD DEBUG ===');
     debugPrint('HelpCenter: userState.userData = ${userState.userData}');
-    debugPrint('HelpCenter: userRole=$userRole -> $currentRole, tabs=$visibleTabs');
-    debugPrint('HelpCenter: THIS IS THE NEW FIXED VERSION!');
+    debugPrint('HelpCenter: widget.userRole = ${widget.userRole}');
+    debugPrint('HelpCenter: resolved userRole=$userRole -> $currentRole, tabs=$visibleTabs');
     debugPrint('HelpCenter: === END BUILD DEBUG ===');
 
-    // Update tabs if role changed
+    // Update tabs if role changed (but only if we have a significant change)
     if (currentRole != _currentRole || visibleTabs.length != _visibleTabs.length) {
+      debugPrint('HelpCenter: Role changed from $_currentRole to $currentRole, updating tabs');
+
+      // Update state
       _currentRole = currentRole;
       _visibleTabs = visibleTabs;
-      _tabController.dispose();
-      _tabController = TabController(length: _visibleTabs.length, vsync: this);
+
+      // Safely recreate tab controller
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            _tabController.dispose();
+            _tabController = TabController(length: _visibleTabs.length, vsync: this);
+          });
+        }
+      });
     }
 
     final size = MediaQuery.of(context).size;
@@ -229,10 +353,10 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
             SliverAppBar(
               expandedHeight:
                   isMobile
-                      ? 140
+                      ? 180 // Increased from 140 to provide more space for title
                       : isWide
                       ? 160
-                      : 150, // Reduced heights
+                      : 150,
               floating: false,
               pinned: true,
               elevation: 0,
@@ -294,7 +418,7 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
           end: Alignment.bottomRight,
           colors: [
             Theme.of(context).colorScheme.surface,
-            Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+            Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
           ],
         ),
       ),
@@ -306,13 +430,13 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
                 : isMobile
                 ? 20
                 : 32,
-            50, // Reduced from 60
+            isMobile ? 60 : 50, // More top padding for mobile to accommodate the back button
             isWide
                 ? 48
                 : isMobile
                 ? 20
                 : 32,
-            16, // Reduced from 24
+            isMobile ? 24 : 16, // More bottom padding for mobile to prevent cut-off
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -328,8 +452,8 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
                   ),
                 ),
               ] else ...[
-                // Mobile and medium: Just title
-                Flexible(child: _buildHeroTitle()),
+                // Mobile and medium: Just title with proper spacing
+                _buildHeroTitle(),
               ],
             ],
           ),
@@ -345,18 +469,25 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
       children: [
         Text(
           'Help Center',
-          style: Theme.of(
-            context,
-          ).textTheme.displaySmall?.copyWith(fontWeight: FontWeight.bold, fontSize: 24, height: 1.1),
+          style: Theme.of(context).textTheme.displaySmall?.copyWith(
+            fontWeight: FontWeight.bold,
+            fontSize: 24,
+            height: 1.2, // Improved line height to prevent cut-off
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6), // Slightly more spacing
         Text(
           'Step-by-step guides for every task',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
             color: Theme.of(context).colorScheme.onSurfaceVariant,
             fontWeight: FontWeight.w500,
-            fontSize: 13,
+            fontSize: 14, // Slightly larger for better readability
+            height: 1.3, // Better line height to prevent cut-off
           ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
           softWrap: true,
         ),
         const SizedBox(height: 8),
@@ -382,115 +513,6 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildQuickActionsInHero() {
-    final quickActions = _getQuickActionsForRole(_currentRole);
-
-    return Container(
-      padding: const EdgeInsets.all(16), // Reduced padding
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(12), // Smaller border radius
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.5)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.flash_on_rounded,
-                color: Theme.of(context).colorScheme.primary,
-                size: 18, // Smaller icon
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'Quick Actions',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  // Smaller title
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10), // Reduced spacing
-          ...quickActions.map(
-            (action) => Padding(
-              padding: const EdgeInsets.only(bottom: 6), // Reduced spacing
-              child: _buildCompactQuickActionButton(action),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCompactQuickActionButton(_QuickAction action) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.3)),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(8),
-          onTap: action.onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(8), // Smaller padding
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Icon(
-                    action.icon,
-                    size: 14, // Smaller icon
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        action.title,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 12, // Smaller font
-                        ),
-                      ),
-                      Text(
-                        action.description,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          fontSize: 10, // Smaller font
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  size: 12, // Smaller icon
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -527,7 +549,8 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
           ),
         ];
       case AppRole.admin:
-        return [
+        // Build admin actions but hide web-management on iOS (App Store review restriction)
+        final actions = <_QuickAction>[
           _QuickAction(
             title: 'System Overview',
             description: 'View organization-wide metrics and status',
@@ -541,6 +564,13 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
             onTap: () => _launchWebPortal(),
           ),
         ];
+
+        // If running on native iOS (not iOS web), hide the Web Management action to satisfy App Review
+        if (isIOS) {
+          return actions.where((a) => a.title != 'Web Management').toList();
+        }
+
+        return actions;
     }
   }
 
@@ -769,7 +799,7 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
   Widget _buildAllGuidesCompactList(List<Recipe> recipes) {
     return Container(
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -794,7 +824,7 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () => _showRecipeDetails(recipe),
+        onTap: () => _showGuideDetails(recipe),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
@@ -876,32 +906,45 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
+                crossAxisCount: 1,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 8,
-                childAspectRatio: 8,
+                childAspectRatio: 10,
               ),
               itemCount: tips.take(6).length,
               itemBuilder:
-                  (context, index) => Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.lightbulb_outline_rounded, size: 14, color: Theme.of(context).colorScheme.primary),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            tips[index],
-                            style: Theme.of(context).textTheme.bodySmall,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                  (context, index) => InkWell(
+                    onTap: () => _showTroubleshootingDetails(tips[index]),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.lightbulb_outline_rounded, size: 14, color: Theme.of(context).colorScheme.primary),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              tips[index],
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).colorScheme.onSurface,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                        ),
-                      ],
+                          Icon(
+                            Icons.arrow_forward_ios_rounded,
+                            size: 10,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
             ),
@@ -1168,67 +1211,6 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
     );
   }
 
-  Widget _buildQuickStartSection(List<Recipe> recipes, bool isWide) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Quick Start', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
-        const SizedBox(height: 16),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-            childAspectRatio: 1.4,
-          ),
-          itemCount: recipes.length,
-          itemBuilder: (context, index) => _buildCompactCard(recipes[index]),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildQuickActionsCard(List<Recipe> featured) {
-    final quickActions = _getQuickActionsForRole(_currentRole);
-
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(Icons.flash_on_rounded, color: Theme.of(context).colorScheme.primary, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                'Quick Actions',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          ...quickActions.map(
-            (action) => Padding(padding: const EdgeInsets.only(bottom: 12), child: _buildMobileActionButton(action)),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildMobileActionButton(_QuickAction action) {
     return FilledButton.tonal(
       onPressed: action.onTap,
@@ -1259,85 +1241,9 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
     );
   }
 
-  Widget _buildFeaturedSection(List<Recipe> featured, bool isWide) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Featured Guides',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 16),
-        if (isWide) ...[
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              childAspectRatio: 1.1,
-            ),
-            itemCount: featured.length,
-            itemBuilder: (context, index) => _buildCompactCard(featured[index]),
-          ),
-        ] else ...[
-          ...featured.map(
-            (recipe) => Padding(padding: const EdgeInsets.only(bottom: 12), child: _buildListCard(recipe)),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildAllGuidesSection(List<Recipe> recipes, bool isMobile) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('All Guides', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
-        const SizedBox(height: 16),
-        if (isMobile) ...[
-          ...recipes.map(
-            (recipe) => Padding(padding: const EdgeInsets.only(bottom: 12), child: _buildListCard(recipe)),
-          ),
-        ] else ...[
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 1,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 3.5,
-            ),
-            itemCount: recipes.length,
-            itemBuilder: (context, index) => _buildMiniCard(recipes[index]),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildAllGuidesCompact(List<Recipe> recipes) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.5)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('All Guides', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
-          ...recipes.map(
-            (recipe) => Padding(padding: const EdgeInsets.only(bottom: 8), child: _buildSidebarItem(recipe)),
-          ),
-        ],
-      ),
-    );
-  }
+  // Removed unused: _buildFeaturedSection, _buildAllGuidesSection, _buildAllGuidesCompact
+  // These helpers were not referenced and caused lint/compile warnings. Their
+  // functionality remains covered by existing builders in the layout.
 
   Widget _buildCompactCard(Recipe recipe) {
     return Container(
@@ -1351,7 +1257,7 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () => _showRecipeDetails(recipe),
+          onTap: () => _showGuideDetails(recipe),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -1372,7 +1278,7 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surfaceVariant,
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
@@ -1390,18 +1296,6 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
                   overflow: TextOverflow.ellipsis,
                 ),
                 const Spacer(),
-                if (recipe.ctaLabel != null)
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.tonal(
-                      onPressed: () => _handleCta(recipe),
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      child: Text(recipe.ctaLabel!, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                    ),
-                  ),
               ],
             ),
           ),
@@ -1421,7 +1315,7 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
-          onTap: () => _showRecipeDetails(recipe),
+          onTap: () => _showGuideDetails(recipe),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
@@ -1495,7 +1389,7 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(8),
-          onTap: () => _showRecipeDetails(recipe),
+          onTap: () => _showGuideDetails(recipe),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(
@@ -1532,32 +1426,7 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
     );
   }
 
-  Widget _buildSidebarItem(Recipe recipe) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface.withOpacity(0.7),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: InkWell(
-        onTap: () => _showRecipeDetails(recipe),
-        child: Row(
-          children: [
-            Icon(recipe.icon, size: 16, color: _getRoleColor(recipe.role)),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                recipe.title,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // removed unused: _buildSidebarItem
 
   Widget _buildOverviewCard(AppRole role, bool isMobile, bool isMedium, bool isWide) {
     return Container(
@@ -1570,7 +1439,7 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
       ),
       padding: EdgeInsets.all(isMobile ? 20 : 24),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.5)),
       ),
@@ -1625,61 +1494,9 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
     );
   }
 
-  Widget _buildTroubleshootingSection() {
-    return _buildTroubleshootingCompact();
-  }
+  // _buildTroubleshootingSection was removed (unreferenced). Keep _buildTroubleshootingCompact.
 
-  Widget _buildTroubleshootingCompact() {
-    final tips = RecipeData.getQuickTroubleshootingTips();
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.errorContainer.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Theme.of(context).colorScheme.error.withOpacity(0.2)),
-      ),
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          childrenPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-          leading: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.error.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(Icons.support_agent_rounded, color: Theme.of(context).colorScheme.error, size: 20),
-          ),
-          title: Text(
-            'Quick Troubleshooting',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-          ),
-          children:
-              tips
-                  .take(5)
-                  .map(
-                    (tip) => Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surface,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.lightbulb_outline_rounded, size: 16, color: Theme.of(context).colorScheme.primary),
-                          const SizedBox(width: 12),
-                          Expanded(child: Text(tip, style: Theme.of(context).textTheme.bodyMedium)),
-                        ],
-                      ),
-                    ),
-                  )
-                  .toList(),
-        ),
-      ),
-    );
-  }
+  // removed unused: _buildTroubleshootingCompact
 
   Widget _buildGradientSupportSection() {
     final size = MediaQuery.of(context).size;
@@ -1734,45 +1551,252 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
   }
 }
 
-class _RecipeDetailView extends StatelessWidget {
+class _GuideDetailView extends StatelessWidget {
   final Recipe recipe;
   final VoidCallback? onAction;
 
-  const _RecipeDetailView({required this.recipe, this.onAction});
+  const _GuideDetailView({required this.recipe, this.onAction});
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final isMobile = size.width < 800;
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      appBar: AppBar(title: Text(recipe.title), elevation: 0),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Recipe content here - simplified for now
-            Text('Recipe Details', style: Theme.of(context).textTheme.headlineMedium),
-            const SizedBox(height: 16),
-            Text(recipe.title),
-            const SizedBox(height: 16),
-            ...recipe.steps.map((step) => Padding(padding: const EdgeInsets.only(bottom: 8), child: Text('• $step'))),
-          ],
-        ),
+      backgroundColor: colorScheme.surface,
+      appBar: AppBar(
+        title: Text(recipe.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+        elevation: 0,
+        backgroundColor: colorScheme.surface,
+        surfaceTintColor: Colors.transparent,
+        centerTitle: !isMobile,
       ),
-      bottomNavigationBar:
-          recipe.ctaLabel != null
-              ? SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: FilledButton(
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      onAction?.call();
-                    },
-                    child: Text(recipe.ctaLabel!),
-                  ),
+      body: CustomScrollView(
+        slivers: [
+          // Hero Header Section
+          SliverToBoxAdapter(
+            child: Container(
+              margin: EdgeInsets.all(isMobile ? 16 : 24),
+              padding: EdgeInsets.all(isMobile ? 20 : 32),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    colorScheme.primaryContainer.withOpacity(0.6),
+                    colorScheme.secondaryContainer.withOpacity(0.4),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
-              )
-              : null,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: colorScheme.outline.withOpacity(0.2)),
+              ),
+              child: Column(
+                children: [
+                  // Icon and Title
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: colorScheme.primary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Icon(recipe.icon, size: isMobile ? 32 : 40, color: colorScheme.primary),
+                      ),
+                      SizedBox(width: isMobile ? 16 : 20),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Step-by-Step Guide',
+                              style: Theme.of(
+                                context,
+                              ).textTheme.labelLarge?.copyWith(color: colorScheme.primary, fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              recipe.title,
+                              style: Theme.of(
+                                context,
+                              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, height: 1.2),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (recipe.duration != null) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest.withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.schedule_rounded, size: 16, color: colorScheme.onSurfaceVariant),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Takes ${recipe.duration}',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+
+          // Steps Section
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.list_alt_rounded, color: colorScheme.primary, size: 24),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Steps to Complete',
+                        style: Theme.of(
+                          context,
+                        ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: colorScheme.onSurface),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            ),
+          ),
+
+          // Step Cards
+          SliverList(
+            delegate: SliverChildBuilderDelegate((context, index) {
+              final step = recipe.steps[index];
+              return Container(
+                margin: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 24, vertical: 8),
+                padding: EdgeInsets.all(isMobile ? 16 : 20),
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: colorScheme.outline.withOpacity(0.1)),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 2)),
+                  ],
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Step Number
+                    Container(
+                      width: isMobile ? 32 : 36,
+                      height: isMobile ? 32 : 36,
+                      decoration: BoxDecoration(color: colorScheme.primary, borderRadius: BorderRadius.circular(18)),
+                      child: Center(
+                        child: Text(
+                          '${index + 1}',
+                          style: TextStyle(
+                            color: colorScheme.onPrimary,
+                            fontWeight: FontWeight.bold,
+                            fontSize: isMobile ? 14 : 16,
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: isMobile ? 12 : 16),
+
+                    // Step Content
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 4),
+                          Text(
+                            step,
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodyLarge?.copyWith(height: 1.4, color: colorScheme.onSurface),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }, childCount: recipe.steps.length),
+          ),
+
+          // Troubleshooting Section (if available)
+          if (recipe.troubleshoot.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Container(
+                margin: EdgeInsets.all(isMobile ? 16 : 24),
+                padding: EdgeInsets.all(isMobile ? 16 : 20),
+                decoration: BoxDecoration(
+                  color: colorScheme.errorContainer.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: colorScheme.error.withOpacity(0.2)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.help_outline_rounded, color: colorScheme.error, size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Troubleshooting Tips',
+                          style: Theme.of(
+                            context,
+                          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: colorScheme.error),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    ...recipe.troubleshoot.map(
+                      (tip) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.lightbulb_outline_rounded, size: 16, color: colorScheme.error),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                tip,
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.bodyMedium?.copyWith(color: colorScheme.onErrorContainer),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+          // Bottom spacing
+          const SliverToBoxAdapter(child: SizedBox(height: 100)),
+        ],
+      ),
+
+      // No bottom CTA - removed per request
+      bottomNavigationBar: null,
     );
   }
 }

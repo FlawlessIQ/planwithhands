@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -299,6 +300,9 @@ class LoginPage extends HookConsumerWidget {
             debugPrint('[LOGIN][DEBUG_USER_DOC] Error reading user doc: $e');
           }
           if (context.mounted) {
+            // Signal autofill completion to trigger password save prompt
+            TextInput.finishAutofillContext();
+
             // Route based on user role
             switch (userData.userRole) {
               case 0:
@@ -401,6 +405,7 @@ class LoginPage extends HookConsumerWidget {
                             // Email Field
                             HandsTextFormField(
                               controller: emailController,
+                              autofillHints: const [AutofillHints.email, AutofillHints.username],
                               decoration: InputDecoration(
                                 hintText: 'Email',
                                 prefixIcon: Icon(Icons.email_outlined, color: HandsColors.white70),
@@ -454,6 +459,7 @@ class LoginPage extends HookConsumerWidget {
                             // Password Field
                             HandsTextFormField(
                               controller: passwordController,
+                              autofillHints: const [AutofillHints.password],
                               textCapitalization: TextCapitalization.none, // Passwords don't need capitalization
                               decoration: InputDecoration(
                                 hintText: 'Password',

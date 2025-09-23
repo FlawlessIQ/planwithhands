@@ -5,14 +5,16 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hands_app/state/user_state.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'dart:html' as html;
+import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
 // Ensure userStateProvider is exported from user_state.dart
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
-import 'package:flutter_pdfview/flutter_pdfview.dart';
-import 'package:video_player/video_player.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:video_player/video_player.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hands_app/theme/theme.dart';
@@ -406,20 +408,51 @@ class ViewDocumentsPage extends HookConsumerWidget {
                         ),
                         onTap:
                             url.isNotEmpty
-                                ? () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder:
-                                          (_) => DocumentViewerPage(
-                                            url: url,
-                                            title: title,
-                                            fileType: type,
-                                            fileName: fileName,
-                                            userRole: userRole,
+                                ? () async {
+                                  // Quick fix: For PDFs on mobile, use native system viewer
+                                  if (!kIsWeb &&
+                                      (fileName?.toLowerCase().endsWith('.pdf') == true ||
+                                          type.toLowerCase() == 'document')) {
+                                    try {
+                                      final uri = Uri.parse(url);
+                                      final success = await launchUrl(uri, mode: LaunchMode.externalApplication);
+
+                                      if (!success && context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'Could not open document. Please check your internet connection.',
+                                            ),
+                                            backgroundColor: Colors.red,
                                           ),
-                                    ),
-                                  );
+                                        );
+                                      }
+                                    } catch (e) {
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Error opening document: ${e.toString()}'),
+                                            backgroundColor: Colors.red,
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  } else {
+                                    // Fallback to original viewer for other types
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder:
+                                            (_) => DocumentViewerPage(
+                                              url: url,
+                                              title: title,
+                                              fileType: type,
+                                              fileName: fileName,
+                                              userRole: userRole,
+                                            ),
+                                      ),
+                                    );
+                                  }
                                 }
                                 : null,
                       ),
@@ -574,11 +607,26 @@ class DocumentViewerPage extends HookWidget {
           return url;
         }
 
-        // For mobile platforms, return URL for native viewers
-        return url;
+        // For mobile platforms, download and cache the file locally for native viewing
+        final response = await http.get(uri);
+        if (response.statusCode != 200) {
+          throw Exception('Failed to download document: HTTP ${response.statusCode}');
+        }
+
+        final documentsDir = await getApplicationDocumentsDirectory();
+        final filename =
+            fileName?.isNotEmpty == true
+                ? fileName!.replaceAll(RegExp(r'[^\w\s\-_\.]'), '_')
+                : 'document_${DateTime.now().millisecondsSinceEpoch}.pdf';
+
+        final localFile = File('${documentsDir.path}/$filename');
+        await localFile.writeAsBytes(response.bodyBytes);
+
+        debugPrint('[DocumentViewer] Downloaded to: ${localFile.path}');
+        return localFile.path;
       } catch (e) {
         debugPrint('Error in downloadAndCacheFile: $e');
-        throw Exception('Failed to process document URL: ${e.toString()}');
+        throw Exception('Failed to download document: ${e.toString()}');
       }
     }
 
@@ -738,126 +786,95 @@ class DocumentViewerPage extends HookWidget {
   }
 
   Widget _buildPDFViewer(BuildContext context, String path) {
-    // For web, use a direct access approach instead of iframe
-    if (kIsWeb) {
+    // For mobile platforms, use native system viewer directly
+    if (!kIsWeb) {
       return Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(24.0),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade300),
+            // Document icon
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(color: Colors.red.shade100, borderRadius: BorderRadius.circular(50)),
+              child: Icon(Icons.picture_as_pdf, size: 80, color: Colors.red.shade600),
+            ),
+            const SizedBox(height: 32),
+
+            // Title
+            Text(
+              'Training Document',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+
+            // Description
+            Text(
+              'This document will open in your device\'s native viewer for the best experience.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 48),
+
+            // Primary action button
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  try {
+                    final uri = Uri.parse(path);
+                    final success = await launchUrl(uri, mode: LaunchMode.externalApplication);
+
+                    if (!success && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Could not open document. Please check your internet connection.'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error opening document: ${e.toString()}'), backgroundColor: Colors.red),
+                      );
+                    }
+                  }
+                },
+                icon: const Icon(Icons.open_in_new, size: 24),
+                label: const Text('Open Document', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 2,
                 ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Document icon
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(color: Colors.red.shade100, borderRadius: BorderRadius.circular(50)),
-                      child: Icon(Icons.picture_as_pdf, size: 80, color: Colors.red.shade600),
-                    ),
-                    const SizedBox(height: 24),
+              ),
+            ),
 
-                    // Document title
-                    Text(
-                      'PDF Document',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
+            const SizedBox(height: 32),
 
-                    // Info text
-                    Text(
-                      'Click below to view or download this document',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
-                      textAlign: TextAlign.center,
+            // Help text
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.blue.shade600),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Documents open in your device\'s built-in viewer for optimal performance and features.',
+                      style: TextStyle(color: Colors.blue.shade700, fontSize: 13),
                     ),
-                    const SizedBox(height: 32),
-
-                    // Action buttons
-                    Column(
-                      children: [
-                        // Primary action - View in new tab
-                        SizedBox(
-                          width: 250,
-                          child: ElevatedButton.icon(
-                            onPressed: () async {
-                              final uri = Uri.parse(path);
-                              if (await canLaunchUrl(uri)) {
-                                await launchUrl(uri, mode: LaunchMode.externalApplication);
-                              }
-                            },
-                            icon: const Icon(Icons.open_in_new, size: 20),
-                            label: const Text('View Document'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Theme.of(context).primaryColor,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Secondary actions
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            OutlinedButton.icon(
-                              onPressed: () => _copyUrlToClipboard(context, path),
-                              icon: const Icon(Icons.copy, size: 18),
-                              label: const Text('Copy Link'),
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            OutlinedButton.icon(
-                              onPressed: () async {
-                                final uri = Uri.parse(path);
-                                if (await canLaunchUrl(uri)) {
-                                  await launchUrl(uri, mode: LaunchMode.externalApplication);
-                                }
-                              },
-                              icon: const Icon(Icons.download, size: 18),
-                              label: const Text('Download'),
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-
-                    // Technical info for troubleshooting
-                    const SizedBox(height: 32),
-                    ExpansionTile(
-                      title: const Text('Technical Information', style: TextStyle(fontSize: 14)),
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Document URL:', style: TextStyle(fontWeight: FontWeight.bold)),
-                              const SizedBox(height: 4),
-                              SelectableText(path, style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
-                              const SizedBox(height: 16),
-                              const Text(
-                                'Note: Documents open in a new tab due to browser security policies.',
-                                style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -865,25 +882,129 @@ class DocumentViewerPage extends HookWidget {
       );
     }
 
-    return PDFView(
-      filePath: path,
-      enableSwipe: true,
-      swipeHorizontal: false,
-      autoSpacing: false,
-      pageFling: true,
-      pageSnap: true,
-      defaultPage: 0,
-      fitPolicy: FitPolicy.BOTH,
-      preventLinkNavigation: false,
-      onRender: (pages) {
-        debugPrint('PDF rendered with $pages pages');
-      },
-      onError: (error) {
-        debugPrint('PDF error: $error');
-      },
-      onPageError: (page, error) {
-        debugPrint('PDF page $page error: $error');
-      },
+    // For web, use the existing web approach
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        children: [
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Document icon
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(color: Colors.red.shade100, borderRadius: BorderRadius.circular(50)),
+                    child: Icon(Icons.picture_as_pdf, size: 80, color: Colors.red.shade600),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Document title
+                  Text(
+                    'PDF Document',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Info text
+                  Text(
+                    'Click below to view or download this document',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 32),
+
+                  // Action buttons
+                  Column(
+                    children: [
+                      // Primary action - View in new tab
+                      SizedBox(
+                        width: 250,
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            final uri = Uri.parse(path);
+                            if (await canLaunchUrl(uri)) {
+                              await launchUrl(uri, mode: LaunchMode.externalApplication);
+                            }
+                          },
+                          icon: const Icon(Icons.open_in_new, size: 20),
+                          label: const Text('View Document'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Theme.of(context).primaryColor,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Secondary actions
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () => _copyUrlToClipboard(context, path),
+                            icon: const Icon(Icons.copy, size: 18),
+                            label: const Text('Copy Link'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          OutlinedButton.icon(
+                            onPressed: () async {
+                              final uri = Uri.parse(path);
+                              if (await canLaunchUrl(uri)) {
+                                await launchUrl(uri, mode: LaunchMode.externalApplication);
+                              }
+                            },
+                            icon: const Icon(Icons.download, size: 18),
+                            label: const Text('Download'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+
+                  // Technical info for troubleshooting
+                  const SizedBox(height: 32),
+                  ExpansionTile(
+                    title: const Text('Technical Information', style: TextStyle(fontSize: 14)),
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Document URL:', style: TextStyle(fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 4),
+                            SelectableText(path, style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Note: Documents open in a new tab due to browser security policies.',
+                              style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1090,10 +1211,8 @@ class DocumentViewerPage extends HookWidget {
 
   void _copyUrlToClipboard(BuildContext context, String url) async {
     try {
-      // Use the Clipboard API on web
-      if (kIsWeb) {
-        await html.window.navigator.clipboard?.writeText(url);
-      }
+      // Use Flutter's universal Clipboard for all platforms
+      await Clipboard.setData(ClipboardData(text: url));
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('URL copied to clipboard')));
       }

@@ -8,7 +8,7 @@ AppRole toAppRole(int userRole) {
   return AppRole.staff;
 }
 
-/// Data model for Help Center recipes
+/// Data model for Help Center how-to guides
 class Recipe {
   final String id;
   final String title;
@@ -21,7 +21,7 @@ class Recipe {
   final List<String> troubleshoot; // 0–2 one-liners
   final String? ctaLabel; // null = no CTA
   final VoidCallback? onCta; // wired at build time
-  final bool isFeatured; // for highlighting important recipes
+  final bool isFeatured; // for highlighting important guides
 
   const Recipe({
     required this.id,
@@ -39,11 +39,11 @@ class Recipe {
   });
 }
 
-/// Recipe data provider with accurate Hands app content
+/// Guide data provider with accurate Hands app content
 class RecipeData {
   static List<Recipe> getAllRecipes() {
     return [
-      // Staff recipes - Essential daily tasks
+      // Staff guides - Essential daily tasks
       Recipe(
         id: 'start_shift',
         title: 'Start your shift & finish tasks',
@@ -141,7 +141,7 @@ class RecipeData {
         ],
       ),
 
-      // Manager recipes - Team oversight and communication
+      // Manager guides - Team oversight and communication
       Recipe(
         id: 'manager_overview_today',
         title: 'Monitor today\'s shifts',
@@ -241,7 +241,7 @@ class RecipeData {
         ],
       ),
 
-      // Admin recipes - System configuration and oversight
+      // Admin guides - System configuration and oversight
       Recipe(
         id: 'admin_start_web',
         title: 'Manage locations & billing',

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:hands_app/utils/app_platform.dart';
 import 'package:hands_app/state/user_state.dart';
 import 'package:hands_app/pages/admin/send_notification_sheet.dart';
 
@@ -13,40 +14,73 @@ class HowToUsePage extends ConsumerWidget {
     final userRole = userState.userData?.userRole ?? 0;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('How to use Hands')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header row with role chip
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [Text('Quick guides for your role', style: Theme.of(context).textTheme.bodyMedium)],
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        toolbarHeight: 0, // Hide the default AppBar content
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Custom header with back button and title
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: () => Navigator.of(context).pop(),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
                   ),
-                ),
-                RoleChip(userRole),
-              ],
-            ),
-            const SizedBox(height: 24),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'How to use Hands',
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
 
-            // Quick actions row
-            Wrap(spacing: 8, runSpacing: 8, children: _buildQuickActions(context, userRole)),
-            const SizedBox(height: 32),
+              // Subtitle row with role chip
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 8), // Add more padding to prevent cut-off
+                      child: Text(
+                        'Quick guides for your role',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          height: 1.4, // Increase line height to prevent cut-off
+                        ),
+                      ),
+                    ),
+                  ),
+                  RoleChip(userRole),
+                ],
+              ),
+              const SizedBox(height: 24),
 
-            // Guide cards grid
-            ResponsiveGrid(children: _buildGuideCards(context, userRole)),
-            const SizedBox(height: 32),
+              // Quick actions row
+              Wrap(spacing: 8, runSpacing: 8, children: _buildQuickActions(context, userRole)),
+              const SizedBox(height: 32),
 
-            // Troubleshooting section
-            Text('Troubleshooting', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            ..._buildTroubleshooting(context),
-          ],
+              // Guide cards grid
+              ResponsiveGrid(children: _buildGuideCards(context, userRole)),
+              const SizedBox(height: 32),
+
+              // Troubleshooting section
+              Text('Troubleshooting', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              ..._buildTroubleshooting(context),
+            ],
+          ),
         ),
       ),
     );
@@ -97,7 +131,7 @@ class HowToUsePage extends ConsumerWidget {
           ),
         ];
       case 2: // Admin
-        return [
+        final actions = [
           QuickAction(
             icon: Icons.admin_panel_settings_outlined,
             label: 'Open Admin Dashboard',
@@ -124,6 +158,13 @@ class HowToUsePage extends ConsumerWidget {
                 ),
           ),
         ];
+
+        if (isIOS) {
+          // Hide web portal quick action on native iOS (App Store / TestFlight)
+          return actions.where((a) => a.label != 'Web Portal (Locations & Billing)').toList();
+        }
+
+        return actions;
       default:
         return [];
     }
@@ -225,12 +266,14 @@ class HowToUsePage extends ConsumerWidget {
         icon: Icons.web_outlined,
         title: 'Start here (web)',
         bullets: ['Use Web Portal → Settings → Manage Locations.', 'Update subscription there too.'],
-        ctaLabel: 'Open Web Portal',
+        ctaLabel: isIOS ? null : 'Open Web Portal',
         onCta:
-            () => launchUrl(
-              Uri.parse('https://portal.planwithhands.com/settings/locations'),
-              mode: LaunchMode.externalApplication,
-            ),
+            isIOS
+                ? null
+                : () => launchUrl(
+                  Uri.parse('https://portal.planwithhands.com/settings/locations'),
+                  mode: LaunchMode.externalApplication,
+                ),
       ),
       RoleGuideCard(
         icon: Icons.checklist_outlined,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:math' as math;
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/utils/jobtype_helper.dart';
 import 'package:hands_app/ui/bottom_sheet_styles.dart';
@@ -267,6 +268,60 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
 
     Widget buildStepper() {
       final stepTitleSize = isDialog ? 13.0 : 14.0;
+      final isMobile = !isDialog && !isWide;
+
+      if (isMobile) {
+        // Mobile-optimized layout with sticky controls
+        return Column(
+          children: [
+            // Step content area
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.only(bottom: 20),
+                child: Column(
+                  children: [
+                    // Step indicator
+                    _buildMobileStepIndicator(),
+                    const SizedBox(height: 20),
+                    // Current step content
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
+                      child: _buildCurrentStepContent(),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Sticky controls at bottom
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: HandsColors.cardPrimary,
+                border: Border(top: BorderSide(color: HandsColors.white30, width: 0.5)),
+              ),
+              child: SafeArea(
+                top: false,
+                child: Row(
+                  children: [
+                    if (_currentStep > 0) Expanded(child: HandsSecondaryButton(text: 'Back', onPressed: _prevStep)),
+                    if (_currentStep > 0) const SizedBox(width: 12),
+                    Expanded(
+                      flex: _currentStep > 0 ? 2 : 1,
+                      child: HandsPrimaryButton(
+                        text: _currentStep < 3 ? 'Continue' : 'Save checklist',
+                        onPressed: _loading ? null : _nextStep,
+                        isLoading: _loading,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      }
+
+      // Desktop/dialog stepper (unchanged)
       return Theme(
         data: Theme.of(
           context,
@@ -401,14 +456,17 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
       );
     }
 
-    // Mobile / non-dialog path: keep draggable behavior
-    return Padding(
-      padding: EdgeInsets.only(bottom: mediaQuery.viewInsets.bottom),
+    // Mobile / non-dialog path: improved keyboard-aware behavior
+    final keyboardHeight = mediaQuery.viewInsets.bottom;
+    final hasKeyboard = keyboardHeight > 0;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
       child: DraggableScrollableSheet(
         expand: false,
-        initialChildSize: 0.9,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
+        initialChildSize: hasKeyboard ? 0.95 : 0.9,
+        minChildSize: hasKeyboard ? 0.7 : 0.5,
+        maxChildSize: 0.98,
         builder: (context, scrollController) {
           return SafeArea(
             child: Material(
@@ -416,12 +474,19 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
               elevation: 8,
               color: HandsColors.cardPrimary,
               child: Scaffold(
-                resizeToAvoidBottomInset: false,
+                resizeToAvoidBottomInset: true,
                 backgroundColor: Colors.transparent,
                 body: Column(
                   children: [
                     buildHeader(showHandle: true),
-                    Expanded(child: SingleChildScrollView(controller: scrollController, child: buildStepper())),
+                    Expanded(
+                      child: CustomScrollView(
+                        controller: scrollController,
+                        slivers: [SliverFillRemaining(hasScrollBody: false, child: buildStepper())],
+                      ),
+                    ),
+                    // Add bottom padding when keyboard is visible
+                    if (hasKeyboard) SizedBox(height: math.max(0, keyboardHeight - mediaQuery.padding.bottom)),
                   ],
                 ),
               ),
@@ -492,6 +557,11 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
             hint: 'e.g., Opening Tasks, Closing Checklist',
           ),
           textInputAction: TextInputAction.next,
+          style: const TextStyle(fontSize: 16), // Better for mobile
+          onFieldSubmitted: (_) {
+            // Auto-advance focus to description field
+            FocusScope.of(context).nextFocus();
+          },
         ),
         const SizedBox(height: BottomSheetStyles.verticalSectionSpacing),
         TextFormField(
@@ -502,6 +572,7 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
           ),
           maxLines: 3,
           textInputAction: TextInputAction.done,
+          style: const TextStyle(fontSize: 16), // Better for mobile
         ),
       ],
     );
@@ -555,10 +626,9 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
   Widget _buildTasksStep() {
     final screenWidth = MediaQuery.of(context).size.width;
     final isNarrowScreen = screenWidth < 600; // Mobile threshold
-    final screenHeight = MediaQuery.of(context).size.height;
-    // Dynamic height target: 35% of screen height, clamped
-    final dynamicHeight = screenHeight * 0.35;
-    final taskListHeight = dynamicHeight.clamp(220, 420).toDouble();
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final hasKeyboard = keyboardHeight > 0;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -583,9 +653,18 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
             ],
           )
         else
-          SizedBox(
-            height: isNarrowScreen ? taskListHeight * 0.9 : taskListHeight,
+          // Flexible task list without fixed height for better keyboard handling
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight:
+                  hasKeyboard
+                      ? MediaQuery.of(context).size.height *
+                          0.3 // Smaller when keyboard is visible
+                      : MediaQuery.of(context).size.height * 0.5, // Larger when keyboard is hidden
+              minHeight: 200,
+            ),
             child: ReorderableListView.builder(
+              shrinkWrap: true,
               buildDefaultDragHandles: false,
               itemCount: _tasks.length + 1,
               onReorder: (oldIndex, newIndex) {
@@ -711,69 +790,100 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
   }
 
   Widget _buildMobileTaskLayout(Map<String, dynamic> task, int index) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        // Drag handle (left)
-        ReorderableDragStartListener(
-          index: index,
-          child: Container(
-            padding: const EdgeInsets.all(4),
-            child: const Icon(Icons.drag_handle, color: Colors.grey, size: 18),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        children: [
+          // Task input row
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Drag handle
+              ReorderableDragStartListener(
+                index: index,
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  child: const Icon(Icons.drag_handle, color: Colors.grey, size: 20),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Task input - takes most space
+              Expanded(
+                child: TextFormField(
+                  controller: _taskControllers[index],
+                  decoration: BottomSheetStyles.inputDecoration(
+                    label: 'Task ${index + 1}',
+                    hint: 'Enter task description',
+                    dense: false, // Better touch targets on mobile
+                  ),
+                  onChanged: (value) => task['name'] = value,
+                  style: const TextStyle(fontSize: 16), // Larger text for mobile
+                  textInputAction: TextInputAction.next,
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Delete button
+              IconButton(
+                onPressed: () {
+                  setState(() {
+                    _tasks.removeAt(index);
+                    _syncTaskControllersWithTasks();
+                  });
+                },
+                icon: const Icon(Icons.delete_outline, color: Colors.red),
+                tooltip: 'Delete task',
+              ),
+            ],
           ),
-        ),
-        const SizedBox(width: 8),
-        // Task input - takes most space
-        Expanded(
-          child: TextFormField(
-            controller: _taskControllers[index],
-            decoration: BottomSheetStyles.inputDecoration(
-              label: 'Task name',
-              dense: true, // Keep dense for mobile to save space
-            ),
-            onChanged: (value) => task['name'] = value,
-            style: const TextStyle(fontSize: 14),
+          const SizedBox(height: 8),
+          // Photo required toggle row
+          Row(
+            children: [
+              const SizedBox(width: 40), // Align with text field
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      task['photoRequired'] = !(task['photoRequired'] == true);
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color:
+                          task['photoRequired'] == true
+                              ? HandsColors.sageGreen.withValues(alpha: 0.2)
+                              : HandsColors.secondaryContainer,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: task['photoRequired'] == true ? HandsColors.sageGreen : HandsColors.white30,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          task['photoRequired'] == true ? Icons.camera_alt : Icons.camera_alt_outlined,
+                          color: task['photoRequired'] == true ? HandsColors.sageGreen : HandsColors.white70,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          task['photoRequired'] == true ? 'Photo required' : 'No photo required',
+                          style: TextStyle(
+                            color: task['photoRequired'] == true ? HandsColors.sageGreen : HandsColors.white70,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ),
-        const SizedBox(width: 8),
-        // Photo required - compact button
-        GestureDetector(
-          onTap: () {
-            setState(() {
-              task['photoRequired'] = !(task['photoRequired'] == true);
-            });
-          },
-          child: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color:
-                  task['photoRequired'] == true
-                      ? HandsColors.sageGreen.withValues(alpha: 0.1)
-                      : HandsColors.secondaryContainer,
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: task['photoRequired'] == true ? HandsColors.sageGreen : HandsColors.white30),
-            ),
-            child: Icon(
-              task['photoRequired'] == true ? Icons.camera_alt : Icons.camera_alt_outlined,
-              color: task['photoRequired'] == true ? HandsColors.sageGreen : HandsColors.white70,
-              size: 16,
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        GestureDetector(
-          onTap: () {
-            setState(() {
-              _tasks.removeAt(index);
-              _syncTaskControllersWithTasks();
-            });
-          },
-          child: Container(
-            padding: const EdgeInsets.all(8),
-            child: const Icon(Icons.delete_outline, color: Colors.red, size: 16),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -844,6 +954,14 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
     setState(() {
       _tasks.add({'name': '', 'photoRequired': false, 'time': null, 'order': _tasks.length});
       _syncTaskControllersWithTasks();
+    });
+
+    // Auto-scroll to the new task and show keyboard
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Simply trigger a rebuild which will focus on the new empty field
+      if (mounted) {
+        setState(() {});
+      }
     });
   }
 
@@ -942,6 +1060,91 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
       if (_taskControllers[i].text != name) {
         _taskControllers[i].text = name;
       }
+    }
+  }
+
+  // Mobile-specific helper methods
+  Widget _buildMobileStepIndicator() {
+    final steps = ['Info', 'Job Types', 'Shifts', 'Tasks'];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: List.generate(steps.length, (index) {
+          final isActive = index == _currentStep;
+          final isCompleted = index < _currentStep;
+          final isEnabled = widget.checklistId != null || index <= _currentStep;
+
+          return Expanded(
+            child: Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: isEnabled ? () => setState(() => _currentStep = index) : null,
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color:
+                                isActive
+                                    ? HandsColors.handsOrange
+                                    : isCompleted
+                                    ? HandsColors.sageGreen
+                                    : HandsColors.white30,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(
+                            child:
+                                isCompleted
+                                    ? const Icon(Icons.check, color: Colors.white, size: 18)
+                                    : Text(
+                                      '${index + 1}',
+                                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                    ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          steps[index],
+                          style: GoogleFonts.comfortaa(
+                            fontSize: 12,
+                            fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                            color: isActive ? HandsColors.handsOrange : HandsColors.white70,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (index < steps.length - 1)
+                  Container(
+                    height: 2,
+                    width: 20,
+                    color: isCompleted ? HandsColors.sageGreen : HandsColors.white30,
+                    margin: const EdgeInsets.only(bottom: 24),
+                  ),
+              ],
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildCurrentStepContent() {
+    switch (_currentStep) {
+      case 0:
+        return _buildInfoStep();
+      case 1:
+        return _buildJobTypesStep();
+      case 2:
+        return _buildShiftAssignmentStep();
+      case 3:
+        return _buildTasksStep();
+      default:
+        return const SizedBox.shrink();
     }
   }
 }

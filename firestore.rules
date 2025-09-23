@@ -132,8 +132,8 @@ service cloud.firestore {
     match /userNotifications/{userId} {
       match /notifications/{notifId} {
         allow get, list: if request.auth != null && request.auth.uid == userId;
-        allow update: if request.auth != null && request.auth.uid == userId;
-        allow create, delete: if false; // Only Cloud Functions can create/delete
+        allow update, delete: if request.auth != null && request.auth.uid == userId;
+        allow create: if false; // Only Cloud Functions can create
       }
     }
 

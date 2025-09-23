@@ -13,11 +13,16 @@ class LocationSelectionService {
   /// Persists to SharedPreferences for cross-session persistence
   final ValueNotifier<String?> _currentLocationId = ValueNotifier<String?>(null);
   final ValueNotifier<String?> _currentLocationName = ValueNotifier<String?>(null);
+  // Monotonic session counter: increments every time the location changes.
+  // Useful to ignore stale async/stream updates from a previous location.
+  final ValueNotifier<int> _session = ValueNotifier<int>(0);
 
   ValueListenable<String?> get listenable => _currentLocationId;
   ValueListenable<String?> get nameListenable => _currentLocationName;
   String? get currentLocationId => _currentLocationId.value;
   String? get currentLocationName => _currentLocationName.value;
+  ValueListenable<int> get sessionListenable => _session;
+  int get session => _session.value;
 
   /// Initialize by loading saved location from SharedPreferences
   Future<void> initialize() async {
@@ -37,8 +42,11 @@ class LocationSelectionService {
   void setLocation(String? locationId, {String? locationName}) {
     if (_currentLocationId.value == locationId) return;
 
+    debugPrint('[LocationService] 🚀 SETTING LOCATION: ${_currentLocationId.value} → $locationId');
     _currentLocationId.value = locationId;
     _currentLocationName.value = locationName;
+    _session.value = _session.value + 1;
+    debugPrint('[LocationService] 🚀 ValueNotifier updated, triggering listeners');
 
     // Persist to SharedPreferences asynchronously (fire and forget)
     _persistToSharedPreferences(locationId, locationName);
@@ -47,8 +55,11 @@ class LocationSelectionService {
   Future<void> setLocationAsync(String? locationId, {String? locationName}) async {
     if (_currentLocationId.value == locationId) return;
 
+    debugPrint('[LocationService] 🚀 SETTING LOCATION ASYNC: ${_currentLocationId.value} → $locationId');
     _currentLocationId.value = locationId;
     _currentLocationName.value = locationName;
+    _session.value = _session.value + 1;
+    debugPrint('[LocationService] 🚀 ValueNotifier updated, triggering listeners');
 
     // Persist to SharedPreferences and wait
     await _persistToSharedPreferences(locationId, locationName);

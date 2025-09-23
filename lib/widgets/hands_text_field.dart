@@ -154,6 +154,7 @@ class HandsTextFormField extends StatelessWidget {
     this.initialValue,
     this.expands = false,
     this.scrollPadding = const EdgeInsets.all(20.0),
+    this.autofillHints,
   });
 
   final TextEditingController? controller;
@@ -181,6 +182,7 @@ class HandsTextFormField extends StatelessWidget {
   final String? initialValue;
   final bool expands;
   final EdgeInsets scrollPadding;
+  final Iterable<String>? autofillHints;
 
   @override
   Widget build(BuildContext context) {
@@ -213,6 +215,7 @@ class HandsTextFormField extends StatelessWidget {
       initialValue: initialValue,
       expands: expands,
       scrollPadding: scrollPadding,
+      autofillHints: autofillHints,
     );
   }
 

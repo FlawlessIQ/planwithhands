@@ -89,13 +89,67 @@ class DailyChecklistService {
   /// Generate deterministic task ID for carry-forward tasks
   // Note: no longer needed; carry-forward IDs are derived inline when copying tasks.
 
-  /// Ensure daily checklist and its tasks exist (idempotent)
+  /// Ensure daily checklist and its tasks exist (idempotent with concurrency control)
   Future<void> ensureDailyChecklistAndTasks({
     required String organizationId,
     required String locationId,
     required String shiftId,
     required String templateId,
     required String dateString, // YYYY-MM-DD
+  }) async {
+    try {
+      final checklistId = _generateChecklistIdDeterministic(
+        organizationId: organizationId,
+        locationId: locationId,
+        shiftId: shiftId,
+        templateId: templateId,
+        dateString: dateString,
+      );
+
+      // CRITICAL FIX: Add distributed lock to prevent race conditions
+      final lockKey = "checklist_creation_$checklistId";
+      if (_generationInProgress.contains(lockKey)) {
+        debugPrint(
+          '[DailyChecklistService] CONCURRENCY: Checklist generation already in progress for $checklistId, waiting...',
+        );
+        // Wait for up to 5 seconds for the other operation to complete
+        var waitCount = 0;
+        while (_generationInProgress.contains(lockKey) && waitCount < 50) {
+          await Future.delayed(const Duration(milliseconds: 100));
+          waitCount++;
+        }
+        if (_generationInProgress.contains(lockKey)) {
+          debugPrint('[DailyChecklistService] WARNING: Lock timeout for $checklistId, proceeding anyway');
+        }
+      }
+
+      _generationInProgress.add(lockKey);
+      try {
+        await _ensureDailyChecklistAndTasksAtomic(
+          organizationId: organizationId,
+          locationId: locationId,
+          shiftId: shiftId,
+          templateId: templateId,
+          dateString: dateString,
+          checklistId: checklistId,
+        );
+      } finally {
+        _generationInProgress.remove(lockKey);
+      }
+    } catch (e) {
+      debugPrint('[DailyChecklistService] Error in ensureDailyChecklistAndTasks: $e');
+      rethrow;
+    }
+  }
+
+  /// Internal atomic implementation
+  Future<void> _ensureDailyChecklistAndTasksAtomic({
+    required String organizationId,
+    required String locationId,
+    required String shiftId,
+    required String templateId,
+    required String dateString,
+    required String checklistId,
   }) async {
     try {
       final checklistId = _generateChecklistIdDeterministic(
@@ -149,9 +203,16 @@ class DailyChecklistService {
       } catch (e) {
         debugPrint('[DailyChecklistService] Error reading template subcollection tasks for $templateId: $e');
       }
-      // Ensure parent checklist doc exists (idempotent). We store minimal metadata
-      // on the parent doc and keep tasks in the canonical 'tasks' subcollection.
-      try {
+      // CRITICAL FIX: Use Firestore transaction for atomic checklist creation
+      await _firestore.runTransaction((transaction) async {
+        // Check if checklist exists within the transaction to avoid race conditions
+        final existingDoc = await transaction.get(checklistRef);
+        if (existingDoc.exists) {
+          debugPrint('[DailyChecklistService] RACE CONDITION AVOIDED: Checklist $checklistId already exists');
+          return; // Another user already created it
+        }
+
+        // Create checklist document atomically
         final checklistData = {
           'id': checklistId,
           'organizationId': organizationId,
@@ -166,8 +227,13 @@ class DailyChecklistService {
           'updatedAt': FieldValue.serverTimestamp(),
         };
 
-        await FirestoreTTLHelper.setWithTTL(checklistRef, checklistData, options: SetOptions(merge: true));
+        // Use regular transaction.set since FirestoreTTLHelper may not support transactions
+        transaction.set(checklistRef, checklistData);
+        debugPrint('[DailyChecklistService] ✅ Checklist created atomically: $checklistId');
+      });
 
+      // Create tasks outside transaction to avoid size limits
+      try {
         // If the tasks subcollection is empty, populate it from the template tasks
         final tasksColl = checklistRef.collection('tasks');
         final existingTasks = await tasksColl.limit(1).get();
@@ -2020,6 +2086,8 @@ class DailyChecklistService {
               'organizationId': organizationId,
               'date': todayStr,
               'templateName': data['templateName'],
+              // Preserve jobTypes from yesterday's checklist so filtering works
+              'jobTypes': data['jobTypes'] ?? data['jobType'],
               'isCompleted': false,
               'updatedAt': Timestamp.now(),
             }, SetOptions(merge: true));
@@ -2084,6 +2152,8 @@ class DailyChecklistService {
     required String organizationId,
     required DateTime targetDate,
     String? locationId,
+    int? userRole,
+    List<String>? userJobTypes,
   }) async {
     debugPrint('[MissedTasks][NX] ENTER org=$organizationId date=${_formatDate(targetDate)} loc=$locationId');
     final dateStr = _formatDate(targetDate);
@@ -2214,6 +2284,144 @@ class DailyChecklistService {
       debugPrint('[MissedTasks][NX] FINAL RESULT: 0 sections (no CF tasks for yesterday)');
       return [];
     }
+    // Apply checklist-level jobTypes filtering for staff users (userRole == 0)
+    try {
+      final isStaff = (userRole == 0);
+      final effectiveUserJobTypes = (userJobTypes ?? const <String>[]).where((e) => e.trim().isNotEmpty).toList();
+      if (isStaff && effectiveUserJobTypes.isEmpty) {
+        // Staff with no job types should see nothing
+        debugPrint('[MissedTasks][NX] Staff has no jobTypes; filtering out all missed tasks.');
+        collected = [];
+      }
+      if (isStaff && effectiveUserJobTypes.isNotEmpty) {
+        final Set<String> userSet = effectiveUserJobTypes.map((e) => e.toLowerCase().trim()).toSet();
+        // Build unique maps to read jobTypes from today's and original checklists
+        final Map<String, String> checklistLocation = {}; // today checklistId -> locationId
+        final Map<String, String> originalChecklistLocation = {}; // originalChecklistId -> locationId
+        for (final m in collected) {
+          final clId = m['checklistId']?.toString();
+          final locId = m['locationId']?.toString();
+          if (clId != null && clId.isNotEmpty && locId != null && locId.isNotEmpty) {
+            checklistLocation.putIfAbsent(clId, () => locId);
+          }
+          final oclId = m['originalChecklistId']?.toString();
+          if (oclId != null && oclId.isNotEmpty && locId != null && locId.isNotEmpty) {
+            originalChecklistLocation.putIfAbsent(oclId, () => locId);
+          }
+        }
+
+        final Map<String, List<String>> checklistJobTypes = {}; // today
+        final Map<String, List<String>> originalChecklistJobTypes = {}; // yesterday/original
+        final Set<String> fetchedChecklistIds = {};
+        final List<Future<void>> reads = [];
+        checklistLocation.forEach((clId, locId) {
+          final fut = _firestore
+              .collection('organizations')
+              .doc(organizationId)
+              .collection('locations')
+              .doc(locId)
+              .collection('daily_checklists')
+              .doc(clId)
+              .get()
+              .then((doc) {
+                try {
+                  if (doc.exists) {
+                    final data = doc.data()!;
+                    final jts = coerceToJobTypes(data['jobTypes'] ?? data['jobType']);
+                    checklistJobTypes[clId] = jts;
+                  }
+                  fetchedChecklistIds.add(clId);
+                } catch (_) {}
+              })
+              .catchError((_) {});
+          reads.add(fut);
+        });
+        // Fetch originals as fallback for jobTypes
+        originalChecklistLocation.forEach((clId, locId) {
+          final fut = _firestore
+              .collection('organizations')
+              .doc(organizationId)
+              .collection('locations')
+              .doc(locId)
+              .collection('daily_checklists')
+              .doc(clId)
+              .get()
+              .then((doc) {
+                try {
+                  if (doc.exists) {
+                    final data = doc.data()!;
+                    final jts = coerceToJobTypes(data['jobTypes'] ?? data['jobType']);
+                    originalChecklistJobTypes[clId] = jts;
+                  }
+                } catch (_) {}
+              })
+              .catchError((_) {});
+          reads.add(fut);
+        });
+        await Future.wait(reads);
+
+        bool allowForChecklist(String? clId) {
+          if (clId == null || clId.isEmpty) return false; // staff: unknown checklist not allowed
+          if (!fetchedChecklistIds.contains(clId)) return false; // staff: if we couldn't read checklist, exclude
+          // Prefer today's checklist jobTypes; if empty, try original checklist jobTypes
+          List<String> jts = checklistJobTypes[clId] ?? const <String>[];
+          if (jts.isEmpty) {
+            // attempt to map original id by scanning collected items for this clId
+            String? originalId;
+            for (final m in collected) {
+              if (m['checklistId']?.toString() == clId) {
+                originalId = m['originalChecklistId']?.toString();
+                if (originalId != null) break;
+              }
+            }
+            if (originalId != null) {
+              jts = originalChecklistJobTypes[originalId] ?? const <String>[];
+            }
+          }
+          // Staff rule: empty/missing jobTypes means NO visibility
+          if (jts.isEmpty) return false;
+          final clSet = jts.map((e) => e.toLowerCase().trim()).toSet();
+          // intersection
+          return clSet.any((t) => userSet.contains(t));
+        }
+
+        final before = collected.length;
+        // Diagnostics: show up to 10 items with their resolved jobTypes and decision
+        int diagShown = 0;
+        List<Map<String, dynamic>> filtered = [];
+        for (final m in collected) {
+          final clId = m['checklistId']?.toString();
+          bool allowed;
+          List<String> jts = const <String>[];
+          if (clId != null && clId.isNotEmpty && fetchedChecklistIds.contains(clId)) {
+            jts = checklistJobTypes[clId] ?? const <String>[];
+            if (jts.isEmpty) {
+              final origId = m['originalChecklistId']?.toString();
+              if (origId != null) jts = originalChecklistJobTypes[origId] ?? const <String>[];
+            }
+          }
+          allowed = allowForChecklist(clId);
+          if (diagShown < 10) {
+            debugPrint(
+              '[MissedTasks][NX][diag] checklistId=$clId jts=${jts.isEmpty ? '(empty)' : jts} user=$effectiveUserJobTypes -> ${allowed ? 'ALLOW' : 'DENY'}',
+            );
+            diagShown++;
+          }
+          if (allowed) filtered.add(m);
+        }
+        collected = filtered;
+        debugPrint(
+          '[MissedTasks][NX] JobTypes filtering applied for staff: before=$before after=${collected.length} userTypes=$effectiveUserJobTypes',
+        );
+      } else {
+        debugPrint(
+          '[MissedTasks][NX] Skipping jobTypes filtering (userRole=$userRole, userJobTypes=${userJobTypes?.length ?? 0})',
+        );
+      }
+    } catch (e) {
+      debugPrint('[MissedTasks][NX] JobTypes filtering error (non-fatal): $e');
+    }
+
     return _groupMissedTasksFromTaskDocs(collected);
   }
 

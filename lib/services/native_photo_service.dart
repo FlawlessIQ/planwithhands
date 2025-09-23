@@ -224,8 +224,15 @@ class NativePhotoService {
       // Show loading overlay using parent context
       _showLoadingOverlay(parentContext, 'Processing photo...');
 
-      // Pick image
-      final XFile? image = await _picker.pickImage(source: source, maxWidth: 1920, maxHeight: 1080, imageQuality: 85);
+      // Pick image with iOS-optimized settings to prevent green coloring
+      // The green tint issue on iOS is often caused by HEIC format and color space problems
+      final XFile? image = await _picker.pickImage(
+        source: source,
+        maxWidth: 1920,
+        maxHeight: 1080,
+        imageQuality: 100, // Use 100% quality to preserve color space
+        requestFullMetadata: false, // Prevent HEIC color space issues on iOS
+      );
 
       if (image == null) {
         // Close loading and close sheet/dialog returning null
@@ -234,10 +241,26 @@ class NativePhotoService {
         return;
       }
 
-      // On macOS the image.path can be a file:// URI; ensure we can read bytes reliably.
+      // For iOS, ensure we're working with JPEG format to avoid HEIC color space issues
       XFile uploadFile = image;
       try {
-        if (nativeIsMacOS && (image.path.startsWith('file://') || image.path.startsWith('/'))) {
+        // Read the image bytes
+        final imageBytes = await image.readAsBytes();
+
+        // On iOS (detected by file type or when we suspect HEIC issues),
+        // create a new JPEG file to ensure proper color space
+        if (!kIsWeb &&
+            (image.name.toLowerCase().contains('heic') ||
+                image.mimeType?.contains('heic') == true ||
+                image.path.toLowerCase().contains('heic'))) {
+          // Create a temporary JPEG file with proper format
+          final tempPath = await nativeWriteTempFile(imageBytes);
+          if (tempPath != null) {
+            uploadFile = XFile(tempPath, name: 'photo.jpg', mimeType: 'image/jpeg');
+          }
+        }
+        // On macOS, handle file:// paths as before
+        else if (nativeIsMacOS && (image.path.startsWith('file://') || image.path.startsWith('/'))) {
           // Normalize path
           final path = image.path.startsWith('file://') ? Uri.parse(image.path).toFilePath() : image.path;
           // Read bytes using native helper
@@ -250,6 +273,7 @@ class NativePhotoService {
         }
       } catch (e) {
         // Fallback: proceed with original XFile; uploadTask may still read bytes
+        print('Warning: Could not process image format, using original: $e');
       }
 
       // Upload via service

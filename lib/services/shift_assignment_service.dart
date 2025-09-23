@@ -80,12 +80,15 @@ class ShiftAssignmentService {
         return false; // Already joined
       }
 
-      // For now, keep the simple string format for volunteerJoins
-      // We can enhance this later with location tracking
-      final updates = {
+      // Keep simple string for volunteerJoins and store location separately for filtering
+      final updates = <String, dynamic>{
         'volunteers': FieldValue.arrayUnion([userId]),
         'volunteerJoins.$userId': dateString,
       };
+
+      if (joinLocationId != null && joinLocationId.isNotEmpty) {
+        updates['volunteerJoinLocations.$userId'] = joinLocationId;
+      }
 
       // Use print instead of logger for guaranteed console output
       print('[ShiftAssignment] Attempting update for join: $updates (org=$organizationId shift=$shiftId user=$userId)');
@@ -142,6 +145,7 @@ class ShiftAssignmentService {
     required String organizationId,
     required String userId,
     DateTime? targetDate,
+    String? selectedLocationId,
   }) async {
     try {
       final dateString = _dateFormat.format(targetDate ?? DateTime.now());
@@ -166,6 +170,32 @@ class ShiftAssignmentService {
 
           if (joinedToday) {
             final shift = ShiftData.fromJson(data).copyWith(shiftId: doc.id);
+            // If a specific location is selected, only include shifts configured for that location
+            if (selectedLocationId != null && selectedLocationId.isNotEmpty) {
+              final joinLocs = Map<String, dynamic>.from(data['volunteerJoinLocations'] ?? {});
+              final String? userJoinLoc = (joinLocs[userId] as String?)?.trim();
+              if (userJoinLoc != null && userJoinLoc.isNotEmpty) {
+                if (userJoinLoc != selectedLocationId) {
+                  logger.d(
+                    '[ShiftAssignment] Skipping assigned shift ${shift.shiftName} - joined at $userJoinLoc, viewing $selectedLocationId',
+                  );
+                  continue;
+                }
+              }
+              final dynamic rawLocs = data['locationIds'];
+              final List<String> locs =
+                  rawLocs is List
+                      ? rawLocs.map((e) => e.toString()).toList()
+                      : rawLocs is String && rawLocs.isNotEmpty
+                      ? [rawLocs]
+                      : const [];
+              if (!locs.contains(selectedLocationId)) {
+                logger.d(
+                  '[ShiftAssignment] Skipping assigned shift ${shift.shiftName} - not configured for selected location $selectedLocationId (has: $locs)',
+                );
+                continue;
+              }
+            }
             assignedShifts.add(shift);
             logger.d('[ShiftAssignment] Found assigned shift: ${shift.shiftName}');
           } else {
@@ -201,6 +231,7 @@ class ShiftAssignmentService {
       for (final doc in shiftsQuery.docs) {
         final data = doc.data();
         final volunteerJoins = Map<String, dynamic>.from(data['volunteerJoins'] ?? {});
+        final volunteerJoinLocations = Map<String, dynamic>.from(data['volunteerJoinLocations'] ?? {});
 
         if (volunteerJoins.isEmpty) continue;
 
@@ -213,6 +244,9 @@ class ShiftAssignmentService {
           // Remove entries that are not for today
           if (joinDate != todayString) {
             updatesToRemove['volunteerJoins.$userId'] = FieldValue.delete();
+            if (volunteerJoinLocations.containsKey(userId)) {
+              updatesToRemove['volunteerJoinLocations.$userId'] = FieldValue.delete();
+            }
 
             // Also remove from volunteers array if they're not joined today
             final volunteers = List<String>.from(data['volunteers'] ?? []);
@@ -254,6 +288,7 @@ class ShiftAssignmentService {
         final data = doc.data();
         final volunteers = Set<String>.from(data['volunteers'] ?? []);
         final volunteerJoins = Map<String, dynamic>.from(data['volunteerJoins'] ?? {});
+        final volunteerJoinLocations = Map<String, dynamic>.from(data['volunteerJoinLocations'] ?? {});
 
         bool needsUpdate = false;
         final Map<String, dynamic> updates = {};
@@ -272,6 +307,15 @@ class ShiftAssignmentService {
         for (final entry in volunteerJoins.entries) {
           if (entry.value == dateString && !volunteers.contains(entry.key)) {
             validVolunteers.add(entry.key);
+            needsUpdate = true;
+          }
+        }
+
+        // Remove join-location entries for users not joined today
+        for (final entry in volunteerJoinLocations.entries) {
+          final userId = entry.key;
+          if (volunteerJoins[userId] != dateString) {
+            updates['volunteerJoinLocations.$userId'] = FieldValue.delete();
             needsUpdate = true;
           }
         }

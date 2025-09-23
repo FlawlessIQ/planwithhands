@@ -14,6 +14,7 @@ class ShiftTemplateBottomSheet extends StatefulWidget {
   final String organizationId;
   final List<Map<String, dynamic>> availableLocations;
   final VoidCallback onShiftSaved;
+  final String? selectedLocationId;
 
   const ShiftTemplateBottomSheet({
     super.key,
@@ -22,6 +23,7 @@ class ShiftTemplateBottomSheet extends StatefulWidget {
     required this.organizationId,
     required this.availableLocations,
     required this.onShiftSaved,
+    this.selectedLocationId,
   });
 
   @override
@@ -171,50 +173,62 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
   }
 
   Future<void> _saveShift() async {
-    setState(() => isLoading = true);
+    // Headless save: avoid using context/setState to survive unmounts
+    final bool isEdit = isEditing && widget.shiftId != null;
+    final String orgId = widget.organizationId;
+    final String? shiftId = widget.shiftId;
+
+    final List<String> effectiveLocationIds =
+        isEditing && widget.shiftData != null
+            ? coerceToLocationIds(widget.shiftData!.locationIds)
+            : (widget.selectedLocationId != null && widget.selectedLocationId!.isNotEmpty
+                ? [widget.selectedLocationId!]
+                : <String>[]);
+
     final data = {
       'shiftName': _shiftNameController.text.trim(),
       'startTime': _startTimeController.text.trim(),
       'endTime': _endTimeController.text.trim(),
       'days': _selectedDays.toList(),
       'repeatsDaily': _repeatsDaily,
-      // Persist all available location IDs since the step was removed.
-      'locationIds': widget.availableLocations.map((l) => l['id'] as String).toList(),
+      'locationIds': effectiveLocationIds,
       'staffingLevels': staffingLevels,
       'checklistTemplateIds': selectedChecklistTemplateIds,
       'updatedAt': FieldValue.serverTimestamp(),
     };
+
+    // Close the dialog immediately from here to avoid relying on parent pop
     try {
-      final coll = FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(widget.organizationId)
-          .collection('shifts');
-      if (isEditing && widget.shiftId != null) {
-        await coll.doc(widget.shiftId).update(data);
-      } else {
-        data['createdAt'] = FieldValue.serverTimestamp();
-        await coll.add(data);
-      }
-
-      if (mounted) {
-        setState(() => isLoading = false);
-        widget.onShiftSaved();
-
-        // Use defensive navigation with post-frame callback
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          final nav = Navigator.of(context);
-          if (nav.canPop()) {
-            Navigator.maybePop(context);
-          }
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving shift: $e')));
-      }
+      Navigator.of(context, rootNavigator: true).pop();
+    } catch (_) {
+      try {
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+      } catch (_) {}
     }
+
+    // Notify parent (e.g., to show snackbar/refresh lists)
+    try {
+      widget.onShiftSaved();
+    } catch (_) {}
+
+    // Perform Firestore work in background to avoid timing/unmount issues
+    () async {
+      try {
+        final coll = FirestoreEnforcer.instance.collection('organizations').doc(orgId).collection('shifts');
+
+        if (isEdit && shiftId != null) {
+          await coll.doc(shiftId).update(data);
+        } else {
+          data['createdAt'] = FieldValue.serverTimestamp();
+          await coll.add(data);
+        }
+      } catch (e, st) {
+        // ignore: avoid_print
+        print('Error saving shift (background): $e\n$st');
+      }
+    }();
   }
 
   @override
@@ -551,7 +565,10 @@ class _InfoTipState extends State<_InfoTip> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(color: scheme.surfaceContainerHighest.withOpacity(0.5), borderRadius: BorderRadius.circular(6)),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(6),
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
