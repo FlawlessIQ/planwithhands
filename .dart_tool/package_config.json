@@ -26,6 +26,12 @@
       "languageVersion": "3.5"
     },
     {
+      "name": "archive",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/archive-4.0.7",
+      "packageUri": "lib/",
+      "languageVersion": "3.0"
+    },
+    {
       "name": "args",
       "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/args-2.7.0",
       "packageUri": "lib/",
@@ -506,6 +512,12 @@
       "languageVersion": "3.4"
     },
     {
+      "name": "image",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/image-4.5.4",
+      "packageUri": "lib/",
+      "languageVersion": "3.0"
+    },
+    {
       "name": "image_picker",
       "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/image_picker-1.2.0",
       "packageUri": "lib/",
@@ -774,6 +786,12 @@
       "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/pool-1.5.1",
       "packageUri": "lib/",
       "languageVersion": "2.12"
+    },
+    {
+      "name": "posix",
+      "rootUri": "file:///Users/conorlawless/.pub-cache/hosted/pub.dev/posix-6.0.3",
+      "packageUri": "lib/",
+      "languageVersion": "3.0"
     },
     {
       "name": "pub_semver",

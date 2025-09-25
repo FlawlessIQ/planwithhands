@@ -287,6 +287,7 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
 
     Widget buildStepper() {
       return Stepper(
+        physics: const NeverScrollableScrollPhysics(),
         type: isWide ? StepperType.horizontal : StepperType.vertical,
         currentStep: _currentStep,
         onStepTapped: (index) {
@@ -328,7 +329,10 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const _InfoTip(text: "Set start/end times and days. Uses the location’s time zone."),
+                  const _InfoTip(
+                    text:
+                        "Set start/end times and days. Uses the location's time zone. Shifts become available 30 minutes before start time and remain accessible for 1 hour after end time.",
+                  ),
                   Form(key: _formKey, child: _buildInfoStep()),
                 ],
               ),
@@ -381,8 +385,14 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
                 body: Column(
                   children: [
                     header(showHandle: true),
-                    // Directly use Stepper inside Expanded; Stepper internally scrolls.
-                    Expanded(child: SingleChildScrollView(controller: scrollController, child: buildStepper())),
+                    // Wrap the stepper content in a scrollable view for mobile
+                    Expanded(
+                      child: SingleChildScrollView(
+                        controller: scrollController,
+                        padding: const EdgeInsets.only(bottom: 24),
+                        child: buildStepper(),
+                      ),
+                    ),
                   ],
                 ),
               ),

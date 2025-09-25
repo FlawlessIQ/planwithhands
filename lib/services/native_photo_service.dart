@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:hands_app/services/daily_checklist_service.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'dart:convert';
+import 'package:image/image.dart' as img;
 // Conditional native IO helpers (macOS) - use platform-specific implementation when available
 import 'native_io_stub.dart' if (dart.library.io) 'native_io_macos.dart';
 import 'package:hands_app/data/models/task_data.dart';
@@ -53,23 +54,10 @@ class NativePhotoService {
       context: context,
       builder:
           (dialogContext) => AlertDialog(
-            title: const Text('Add Photo'),
-            content: const Text('Choose photo source:'),
+            title: const Text('Take Photo'),
+            content: const Text('Use camera to take a live photo for this task.'),
             actions: [
               TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-              TextButton(
-                onPressed:
-                    () => _handlePhotoSelection(
-                      sheetContext: dialogContext,
-                      parentContext: context,
-                      source: ImageSource.gallery,
-                      task: task,
-                      organizationId: organizationId,
-                      locationId: locationId,
-                      checklistId: checklistId,
-                    ),
-                child: const Text('Gallery'),
-              ),
               if (!kIsWeb) // Camera not reliable on web
                 TextButton(
                   onPressed:
@@ -119,7 +107,7 @@ class NativePhotoService {
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        'Photo Options',
+                        'Take Photo',
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
                       ),
                     ],
@@ -136,21 +124,6 @@ class NativePhotoService {
                         sheetContext: sheetContext,
                         parentContext: context,
                         source: ImageSource.camera,
-                        task: task,
-                        organizationId: organizationId,
-                        locationId: locationId,
-                        checklistId: checklistId,
-                      ),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.photo_library, color: Colors.green),
-                  title: const Text('Choose from Gallery'),
-                  subtitle: const Text('Select an existing photo'),
-                  onTap:
-                      () => _handlePhotoSelection(
-                        sheetContext: sheetContext,
-                        parentContext: context,
-                        source: ImageSource.gallery,
                         task: task,
                         organizationId: organizationId,
                         locationId: locationId,
@@ -230,8 +203,9 @@ class NativePhotoService {
         source: source,
         maxWidth: 1920,
         maxHeight: 1080,
-        imageQuality: 100, // Use 100% quality to preserve color space
+        imageQuality: 85, // Slightly lower quality but better compatibility
         requestFullMetadata: false, // Prevent HEIC color space issues on iOS
+        preferredCameraDevice: CameraDevice.rear, // Use rear camera for better quality
       );
 
       if (image == null) {
@@ -241,22 +215,54 @@ class NativePhotoService {
         return;
       }
 
-      // For iOS, ensure we're working with JPEG format to avoid HEIC color space issues
+      // For iOS/Android, ensure we're working with JPEG format to avoid HEIC color space issues
       XFile uploadFile = image;
       try {
         // Read the image bytes
         final imageBytes = await image.readAsBytes();
 
-        // On iOS (detected by file type or when we suspect HEIC issues),
-        // create a new JPEG file to ensure proper color space
-        if (!kIsWeb &&
-            (image.name.toLowerCase().contains('heic') ||
-                image.mimeType?.contains('heic') == true ||
-                image.path.toLowerCase().contains('heic'))) {
-          // Create a temporary JPEG file with proper format
-          final tempPath = await nativeWriteTempFile(imageBytes);
-          if (tempPath != null) {
-            uploadFile = XFile(tempPath, name: 'photo.jpg', mimeType: 'image/jpeg');
+        // Always convert to JPEG on mobile to prevent color space issues
+        // This fixes the green tint problem that occurs with HEIC and other formats
+        if (!kIsWeb) {
+          try {
+            // Decode the image using the image package to ensure proper color space handling
+            final decodedImage = img.decodeImage(Uint8List.fromList(imageBytes));
+            if (decodedImage != null) {
+              // Encode as JPEG with quality 85 to ensure proper color space
+              final jpegBytes = img.encodeJpg(decodedImage, quality: 85);
+
+              // Create a new JPEG file with proper format and naming
+              final tempPath = await nativeWriteTempFile(jpegBytes);
+              if (tempPath != null) {
+                // Ensure the file has proper JPEG extension and mime type
+                uploadFile = XFile(
+                  tempPath,
+                  name: 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg',
+                  mimeType: 'image/jpeg',
+                );
+              }
+            } else {
+              // If image decoding fails, fall back to the raw bytes approach
+              final tempPath = await nativeWriteTempFile(imageBytes);
+              if (tempPath != null) {
+                uploadFile = XFile(
+                  tempPath,
+                  name: 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg',
+                  mimeType: 'image/jpeg',
+                );
+              }
+            }
+          } catch (imageProcessingError) {
+            print('Image processing failed, using raw bytes: $imageProcessingError');
+            // Fallback to raw bytes if image processing fails
+            final tempPath = await nativeWriteTempFile(imageBytes);
+            if (tempPath != null) {
+              uploadFile = XFile(
+                tempPath,
+                name: 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg',
+                mimeType: 'image/jpeg',
+              );
+            }
           }
         }
         // On macOS, handle file:// paths as before
@@ -265,10 +271,39 @@ class NativePhotoService {
           final path = image.path.startsWith('file://') ? Uri.parse(image.path).toFilePath() : image.path;
           // Read bytes using native helper
           final bytes = await nativeReadFileBytes(path);
-          // Write a temp file that XFile can use (uploadTask reads bytes anyway)
-          final tempPath = await nativeWriteTempFile(bytes);
-          if (tempPath != null) {
-            uploadFile = XFile(tempPath);
+          // Process the image to ensure JPEG format
+          try {
+            final decodedImage = img.decodeImage(Uint8List.fromList(bytes));
+            if (decodedImage != null) {
+              final jpegBytes = img.encodeJpg(decodedImage, quality: 85);
+              final tempPath = await nativeWriteTempFile(jpegBytes);
+              if (tempPath != null) {
+                uploadFile = XFile(
+                  tempPath,
+                  name: 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg',
+                  mimeType: 'image/jpeg',
+                );
+              }
+            } else {
+              final tempPath = await nativeWriteTempFile(bytes);
+              if (tempPath != null) {
+                uploadFile = XFile(
+                  tempPath,
+                  name: 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg',
+                  mimeType: 'image/jpeg',
+                );
+              }
+            }
+          } catch (imageProcessingError) {
+            print('MacOS image processing failed, using raw bytes: $imageProcessingError');
+            final tempPath = await nativeWriteTempFile(bytes);
+            if (tempPath != null) {
+              uploadFile = XFile(
+                tempPath,
+                name: 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg',
+                mimeType: 'image/jpeg',
+              );
+            }
           }
         }
       } catch (e) {

@@ -14,6 +14,10 @@ analyzer_plugin
 3.5
 file:///Users/conorlawless/.pub-cache/hosted/pub.dev/analyzer_plugin-0.13.4/
 file:///Users/conorlawless/.pub-cache/hosted/pub.dev/analyzer_plugin-0.13.4/lib/
+archive
+3.0
+file:///Users/conorlawless/.pub-cache/hosted/pub.dev/archive-4.0.7/
+file:///Users/conorlawless/.pub-cache/hosted/pub.dev/archive-4.0.7/lib/
 args
 3.3
 file:///Users/conorlawless/.pub-cache/hosted/pub.dev/args-2.7.0/
@@ -322,6 +326,10 @@ http_parser
 3.4
 file:///Users/conorlawless/.pub-cache/hosted/pub.dev/http_parser-4.1.2/
 file:///Users/conorlawless/.pub-cache/hosted/pub.dev/http_parser-4.1.2/lib/
+image
+3.0
+file:///Users/conorlawless/.pub-cache/hosted/pub.dev/image-4.5.4/
+file:///Users/conorlawless/.pub-cache/hosted/pub.dev/image-4.5.4/lib/
 image_picker
 3.6
 file:///Users/conorlawless/.pub-cache/hosted/pub.dev/image_picker-1.2.0/
@@ -502,6 +510,10 @@ pool
 2.12
 file:///Users/conorlawless/.pub-cache/hosted/pub.dev/pool-1.5.1/
 file:///Users/conorlawless/.pub-cache/hosted/pub.dev/pool-1.5.1/lib/
+posix
+3.0
+file:///Users/conorlawless/.pub-cache/hosted/pub.dev/posix-6.0.3/
+file:///Users/conorlawless/.pub-cache/hosted/pub.dev/posix-6.0.3/lib/
 pub_semver
 3.4
 file:///Users/conorlawless/.pub-cache/hosted/pub.dev/pub_semver-2.2.0/

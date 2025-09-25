@@ -1124,77 +1124,104 @@ class UserDashboardPage extends HookConsumerWidget {
                           ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: Colors.blue[800]),
                         ),
                         const SizedBox(height: 6),
-                        ListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: assignedShifts.value.length,
-                          itemBuilder: (context, shiftIndex) {
-                            final shift = assignedShifts.value[shiftIndex];
-                            // Guard against transient mismatch between assignedShifts and selectedLocationIds
-                            // (listeners may update these lists at different times). Use the per-page
-                            // selectedLocationId as a safe fallback when per-shift ids are not yet available.
-                            final locationId = effectiveLocationForShift(
-                              shift,
-                              (selectedLocationIds.value.length > shiftIndex)
-                                  ? selectedLocationIds.value[shiftIndex]
-                                  : null,
-                              getCurrentLocationId(),
-                            );
-                            final checklists =
-                                allChecklists.value.length > shiftIndex ? allChecklists.value[shiftIndex] : [];
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                _ShiftStatusCard(
-                                  title: "Your Assigned Shift",
-                                  shiftName: shift.shiftName,
-                                  timeRange: "${shift.startTime} - ${shift.endTime}",
-                                  color: Colors.green,
-                                  icon: Icons.work_outline,
-                                  onClearShift:
-                                      () => _leaveVolunteerShift(
-                                        context,
-                                        shift,
-                                        organizationId.value!,
-                                        assignedShifts,
-                                        selectedLocationIds,
-                                        allChecklists,
-                                        todayDayName,
-                                        todayString,
-                                        userRole,
-                                        userJobTypes,
-                                      ),
-                                ),
-                                if (checklists.isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 8.0),
-                                    child: Text(
-                                      "Today's Checklists",
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                                    ),
-                                  ),
-                                // TODO: Add display-time filtering once we have access to template data
-                                ...checklists.map(
-                                  (checklist) => _ChecklistCard(
-                                    checklist: checklist,
-                                    onTaskToggled: () async {
-                                      // Refresh only this shift's checklists
-                                      final refreshed = await _loadChecklistsForShiftSimple(
-                                        shift,
-                                        locationId,
-                                        todayString,
-                                        organizationId.value!,
-                                        userRole: userRole.value,
-                                        userJobTypes: userJobTypes.value,
+                        Builder(
+                          builder: (context) {
+                            final now = DateTime.now();
+                            final today = DateTime(now.year, now.month, now.day);
+
+                            // Filter out shifts that are completely past their grace period
+                            final visibleShifts = <int>[];
+                            for (int i = 0; i < assignedShifts.value.length; i++) {
+                              final shift = assignedShifts.value[i];
+                              if (isShiftVisibleNow(shift, today, now)) {
+                                visibleShifts.add(i);
+                              }
+                            }
+
+                            if (visibleShifts.isEmpty) {
+                              return const Center(
+                                child: Text('No active shifts', style: TextStyle(color: Colors.grey)),
+                              );
+                            }
+
+                            return ListView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: visibleShifts.length,
+                              itemBuilder: (context, visibleIndex) {
+                                final shiftIndex = visibleShifts[visibleIndex];
+                                final shift = assignedShifts.value[shiftIndex];
+                                // Guard against transient mismatch between assignedShifts and selectedLocationIds
+                                // (listeners may update these lists at different times). Use the per-page
+                                // selectedLocationId as a safe fallback when per-shift ids are not yet available.
+                                final locationId = effectiveLocationForShift(
+                                  shift,
+                                  (selectedLocationIds.value.length > shiftIndex)
+                                      ? selectedLocationIds.value[shiftIndex]
+                                      : null,
+                                  getCurrentLocationId(),
+                                );
+                                final checklists =
+                                    allChecklists.value.length > shiftIndex ? allChecklists.value[shiftIndex] : [];
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    () {
+                                      final inGracePeriod = isShiftInGracePeriod(shift, today, now);
+                                      return _ShiftStatusCard(
+                                        title: "Your Assigned Shift",
+                                        shiftName: shift.shiftName,
+                                        timeRange: "${shift.startTime} - ${shift.endTime}",
+                                        color: Colors.green,
+                                        icon: Icons.work_outline,
+                                        onClearShift:
+                                            () => _leaveVolunteerShift(
+                                              context,
+                                              shift,
+                                              organizationId.value!,
+                                              assignedShifts,
+                                              selectedLocationIds,
+                                              allChecklists,
+                                              todayDayName,
+                                              todayString,
+                                              userRole,
+                                              userJobTypes,
+                                            ),
+                                        isInGracePeriod: inGracePeriod,
                                       );
-                                      allChecklists.value[shiftIndex] = refreshed;
-                                      allChecklists.value = List.from(allChecklists.value);
-                                    },
-                                  ),
-                                ),
-                              ],
+                                    }(),
+                                    if (checklists.isNotEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                        child: Text(
+                                          "Today's Checklists",
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                    // TODO: Add display-time filtering once we have access to template data
+                                    ...checklists.map(
+                                      (checklist) => _ChecklistCard(
+                                        checklist: checklist,
+                                        onTaskToggled: () async {
+                                          // Refresh only this shift's checklists
+                                          final refreshed = await _loadChecklistsForShiftSimple(
+                                            shift,
+                                            locationId,
+                                            todayString,
+                                            organizationId.value!,
+                                            userRole: userRole.value,
+                                            userJobTypes: userJobTypes.value,
+                                          );
+                                          allChecklists.value[shiftIndex] = refreshed;
+                                          allChecklists.value = List.from(allChecklists.value);
+                                        },
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
                             );
                           },
                         ),
@@ -3272,6 +3299,7 @@ class _ShiftStatusCard extends StatelessWidget {
   final Color color;
   final IconData icon;
   final VoidCallback? onClearShift;
+  final bool isInGracePeriod;
 
   const _ShiftStatusCard({
     required this.title,
@@ -3280,6 +3308,7 @@ class _ShiftStatusCard extends StatelessWidget {
     required this.color,
     required this.icon,
     this.onClearShift,
+    this.isInGracePeriod = false,
   });
 
   @override
@@ -3300,9 +3329,27 @@ class _ShiftStatusCard extends StatelessWidget {
                 children: [
                   Text(title, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w500)),
                   const SizedBox(height: 2),
-                  Text(shiftName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(shiftName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                      ),
+                      if (isInGracePeriod)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(10)),
+                          child: const Text(
+                            'ENDED',
+                            style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                    ],
+                  ),
                   const SizedBox(height: 1),
-                  Text(timeRange, style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+                  Text(
+                    isInGracePeriod ? '$timeRange (Grace Period)' : timeRange,
+                    style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                  ),
                 ],
               ),
             ),

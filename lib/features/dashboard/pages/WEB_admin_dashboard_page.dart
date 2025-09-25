@@ -28,6 +28,42 @@ import 'package:hands_app/ui/location_bottom_sheet_new.dart';
 
 enum WebAdminTab { shifts, checklists, users, locations }
 
+/// Persistent state manager for admin dashboard settings
+class AdminDashboardState {
+  static WebAdminTab? _lastTab;
+  static int _rowsPerPage = 10;
+  static int _currentPage = 0;
+  static String _searchQuery = '';
+  static int? _sortColumnIndex;
+  static bool _sortAscending = true;
+
+  static WebAdminTab? get lastTab => _lastTab;
+  static int get rowsPerPage => _rowsPerPage;
+  static int get currentPage => _currentPage;
+  static String get searchQuery => _searchQuery;
+  static int? get sortColumnIndex => _sortColumnIndex;
+  static bool get sortAscending => _sortAscending;
+
+  static set lastTab(WebAdminTab? value) => _lastTab = value;
+  static set rowsPerPage(int value) {
+    print('[AdminDashboardState] Setting rowsPerPage to $value');
+    _rowsPerPage = value;
+  }
+
+  static set currentPage(int value) {
+    print('[AdminDashboardState] Setting currentPage to $value');
+    _currentPage = value;
+  }
+
+  static set searchQuery(String value) => _searchQuery = value;
+  static set sortColumnIndex(int? value) => _sortColumnIndex = value;
+  static set sortAscending(bool value) => _sortAscending = value;
+
+  static void resetPagination() {
+    _currentPage = 0;
+  }
+}
+
 class WEBAdminDashboardPage extends StatefulWidget {
   final String organizationId;
   final WebAdminTab? initialTab;
@@ -47,12 +83,10 @@ class WEBAdminDashboardPage extends StatefulWidget {
 }
 
 class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
-  // Persist the last selected tab across rebuilds to avoid unwanted resets
-  static WebAdminTab? _lastTab;
   int? userRole;
   bool isLoading = true;
 
-  // Current active tab
+  // Current active tab - use persistent state
   late WebAdminTab _currentTab;
 
   // Available locations for filtering
@@ -71,21 +105,19 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
   final Map<String, List<String>> _shiftsByChecklistId = {}; // checklistTemplateId -> [shiftIds]
   final Map<String, List<String>> _locationIdsByShiftId = {}; // shiftId -> [locationIds]
 
-  // Search and filtering
+  // Search and filtering - use persistent state
   final TextEditingController _searchController = TextEditingController();
-  String _searchQuery = '';
 
   // Loading state to prevent flashing during operations
   final bool _isDeleting = false;
   String? _deletingChecklistId;
 
-  // Pagination
-  int _rowsPerPage = 10;
-  int _currentPage = 0;
-
-  // Sort state
-  int? _sortColumnIndex;
-  bool _sortAscending = true;
+  // Pagination and sorting - use persistent state manager
+  int get _rowsPerPage => AdminDashboardState.rowsPerPage;
+  int get _currentPage => AdminDashboardState.currentPage;
+  String get _searchQuery => AdminDashboardState.searchQuery;
+  int? get _sortColumnIndex => AdminDashboardState.sortColumnIndex;
+  bool get _sortAscending => AdminDashboardState.sortAscending;
 
   // Scroll controllers (web scrolling fix)
   final ScrollController _verticalTableController = ScrollController();
@@ -95,7 +127,9 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
   @override
   void initState() {
     super.initState();
-    _currentTab = widget.initialTab ?? _lastTab ?? WebAdminTab.shifts;
+    _currentTab = widget.initialTab ?? AdminDashboardState.lastTab ?? WebAdminTab.shifts;
+    // Initialize search controller with persistent search query
+    _searchController.text = AdminDashboardState.searchQuery;
     // Seed selected location from global persisted value if available
     _selectedLocationId = LocationSelectionService.instance.currentLocationId;
     // Keep in sync with global location selection changes from other pages/dialogs.
@@ -312,7 +346,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
     if (widget.initialTab != oldWidget.initialTab && widget.initialTab != null) {
       setState(() {
         _currentTab = widget.initialTab!;
-        _lastTab = _currentTab;
+        AdminDashboardState.lastTab = _currentTab;
       });
     }
   }
@@ -321,8 +355,9 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
 
   void _onSearchChanged() {
     setState(() {
-      _searchQuery = _searchController.text.toLowerCase();
-      _currentPage = 0; // Reset to first page when searching
+      AdminDashboardState.searchQuery = _searchController.text.toLowerCase();
+      AdminDashboardState.currentPage = 0; // Reset to first page when searching
+      AdminDashboardState.resetPagination(); // Persist the reset
     });
   }
 
@@ -614,7 +649,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           onTap: () {
             setState(() {
               _currentTab = tab;
-              _lastTab = _currentTab;
+              AdminDashboardState.lastTab = _currentTab;
             });
           },
           child: Container(
@@ -856,8 +891,8 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               label: const Text('Shift Name'),
               onSort: (columnIndex, ascending) {
                 setState(() {
-                  _sortColumnIndex = columnIndex;
-                  _sortAscending = ascending;
+                  AdminDashboardState.sortColumnIndex = columnIndex;
+                  AdminDashboardState.sortAscending = ascending;
                 });
               },
             ),
@@ -865,8 +900,8 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               label: const Text('Time'),
               onSort: (columnIndex, ascending) {
                 setState(() {
-                  _sortColumnIndex = columnIndex;
-                  _sortAscending = ascending;
+                  AdminDashboardState.sortColumnIndex = columnIndex;
+                  AdminDashboardState.sortAscending = ascending;
                 });
               },
             ),
@@ -1082,8 +1117,8 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               label: const Text('Checklist Name'),
               onSort: (columnIndex, ascending) {
                 setState(() {
-                  _sortColumnIndex = columnIndex;
-                  _sortAscending = ascending;
+                  AdminDashboardState.sortColumnIndex = columnIndex;
+                  AdminDashboardState.sortAscending = ascending;
                 });
               },
             ),
@@ -1092,8 +1127,8 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               label: const Text('Tasks'),
               onSort: (columnIndex, ascending) {
                 setState(() {
-                  _sortColumnIndex = columnIndex;
-                  _sortAscending = ascending;
+                  AdminDashboardState.sortColumnIndex = columnIndex;
+                  AdminDashboardState.sortAscending = ascending;
                 });
               },
               numeric: true,
@@ -1342,8 +1377,8 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               label: const Text('Name'),
               onSort: (columnIndex, ascending) {
                 setState(() {
-                  _sortColumnIndex = columnIndex;
-                  _sortAscending = ascending;
+                  AdminDashboardState.sortColumnIndex = columnIndex;
+                  AdminDashboardState.sortAscending = ascending;
                 });
               },
             ),
@@ -1351,8 +1386,8 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               label: const Text('Email'),
               onSort: (columnIndex, ascending) {
                 setState(() {
-                  _sortColumnIndex = columnIndex;
-                  _sortAscending = ascending;
+                  AdminDashboardState.sortColumnIndex = columnIndex;
+                  AdminDashboardState.sortAscending = ascending;
                 });
               },
             ),
@@ -1360,8 +1395,8 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               label: const Text('Role'),
               onSort: (columnIndex, ascending) {
                 setState(() {
-                  _sortColumnIndex = columnIndex;
-                  _sortAscending = ascending;
+                  AdminDashboardState.sortColumnIndex = columnIndex;
+                  AdminDashboardState.sortAscending = ascending;
                 });
               },
             ),
@@ -1629,8 +1664,8 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               label: const Text('Location Name'),
               onSort: (columnIndex, ascending) {
                 setState(() {
-                  _sortColumnIndex = columnIndex;
-                  _sortAscending = ascending;
+                  AdminDashboardState.sortColumnIndex = columnIndex;
+                  AdminDashboardState.sortAscending = ascending;
                 });
               },
             ),
@@ -1638,8 +1673,8 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               label: const Text('Address'),
               onSort: (columnIndex, ascending) {
                 setState(() {
-                  _sortColumnIndex = columnIndex;
-                  _sortAscending = ascending;
+                  AdminDashboardState.sortColumnIndex = columnIndex;
+                  AdminDashboardState.sortAscending = ascending;
                 });
               },
             ),
@@ -1864,14 +1899,23 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
   }
 
   List<Map<String, dynamic>> _paginateRows(List<Map<String, dynamic>> rows) {
+    print(
+      '[WEB_admin_dashboard_page] _paginateRows called with ${rows.length} rows, _rowsPerPage=$_rowsPerPage, _currentPage=$_currentPage',
+    );
+
     final startIndex = _currentPage * _rowsPerPage;
     final endIndex = (startIndex + _rowsPerPage).clamp(0, rows.length);
 
+    print('[WEB_admin_dashboard_page] Pagination: startIndex=$startIndex, endIndex=$endIndex');
+
     if (startIndex >= rows.length) {
+      print('[WEB_admin_dashboard_page] startIndex >= rows.length, returning empty list');
       return [];
     }
 
-    return rows.sublist(startIndex, endIndex);
+    final result = rows.sublist(startIndex, endIndex);
+    print('[WEB_admin_dashboard_page] Returning ${result.length} rows');
+    return result;
   }
 
   Widget _buildPaginationControls(int totalRows) {
@@ -1903,31 +1947,61 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           ),
           Row(
             children: [
-              DropdownButton<int>(
-                value: _rowsPerPage,
-                items:
-                    [5, 10, 25, 50, 100].map((value) {
-                      return DropdownMenuItem(
-                        value: value,
-                        child: Text('$value per page', style: GoogleFonts.comfortaa(color: HandsColors.white)),
-                      );
-                    }).toList(),
-                onChanged: (value) {
-                  if (value != null) {
+              GestureDetector(
+                onTap: () {
+                  print('[WEB_admin_dashboard_page] Custom dropdown tapped, cycling rows per page');
+                  // Cycle through pagination options without any complex widgets
+                  final currentValue = AdminDashboardState.rowsPerPage;
+                  final options = [5, 10, 25, 50, 100];
+                  final currentIndex = options.indexOf(currentValue);
+                  final nextIndex = (currentIndex + 1) % options.length;
+                  final newValue = options[nextIndex];
+
+                  print('[WEB_admin_dashboard_page] Cycling from $currentValue to $newValue');
+                  AdminDashboardState.rowsPerPage = newValue;
+                  AdminDashboardState.currentPage = 0;
+                  print(
+                    '[WEB_admin_dashboard_page] Updated AdminDashboardState: rowsPerPage = ${AdminDashboardState.rowsPerPage}, currentPage = ${AdminDashboardState.currentPage}',
+                  );
+
+                  // Test if simple setState works without route rebuilds
+                  if (mounted) {
                     setState(() {
-                      _rowsPerPage = value;
-                      _currentPage = 0;
+                      // Simple state update
                     });
                   }
                 },
-                dropdownColor: HandsColors.primaryContainer,
-                underline: const SizedBox(),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: HandsColors.secondaryContainer,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: HandsColors.white30, width: 1),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '$_rowsPerPage per page',
+                        style: GoogleFonts.comfortaa(color: HandsColors.white, fontSize: 14),
+                      ),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.refresh, color: HandsColors.white70, size: 16),
+                    ],
+                  ),
+                ),
               ),
               const SizedBox(width: 24),
               IconButton(
                 icon: const Icon(Icons.chevron_left),
                 color: hasPreviousPage ? HandsColors.white : HandsColors.white30,
-                onPressed: hasPreviousPage ? () => setState(() => _currentPage--) : null,
+                onPressed:
+                    hasPreviousPage
+                        ? () {
+                          AdminDashboardState.currentPage = AdminDashboardState.currentPage - 1;
+                          // TESTING: No setState to avoid route rebuilds
+                        }
+                        : null,
               ),
               Text(
                 totalPages == 0 ? 'Page 0 of 0' : 'Page ${displayPage + 1} of $totalPages',
@@ -1936,7 +2010,13 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               IconButton(
                 icon: const Icon(Icons.chevron_right),
                 color: hasNextPage ? HandsColors.white : HandsColors.white30,
-                onPressed: hasNextPage ? () => setState(() => _currentPage++) : null,
+                onPressed:
+                    hasNextPage
+                        ? () {
+                          AdminDashboardState.currentPage = AdminDashboardState.currentPage + 1;
+                          // TESTING: No setState to avoid route rebuilds
+                        }
+                        : null,
               ),
             ],
           ),
@@ -2472,22 +2552,24 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           initialData: checklist,
           availableLocations: _availableLocations,
           onSave: (checklistData) async {
-            // Close the editor first, then refresh the cached checklist table so
-            // other views (like shifts) immediately reflect the new/updated checklist.
-            Navigator.of(context).pop();
+            logger.d('[WEBAdminDashboard] onSave callback triggered with data: ${checklistData.keys}');
             try {
               // Persist checklist to Firestore (save + update shifts + tasks)
-              try {
-                await _saveChecklistFromBottomSheet(checklistData, existingChecklistId: checklist?['id']);
-              } catch (e) {
-                logger.e('[WEBAdminDashboard] Error saving checklist from bottom sheet: $e', e);
-              }
-              await _loadChecklistsTable();
-            } catch (_) {
-              // ignore errors from reload to avoid breaking the UI flow
-            }
+              await _saveChecklistFromBottomSheet(checklistData, existingChecklistId: checklist?['id']);
 
-            _showSnackBar(checklist == null ? 'Checklist created successfully' : 'Checklist updated successfully');
+              // Refresh the cached checklist table so other views reflect the changes
+              await _loadChecklistsTable();
+
+              // Show success message
+              _showSnackBar(checklist == null ? 'Checklist created successfully' : 'Checklist updated successfully');
+              logger.d('[WEBAdminDashboard] Checklist saved successfully');
+            } catch (e) {
+              logger.e('[WEBAdminDashboard] Error saving checklist from bottom sheet: $e', e);
+              // Show error message to user
+              _showSnackBar('Failed to save checklist: $e', isError: true);
+              // Rethrow to prevent the dialog from closing on error
+              rethrow;
+            }
           },
         ),
       );
@@ -2536,11 +2618,15 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
 
     final batch = FirestoreEnforcer.instance.batch();
 
-    final mainChecklistRef = FirestoreEnforcer.instance
+    final checklistTemplatesRef = FirestoreEnforcer.instance
         .collection('organizations')
         .doc(widget.organizationId)
-        .collection('checklist_templates')
-        .doc(existingChecklistId);
+        .collection('checklist_templates');
+
+    final mainChecklistRef =
+        existingChecklistId != null
+            ? checklistTemplatesRef.doc(existingChecklistId)
+            : checklistTemplatesRef.doc(); // Auto-generate ID for new checklists
     final mainChecklistId = mainChecklistRef.id;
 
     final tasksArray =
@@ -2609,9 +2695,11 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
       }
 
       // Optionally reseed today's generated daily checklists if needed (left out for brevity)
+      logger.d('[WEBAdminDashboard] Successfully saved checklist with ${tasksArray.length} tasks');
     } catch (e, st) {
       logger.e('[WEBAdminDashboard] Error persisting checklist: $e\n$st');
-      if (mounted) _showSnackBar('Failed to save checklist: $e', isError: true);
+      // Rethrow the error so the calling function can handle it properly
+      rethrow;
     }
   }
 

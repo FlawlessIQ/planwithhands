@@ -225,5 +225,20 @@
       }
     });
   </script>
+
+  <!-- Service Worker Unregistration Script -->
+  <script>
+    // Do NOT register any service worker
+    if ('serviceWorker' in navigator) {
+      // Unregister any previously installed SW so users get fresh files
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        regs.forEach(reg => reg.unregister());
+      }).catch(()=>{});
+      // Optional: clear old caches created by prior SWs
+      if (window.caches && caches.keys) {
+        caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
+      }
+    }
+  </script>
 </body>
 </html>

@@ -61,6 +61,43 @@ bool _hasMatchingJobType(Set<String> shiftJobTypes, Set<String> userJobTypes) {
   return false;
 }
 
+// Helper function to check if a shift has ended but is still in grace period
+bool isShiftInGracePeriod(ShiftData shift, DateTime todayOrg, DateTime nowOrg) {
+  try {
+    final partsEnd = shift.endTime.split(':');
+    if (partsEnd.length != 2) {
+      return false;
+    }
+
+    final eh = int.tryParse(partsEnd[0]) ?? 0;
+    final em = int.tryParse(partsEnd[1]) ?? 0;
+
+    DateTime shiftEnd = DateTime(todayOrg.year, todayOrg.month, todayOrg.day, eh, em);
+
+    // Handle overnight shifts by checking if shift spans midnight
+    final partsStart = shift.startTime.split(':');
+    if (partsStart.length == 2) {
+      final sh = int.tryParse(partsStart[0]) ?? 0;
+      final sm = int.tryParse(partsStart[1]) ?? 0;
+      final shiftStart = DateTime(todayOrg.year, todayOrg.month, todayOrg.day, sh, sm);
+
+      if (!shiftEnd.isAfter(shiftStart)) {
+        shiftEnd = shiftEnd.add(const Duration(days: 1));
+      }
+    }
+
+    final gracePeriodEnd = shiftEnd.add(const Duration(hours: 1));
+    final hasEnded = nowOrg.isAfter(shiftEnd);
+    final withinGrace = nowOrg.isBefore(gracePeriodEnd);
+    final result = hasEnded && withinGrace;
+
+    return result;
+  } catch (e) {
+    debugPrint('[GracePeriod] Error checking grace period for ${shift.shiftName}: $e');
+    return false;
+  }
+}
+
 // Visibility: show from T-30m before start to max(end+1h, end-of-day) in org/location TZ.
 bool isShiftVisibleNow(ShiftData shift, DateTime todayOrg, DateTime nowOrg, {String? tzId}) {
   debugPrint('[Filter][Visibility] === STARTING isShiftVisibleNow for ${shift.shiftName} ===');
@@ -97,9 +134,9 @@ bool isShiftVisibleNow(ShiftData shift, DateTime todayOrg, DateTime nowOrg, {Str
     }
 
     final visibleFrom = shiftStart.subtract(const Duration(minutes: 30));
-    final endOfDay = DateTime(todayOrg.year, todayOrg.month, todayOrg.day, 23, 59, 59);
     final endPlusHour = shiftEnd.add(const Duration(hours: 1));
-    final cutoff = endPlusHour.isAfter(endOfDay) ? endPlusHour : endOfDay;
+    // FIXED: Always use end + 1 hour, don't extend to end of day
+    final cutoff = endPlusHour;
 
     final visible =
         (nowOrg.isAtSameMomentAs(visibleFrom) || nowOrg.isAfter(visibleFrom)) &&
@@ -109,7 +146,7 @@ bool isShiftVisibleNow(ShiftData shift, DateTime todayOrg, DateTime nowOrg, {Str
     debugPrint('[Filter][Visibility] - shiftStart: $shiftStart');
     debugPrint('[Filter][Visibility] - shiftEnd: $shiftEnd');
     debugPrint('[Filter][Visibility] - visibleFrom: $visibleFrom (start - 30min)');
-    debugPrint('[Filter][Visibility] - cutoff: $cutoff (end + 1hr or end of day)');
+    debugPrint('[Filter][Visibility] - cutoff: $cutoff (end + 1hr)');
     debugPrint('[Filter][Visibility] - nowOrg: $nowOrg');
     debugPrint(
       '[Filter][Visibility] - nowOrg >= visibleFrom: ${nowOrg.isAtSameMomentAs(visibleFrom) || nowOrg.isAfter(visibleFrom)}',

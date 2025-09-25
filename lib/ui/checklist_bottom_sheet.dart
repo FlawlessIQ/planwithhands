@@ -99,7 +99,7 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
     super.initState();
     _titleController = TextEditingController(text: widget.initialData?['name'] ?? '');
     _descriptionController = TextEditingController(text: widget.initialData?['description'] ?? '');
-    if (widget.initialData?['tasks'] != null) {
+    if (widget.initialData != null && widget.initialData!['tasks'] != null) {
       _tasks = List<Map<String, dynamic>>.from(widget.initialData!['tasks']);
     } else {
       _tasks = [];
@@ -516,29 +516,39 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
   }
 
   bool _validateCurrentStep() {
+    print('[ChecklistBottomSheet] _validateCurrentStep called for step $_currentStep');
+
     switch (_currentStep) {
       case 0: // Name & Description
         if (_titleController.text.trim().isEmpty) {
+          print('[ChecklistBottomSheet] Validation failed: title is empty');
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Checklist name is required.')));
           return false;
         }
+        print('[ChecklistBottomSheet] Step 0 validation passed');
         return true;
       case 1: // Shift Assignment
         // No validation needed, can be unassigned
+        print('[ChecklistBottomSheet] Step 1 validation passed (no validation needed)');
         return true;
       case 2: // Location step is now informational, no validation needed.
+        print('[ChecklistBottomSheet] Step 2 validation passed (informational only)');
         return true;
       case 3: // Tasks
         if (_tasks.isEmpty) {
+          print('[ChecklistBottomSheet] Validation failed: no tasks');
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please add at least one task.')));
           return false;
         }
         if (_tasks.any((task) => task['name']?.toString().trim().isEmpty ?? true)) {
+          print('[ChecklistBottomSheet] Validation failed: task has empty name');
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('All tasks must have names.')));
           return false;
         }
+        print('[ChecklistBottomSheet] Step 3 validation passed');
         return true;
       default:
+        print('[ChecklistBottomSheet] Default validation passed for step $_currentStep');
         return true;
     }
   }
@@ -1012,6 +1022,7 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
   void _saveChecklist() {
     if (!_validateCurrentStep()) return;
 
+    print('[ChecklistBottomSheet] _saveChecklist called');
     setState(() => _loading = true);
 
     final dedupedJobTypes = _dedupeJobTypesPreserveCase(_jobTypes.toList());
@@ -1035,12 +1046,26 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
     }
 
     final result = {'checklistData': checklistPayload, 'selectedShiftIds': _selectedShiftIds.toList()};
+    print('[ChecklistBottomSheet] Calling widget.onSave with result keys: ${result.keys}');
 
-    widget.onSave(result);
+    try {
+      widget.onSave(result);
+      print('[ChecklistBottomSheet] widget.onSave completed successfully');
 
-    if (mounted) {
-      setState(() => _loading = false);
-      if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+      // Only close dialog and reset loading if save was successful
+      if (mounted) {
+        setState(() => _loading = false);
+        if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+      }
+    } catch (e) {
+      print('[ChecklistBottomSheet] Error in widget.onSave: $e');
+      // Handle save error - keep dialog open and reset loading state
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save checklist: ${e.toString()}'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
