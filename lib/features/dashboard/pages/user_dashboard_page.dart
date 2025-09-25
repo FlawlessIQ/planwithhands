@@ -3405,11 +3405,17 @@ class _ChecklistCard extends HookConsumerWidget {
       margin: const EdgeInsets.only(bottom: 6),
       child: Column(
         children: [
-          // Header uses checklist metadata but task list is streamed from subcollection
+          // Header uses current template name from template document, not cached templateName
           ListTile(
-            title: Text(
-              checklist.templateName ?? 'Checklist',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            title: FutureBuilder<String>(
+              future: _getCurrentTemplateName(checklist.organizationId, checklist.checklistTemplateId),
+              builder: (context, templateNameSnapshot) {
+                final displayName = templateNameSnapshot.data ?? checklist.templateName ?? 'Loading...';
+                return Text(
+                  displayName,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                );
+              },
             ),
             subtitle: StreamBuilder<List<TaskData>>(
               stream: DailyChecklistService().streamChecklistTasks(
@@ -4150,6 +4156,27 @@ class _MissedTaskInteractionTile extends HookWidget {
         );
         break;
     }
+  }
+}
+
+// Helper function to get current template name from Firestore
+Future<String> _getCurrentTemplateName(String organizationId, String templateId) async {
+  try {
+    final templateDoc = await FirebaseFirestore.instance
+        .collection('organizations')
+        .doc(organizationId)
+        .collection('checklist_templates')
+        .doc(templateId)
+        .get();
+    
+    if (templateDoc.exists) {
+      final data = templateDoc.data();
+      return data?['name'] ?? 'Unknown Template';
+    }
+    return 'Template Not Found';
+  } catch (e) {
+    debugPrint('Error fetching template name: $e');
+    return 'Error Loading Template';
   }
 }
 
