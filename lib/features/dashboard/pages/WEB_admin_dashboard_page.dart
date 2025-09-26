@@ -253,7 +253,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
       _checklistNameById.clear();
       for (final d in _checklistDocs) {
         final data = d.data();
-        final name = (data['checklistName'] ?? data['name'] ?? '').toString();
+        final name = (data['name'] ?? data['checklistName'] ?? '').toString();
         _checklistNameById[d.id] = name;
       }
 
@@ -954,8 +954,9 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           // Checklists column: display as simple comma-separated text
           Builder(
             builder: (context) {
-              final tids =
-                  (shift['checklists'] as List? ?? []).map((e) => e.toString()).where((e) => e.isNotEmpty).toList();
+              // Use same fallback logic as elsewhere in the code
+              final checklistData = shift['checklists'] ?? shift['checklistTemplateIds'] ?? shift['checklistIds'] ?? [];
+              final tids = (checklistData as List? ?? []).map((e) => e.toString()).where((e) => e.isNotEmpty).toList();
               final names = tids.map((t) => _checklistNameById[t] ?? 'Unknown Checklist').toList();
 
               return SizedBox(
@@ -1044,7 +1045,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
 
               return {
                 'id': doc.id,
-                'name': data['checklistName'] ?? data['name'] ?? 'Unnamed Checklist',
+                'name': data['name'] ?? data['checklistName'] ?? 'Unnamed Checklist',
                 'description': data['checklistDescription'] ?? data['description'] ?? '',
                 'taskCount': tasks.length,
                 'createdAt': data['createdAt'],

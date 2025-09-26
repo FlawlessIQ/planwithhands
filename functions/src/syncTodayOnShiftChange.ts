@@ -7,10 +7,9 @@ const MAX_BATCH_WRITES = Number(process.env.MAX_BATCH_WRITES || 400);
 
 export const syncTodayOnShiftChange = functions
     .region(process.env.FUNCTION_REGION || "us-central1")
-    .firestore.document("organizations/{orgId}/locations/{locId}/shifts/{shiftId}")
+    .firestore.document("organizations/{orgId}/shifts/{shiftId}")
     .onUpdate(async (change, context) => {
       const orgId = context.params.orgId as string;
-      const locId = context.params.locId as string;
       const shiftId = context.params.shiftId as string;
 
       const beforeData = (change.before.data() || {}) as FirebaseFirestore.DocumentData;
@@ -41,11 +40,11 @@ export const syncTodayOnShiftChange = functions
       console.log("[syncTodayOnShiftChange] shift changed, syncing today checks for", dateString, "shift", shiftId);
 
       const db = admin.firestore();
-      const dailyChecklistsColl = db.collection(`organizations/${orgId}/locations/${locId}/daily_checklists`);
 
-      // Find today's checklist(s) for this shift
-      const checklistQuery = dailyChecklistsColl
+      // Find today's checklist(s) for this shift across all locations using collectionGroup
+      const checklistQuery = db.collectionGroup("daily_checklists")
           .where("shiftId", "==", shiftId)
+          .where("organizationId", "==", orgId)
           .where("dateString", "==", dateString);
 
       const checklistSnap = await checklistQuery.get();
@@ -86,6 +85,11 @@ export const syncTodayOnShiftChange = functions
           const tasksSnap = await checklistRef.collection("tasks").get();
           existingTaskIds = new Set(tasksSnap.docs.map((d) => d.id));
         }
+        
+        // Get the checklist document to extract locationId
+        const checklistSnap = await checklistRef.get();
+        const checklistData = checklistSnap.data() || {};
+        const locationId = checklistData.locationId;
 
         // fetch template doc
         const templateRef = db.doc(`organizations/${orgId}/checklist_templates/${templateId}`);
@@ -123,7 +127,7 @@ export const syncTodayOnShiftChange = functions
             dueDate,
             isCarryForward: false,
             organizationId: orgId,
-            locationId: locId,
+            locationId: locationId,
             checklistId,
             shiftId,
             templateId,
@@ -146,27 +150,8 @@ export const syncTodayOnShiftChange = functions
       };
 
       if (checklists.length === 0) {
-      // create a new checklist for the shift
-        const newChecklistRef = dailyChecklistsColl.doc();
-        const checklistId = newChecklistRef.id;
-        const checklistDoc: FirebaseFirestore.DocumentData = {
-          checklistId,
-          organizationId: orgId,
-          locationId: locId,
-          shiftId,
-          dateString,
-          checklistTemplateIds: templatesToProcess,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        };
-
-        FirestoreTTLHelper.batchSetWithTTL(batch, newChecklistRef, checklistDoc, {merge: true});
-        currentBatchWrites += 1;
-        totalChecklistsCreated += 1;
-
-        // add tasks from all templates
-        for (const templateId of templatesToProcess) {
-          await ensureTemplateTasksOnChecklist(newChecklistRef, checklistId, templateId);
-        }
+        console.log("[syncTodayOnShiftChange] No existing checklists found for shift", shiftId, "date", dateString, "- skipping creation (handled by scheduledDailyGenerator)");
+        return null;
       } else {
       // ensure each existing checklist has tasks from all templates
         for (const checklistDoc of checklists) {

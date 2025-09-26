@@ -895,7 +895,7 @@ class DailyChecklistService {
                 shiftId: data['shiftId']?.toString(),
                 templateId: data['checklistTemplateId']?.toString() ?? data['templateId']?.toString(),
                 dateString: data['dateString']?.toString(),
-                checklistName: data['checklistName']?.toString() ?? data['templateName']?.toString(),
+                checklistName: data['templateName']?.toString() ?? data['checklistName']?.toString(),
               ),
             );
           }
@@ -2593,7 +2593,7 @@ class DailyChecklistService {
         final String orgId = (m['organizationId'] as String?) ?? (m['organization']?.toString() ?? '');
         final locationId = m['locationId']?.toString();
         final checklistId = m['checklistId']?.toString();
-        final checklistName = m['checklistName']?.toString() ?? m['templateName']?.toString() ?? 'Checklist';
+        final checklistName = m['templateName']?.toString() ?? m['checklistName']?.toString() ?? 'Checklist';
         final shiftId = m['shiftId']?.toString();
         final dateStr = m['dateString']?.toString();
 

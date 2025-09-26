@@ -2220,7 +2220,7 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
 
         final date = (data['date'] ?? '').toString();
         final shiftName = (data['shiftName'] ?? '').toString();
-        final checklistName = (data['checklistName'] ?? '').toString();
+        final checklistName = (data['templateName'] ?? data['checklistName'] ?? '').toString();
 
         // Handle both old format (tasks in document) and new format (tasks in subcollection)
         List<Map<String, dynamic>> tasks = [];
