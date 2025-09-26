@@ -3393,6 +3393,11 @@ class _ChecklistCard extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final opState = ref.watch(operationalStateProvider);
+    // Kick off a one-time prefetch of template names after auth/user data available
+    useEffect(() {
+      _prefetchTemplateNames(checklist.organizationId);
+      return null;
+    }, const []);
     final initiallyExpanded =
         (opState.selectedShift != null)
             ? (opState.selectedShift!.shiftId == checklist.shiftId)
@@ -3405,15 +3410,34 @@ class _ChecklistCard extends HookConsumerWidget {
       margin: const EdgeInsets.only(bottom: 6),
       child: Column(
         children: [
-          // Header uses current template name from template document, not cached templateName
+          // Header displays current template name from Firestore
           ListTile(
             title: FutureBuilder<String>(
-              future: _getCurrentTemplateName(checklist.organizationId, checklist.checklistTemplateId),
+              future: _getCurrentTemplateName(
+                checklist.organizationId,
+                checklist.checklistTemplateId,
+                fallbackCachedName: checklist.templateName,
+              ),
               builder: (context, templateNameSnapshot) {
-                final displayName = templateNameSnapshot.data ?? checklist.templateName ?? 'Loading...';
-                return Text(
-                  displayName,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                if (templateNameSnapshot.connectionState == ConnectionState.waiting) {
+                  return Text(
+                    checklist.templateName ?? 'Loading...',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  );
+                }
+
+                final currentName = templateNameSnapshot.data ?? checklist.templateName ?? 'Unknown Template';
+                return Row(
+                  children: [
+                    Expanded(
+                      child: Text(currentName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    ),
+                    if (templateNameSnapshot.hasError)
+                      Tooltip(
+                        message: 'Error loading current template name: ${templateNameSnapshot.error}',
+                        child: Icon(Icons.error_outline, size: 16, color: Colors.red.shade600),
+                      ),
+                  ],
                 );
               },
             ),
@@ -3509,6 +3533,104 @@ class _ChecklistCard extends HookConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// Live fetch of current template name with:
+  /// - Auth & userData guard to avoid early permission race
+  /// - Simple in-memory cache to prevent repeat reads per session
+  /// - Graceful fallback to cached checklist.templateName upstream
+  static final Map<String, String> _templateNameCache = {};
+  static bool _templatePrefetchStarted = false;
+
+  Future<void> _prefetchTemplateNames(String organizationId) async {
+    if (_templatePrefetchStarted) return;
+    if (organizationId.isEmpty) return;
+    _templatePrefetchStarted = true;
+    try {
+      debugPrint('[TemplateNamePrefetch] Starting for org=$organizationId');
+      final snap =
+          await FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(organizationId)
+              .collection('checklist_templates')
+              .get();
+      int loaded = 0;
+      for (final d in snap.docs) {
+        final name = (d.data()['name'] ?? '').toString().trim();
+        if (name.isNotEmpty) {
+          _templateNameCache['$organizationId|${d.id}'] = name;
+          loaded++;
+        }
+      }
+      debugPrint('[TemplateNamePrefetch] Cached $loaded template names');
+    } catch (e) {
+      debugPrint('[TemplateNamePrefetch] Error: $e');
+    }
+  }
+
+  Future<String> _getCurrentTemplateName(String organizationId, String templateId, {String? fallbackCachedName}) async {
+    // Basic sanity
+    if (organizationId.isEmpty || templateId.isEmpty) {
+      return fallbackCachedName ?? 'Unknown Template';
+    }
+
+    final cacheKey = '$organizationId|$templateId';
+    final cached = _templateNameCache[cacheKey];
+    if (cached != null) {
+      debugPrint('[TemplateNameLookup] Cache hit for $cacheKey -> $cached');
+      return cached;
+    }
+
+    // Wait until FirebaseAuth + userData provider loaded (if available)
+    // We detect readiness by checking currentUser and (if present) the userData provider.
+    final auth = FirebaseAuth.instance;
+    int attempts = 0;
+    while ((auth.currentUser == null) && attempts < 20) {
+      await Future.delayed(const Duration(milliseconds: 50));
+      attempts++;
+    }
+
+    // Optional: if a userData provider exists, wait until it yields an organization match
+    try {
+      // We avoid tight coupling: just a best-effort slight delay to let providers populate
+      await Future.delayed(const Duration(milliseconds: 50));
+    } catch (_) {}
+
+    try {
+      final path = 'organizations/$organizationId/checklist_templates/$templateId';
+      debugPrint('[TemplateNameLookup] Fetching path: $path (attempts waited: $attempts)');
+
+      final userForLookup = auth.currentUser?.uid ?? 'null';
+      final docRef = FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(organizationId)
+          .collection('checklist_templates')
+          .doc(templateId);
+      final templateDoc = await docRef.get();
+      debugPrint(
+        '[TemplateNameLookup] Firestore get() user=$userForLookup exists=${templateDoc.exists} path=${docRef.path}',
+      );
+
+      if (templateDoc.exists) {
+        final data = templateDoc.data();
+        final templateName = data?['name']?.toString().trim();
+        if (templateName != null && templateName.isNotEmpty) {
+          _templateNameCache[cacheKey] = templateName;
+          debugPrint('[TemplateNameLookup] Success: "$templateName" cached for $cacheKey');
+          return templateName;
+        }
+        debugPrint('[TemplateNameLookup] Doc exists but name missing at $path returning fallback');
+        return fallbackCachedName ?? 'Unnamed Template';
+      } else {
+        debugPrint('[TemplateNameLookup] Doc missing at $path returning fallback');
+        return fallbackCachedName ?? 'Template Not Found';
+      }
+    } catch (e) {
+      debugPrint(
+        '[TemplateNameLookup] Error for $organizationId/$templateId (authUser=${FirebaseAuth.instance.currentUser?.uid} attempts=$attempts): $e',
+      );
+      return fallbackCachedName ?? 'Unknown Template';
+    }
   }
 }
 
@@ -4160,25 +4282,6 @@ class _MissedTaskInteractionTile extends HookWidget {
 }
 
 // Helper function to get current template name from Firestore
-Future<String> _getCurrentTemplateName(String organizationId, String templateId) async {
-  try {
-    final templateDoc = await FirebaseFirestore.instance
-        .collection('organizations')
-        .doc(organizationId)
-        .collection('checklist_templates')
-        .doc(templateId)
-        .get();
-    
-    if (templateDoc.exists) {
-      final data = templateDoc.data();
-      return data?['name'] ?? 'Unknown Template';
-    }
-    return 'Template Not Found';
-  } catch (e) {
-    debugPrint('Error fetching template name: $e');
-    return 'Error Loading Template';
-  }
-}
 
 // --- MISSED TASKS CARD ---
 

@@ -18,6 +18,12 @@ console.log(`[functions] Booting with FIRESTORE_DATABASE_ID=${boundDb}`);
 const syncModule = require("./syncTodayOnTemplateChange");
 
 export const syncTodayOnTemplateChange = syncModule.syncTodayOnTemplateChange as any;
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const syncTemplateNameModule = require("./syncTemplateNameChange");
+export const syncTemplateNameChange = syncTemplateNameModule.syncTemplateNameChange as any;
+
+// Export cleanup function for deleted templates
+export {cleanupDeletedTemplate} from "./cleanupDeletedTemplate";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const syncShiftModule = require("./syncTodayOnShiftChange");

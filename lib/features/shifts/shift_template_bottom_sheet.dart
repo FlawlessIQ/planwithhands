@@ -527,30 +527,37 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
           return const Center(child: Text('No checklists available for the selected location'));
         }
         final docs = snap.docs;
-        return Column(
-          children:
-              docs.map((d) {
-                final data = d.data() as Map<String, dynamic>;
-                final name = data['name'] ?? 'Unnamed';
-                final desc = data['description'] ?? '';
-                final isSelected = selectedChecklistTemplateIds.contains(d.id);
-                return CheckboxListTile(
-                  title: Text(name, style: const TextStyle(color: HandsColors.white)),
-                  subtitle: desc.isNotEmpty ? Text(desc, style: const TextStyle(color: HandsColors.white70)) : null,
-                  value: isSelected,
-                  checkColor: HandsColors.white,
-                  activeColor: HandsColors.handsOrange,
-                  onChanged: (v) {
-                    setState(() {
-                      if (v!) {
-                        selectedChecklistTemplateIds.add(d.id);
-                      } else {
-                        selectedChecklistTemplateIds.remove(d.id);
-                      }
-                    });
-                  },
-                );
-              }).toList(),
+        return ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.4, // Limit height to 40% of screen
+          ),
+          child: ListView(
+            shrinkWrap: true,
+            physics: const AlwaysScrollableScrollPhysics(),
+            children:
+                docs.map((d) {
+                  final data = d.data() as Map<String, dynamic>;
+                  final name = data['name'] ?? 'Unnamed';
+                  final desc = data['description'] ?? '';
+                  final isSelected = selectedChecklistTemplateIds.contains(d.id);
+                  return CheckboxListTile(
+                    title: Text(name, style: const TextStyle(color: HandsColors.white)),
+                    subtitle: desc.isNotEmpty ? Text(desc, style: const TextStyle(color: HandsColors.white70)) : null,
+                    value: isSelected,
+                    checkColor: HandsColors.white,
+                    activeColor: HandsColors.handsOrange,
+                    onChanged: (v) {
+                      setState(() {
+                        if (v!) {
+                          selectedChecklistTemplateIds.add(d.id);
+                        } else {
+                          selectedChecklistTemplateIds.remove(d.id);
+                        }
+                      });
+                    },
+                  );
+                }).toList(),
+          ),
         );
       },
     );
