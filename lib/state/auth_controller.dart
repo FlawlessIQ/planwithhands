@@ -16,6 +16,7 @@ import 'package:hands_app/features/messaging/services/token_registration_service
 import 'package:hands_app/services/push_notification_service.dart';
 import 'package:hands_app/utils/location_helper.dart';
 import 'package:hands_app/utils/jobtype_helper.dart';
+import 'package:hands_app/services/web_optimized_firestore_service.dart';
 
 part 'auth_controller.g.dart';
 
@@ -181,6 +182,13 @@ class AuthController extends _$AuthController {
 
         log('starting data fetch timer');
         _dataFetchTimer = Timer.periodic(Duration(seconds: _fetchInterval), (Timer timer) async {
+          // Validate session before fetching data
+          if (!await validateSession()) {
+            debugPrint('[AUTH_CONTROLLER] Session invalid, stopping data fetch timer');
+            timer.cancel();
+            return;
+          }
+          
           String? orgId = userData.organizationId;
           OrganizationData? orgData = await getOrganizationById(orgId);
           if (orgData != null) {
@@ -275,5 +283,56 @@ class AuthController extends _$AuthController {
 
   Future<void> sendPasswordResetEmail(String email) async {
     await _auth.sendPasswordResetEmail(email: email);
+  }
+
+  /// Validate current session and handle token refresh
+  /// Returns true if session is valid, false if user needs to re-authenticate
+  Future<bool> validateSession() async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+
+    try {
+      // Try to refresh the token to ensure it's still valid
+      await user.getIdToken(true);
+      debugPrint('[AUTH_CONTROLLER] Session validation successful');
+      return true;
+    } catch (e) {
+      debugPrint('[AUTH_CONTROLLER] Session validation failed: $e');
+      
+      // If validation fails due to network issues, don't invalidate session
+      if (e.toString().contains('network') || e.toString().contains('timeout')) {
+        debugPrint('[AUTH_CONTROLLER] Network issue detected, keeping session');
+        return true;
+      }
+      
+      // Session is genuinely invalid - clear cached data
+      WebOptimizedFirestoreService.clearCache();
+      return false;
+    }
+  }
+
+  /// Check if user needs to re-authenticate
+  /// This is called by UI components to gracefully handle auth failures
+  Future<bool> requiresReAuthentication() async {
+    final isValid = await validateSession();
+    if (!isValid) {
+      debugPrint('[AUTH_CONTROLLER] Re-authentication required');
+      // Clear user state to trigger login UI
+      ref.read(userStateProvider.notifier).setUserData(
+        UserData(
+          userId: '',
+          createdAt: DateTime.now(),
+          userRole: 0,
+          firstName: '',
+          lastName: '',
+          phoneNumber: '',
+          userEmail: '',
+          organizationId: '',
+          locationIds: [],
+          jobTypes: [],
+        ),
+      );
+    }
+    return !isValid;
   }
 }

@@ -253,7 +253,6 @@ async function generateForOrgDate(orgId, dateString) {
                 locationId,
                 organizationId: orgId,
                 date: dateString,
-                templateName: (orgData.templateName) || null,
                 createdAt: nowTs,
                 createdBy: "generator",
                 expiresAt,
@@ -367,8 +366,8 @@ async function generateForOrgDate(orgId, dateString) {
                             shiftId: ydata.shiftId || "unknown",
                             checklistId: checklistId,
                             checklistTemplateId: ydata.checklistTemplateId || "unknown",
-                            checklistName: ydata.templateName || "Checklist",
-                            templateName: ydata.templateName || "Checklist",
+                            checklistName: "Carry-forward Task",
+                            templateName: "Carry-forward Task",
                             dateString: dateString,
                             order: 100000 + i,
                         };

@@ -427,125 +427,222 @@ class DailySummaryService {
 
     buffer.writeln('$performanceEmoji Daily Summary • $formattedDate');
     buffer.writeln('');
-    buffer.writeln(performanceMessage);
-    buffer.writeln('');
-    buffer.writeln('📊 ${overallPercentage.toStringAsFixed(0)}% Complete ($completedTasks/$totalTasks tasks)');
-    buffer.writeln('');
 
-    // Shift-by-shift breakdown (simplified)
-    if (shiftCompletions.isNotEmpty) {
-      buffer.writeln('📍 By Location:');
+    if (totalTasks > 0) {
+      buffer.writeln(performanceMessage);
+      buffer.writeln('');
+      buffer.writeln('📊 ${overallPercentage.toStringAsFixed(0)}% Complete ($completedTasks/$totalTasks tasks)');
+      buffer.writeln('');
 
-      // Group by location for cleaner display
-      final locationGroups = <String, List<Map<String, dynamic>>>{};
-      for (final shift in shiftCompletions) {
-        final locationName = shift['locationName'] ?? 'Unknown Location';
-        locationGroups.putIfAbsent(locationName, () => []).add(shift);
+      // Shift-by-shift breakdown with more detail
+      if (shiftCompletions.isNotEmpty) {
+        buffer.writeln('📍 Performance by Location:');
+
+        // Group by location for cleaner display
+        final locationGroups = <String, List<Map<String, dynamic>>>{};
+        for (final shift in shiftCompletions) {
+          final locationName = shift['locationName'] ?? 'Unknown Location';
+          locationGroups.putIfAbsent(locationName, () => []).add(shift);
+        }
+
+        for (final entry in locationGroups.entries) {
+          final locationName = entry.key;
+          final shifts = entry.value;
+
+          if (shifts.length == 1) {
+            final shift = shifts.first;
+            final percentage = shift['completionPercentage'] as double? ?? 0.0;
+            final completed = shift['completedTasks'] as int? ?? 0;
+            final total = shift['totalTasks'] as int? ?? 0;
+            final shiftName = shift['shiftName'] ?? 'Unknown Shift';
+
+            final statusEmoji =
+                percentage >= 90
+                    ? '✅'
+                    : percentage >= 70
+                    ? '⚠️'
+                    : '❌';
+            buffer.writeln(
+              '$statusEmoji $locationName ($shiftName): ${percentage.toStringAsFixed(0)}% ($completed/$total)',
+            );
+          } else {
+            // Multiple shifts at this location
+            final totalCompleted = shifts.fold<int>(0, (sum, s) => sum + (s['completedTasks'] as int? ?? 0));
+            final totalTasks = shifts.fold<int>(0, (sum, s) => sum + (s['totalTasks'] as int? ?? 0));
+            final avgPercentage = totalTasks > 0 ? (totalCompleted / totalTasks * 100) : 0.0;
+            final statusEmoji =
+                avgPercentage >= 90
+                    ? '✅'
+                    : avgPercentage >= 70
+                    ? '⚠️'
+                    : '❌';
+
+            buffer.writeln(
+              '$statusEmoji $locationName (${shifts.length} shifts): ${avgPercentage.toStringAsFixed(0)}% ($totalCompleted/$totalTasks)',
+            );
+
+            // Show individual shift details if significantly different
+            for (final shift in shifts) {
+              final shiftPercentage = shift['completionPercentage'] as double? ?? 0.0;
+              final shiftName = shift['shiftName'] ?? 'Unknown Shift';
+              final shiftCompleted = shift['completedTasks'] as int? ?? 0;
+              final shiftTotal = shift['totalTasks'] as int? ?? 0;
+
+              if ((shiftPercentage - avgPercentage).abs() > 20) {
+                final shiftEmoji =
+                    shiftPercentage >= 90
+                        ? '  ✅'
+                        : shiftPercentage >= 70
+                        ? '  ⚠️'
+                        : '  ❌';
+                buffer.writeln(
+                  '$shiftEmoji   $shiftName: ${shiftPercentage.toStringAsFixed(0)}% ($shiftCompleted/$shiftTotal)',
+                );
+              }
+            }
+          }
+        }
+        buffer.writeln('');
       }
 
-      for (final entry in locationGroups.entries) {
-        final locationName = entry.key;
-        final shifts = entry.value;
+      // Yesterday's missed tasks progress (with more context)
+      if (yesterdayMissedProgress.isNotEmpty) {
+        final totalCarried = yesterdayMissedProgress.fold<int>(
+          0,
+          (total, item) => total + (item['totalCarriedForward'] as int? ?? 0),
+        );
+        final totalCompletedToday = yesterdayMissedProgress.fold<int>(
+          0,
+          (total, item) => total + (item['completedToday'] as int? ?? 0),
+        );
+        final totalRemaining = totalCarried - totalCompletedToday;
+        final progressPercentage = totalCarried > 0 ? (totalCompletedToday / totalCarried * 100) : 0.0;
 
-        if (shifts.length == 1) {
-          final shift = shifts.first;
-          final percentage = shift['completionPercentage'] as double? ?? 0.0;
-          final completed = shift['completedTasks'] as int? ?? 0;
-          final total = shift['totalTasks'] as int? ?? 0;
-          buffer.writeln('• $locationName: ${percentage.toStringAsFixed(0)}% ($completed/$total)');
-        } else {
-          // Multiple shifts at this location
-          final totalCompleted = shifts.fold<int>(0, (sum, s) => sum + (s['completedTasks'] as int? ?? 0));
-          final totalTasks = shifts.fold<int>(0, (sum, s) => sum + (s['totalTasks'] as int? ?? 0));
-          final avgPercentage = totalTasks > 0 ? (totalCompleted / totalTasks * 100) : 0.0;
-          buffer.writeln('• $locationName: ${avgPercentage.toStringAsFixed(0)}% ($totalCompleted/$totalTasks)');
+        final progressEmoji =
+            progressPercentage >= 80
+                ? '✅'
+                : progressPercentage >= 50
+                ? '⚠️'
+                : '❌';
+        buffer.writeln('$progressEmoji Follow-up Progress:');
+        buffer.writeln(
+          '${progressPercentage.toStringAsFixed(0)}% of yesterday\'s items completed ($totalCompletedToday/$totalCarried)',
+        );
+
+        if (totalRemaining > 0) {
+          buffer.writeln('⏳ $totalRemaining items still need attention');
+
+          // Show most critical remaining items
+          final criticalRemaining = yesterdayMissedProgress
+              .where((item) => (item['remainingOpen'] as int? ?? 0) > 0)
+              .take(2);
+
+          for (final item in criticalRemaining) {
+            final taskName = item['taskName'] ?? 'Unknown Task';
+            final remaining = item['remainingOpen'] as int? ?? 0;
+            buffer.writeln('  • $taskName ($remaining remaining)');
+          }
+        }
+        buffer.writeln('');
+      }
+
+      // Enhanced insights section
+      final insights = _generateInsights(
+        overallPercentage,
+        shiftCompletions,
+        notesEntries,
+        missedTaskEntries,
+        photoBypassed,
+      );
+
+      if (insights.isNotEmpty) {
+        buffer.writeln('💡 Key Insights:');
+        for (final insight in insights) {
+          buffer.writeln('• $insight');
+        }
+        buffer.writeln('');
+      }
+
+      // Highlights section with better context
+      final hasIssues = missedTaskEntries.isNotEmpty || photoBypassed.isNotEmpty;
+      final hasNotes = notesEntries.isNotEmpty;
+
+      if (hasIssues || hasNotes) {
+        buffer.writeln('� Notable Items:');
+
+        // Show critical issues first (with better context)
+        if (missedTaskEntries.isNotEmpty) {
+          buffer.writeln('❌ Tasks Not Completed:');
+          final criticalMissed = missedTaskEntries.take(3);
+          for (final entry in criticalMissed) {
+            buffer.writeln('  • ${entry['taskName']} (${entry['locationName']})');
+            buffer.writeln('    Reason: ${entry['reason']}');
+          }
+          if (missedTaskEntries.length > 3) {
+            buffer.writeln('  • ... and ${missedTaskEntries.length - 3} more incomplete tasks');
+          }
+          buffer.writeln('');
+        }
+
+        // Show photo bypassed with context
+        if (photoBypassed.isNotEmpty) {
+          buffer.writeln('📷 Photo Requirements Missed:');
+          final criticalPhotos = photoBypassed.take(3);
+          for (final entry in criticalPhotos) {
+            buffer.writeln('  • ${entry['taskName']} at ${entry['locationName']}');
+            buffer.writeln('    Completed by ${entry['userName']} without required photo');
+          }
+          if (photoBypassed.length > 3) {
+            buffer.writeln('  • ... and ${photoBypassed.length - 3} more photo violations');
+          }
+          buffer.writeln('');
+        }
+
+        // Show important notes with better formatting
+        if (notesEntries.isNotEmpty) {
+          buffer.writeln('📝 Staff Notes & Observations:');
+          final importantNotes = notesEntries.take(3);
+          for (final entry in importantNotes) {
+            buffer.writeln('  • ${entry['taskName']} (${entry['locationName']})');
+            final noteText =
+                (entry['notes'] as String).length > 60
+                    ? '${(entry['notes'] as String).substring(0, 60)}...'
+                    : entry['notes'];
+            buffer.writeln('    "$noteText" - ${entry['userName']}');
+          }
+          if (notesEntries.length > 3) {
+            buffer.writeln('  • ... and ${notesEntries.length - 3} more staff notes');
+          }
+          buffer.writeln('');
         }
       }
+
+      // Action items and next steps
+      buffer.writeln('🎯 Recommended Actions:');
+      final actionItems = _generateActionItems(
+        overallPercentage,
+        missedTaskEntries.length,
+        photoBypassed.length,
+        yesterdayMissedProgress.isNotEmpty,
+      );
+      for (final action in actionItems) {
+        buffer.writeln('• $action');
+      }
+
+      buffer.writeln('');
+    } else {
+      buffer.writeln('No tasks were scheduled for $formattedDate.');
+      buffer.writeln('');
+      buffer.writeln('This could mean:');
+      buffer.writeln('• No shifts were scheduled');
+      buffer.writeln('• Checklists weren\'t generated');
+      buffer.writeln('• Tasks weren\'t assigned to teams');
+      buffer.writeln('');
+      buffer.writeln('� Consider reviewing your scheduling and checklist setup.');
       buffer.writeln('');
     }
 
-    // Yesterday's missed tasks progress (simplified)
-    if (yesterdayMissedProgress.isNotEmpty) {
-      final totalCarried = yesterdayMissedProgress.fold<int>(
-        0,
-        (total, item) => total + (item['totalCarriedForward'] as int? ?? 0),
-      );
-      final totalCompletedToday = yesterdayMissedProgress.fold<int>(
-        0,
-        (total, item) => total + (item['completedToday'] as int? ?? 0),
-      );
-      final totalRemaining = totalCarried - totalCompletedToday;
-      final progressPercentage = totalCarried > 0 ? (totalCompletedToday / totalCarried * 100) : 0.0;
-
-      buffer.writeln('♻️ Yesterday\'s Follow-ups:');
-      buffer.writeln('${progressPercentage.toStringAsFixed(0)}% completed ($totalCompletedToday/$totalCarried)');
-      if (totalRemaining > 0) {
-        buffer.writeln('⚠️ $totalRemaining items still need attention');
-      }
-      buffer.writeln('');
-    }
-
-    // Highlights section (combining important items)
-    final hasIssues = missedTaskEntries.isNotEmpty || photoBypassed.isNotEmpty;
-    final hasNotes = notesEntries.isNotEmpty;
-
-    if (hasIssues || hasNotes) {
-      buffer.writeln('📋 Key Items:');
-
-      // Show critical issues first (limited to top 3)
-      if (missedTaskEntries.isNotEmpty) {
-        final criticalMissed = missedTaskEntries.take(3);
-        for (final entry in criticalMissed) {
-          buffer.writeln('❌ ${entry['taskName']} (${entry['locationName']})');
-          buffer.writeln('   ${entry['reason']}');
-        }
-        if (missedTaskEntries.length > 3) {
-          buffer.writeln('   ... and ${missedTaskEntries.length - 3} more missed tasks');
-        }
-        buffer.writeln('');
-      }
-
-      // Show photo bypassed (limited to top 2)
-      if (photoBypassed.isNotEmpty) {
-        final criticalPhotos = photoBypassed.take(2);
-        for (final entry in criticalPhotos) {
-          buffer.writeln('📷 ${entry['taskName']} - photo required but skipped');
-          buffer.writeln('   ${entry['locationName']} by ${entry['userName']}');
-        }
-        if (photoBypassed.length > 2) {
-          buffer.writeln('   ... and ${photoBypassed.length - 2} more missing photos');
-        }
-        buffer.writeln('');
-      }
-
-      // Show important notes (limited to top 2)
-      if (notesEntries.isNotEmpty) {
-        final importantNotes = notesEntries.take(2);
-        for (final entry in importantNotes) {
-          buffer.writeln('📝 ${entry['taskName']} (${entry['locationName']})');
-          buffer.writeln('   "${entry['notes']}" - ${entry['userName']}');
-        }
-        if (notesEntries.length > 2) {
-          buffer.writeln('   ... and ${notesEntries.length - 2} more notes');
-        }
-        buffer.writeln('');
-      }
-    }
-
-    // Action items and next steps
-    buffer.writeln('🎯 Next Steps:');
-    final actionItems = _generateActionItems(
-      overallPercentage,
-      missedTaskEntries.length,
-      photoBypassed.length,
-      yesterdayMissedProgress.isNotEmpty,
-    );
-    for (final action in actionItems) {
-      buffer.writeln('• $action');
-    }
-
-    buffer.writeln('');
-    buffer.writeln('📱 View full details in the app');
+    buffer.writeln('📱 View complete details in the Hands app');
 
     return buffer.toString();
   }
@@ -613,6 +710,84 @@ class DailySummaryService {
     }
 
     return actions.take(4).toList(); // Limit to 4 actions max
+  }
+
+  /// Generate insights based on performance patterns and data
+  List<String> _generateInsights(
+    double overallPercentage,
+    List<Map<String, dynamic>> shiftCompletions,
+    List<Map<String, dynamic>> notesEntries,
+    List<Map<String, dynamic>> missedTaskEntries,
+    List<Map<String, dynamic>> photoBypassed,
+  ) {
+    final insights = <String>[];
+
+    // Performance trend insights
+    if (overallPercentage >= 95) {
+      insights.add('Exceptional performance across all areas');
+    } else if (overallPercentage >= 85) {
+      insights.add('Strong overall completion rate maintained');
+    } else if (overallPercentage < 70) {
+      insights.add('Performance below target - intervention needed');
+    }
+
+    // Location/shift performance insights
+    if (shiftCompletions.length >= 2) {
+      final percentages = shiftCompletions.map((s) => s['completionPercentage'] as double? ?? 0.0).toList();
+      final maxPerf = percentages.reduce((a, b) => a > b ? a : b);
+      final minPerf = percentages.reduce((a, b) => a < b ? a : b);
+
+      if (maxPerf - minPerf > 30) {
+        final bestShift = shiftCompletions.firstWhere((s) => (s['completionPercentage'] as double? ?? 0.0) == maxPerf);
+        final worstShift = shiftCompletions.firstWhere((s) => (s['completionPercentage'] as double? ?? 0.0) == minPerf);
+        insights.add('${bestShift['locationName']} significantly outperforming ${worstShift['locationName']}');
+      }
+    }
+
+    // Staff engagement insights
+    if (notesEntries.length > shiftCompletions.length * 2) {
+      insights.add('High staff engagement - lots of task notes');
+    } else if (notesEntries.isEmpty && shiftCompletions.isNotEmpty) {
+      insights.add('Low staff engagement - encourage more task notes');
+    }
+
+    // Compliance insights
+    if (photoBypassed.isNotEmpty) {
+      final photoRate =
+          (photoBypassed.length /
+              (shiftCompletions.fold<int>(0, (sum, s) => sum + (s['completedTasks'] as int? ?? 0)) + 1)) *
+          100;
+      if (photoRate > 10) {
+        insights.add('High photo bypass rate - review photo requirements');
+      }
+    }
+
+    // Task completion pattern insights
+    if (missedTaskEntries.isNotEmpty) {
+      final reasons = <String>{};
+      for (final missed in missedTaskEntries) {
+        final reason = missed['reason'] as String? ?? '';
+        if (reason.toLowerCase().contains('supply') || reason.toLowerCase().contains('inventory')) {
+          reasons.add('supply_issue');
+        } else if (reason.toLowerCase().contains('equipment') || reason.toLowerCase().contains('machine')) {
+          reasons.add('equipment_issue');
+        } else if (reason.toLowerCase().contains('staff') || reason.toLowerCase().contains('person')) {
+          reasons.add('staffing_issue');
+        }
+      }
+
+      if (reasons.contains('supply_issue')) {
+        insights.add('Multiple supply-related issues detected');
+      }
+      if (reasons.contains('equipment_issue')) {
+        insights.add('Equipment problems affecting task completion');
+      }
+      if (reasons.contains('staffing_issue')) {
+        insights.add('Staffing challenges impacting operations');
+      }
+    }
+
+    return insights.take(3).toList(); // Limit to most important insights
   }
 
   /// Send notification to all admin users
@@ -794,5 +969,11 @@ class DailySummaryService {
   /// Format date as YYYY-MM-DD
   String _formatDate(DateTime date) {
     return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
+
+  /// Debug method to expose data collection for testing
+  /// This helps diagnose why daily summaries might have limited content
+  Future<Map<String, dynamic>> debugCollectDailySummaryData(String organizationId, DateTime date) async {
+    return await _collectDailySummaryData(organizationId, date);
   }
 }

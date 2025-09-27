@@ -492,12 +492,6 @@ class UserDashboardPage extends HookConsumerWidget {
 
           // Simplified: use current location for missed tasks
           String? effectiveLocationId = missedTasksLocationId.value ?? getCurrentLocationId();
-
-          // If missed tasks location hasn't been set yet, use current location
-          if (effectiveLocationId == null) {
-            effectiveLocationId = getCurrentLocationId();
-            missedTasksLocationId.value = effectiveLocationId;
-          }
           logger.i(
             '[Dashboard] Loading missed tasks for location: $effectiveLocationId (stable: ${missedTasksLocationId.value})',
           );

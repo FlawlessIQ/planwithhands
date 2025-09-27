@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.backfillSubscriptionQuantityForOrg = exports.validateCoupon = exports.getSubscriptionData = exports.createBillingPortalSessionElements = exports.cancelSubscriptionElements = exports.updateSubscriptionQuantity = exports.getStripePublishableKeyHttp = exports.getStripePublishableKey = exports.getCheckoutSessionStatus = exports.createEmbeddedCheckoutSession = exports.createSetupIntentForCustomer = exports.createSubscriptionElements = exports.ensureStripeCustomer = exports.triggerDailySummary = exports.scheduledDailySummary = exports.scheduledDailyGenerator = exports.onNotificationOutboxCreated = exports.proxyDownload = exports.proxyUpload = exports.getSignedUploadUrl = exports.sendHelpRequest = exports.placeDetailsHttp = exports.placesAutocompleteHttp = exports.createBillingPortalSession = exports.updateSubscription = exports.cancelSubscription = exports.stripeWebhook = exports.createCheckoutSession = exports.sendOrganizationSignupNotification = exports.deleteUser = exports.createUser = exports.repairTaskTitlesFromCsv = exports.repairTemplateTaskTitles = exports.migrateChecklistTemplates = exports.syncTodayOnShiftChange = exports.syncTodayOnTemplateChange = void 0;
+exports.backfillSubscriptionQuantityForOrg = exports.validateCoupon = exports.getSubscriptionData = exports.createBillingPortalSessionElements = exports.cancelSubscriptionElements = exports.updateSubscriptionQuantity = exports.getStripePublishableKeyHttp = exports.getStripePublishableKey = exports.getCheckoutSessionStatus = exports.createEmbeddedCheckoutSession = exports.createSetupIntentForCustomer = exports.createSubscriptionElements = exports.ensureStripeCustomer = exports.triggerDailySummary = exports.scheduledDailySummary = exports.scheduledDailyGenerator = exports.onNotificationOutboxCreated = exports.proxyDownload = exports.proxyUpload = exports.getSignedUploadUrl = exports.sendHelpRequest = exports.placeDetailsHttp = exports.placesAutocompleteHttp = exports.createBillingPortalSession = exports.updateSubscription = exports.cancelSubscription = exports.stripeWebhook = exports.createCheckoutSession = exports.sendOrganizationSignupNotification = exports.deleteUser = exports.createUser = exports.repairTaskTitlesFromCsv = exports.repairTemplateTaskTitles = exports.migrateChecklistTemplates = exports.syncTodayOnShiftChange = exports.cleanupDeletedTemplate = exports.syncTemplateNameChange = exports.syncTodayOnTemplateChange = void 0;
 /* eslint-disable @typescript-eslint/no-require-imports */
 const admin = __importStar(require("firebase-admin"));
 // Ensure admin is initialized (idempotent)
@@ -51,6 +51,12 @@ console.log(`[functions] Booting with FIRESTORE_DATABASE_ID=${boundDb}`);
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const syncModule = require("./syncTodayOnTemplateChange");
 exports.syncTodayOnTemplateChange = syncModule.syncTodayOnTemplateChange;
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const syncTemplateNameModule = require("./syncTemplateNameChange");
+exports.syncTemplateNameChange = syncTemplateNameModule.syncTemplateNameChange;
+// Export cleanup function for deleted templates
+var cleanupDeletedTemplate_1 = require("./cleanupDeletedTemplate");
+Object.defineProperty(exports, "cleanupDeletedTemplate", { enumerable: true, get: function () { return cleanupDeletedTemplate_1.cleanupDeletedTemplate; } });
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const syncShiftModule = require("./syncTodayOnShiftChange");
 exports.syncTodayOnShiftChange = syncShiftModule.syncTodayOnShiftChange;

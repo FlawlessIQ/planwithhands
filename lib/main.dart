@@ -15,6 +15,7 @@ import 'dart:async';
 
 import 'package:hands_app/services/firebase_initializer_v6.dart';
 import 'package:hands_app/services/push_notification_service.dart';
+import 'package:hands_app/services/session_manager.dart';
 import 'config/release_config.dart';
 
 // Add Stripe import
@@ -133,6 +134,14 @@ void main() async {
           // Continue without background service
         }
 
+        // Initialize session management for token refresh and validation
+        try {
+          await SessionManager().initialize();
+        } catch (e) {
+          print('Session manager init failed (non-critical): $e');
+          // Continue without session management
+        }
+
         // Set up app lifecycle observer for proper cleanup
         final lifecycleObserver = _AppLifecycleObserver();
         WidgetsBinding.instance.addObserver(lifecycleObserver);
@@ -241,6 +250,10 @@ class _AppLifecycleObserver extends WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.detached) {
       DailyBackgroundService.dispose();
+      SessionManager().dispose();
+    } else if (state == AppLifecycleState.resumed) {
+      // Validate session when app resumes from background
+      SessionManager().handleAppResume();
     }
   }
 }
