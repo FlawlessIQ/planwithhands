@@ -2,8 +2,13 @@ import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import {dateStringUTC, deterministicTaskId} from "./idHelpers";
 import {FirestoreTTLHelper} from "./firestoreTTLHelper";
+import {Firestore} from "@google-cloud/firestore";
 
 const MAX_BATCH_WRITES = Number(process.env.MAX_BATCH_WRITES || 400);
+
+// Ensure we use the correct Firestore database
+const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || "planwithhands";
+const db = new Firestore({ databaseId: FIRESTORE_DATABASE_ID });
 
 export const syncTodayOnTemplateChange = functions
     .region(process.env.FUNCTION_REGION || "us-central1")
@@ -55,8 +60,6 @@ export const syncTodayOnTemplateChange = functions
           dateString,
           "(org", orgId + ")",
       );
-
-      const db = admin.firestore();
 
       const checklistQuery = db
           .collectionGroup("daily_checklists")

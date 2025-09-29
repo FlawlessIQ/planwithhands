@@ -1,8 +1,13 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
+import {Firestore} from "@google-cloud/firestore";
 
 const REGION = process.env.FUNCTION_REGION || "us-central1";
 const MAX_BATCH_WRITES = Number(process.env.MAX_BATCH_WRITES || 400);
+
+// Ensure we use the correct Firestore database
+const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || "planwithhands";
+const db = new Firestore({ databaseId: FIRESTORE_DATABASE_ID });
 
 export const cleanupDeletedTemplate = functions
     .region(REGION)
@@ -14,8 +19,6 @@ export const cleanupDeletedTemplate = functions
       const templateName = templateData?.name || templateId;
 
       console.log("[cleanupDeletedTemplate] Template deleted:", templateName, "ID:", templateId);
-
-      const db = admin.firestore();
       
       try {
         // Get all locations for this organization

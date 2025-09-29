@@ -46,24 +46,28 @@ if (!admin.apps.length) {
     admin.initializeApp();
 }
 /**
- * Scheduled function that runs daily to generate and send daily summaries to administrators
- * Runs at 21:00 UTC daily (9 PM UTC)
+ * Scheduled function that runs hourly to check if any organizations need daily summaries
+ * Supports flexible user-defined times instead of hardcoded scheduling
+ * Runs every hour at minute 0 (e.g., 1:00, 2:00, 3:00, etc.)
  */
 exports.scheduledDailySummary = functions.pubsub
-    .schedule("0 21 * * *") // Daily at 9 PM UTC
+    .schedule("0 * * * *") // Every hour at minute 0
     .timeZone("UTC")
     .onRun(async () => {
-    functions.logger.info("Starting scheduled daily summary generation");
+    const currentUTCHour = new Date().getUTCHours();
+    functions.logger.info(`Starting hourly daily summary check at ${currentUTCHour}:00 UTC`);
     let summariesSent = 0;
     let errors = 0;
+    let organizationsChecked = 0;
     try {
         // Get all active organizations
         const orgsSnapshot = await db.collection("organizations").get();
         for (const orgDoc of orgsSnapshot.docs) {
             const orgId = orgDoc.id;
             const orgData = orgDoc.data();
+            organizationsChecked++;
             try {
-                functions.logger.info(`Processing daily summary for organization: ${orgId}`);
+                functions.logger.info(`Checking daily summary schedule for organization: ${orgId}`);
                 // Check if summary already sent today
                 const today = new Date();
                 const dateStr = formatDate(today);
@@ -72,19 +76,13 @@ exports.scheduledDailySummary = functions.pubsub
                     functions.logger.info(`Daily summary already sent for ${orgId} on ${dateStr}`);
                     continue;
                 }
-                // Determine local time zones from organization locations
-                const timezones = await getOrganizationTimezones(orgId);
-                // Check if it's appropriate time to send summary in any timezone
-                const shouldSend = timezones.some(tz => {
-                    const localTime = luxon_1.DateTime.now().setZone(tz);
-                    const hour = localTime.hour;
-                    // Send between 8 PM and 11 PM local time
-                    return hour >= 20 && hour <= 23;
-                });
+                // Check if this organization needs a summary sent at the current UTC hour
+                const shouldSend = await shouldSendDailySummaryNow(orgId, orgData, currentUTCHour);
                 if (!shouldSend) {
-                    functions.logger.info(`Not appropriate time for daily summary in org ${orgId}`);
+                    functions.logger.debug(`Not time for daily summary in org ${orgId} (current UTC hour: ${currentUTCHour})`);
                     continue;
                 }
+                functions.logger.info(`Sending daily summary for org ${orgId} at ${currentUTCHour}:00 UTC`);
                 // Generate and send daily summary
                 await generateAndSendDailySummary(orgId, today, orgData);
                 // Mark as sent
@@ -97,10 +95,10 @@ exports.scheduledDailySummary = functions.pubsub
                 functions.logger.error(`Error processing daily summary for org ${orgId}:`, error);
             }
         }
-        functions.logger.info(`Daily summary job completed: ${summariesSent} sent, ${errors} errors`);
+        functions.logger.info(`Hourly daily summary check completed: ${organizationsChecked} orgs checked, ${summariesSent} summaries sent, ${errors} errors`);
     }
     catch (error) {
-        functions.logger.error("Error in scheduled daily summary:", error);
+        functions.logger.error("Error in hourly daily summary check:", error);
     }
     return null;
 });
@@ -141,7 +139,7 @@ async function generateAndSendDailySummary(orgId, date, orgData) {
     const dateStr = formatDate(date);
     functions.logger.info(`Generating daily summary for org ${orgId}, date: ${dateStr}`);
     // Collect summary data
-    const summaryData = await collectDailySummaryData(orgId, date);
+    const summaryData = await collectDailySummaryData(orgId, date, orgData);
     // Check if there's meaningful content
     const hasContent = summaryData.totalTasks > 0 ||
         summaryData.notesEntries.length > 0 ||
@@ -157,24 +155,48 @@ async function generateAndSendDailySummary(orgId, date, orgData) {
         functions.logger.warn(`No admin users found for organization ${orgId}`);
         return;
     }
-    // Generate notification content
+    // Generate notification content for in-app notifications
     const title = `Daily Summary - ${formatDateReadable(date)}`;
     const message = buildNotificationContent(summaryData, date);
-    // Send notification using the new outbox system
+    // Send in-app notification using the outbox system
     await sendNotificationToAdmins(orgId, title, message, adminUsers);
-    functions.logger.info(`Daily summary sent to ${adminUsers.length} admin(s) for org ${orgId}`);
+    // Send SendGrid email to admin users
+    await sendDailySummaryEmails(orgId, orgData, summaryData, date, adminUsers);
+    functions.logger.info(`Daily summary sent to ${adminUsers.length} admin(s) for org ${orgId} (both in-app and email)`);
 }
 /**
  * Collect comprehensive daily summary data
+ * Supports both calendar-day (6am-6am) and business-day (close-to-close) periods
  */
-async function collectDailySummaryData(orgId, date) {
-    const dateStr = formatDate(date);
+async function collectDailySummaryData(orgId, date, orgData) {
     const notesEntries = [];
     const missedTaskEntries = [];
     const photoBypassed = [];
     let totalTasks = 0;
     let completedTasks = 0;
     try {
+        // Get summary period setting (default to calendar-day for backward compatibility)
+        const dailySummarySettings = orgData?.dailySummarySettings || {};
+        const summaryPeriod = dailySummarySettings.summaryPeriod || 'calendar-day';
+        functions.logger.info(`Collecting daily summary data for org ${orgId}, period: ${summaryPeriod}`);
+        // Determine the date range based on summary period
+        let dateQueries = [];
+        if (summaryPeriod === 'business-day') {
+            // Business day: include tasks from yesterday evening through today evening
+            // This covers shifts that run late (e.g., bar closing at 2 AM)
+            const yesterday = new Date(date);
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yesterdayStr = formatDate(yesterday);
+            const todayStr = formatDate(date);
+            dateQueries = [yesterdayStr, todayStr];
+            functions.logger.info(`Business day mode: querying dates ${yesterdayStr} and ${todayStr}`);
+        }
+        else {
+            // Calendar day: standard 6am-6am approach (single date)
+            const dateStr = formatDate(date);
+            dateQueries = [dateStr];
+            functions.logger.info(`Calendar day mode: querying date ${dateStr}`);
+        }
         // Get all locations for the organization
         const locationsSnapshot = await db
             .collection("organizations")
@@ -190,69 +212,78 @@ async function collectDailySummaryData(orgId, date) {
             const locationId = locationDoc.id;
             const locationData = locationDoc.data();
             const locationName = locationData.locationName || "Unknown Location";
-            // Query daily checklists for this location on the target date
-            const checklistsSnapshot = await db
-                .collection("organizations")
-                .doc(orgId)
-                .collection("locations")
-                .doc(locationId)
-                .collection("daily_checklists")
-                .where("date", "==", dateStr)
-                .get();
-            for (const checklistDoc of checklistsSnapshot.docs) {
-                const checklistData = checklistDoc.data();
-                const shiftId = checklistData.shiftId || "unknown";
-                const shiftName = shiftNames[shiftId] || "Unknown Shift";
-                const templateName = checklistData.templateName || "Unknown Checklist";
-                // Process tasks from subcollection
-                const tasksSnapshot = await checklistDoc.ref.collection("tasks").get();
-                for (const taskDoc of tasksSnapshot.docs) {
-                    const taskData = taskDoc.data();
-                    await processTaskForSummary({
-                        taskData,
-                        shiftName,
-                        templateName,
-                        locationName,
-                        userNames,
-                        notesEntries,
-                        missedTaskEntries,
-                        photoBypassed
-                    });
-                    totalTasks++;
-                    const isCompleted = taskData.completed || taskData.isCompleted || false;
-                    if (isCompleted) {
-                        completedTasks++;
+            // Query daily checklists for this location across all relevant dates
+            for (const queryDate of dateQueries) {
+                const checklistsSnapshot = await db
+                    .collection("organizations")
+                    .doc(orgId)
+                    .collection("locations")
+                    .doc(locationId)
+                    .collection("daily_checklists")
+                    .where("date", "==", queryDate)
+                    .get();
+                for (const checklistDoc of checklistsSnapshot.docs) {
+                    const checklistData = checklistDoc.data();
+                    const shiftId = checklistData.shiftId || "unknown";
+                    const shiftName = shiftNames[shiftId] || "Unknown Shift";
+                    const templateName = checklistData.templateName || "Unknown Checklist";
+                    // For business-day mode, filter tasks by time if needed
+                    const shouldIncludeChecklist = shouldIncludeChecklistInSummary(checklistData, summaryPeriod, date, queryDate);
+                    if (!shouldIncludeChecklist) {
+                        continue;
                     }
-                }
-                // Also process legacy tasks array
-                const tasks = checklistData.tasks || [];
-                for (const taskData of tasks) {
-                    await processTaskForSummary({
-                        taskData,
-                        shiftName,
-                        templateName,
-                        locationName,
-                        userNames,
-                        notesEntries,
-                        missedTaskEntries,
-                        photoBypassed
-                    });
-                    totalTasks++;
-                    const isCompleted = taskData.completed || taskData.isCompleted || false;
-                    if (isCompleted) {
-                        completedTasks++;
+                    // Process tasks from subcollection
+                    const tasksSnapshot = await checklistDoc.ref.collection("tasks").get();
+                    for (const taskDoc of tasksSnapshot.docs) {
+                        const taskData = taskDoc.data();
+                        await processTaskForSummary({
+                            taskData,
+                            shiftName,
+                            templateName,
+                            locationName,
+                            userNames,
+                            notesEntries,
+                            missedTaskEntries,
+                            photoBypassed
+                        });
+                        totalTasks++;
+                        const isCompleted = taskData.completed || taskData.isCompleted || false;
+                        if (isCompleted) {
+                            completedTasks++;
+                        }
+                    }
+                    // Also process legacy tasks array
+                    const tasks = checklistData.tasks || [];
+                    for (const taskData of tasks) {
+                        await processTaskForSummary({
+                            taskData,
+                            shiftName,
+                            templateName,
+                            locationName,
+                            userNames,
+                            notesEntries,
+                            missedTaskEntries,
+                            photoBypassed
+                        });
+                        totalTasks++;
+                        const isCompleted = taskData.completed || taskData.isCompleted || false;
+                        if (isCompleted) {
+                            completedTasks++;
+                        }
                     }
                 }
             }
         }
         const overallPercentage = totalTasks > 0 ? (completedTasks / totalTasks * 100) : 0;
+        functions.logger.info(`Summary data collected for org ${orgId}: ${totalTasks} total tasks, ${completedTasks} completed (${Math.round(overallPercentage)}%)`);
         return {
             notesEntries,
             missedTaskEntries,
             photoBypassed,
             totalTasks,
             completedTasks,
-            overallPercentage
+            overallPercentage,
+            summaryPeriod
         };
     }
     catch (error) {
@@ -263,9 +294,23 @@ async function collectDailySummaryData(orgId, date) {
             photoBypassed: [],
             totalTasks: 0,
             completedTasks: 0,
-            overallPercentage: 0
+            overallPercentage: 0,
+            summaryPeriod: 'calendar-day'
         };
     }
+}
+/**
+ * Determine if a checklist should be included in the summary based on period and timing
+ */
+function shouldIncludeChecklistInSummary(checklistData, summaryPeriod, targetDate, queryDate) {
+    // Always include for calendar-day mode
+    if (summaryPeriod === 'calendar-day') {
+        return true;
+    }
+    // For business-day mode, we might want to filter by shift timing
+    // For now, include all checklists from both dates
+    // Future enhancement: could filter by shift start/end times
+    return true;
 }
 /**
  * Process a single task for summary data collection
@@ -386,6 +431,108 @@ async function getUserNames(orgId) {
     }
 }
 /**
+ * Check if an organization should receive their daily summary at the current UTC hour
+ * This supports flexible user-defined times instead of hardcoded scheduling
+ */
+async function shouldSendDailySummaryNow(orgId, orgData, currentUTCHour) {
+    try {
+        // Check if daily summary is enabled
+        const dailySummarySettings = orgData.dailySummarySettings;
+        if (!dailySummarySettings || !dailySummarySettings.enabled) {
+            functions.logger.debug(`Daily summary disabled for org ${orgId}`);
+            return false;
+        }
+        // Get the configured time (default to 17:00 if not set)
+        const targetHour = dailySummarySettings.hour ?? 17;
+        const targetMinute = dailySummarySettings.minute ?? 0;
+        // Get organization timezone (default to America/New_York if not set)
+        const orgTimezone = orgData.timezone || "America/New_York";
+        // Convert the organization's target time to UTC
+        const orgLocalTime = luxon_1.DateTime.now().setZone(orgTimezone).set({
+            hour: targetHour,
+            minute: targetMinute,
+            second: 0,
+            millisecond: 0
+        });
+        const targetUTCTime = orgLocalTime.toUTC();
+        const targetUTCHour = targetUTCTime.hour;
+        const targetUTCMinute = targetUTCTime.minute;
+        functions.logger.info(`Checking daily summary time for org ${orgId}: target=${targetHour}:${targetMinute.toString().padStart(2, '0')} ${orgTimezone} = ${targetUTCHour}:${targetUTCMinute.toString().padStart(2, '0')} UTC, current=${currentUTCHour}:00 UTC`);
+        // Check if we're at the right UTC hour
+        const isTargetHour = currentUTCHour === targetUTCHour;
+        // If it's the target hour, also check if we're past the target minute
+        if (isTargetHour) {
+            const currentUTCMinute = new Date().getUTCMinutes();
+            const pastTargetMinute = currentUTCMinute >= targetUTCMinute;
+            if (pastTargetMinute) {
+                functions.logger.info(`Time match for org ${orgId}: sending daily summary at ${currentUTCHour}:${currentUTCMinute.toString().padStart(2, '0')} UTC`);
+                return true;
+            }
+            else {
+                functions.logger.debug(`Waiting for target minute for org ${orgId}: current=${currentUTCMinute}, target=${targetUTCMinute}`);
+                return false;
+            }
+        }
+        // Also check if we're in the next hour but the target was late in the previous hour
+        // This handles cases where the target minute is late (e.g., 14:55) and we might miss it
+        const isPreviousHour = currentUTCHour === (targetUTCHour + 1) % 24;
+        if (isPreviousHour && targetUTCMinute >= 45) {
+            const currentUTCMinute = new Date().getUTCMinutes();
+            if (currentUTCMinute <= 15) { // Within 15 minutes of the next hour
+                functions.logger.info(`Late catch for org ${orgId}: sending daily summary at ${currentUTCHour}:${currentUTCMinute.toString().padStart(2, '0')} UTC (target was ${targetUTCHour}:${targetUTCMinute})`);
+                return true;
+            }
+        }
+        functions.logger.debug(`Time mismatch for org ${orgId}: current UTC hour ${currentUTCHour}, target UTC hour ${targetUTCHour}`);
+        return false;
+    }
+    catch (error) {
+        functions.logger.error(`Error checking daily summary time for org ${orgId}:`, error);
+        return false;
+    }
+}
+/**
+ * Legacy function - kept for manual triggers and backward compatibility
+ * Check if daily summary should be sent for an organization based on their settings
+ */
+async function shouldSendDailySummary(orgId, orgData) {
+    try {
+        // Check if daily summary is enabled
+        const dailySummarySettings = orgData.dailySummarySettings;
+        if (!dailySummarySettings || !dailySummarySettings.enabled) {
+            functions.logger.info(`Daily summary disabled for org ${orgId}`);
+            return false;
+        }
+        // Get the configured time (default to 12:15 if not set)
+        const targetHour = dailySummarySettings.hour ?? 12;
+        const targetMinute = dailySummarySettings.minute ?? 15;
+        // Get organization timezone (default to America/New_York if not set)
+        const orgTimezone = orgData.timezone || "America/New_York";
+        // Get current time in organization's timezone
+        const orgLocalTime = luxon_1.DateTime.now().setZone(orgTimezone);
+        const currentHour = orgLocalTime.hour;
+        const currentMinute = orgLocalTime.minute;
+        functions.logger.info(`Checking daily summary time for org ${orgId}: target=${targetHour}:${targetMinute.toString().padStart(2, '0')}, current=${currentHour}:${currentMinute.toString().padStart(2, '0')} (${orgTimezone})`);
+        // Check if we're within 30 minutes of the target time
+        const targetTimeMinutes = targetHour * 60 + targetMinute;
+        const currentTimeMinutes = currentHour * 60 + currentMinute;
+        const timeDifferenceMinutes = Math.abs(currentTimeMinutes - targetTimeMinutes);
+        // Allow sending within 30 minutes before or after the target time
+        const shouldSend = timeDifferenceMinutes <= 30;
+        if (shouldSend) {
+            functions.logger.info(`Time match for org ${orgId}: sending daily summary`);
+        }
+        else {
+            functions.logger.info(`Time mismatch for org ${orgId}: difference is ${timeDifferenceMinutes} minutes`);
+        }
+        return shouldSend;
+    }
+    catch (error) {
+        functions.logger.error(`Error checking daily summary time for org ${orgId}:`, error);
+        return false;
+    }
+}
+/**
  * Get organization timezones from locations
  */
 async function getOrganizationTimezones(orgId) {
@@ -410,6 +557,190 @@ async function getOrganizationTimezones(orgId) {
         functions.logger.error("Error getting organization timezones:", error);
         return ["UTC"];
     }
+}
+/**
+ * Send SendGrid emails to admin users for daily summary
+ */
+async function sendDailySummaryEmails(orgId, orgData, summaryData, date, adminUsers) {
+    try {
+        // Get organization name
+        const organizationName = orgData.organizationName || orgData.name || orgData.businessName || 'Your Organization';
+        // Check if SendGrid is configured
+        const functions = require('firebase-functions');
+        const sendgridConfig = functions.config().sendgrid;
+        const sendgridApiKey = sendgridConfig?.api_key;
+        if (!sendgridApiKey) {
+            functions.logger.warn('SendGrid API key not configured - skipping email sending');
+            return;
+        }
+        // SendGrid configuration
+        const templateId = 'd-b24a7a9c340046d3a5429f203c19470c';
+        const fromEmail = 'noreply@planwithhands.com';
+        const fromName = 'Hands App';
+        const overallPercentage = summaryData.overallPercentage || 0;
+        const completedTasks = summaryData.completedTasks || 0;
+        const totalTasks = summaryData.totalTasks || 0;
+        const summaryPeriod = summaryData.summaryPeriod || 'calendar-day';
+        // Prepare email data that matches the SendGrid template
+        const templateData = {
+            ORGANIZATION_NAME: organizationName,
+            FORMATTED_DATE: formatDateForDisplay(date),
+            PERFORMANCE_EMOJI: getPerformanceEmoji(overallPercentage),
+            PERFORMANCE_MESSAGE: getPerformanceMessage(overallPercentage, totalTasks),
+            OVERALL_PERCENTAGE: overallPercentage.toStringAsFixed(0),
+            COMPLETED_TASKS: completedTasks.toString(),
+            TOTAL_TASKS: totalTasks.toString(),
+            SUMMARY_PERIOD: summaryPeriod === 'business-day' ? ' (Business Day)' : '',
+            // Notable items
+            MISSED_TASKS_COUNT: summaryData.missedTaskEntries?.length || 0,
+            PHOTO_BYPASSED_COUNT: summaryData.photoBypassed?.length || 0,
+            NOTES_COUNT: summaryData.notesEntries?.length || 0,
+            // Generate HTML sections
+            NOTABLE_ITEMS: generateNotableItemsForEmail(summaryData),
+            ACTION_ITEMS: generateActionItemsForEmail(overallPercentage, summaryData),
+        };
+        // Send email to each admin user
+        for (const admin of adminUsers) {
+            if (!admin.email) {
+                functions.logger.warn(`Admin user ${admin.userId} has no email address`);
+                continue;
+            }
+            const subject = generateEmailSubject(organizationName, date, overallPercentage, summaryPeriod);
+            const emailPayload = {
+                personalizations: [{
+                        to: [{ email: admin.email, name: `${admin.firstName} ${admin.lastName}`.trim() }],
+                        subject: subject,
+                        dynamic_template_data: templateData,
+                    }],
+                from: { email: fromEmail, name: fromName },
+                template_id: templateId,
+                categories: ['daily_summary'],
+                custom_args: {
+                    email_type: 'daily_summary',
+                    organization: organizationName,
+                    date: formatDate(date),
+                    summary_period: summaryPeriod
+                },
+            };
+            try {
+                const https = require('https');
+                const querystring = require('querystring');
+                const postData = JSON.stringify(emailPayload);
+                const options = {
+                    hostname: 'api.sendgrid.com',
+                    port: 443,
+                    path: '/v3/mail/send',
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${sendgridApiKey}`,
+                        'Content-Type': 'application/json',
+                        'Content-Length': Buffer.byteLength(postData)
+                    }
+                };
+                await new Promise((resolve, reject) => {
+                    const req = https.request(options, (res) => {
+                        if (res.statusCode === 202) {
+                            functions.logger.info(`SendGrid email sent successfully to ${admin.email}`);
+                            resolve();
+                        }
+                        else {
+                            let data = '';
+                            res.on('data', (chunk) => data += chunk);
+                            res.on('end', () => {
+                                functions.logger.error(`SendGrid email failed for ${admin.email}: ${res.statusCode} - ${data}`);
+                                resolve(); // Don't reject, just log the error
+                            });
+                        }
+                    });
+                    req.on('error', (error) => {
+                        functions.logger.error(`Error sending email to ${admin.email}:`, error);
+                        resolve(); // Don't reject, just log the error
+                    });
+                    req.write(postData);
+                    req.end();
+                });
+            }
+            catch (emailError) {
+                functions.logger.error(`Error sending email to ${admin.email}:`, emailError);
+            }
+        }
+    }
+    catch (error) {
+        functions.logger.error('Error in sendDailySummaryEmails:', error);
+    }
+}
+/**
+ * Helper functions for email generation
+ */
+function getPerformanceEmoji(percentage) {
+    if (percentage >= 95)
+        return '🎉';
+    if (percentage >= 85)
+        return '✅';
+    if (percentage >= 70)
+        return '👍';
+    if (percentage >= 50)
+        return '⚠️';
+    return '🚨';
+}
+function getPerformanceMessage(percentage, totalTasks) {
+    if (totalTasks === 0)
+        return 'No tasks scheduled for this day.';
+    if (percentage >= 95)
+        return 'Outstanding work! Nearly perfect completion rate.';
+    if (percentage >= 85)
+        return 'Great job! Strong performance across all areas.';
+    if (percentage >= 70)
+        return 'Good progress! A few items need attention.';
+    if (percentage >= 50)
+        return 'Mixed results. Several areas need follow-up.';
+    return 'Action needed! Many tasks require immediate attention.';
+}
+function generateEmailSubject(organizationName, date, percentage, summaryPeriod) {
+    const formattedDate = formatDateForSubject(date);
+    const emoji = getPerformanceEmoji(percentage);
+    const periodText = summaryPeriod === 'business-day' ? ' (Business Day)' : '';
+    return `${emoji} Daily Summary${periodText}: ${organizationName} - ${formattedDate} (${percentage.toFixed(0)}% Complete)`;
+}
+function generateNotableItemsForEmail(summaryData) {
+    const items = [];
+    if (summaryData.missedTaskEntries?.length > 0) {
+        items.push(`❌ ${summaryData.missedTaskEntries.length} tasks not completed`);
+    }
+    if (summaryData.photoBypassed?.length > 0) {
+        items.push(`📷 ${summaryData.photoBypassed.length} photo requirements missed`);
+    }
+    if (summaryData.notesEntries?.length > 0) {
+        items.push(`📝 ${summaryData.notesEntries.length} staff notes recorded`);
+    }
+    return items.length > 0 ? items.join('<br>') : 'All tasks completed successfully';
+}
+function generateActionItemsForEmail(percentage, summaryData) {
+    const actions = [];
+    if (percentage >= 95) {
+        actions.push('Keep up the excellent work!');
+    }
+    else if (percentage >= 85) {
+        actions.push('Review and address any missed tasks');
+    }
+    else if (percentage < 70) {
+        actions.push('Schedule team check-in for missed tasks');
+        actions.push('Review task completion procedures');
+    }
+    if (summaryData.photoBypassed?.length > 0) {
+        actions.push('Follow up on missing photo requirements');
+    }
+    actions.push('Check dashboard for complete task details');
+    return actions.join('<br>');
+}
+function formatDateForDisplay(date) {
+    const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${weekdays[date.getDay()]}, ${months[date.getMonth()]} ${date.getDate()}`;
+}
+function formatDateForSubject(date) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${months[date.getMonth()]} ${date.getDate()}`;
 }
 /**
  * Send notification to admins using the new outbox system
@@ -468,8 +799,10 @@ async function sendNotificationToAdmins(orgId, title, message, adminUsers) {
  * Build notification content from summary data
  */
 function buildNotificationContent(summaryData, date) {
-    const { notesEntries, missedTaskEntries, photoBypassed, totalTasks, completedTasks, overallPercentage } = summaryData;
-    let content = `📊 Daily Summary\n\n`;
+    const { notesEntries, missedTaskEntries, photoBypassed, totalTasks, completedTasks, overallPercentage, summaryPeriod } = summaryData;
+    // Add period indicator to title
+    const periodText = summaryPeriod === 'business-day' ? ' (Business Day)' : '';
+    let content = `📊 Daily Summary${periodText}\n\n`;
     content += `Overall Progress: ${Math.round(overallPercentage)}% (${completedTasks}/${totalTasks} tasks completed)\n\n`;
     // Performance message
     if (overallPercentage >= 95) {

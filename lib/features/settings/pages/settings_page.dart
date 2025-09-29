@@ -9,6 +9,7 @@ import 'package:hands_app/services/auth_service.dart';
 import 'package:hands_app/services/stripe_service.dart';
 import 'package:hands_app/services/pricing_service.dart';
 import 'package:hands_app/services/dashboard_data_service.dart';
+import 'package:hands_app/services/session_manager.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
@@ -57,6 +58,8 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
   // User preferences
   bool _dailySummaryEnabled = true;
   TimeOfDay _dailySummaryTime = const TimeOfDay(hour: 20, minute: 0); // Default to 8:00 PM
+  String _summaryPeriod = 'calendar-day'; // 'calendar-day' or 'business-day'
+  String _sessionTimeout = '8_hours'; // '4_hours', '8_hours', '24_hours'
   bool _isLoadingPreferences = false;
 
   @override
@@ -113,6 +116,9 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
               // Load subscription data
               await _loadSubscriptionData();
 
+              // Load organization's daily summary settings for admin users
+              await _loadOrganizationDailySummarySettings();
+
               // debug: organization data loaded
             }
           }
@@ -153,7 +159,16 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
             final timeData = data['dailySummaryTime'] as Map<String, dynamic>;
             _dailySummaryTime = TimeOfDay(hour: timeData['hour'] ?? 20, minute: timeData['minute'] ?? 0);
           }
+
+          // Load summary period preference
+          _summaryPeriod = data['summaryPeriod'] as String? ?? 'calendar-day';
+          // Load session timeout preference
+          _sessionTimeout = data['sessionTimeout'] as String? ?? _sessionTimeout;
         });
+        // Apply session timeout to SessionManager so it uses the user's saved preference
+        try {
+          SessionManager().setSessionTimeout(_sessionTimeout);
+        } catch (_) {}
       }
     } catch (e) {
       debugPrint('Error loading user preferences: $e');
@@ -176,6 +191,8 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
           .set({
             'dailySummaryEnabled': _dailySummaryEnabled,
             'dailySummaryTime': {'hour': _dailySummaryTime.hour, 'minute': _dailySummaryTime.minute},
+            'summaryPeriod': _summaryPeriod,
+            'sessionTimeout': _sessionTimeout,
             'updatedAt': FieldValue.serverTimestamp(),
           }, SetOptions(merge: true));
 
@@ -191,6 +208,176 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
         ).showSnackBar(SnackBar(content: Text('Failed to save preferences: $e'), backgroundColor: Colors.red));
       }
     }
+  }
+
+  /// Load organization daily summary settings from Firestore
+  Future<void> _loadOrganizationDailySummarySettings() async {
+    if (_organizationId.isEmpty) return;
+
+    try {
+      final orgDoc = await FirestoreEnforcer.instance.collection('organizations').doc(_organizationId).get();
+
+      if (orgDoc.exists) {
+        final orgData = orgDoc.data()!;
+        final dailySummarySettings = orgData['dailySummarySettings'] as Map<String, dynamic>?;
+
+        if (dailySummarySettings != null) {
+          setState(() {
+            _dailySummaryEnabled = dailySummarySettings['enabled'] ?? true;
+
+            final hour = dailySummarySettings['hour'] as int? ?? 20;
+            final minute = dailySummarySettings['minute'] as int? ?? 0;
+            _dailySummaryTime = TimeOfDay(hour: hour, minute: minute);
+
+            // Load the summary period preference (defaults to calendar-day for backward compatibility)
+            _summaryPeriod = dailySummarySettings['summaryPeriod'] as String? ?? 'calendar-day';
+          });
+
+          debugPrint(
+            '[SettingsPage] Loaded organization daily summary settings: ${_dailySummaryTime.format(context)}, enabled: $_dailySummaryEnabled',
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading organization daily summary settings: $e');
+    }
+  }
+
+  /// Save organization daily summary settings to Firestore
+  Future<void> _saveOrganizationDailySummarySettings() async {
+    if (_organizationId.isEmpty) return;
+
+    try {
+      await FirestoreEnforcer.instance.collection('organizations').doc(_organizationId).update({
+        'dailySummarySettings': {
+          'hour': _dailySummaryTime.hour,
+          'minute': _dailySummaryTime.minute,
+          'enabled': _dailySummaryEnabled,
+          'summaryPeriod': _summaryPeriod,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Daily summary time updated for organization!'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save organization settings: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  /// Show Cupertino picker for summary period selection
+  Future<void> _selectSummaryPeriod() async {
+    await showCupertinoModalPopup<void>(
+      context: context,
+      builder: (BuildContext context) {
+        String tempSelection = _summaryPeriod;
+
+        return Container(
+          height: 280,
+          padding: const EdgeInsets.only(top: 6.0),
+          margin: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          color: CupertinoColors.systemBackground.resolveFrom(context),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              children: [
+                // Header with cancel and done buttons
+                Container(
+                  decoration: const BoxDecoration(
+                    border: Border(bottom: BorderSide(color: CupertinoColors.inactiveGray, width: 0.0)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      CupertinoButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+                      Text(
+                        'Select summary period',
+                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: HandsColors.white),
+                      ),
+                      CupertinoButton(
+                        onPressed: () async {
+                          if (tempSelection != _summaryPeriod) {
+                            setState(() {
+                              _summaryPeriod = tempSelection;
+                            });
+
+                            // Save to both user preferences and organization settings
+                            await _saveUserPreferences();
+
+                            // If user is admin, also update organization settings
+                            if (_isAdmin && _organizationId.isNotEmpty) {
+                              await _saveOrganizationDailySummarySettings();
+                            }
+                          }
+
+                          if (context.mounted) {
+                            Navigator.of(context).pop();
+                          }
+                        },
+                        child: const Text('OK'),
+                      ),
+                    ],
+                  ),
+                ),
+                // Picker content
+                Expanded(
+                  child: CupertinoPicker(
+                    itemExtent: 60,
+                    scrollController: FixedExtentScrollController(
+                      initialItem: _summaryPeriod == 'calendar-day' ? 0 : 1,
+                    ),
+                    onSelectedItemChanged: (int index) {
+                      tempSelection = index == 0 ? 'calendar-day' : 'business-day';
+                    },
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Calendar Day',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: HandsColors.white),
+                            ),
+                            Text(
+                              'Today\'s tasks only (6am to 6am)',
+                              style: TextStyle(fontSize: 12, color: HandsColors.white.withOpacity(0.7)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Business Day',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: HandsColors.white),
+                            ),
+                            Text(
+                              'Includes last night\'s closing tasks',
+                              style: TextStyle(fontSize: 12, color: HandsColors.white.withOpacity(0.7)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   /// Show Cupertino time picker for daily summary
@@ -232,7 +419,14 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                             setState(() {
                               _dailySummaryTime = newTime;
                             });
+
+                            // Save to both user preferences and organization settings
                             await _saveUserPreferences();
+
+                            // If user is admin, also update organization settings
+                            if (_isAdmin && _organizationId.isNotEmpty) {
+                              await _saveOrganizationDailySummarySettings();
+                            }
                           }
 
                           if (context.mounted) {
@@ -252,6 +446,136 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                     onDateTimeChanged: (DateTime newDateTime) {
                       tempDateTime = newDateTime;
                     },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Show session timeout selection dialog
+  Future<void> _selectSessionTimeout() async {
+    await showCupertinoModalPopup<void>(
+      context: context,
+      builder: (BuildContext context) {
+        String tempSelection = _sessionTimeout;
+
+        return Container(
+          height: 300,
+          padding: const EdgeInsets.only(top: 6.0),
+          margin: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          color: HandsColors.cardPrimary,
+          child: SafeArea(
+            top: false,
+            child: Column(
+              children: [
+                // Header with cancel and done buttons
+                Container(
+                  decoration: BoxDecoration(
+                    border: Border(bottom: BorderSide(color: HandsColors.white.withOpacity(0.2), width: 0.5)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      CupertinoButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: Text('Cancel', style: TextStyle(color: HandsColors.white.withOpacity(0.7))),
+                      ),
+                      Text(
+                        'Session Timeout',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: HandsColors.white),
+                      ),
+                      CupertinoButton(
+                        onPressed: () {
+                          if (tempSelection != _sessionTimeout) {
+                            setState(() {
+                              _sessionTimeout = tempSelection;
+                            });
+                            // Update SessionManager with new timeout and persist the choice
+                            SessionManager().setSessionTimeout(_sessionTimeout);
+                            // Persist preference to Firestore so it survives app restarts/devices
+                            _saveUserPreferences();
+                          }
+                          Navigator.of(context).pop();
+                        },
+                        child: Text('Done', style: TextStyle(color: HandsColors.accent)),
+                      ),
+                    ],
+                  ),
+                ),
+                // Picker content
+                Expanded(
+                  child: CupertinoPicker(
+                    itemExtent: 70,
+                    scrollController: FixedExtentScrollController(
+                      initialItem: _sessionTimeout == '4_hours' ? 0 : (_sessionTimeout == '8_hours' ? 1 : 2),
+                    ),
+                    onSelectedItemChanged: (int index) {
+                      switch (index) {
+                        case 0:
+                          tempSelection = '4_hours';
+                          break;
+                        case 1:
+                          tempSelection = '8_hours';
+                          break;
+                        case 2:
+                          tempSelection = '24_hours';
+                          break;
+                      }
+                    },
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              '4 Hours',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: HandsColors.white),
+                            ),
+                            Text(
+                              'High security - auto logout after 4 hours',
+                              style: TextStyle(fontSize: 12, color: HandsColors.white.withOpacity(0.7)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              '8 Hours',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: HandsColors.white),
+                            ),
+                            Text(
+                              'Recommended - good for work shifts',
+                              style: TextStyle(fontSize: 12, color: HandsColors.white.withOpacity(0.7)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              '24 Hours',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: HandsColors.white),
+                            ),
+                            Text(
+                              'Extended access - logout after 1 day',
+                              style: TextStyle(fontSize: 12, color: HandsColors.white.withOpacity(0.7)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -1141,6 +1465,11 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                     onChanged: (value) async {
                       setState(() => _dailySummaryEnabled = value);
                       await _saveUserPreferences();
+
+                      // If user is admin, also update organization settings
+                      if (_isAdmin && _organizationId.isNotEmpty) {
+                        await _saveOrganizationDailySummarySettings();
+                      }
                     },
                   ),
                 ],
@@ -1179,6 +1508,92 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                           children: [
                             Text(
                               _dailySummaryTime.format(context),
+                              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                            ),
+                            const SizedBox(width: 2),
+                            const Icon(Icons.keyboard_arrow_down, size: 14),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Summary Period Selection
+                Row(
+                  children: [
+                    Icon(Icons.date_range, color: Theme.of(context).primaryColor),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Summary Period', style: TextStyle(fontWeight: FontWeight.w600)),
+                          Text(
+                            'Choose if summary includes late-night tasks',
+                            style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                          ),
+                        ],
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: _selectSummaryPeriod,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey[400]!, width: 1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _summaryPeriod == 'calendar-day' ? 'Calendar Day' : 'Business Day',
+                              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                            ),
+                            const SizedBox(width: 2),
+                            const Icon(Icons.keyboard_arrow_down, size: 14),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Session Timeout Setting
+                Row(
+                  children: [
+                    Icon(Icons.timer, color: Colors.blue),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Session Timeout', style: TextStyle(fontWeight: FontWeight.w600)),
+                          Text(
+                            'Automatically logout after period of inactivity',
+                            style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                          ),
+                        ],
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: _selectSessionTimeout,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey[400]!, width: 1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _sessionTimeout == '4_hours'
+                                  ? '4 Hours'
+                                  : (_sessionTimeout == '8_hours' ? '8 Hours' : '24 Hours'),
                               style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
                             ),
                             const SizedBox(width: 2),

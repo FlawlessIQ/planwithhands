@@ -40,10 +40,13 @@ exports.validateCoupon = exports.backfillSubscriptionQuantityForOrg = exports.ge
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const stripe_1 = __importDefault(require("stripe"));
+const firestore_1 = require("@google-cloud/firestore");
 const stripe = new stripe_1.default(functions.config().stripe.secret, {
     apiVersion: "2025-06-30.basil",
 });
-const db = admin.firestore();
+// Ensure we use the correct Firestore database
+const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || "planwithhands";
+const db = new firestore_1.Firestore({ databaseId: FIRESTORE_DATABASE_ID });
 function addCallable(name, handler) {
     return functions
         .region("us-central1")

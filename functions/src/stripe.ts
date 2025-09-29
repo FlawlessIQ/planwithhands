@@ -1,12 +1,15 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import Stripe from "stripe";
+import {Firestore} from "@google-cloud/firestore";
 
 const stripe = new Stripe(functions.config().stripe.secret, {
   apiVersion: "2025-06-30.basil",
 });
 
-const db = admin.firestore();
+// Ensure we use the correct Firestore database
+const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || "planwithhands";
+const db = new Firestore({ databaseId: FIRESTORE_DATABASE_ID });
 
 function addCallable<T = any, R = any>(
     name: string,

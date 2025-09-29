@@ -35,10 +35,13 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.syncTemplateNameChange = void 0;
 const functions = __importStar(require("firebase-functions"));
-const admin = __importStar(require("firebase-admin"));
 const idHelpers_1 = require("./idHelpers");
+const firestore_1 = require("@google-cloud/firestore");
 const REGION = process.env.FUNCTION_REGION || "us-central1";
 const MAX_BATCH_WRITES = Number(process.env.MAX_BATCH_WRITES || 400);
+// Ensure we use the correct Firestore database
+const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || "planwithhands";
+const db = new firestore_1.Firestore({ databaseId: FIRESTORE_DATABASE_ID });
 exports.syncTemplateNameChange = functions
     .region(REGION)
     .firestore.database('planwithhands').document("organizations/{orgId}/checklist_templates/{templateId}")
@@ -59,7 +62,6 @@ exports.syncTemplateNameChange = functions
     }
     const today = (0, idHelpers_1.dateStringUTC)(new Date());
     console.log("[syncTemplateNameChange] Updating daily_checklists name ->", afterName, "for template", templateId, "date", today);
-    const db = admin.firestore();
     console.log("[syncTemplateNameChange] Environment FIRESTORE_DATABASE_ID:", process.env.FIRESTORE_DATABASE_ID);
     // Alternative approach: Update template names across organizations and locations
     // Since collection group queries with complex indexes are problematic,

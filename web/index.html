@@ -227,6 +227,83 @@
   </script>
 
   <!-- Service Worker Unregistration Script -->
+  <!-- Version check: show reload banner when a new version is deployed -->
+  <script>
+    (function() {
+      var currentVersion = null;
+      var checkIntervalMs = 1000 * 60; // 60s
+
+      function fetchVersion() {
+        fetch('/version.json', {cache: 'no-store'})
+          .then(function(resp) { if (!resp.ok) throw new Error('no version'); return resp.json(); })
+          .then(function(data) {
+            if (!currentVersion) {
+              currentVersion = data.version || data.timestamp || JSON.stringify(data);
+              return;
+            }
+            var newVersion = data.version || data.timestamp || JSON.stringify(data);
+            if (newVersion !== currentVersion) {
+              showReloadBanner();
+            }
+          })
+          .catch(function() {
+            // Ignore fetch errors; will retry on next interval
+          });
+      }
+
+      function showReloadBanner() {
+        if (document.getElementById('hands-reload-banner')) return;
+        var div = document.createElement('div');
+        div.id = 'hands-reload-banner';
+        div.style.position = 'fixed';
+        div.style.left = '0';
+        div.style.right = '0';
+        div.style.bottom = '0';
+        div.style.background = '#323232';
+        div.style.color = 'white';
+        div.style.padding = '12px 16px';
+        div.style.display = 'flex';
+        div.style.justifyContent = 'space-between';
+        div.style.alignItems = 'center';
+        div.style.zIndex = '999999';
+        div.style.boxShadow = '0 -2px 10px rgba(0,0,0,0.2)';
+
+        var text = document.createElement('div');
+        text.innerText = 'A new version of the app is available.';
+        div.appendChild(text);
+
+        var btns = document.createElement('div');
+        var reloadBtn = document.createElement('button');
+        reloadBtn.innerText = 'Reload';
+        reloadBtn.style.marginRight = '8px';
+        reloadBtn.style.background = '#ff7043';
+        reloadBtn.style.border = 'none';
+        reloadBtn.style.color = 'white';
+        reloadBtn.style.padding = '8px 12px';
+        reloadBtn.style.borderRadius = '6px';
+        reloadBtn.onclick = function() { window.location.reload(true); };
+
+        var dismissBtn = document.createElement('button');
+        dismissBtn.innerText = 'Dismiss';
+        dismissBtn.style.background = 'transparent';
+        dismissBtn.style.border = '1px solid rgba(255,255,255,0.2)';
+        dismissBtn.style.color = 'white';
+        dismissBtn.style.padding = '8px 12px';
+        dismissBtn.style.borderRadius = '6px';
+        dismissBtn.onclick = function() { document.body.removeChild(div); };
+
+        btns.appendChild(reloadBtn);
+        btns.appendChild(dismissBtn);
+        div.appendChild(btns);
+
+        document.body.appendChild(div);
+      }
+
+      // Initial fetch and periodic polling
+      fetchVersion();
+      setInterval(fetchVersion, checkIntervalMs);
+    })();
+  </script>
   <script>
     // Do NOT register any service worker
     if ('serviceWorker' in navigator) {

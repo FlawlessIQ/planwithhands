@@ -38,7 +38,11 @@ const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const idHelpers_1 = require("./idHelpers");
 const firestoreTTLHelper_1 = require("./firestoreTTLHelper");
+const firestore_1 = require("@google-cloud/firestore");
 const MAX_BATCH_WRITES = Number(process.env.MAX_BATCH_WRITES || 400);
+// Ensure we use the correct Firestore database
+const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || "planwithhands";
+const db = new firestore_1.Firestore({ databaseId: FIRESTORE_DATABASE_ID });
 exports.syncTodayOnTemplateChange = functions
     .region(process.env.FUNCTION_REGION || "us-central1")
     .firestore.document("organizations/{orgId}/checklist_templates/{templateId}")
@@ -70,7 +74,6 @@ exports.syncTodayOnTemplateChange = functions
     }
     const dateString = (0, idHelpers_1.dateStringUTC)(new Date());
     console.log("[syncTodayOnTemplateChange] template", templateId, "changed; syncing tasks for date", dateString, "(org", orgId + ")");
-    const db = admin.firestore();
     const checklistQuery = db
         .collectionGroup("daily_checklists")
         .where("organizationId", "==", orgId)

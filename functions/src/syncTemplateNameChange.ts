@@ -1,9 +1,14 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import {dateStringUTC} from "./idHelpers";
+import {Firestore} from "@google-cloud/firestore";
 
 const REGION = process.env.FUNCTION_REGION || "us-central1";
 const MAX_BATCH_WRITES = Number(process.env.MAX_BATCH_WRITES || 400);
+
+// Ensure we use the correct Firestore database
+const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || "planwithhands";
+const db = new Firestore({ databaseId: FIRESTORE_DATABASE_ID });
 
 export const syncTemplateNameChange = functions
     .region(REGION)
@@ -29,7 +34,6 @@ export const syncTemplateNameChange = functions
       const today = dateStringUTC(new Date());
       console.log("[syncTemplateNameChange] Updating daily_checklists name ->", afterName, "for template", templateId, "date", today);
 
-      const db = admin.firestore();
       console.log("[syncTemplateNameChange] Environment FIRESTORE_DATABASE_ID:", process.env.FIRESTORE_DATABASE_ID);
       
       // Alternative approach: Update template names across organizations and locations

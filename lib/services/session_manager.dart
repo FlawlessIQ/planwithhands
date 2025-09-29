@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/services/web_optimized_firestore_service.dart';
+import 'package:hands_app/services/session_notification_service.dart';
 
 /// Session manager that handles Firebase Auth token validation and refresh
 /// Ensures users stay authenticated with valid tokens for optimal app functionality
+/// Includes configurable session timeout with activity-based renewal
 class SessionManager {
   static final SessionManager _instance = SessionManager._internal();
   factory SessionManager() => _instance;
@@ -12,12 +15,31 @@ class SessionManager {
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   Timer? _sessionCheckTimer;
+  Timer? _sessionTimeoutTimer;
   DateTime? _lastTokenRefresh;
-  
+  DateTime? _lastActivity;
+
   // Configuration constants
   static const Duration _sessionCheckInterval = Duration(minutes: 15);
   static const Duration _tokenRefreshCooldown = Duration(minutes: 5);
-  
+
+  // Session timeout options (in hours)
+  static const Map<String, Duration> sessionTimeoutOptions = {
+    '4_hours': Duration(hours: 4),
+    '8_hours': Duration(hours: 8),
+    '24_hours': Duration(hours: 24),
+  };
+
+  // Default session timeout
+  static const Duration _defaultSessionTimeout = Duration(hours: 8);
+
+  // Callbacks for session events
+  VoidCallback? _onSessionExpired;
+  VoidCallback? _onSessionWarning;
+
+  // Session timeout preference (in-memory for now)
+  String _sessionTimeoutKey = '8_hours';
+
   bool _isInitialized = false;
   StreamSubscription<User?>? _authStateSubscription;
 
@@ -25,36 +47,147 @@ class SessionManager {
   /// Should be called once during app startup
   Future<void> initialize() async {
     if (_isInitialized) return;
-    
+
     logger.d('[SessionManager] Initializing session management');
-    
+
     // Listen to auth state changes
     _authStateSubscription = _auth.authStateChanges().listen((user) {
       if (user != null) {
         _startSessionMonitoring();
+        _recordActivity(); // Mark login as activity
       } else {
         _stopSessionMonitoring();
       }
     });
-    
+
     // If user is already signed in, start monitoring
     if (_auth.currentUser != null) {
       await _validateCurrentSession();
       _startSessionMonitoring();
+      _recordActivity(); // Mark app startup as activity
     }
-    
+
     _isInitialized = true;
     logger.d('[SessionManager] Session management initialized');
+  }
+
+  /// Record user activity to reset session timeout
+  void _recordActivity() {
+    _lastActivity = DateTime.now();
+    _resetSessionTimeout();
+    logger.d('[SessionManager] Activity recorded, session timeout reset');
+  }
+
+  /// Record user activity (public method for app-wide usage)
+  void recordActivity() {
+    if (!_isInitialized || _auth.currentUser == null) return;
+    _recordActivity();
+  }
+
+  /// Get current session timeout duration
+  Duration _getSessionTimeout() {
+    return sessionTimeoutOptions[_sessionTimeoutKey] ?? _defaultSessionTimeout;
+  }
+
+  /// Set session timeout preference
+  void setSessionTimeout(String timeoutKey) {
+    if (!sessionTimeoutOptions.containsKey(timeoutKey)) {
+      logger.w('[SessionManager] Invalid timeout key: $timeoutKey');
+      return;
+    }
+
+    _sessionTimeoutKey = timeoutKey;
+    logger.d('[SessionManager] Session timeout set to: $timeoutKey');
+
+    // Reset current timeout timer with new duration
+    if (_auth.currentUser != null) {
+      _resetSessionTimeout();
+    }
+  }
+
+  /// Reset session timeout timer
+  void _resetSessionTimeout() {
+    _sessionTimeoutTimer?.cancel();
+
+    final timeoutDuration = _getSessionTimeout();
+    _sessionTimeoutTimer = Timer(timeoutDuration, () {
+      _handleSessionTimeout();
+    });
+
+    // Set up warning timer (30 minutes before expiration)
+    final warningTime = timeoutDuration - const Duration(minutes: 30);
+    if (warningTime.isNegative == false && warningTime.inMinutes > 0) {
+      Timer(warningTime, () {
+        _handleSessionWarning();
+      });
+    }
+
+    logger.d('[SessionManager] Session timeout reset to ${timeoutDuration.inHours} hours');
+  }
+
+  /// Handle session warning (30 minutes before timeout)
+  void _handleSessionWarning() {
+    final remaining = timeUntilTimeout;
+    if (remaining != null && remaining.inMinutes > 0) {
+      logger.d('[SessionManager] Showing session warning: ${remaining.inMinutes} minutes remaining');
+
+      // Show warning notification
+      SessionNotificationService().showSessionWarning(timeRemaining: remaining);
+
+      // Call warning callback if set
+      _onSessionWarning?.call();
+    }
+  }
+
+  /// Handle session timeout expiration
+  void _handleSessionTimeout() {
+    logger.w('[SessionManager] Session timeout expired, logging out user');
+
+    // Show timeout notification
+    SessionNotificationService().showSessionTimeoutNotification();
+
+    // Call timeout callback if set
+    _onSessionExpired?.call();
+
+    // Force logout after a brief delay to allow notification to show
+    Timer(const Duration(milliseconds: 500), () {
+      _forceLogout();
+    });
+  }
+
+  /// Force logout and cleanup
+  Future<void> _forceLogout() async {
+    try {
+      await _auth.signOut();
+      _stopSessionMonitoring();
+      WebOptimizedFirestoreService.clearCache();
+      logger.d('[SessionManager] Force logout completed');
+    } catch (e) {
+      logger.e('[SessionManager] Error during force logout: $e');
+    }
+  }
+
+  /// Set callback for session expiration
+  void setSessionExpiredCallback(VoidCallback callback) {
+    _onSessionExpired = callback;
+  }
+
+  /// Set callback for session warning (e.g., 30 minutes before expiration)
+  void setSessionWarningCallback(VoidCallback callback) {
+    _onSessionWarning = callback;
   }
 
   /// Start periodic session monitoring
   void _startSessionMonitoring() {
     _stopSessionMonitoring(); // Ensure no duplicate timers
-    
+
     _sessionCheckTimer = Timer.periodic(_sessionCheckInterval, (timer) async {
       await _validateCurrentSession();
     });
-    
+
+    // Start session timeout timer
+    _resetSessionTimeout();
+
     logger.d('[SessionManager] Started session monitoring');
   }
 
@@ -62,6 +195,8 @@ class SessionManager {
   void _stopSessionMonitoring() {
     _sessionCheckTimer?.cancel();
     _sessionCheckTimer = null;
+    _sessionTimeoutTimer?.cancel();
+    _sessionTimeoutTimer = null;
     logger.d('[SessionManager] Stopped session monitoring');
   }
 
@@ -78,7 +213,7 @@ class SessionManager {
       // Check if we should refresh the token
       if (_shouldRefreshToken()) {
         logger.d('[SessionManager] Refreshing auth token');
-        
+
         // Force token refresh
         final token = await user.getIdToken(true);
         if (token != null && token.isNotEmpty) {
@@ -96,7 +231,7 @@ class SessionManager {
       }
     } catch (e) {
       logger.w('[SessionManager] Token validation/refresh failed: $e');
-      
+
       // If token refresh fails, the user might need to re-authenticate
       // However, we don't force logout immediately - let the app handle this gracefully
       if (e.toString().contains('network') || e.toString().contains('timeout')) {
@@ -104,19 +239,19 @@ class SessionManager {
         logger.d('[SessionManager] Network issue detected, keeping session valid');
         return true;
       }
-      
+
       // Token might be genuinely invalid
       logger.w('[SessionManager] Session appears invalid, may need re-authentication');
       return false;
     }
-    
+
     return false;
   }
 
   /// Check if token should be refreshed based on cooldown
   bool _shouldRefreshToken() {
     if (_lastTokenRefresh == null) return true;
-    
+
     final timeSinceRefresh = DateTime.now().difference(_lastTokenRefresh!);
     return timeSinceRefresh >= _tokenRefreshCooldown;
   }
@@ -142,11 +277,11 @@ class SessionManager {
       }
     } catch (e) {
       logger.w('[SessionManager] Manual session validation failed: $e');
-      
+
       if (e.toString().contains('network')) {
         return SessionValidationResult.networkError(e.toString());
       }
-      
+
       return SessionValidationResult.invalid(e.toString());
     }
   }
@@ -154,16 +289,22 @@ class SessionManager {
   /// Handle app resume - validate session when app comes back from background
   Future<void> handleAppResume() async {
     logger.d('[SessionManager] Handling app resume');
-    
+
+    // Record activity on app resume
+    _recordActivity();
+
     final result = await validateSession();
     if (!result.isValid) {
       logger.w('[SessionManager] Session invalid on app resume: ${result.message}');
-      
+
       // Clear any cached data that might be stale
       WebOptimizedFirestoreService.clearCache();
-      
-      // Don't force logout immediately - let the user try to use the app
-      // The auth controller and other services will handle the invalid state
+
+      // If session is truly invalid (not just network), consider logout
+      if (result.status == SessionValidationStatus.invalid) {
+        logger.w('[SessionManager] Session validation failed, may need logout');
+        // Let the UI handle this gracefully rather than forcing immediate logout
+      }
     }
   }
 
@@ -177,9 +318,32 @@ class SessionManager {
 
   /// Check if session manager is actively monitoring
   bool get isMonitoring => _sessionCheckTimer?.isActive ?? false;
-  
+
   /// Get last token refresh time (for debugging)
   DateTime? get lastTokenRefresh => _lastTokenRefresh;
+
+  /// Get last activity time
+  DateTime? get lastActivity => _lastActivity;
+
+  /// Get current session timeout setting
+  String get currentTimeoutSetting => _sessionTimeoutKey;
+
+  /// Get time remaining until session timeout (null if not authenticated)
+  Duration? get timeUntilTimeout {
+    if (_lastActivity == null || _auth.currentUser == null) return null;
+
+    final timeoutDuration = _getSessionTimeout();
+    final elapsed = DateTime.now().difference(_lastActivity!);
+    final remaining = timeoutDuration - elapsed;
+
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
+
+  /// Check if session is about to expire (within 30 minutes)
+  bool get isSessionNearExpiry {
+    final remaining = timeUntilTimeout;
+    return remaining != null && remaining.inMinutes <= 30;
+  }
 }
 
 /// Result of session validation with detailed status
@@ -207,9 +371,4 @@ class SessionValidationResult {
   }
 }
 
-enum SessionValidationStatus {
-  valid,
-  invalid,
-  notAuthenticated,
-  networkError,
-}
+enum SessionValidationStatus { valid, invalid, notAuthenticated, networkError }
