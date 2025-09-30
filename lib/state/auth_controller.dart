@@ -188,7 +188,7 @@ class AuthController extends _$AuthController {
             timer.cancel();
             return;
           }
-          
+
           String? orgId = userData.organizationId;
           OrganizationData? orgData = await getOrganizationById(orgId);
           if (orgData != null) {
@@ -298,13 +298,13 @@ class AuthController extends _$AuthController {
       return true;
     } catch (e) {
       debugPrint('[AUTH_CONTROLLER] Session validation failed: $e');
-      
+
       // If validation fails due to network issues, don't invalidate session
       if (e.toString().contains('network') || e.toString().contains('timeout')) {
         debugPrint('[AUTH_CONTROLLER] Network issue detected, keeping session');
         return true;
       }
-      
+
       // Session is genuinely invalid - clear cached data
       WebOptimizedFirestoreService.clearCache();
       return false;
@@ -318,20 +318,22 @@ class AuthController extends _$AuthController {
     if (!isValid) {
       debugPrint('[AUTH_CONTROLLER] Re-authentication required');
       // Clear user state to trigger login UI
-      ref.read(userStateProvider.notifier).setUserData(
-        UserData(
-          userId: '',
-          createdAt: DateTime.now(),
-          userRole: 0,
-          firstName: '',
-          lastName: '',
-          phoneNumber: '',
-          userEmail: '',
-          organizationId: '',
-          locationIds: [],
-          jobTypes: [],
-        ),
-      );
+      ref
+          .read(userStateProvider.notifier)
+          .setUserData(
+            UserData(
+              userId: '',
+              createdAt: DateTime.now(),
+              userRole: 0,
+              firstName: '',
+              lastName: '',
+              phoneNumber: '',
+              userEmail: '',
+              organizationId: '',
+              locationIds: [],
+              jobTypes: [],
+            ),
+          );
     }
     return !isValid;
   }

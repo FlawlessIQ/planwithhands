@@ -69,10 +69,10 @@ class DashboardDataService {
     } catch (e) {
       stopwatch.stop();
       logger.e('[DashboardData] Failed to load user session: $e');
-      
+
       // Clear cached session on error
       _currentSession = null;
-      
+
       // Re-throw with more context
       if (e.toString().contains('UNAUTHENTICATED') || e.toString().contains('permission-denied')) {
         throw Exception('Session expired - please sign in again');

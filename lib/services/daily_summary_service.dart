@@ -4,6 +4,7 @@ import 'package:hands_app/utils/firestore_ttl_helper.dart';
 import 'package:intl/intl.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/services/daily_checklist_service.dart';
+import 'package:hands_app/services/daily_summary_email_service.dart';
 
 /// Service to handle daily summary notifications for admins
 class DailySummaryService {
@@ -60,6 +61,8 @@ class DailySummaryService {
         adminUsers: adminUsers,
         title: notificationTitle,
         content: notificationContent,
+        summaryData: summaryData,
+        date: date,
       );
 
       logger.d('[DailySummaryService] Daily summary notification sent to ${adminUsers.length} admin(s)');
@@ -796,8 +799,22 @@ class DailySummaryService {
     required List<Map<String, dynamic>> adminUsers,
     required String title,
     required String content,
+    required Map<String, dynamic> summaryData,
+    required DateTime date,
   }) async {
     try {
+      // Get organization name for email
+      String organizationName = 'Organization';
+      try {
+        final orgDoc = await _firestore.collection('organizations').doc(organizationId).get();
+        if (orgDoc.exists) {
+          final orgData = orgDoc.data()!;
+          organizationName = orgData['name'] ?? orgData['organizationName'] ?? 'Organization';
+        }
+      } catch (e) {
+        logger.e('[DailySummaryService] Error getting organization name for email: $e');
+      }
+
       // Use the new outbox notification system for consistent delivery
       final outboxRef =
           _firestore.collection('organizations').doc(organizationId).collection('notificationOutbox').doc();
@@ -842,11 +859,40 @@ class DailySummaryService {
         logger.d(
           '[DailySummaryService] Queued user notification for admin: ${admin['firstName']} ${admin['lastName']}',
         );
+
+        // Send email to admin user
+        try {
+          final firstName = admin['firstName'] as String? ?? '';
+          final lastName = admin['lastName'] as String? ?? '';
+          final adminName = '$firstName $lastName'.trim();
+          final adminEmail = admin['email'] as String? ?? '';
+
+          if (adminEmail.isNotEmpty) {
+            final emailSent = await DailySummaryEmailService.sendDailySummaryEmail(
+              toEmail: adminEmail,
+              toName: adminName.isNotEmpty ? adminName : 'Admin',
+              organizationName: organizationName,
+              summaryData: summaryData,
+              date: date,
+            );
+
+            if (emailSent) {
+              logger.d('[DailySummaryService] Email sent successfully to $adminEmail');
+            } else {
+              logger.w('[DailySummaryService] Failed to send email to $adminEmail');
+            }
+          } else {
+            logger.w('[DailySummaryService] No email address for admin: $adminName');
+          }
+        } catch (emailError) {
+          logger.e('[DailySummaryService] Error sending email to admin ${admin['email']}: $emailError');
+          // Don't let email errors block the notification system
+        }
       }
 
       await batch.commit();
       logger.d(
-        '[DailySummaryService] Successfully sent notifications to ${adminUsers.length} admin(s) via outbox and direct delivery',
+        '[DailySummaryService] Successfully sent notifications and emails to ${adminUsers.length} admin(s) via outbox and direct delivery',
       );
     } catch (e, stackTrace) {
       logger.e('[DailySummaryService] Error sending notifications to admins', e, stackTrace);

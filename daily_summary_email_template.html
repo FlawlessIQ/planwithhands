@@ -1,0 +1,204 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <!-- Tell clients we support dar                <a href="https://plan-with-hands.web.app/dashboard?src=daily_summary" target="_blank" rel="noopener"
+                   class="mobile-button force-white"
+                   style="display:inline-block; background:#F05A2C !important; color:#FFFFFF !important; padding:10px 18px; border-radius:8px; font-weight:700; letter-spacing:0.4px; font-size:13px; font-family:Helvetica, Arial, sans-serif !important; text-decoration:none !important; border:none !important;" bgcolor="#F05A2C">
+                   <span class="force-white" style="color:#FFFFFF !important;">📊 View Performance Dashboard</span>
+                </a>events auto-inversion -->
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
+  <title>Daily Summary - {ORGANIZATION_NAME}</title>
+  <!-- Minimal head CSS; everything important is inline -->
+  <style>
+    /* Email client resets and guardrails */
+    * { box-sizing: border-box; }
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; border-collapse: collapse; }
+    img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
+    
+    /* Prevent auto-linking and formatting */
+    .prevent-auto-link { color: inherit !important; text-decoration: none !important; }
+    span[data-ogsc] { color: inherit !important; }
+    a[x-apple-data-detectors] { color: inherit !important; text-decoration: none !important; font-size: inherit !important; font-family: inherit !important; font-weight: inherit !important; line-height: inherit !important; }
+    
+    /* Force color inheritance to prevent client overrides */
+    .force-white { color: #FFFFFF !important; }
+    .force-orange { color: #F05A2C !important; }
+    .force-green { color: #4CAF50 !important; }
+    .force-gray { color: rgba(255,255,255,0.7) !important; }
+    .force-light-gray { color: rgba(255,255,255,0.8) !important; }
+    
+    /* Prevent dark mode inversions */
+    [data-ogsc] .force-white { color: #FFFFFF !important; }
+    [data-ogsc] .force-orange { color: #F05A2C !important; }
+    [data-ogsc] .force-green { color: #4CAF50 !important; }
+    
+    /* Gmail specific fixes */
+    u + .body .gmail-fix { display: none !important; }
+    div > u + .body .gmail-fix { display: block !important; }
+    
+    /* List resets to prevent client modifications */
+    ul { padding-left: 14px !important; margin: 8px 0 12px !important; list-style-type: disc !important; }
+    li { margin-bottom: 6px !important; color: #FFFFFF !important; }
+    
+    /* Background color protection */
+    .bg-black { background-color: #000000 !important; }
+    .bg-dark { background-color: #1A1A1A !important; }
+    .bg-darker { background-color: #141414 !important; }
+    .bg-gradient { background: linear-gradient(180deg, #0F0F0F, #1A1A1A) !important; }
+    
+    /* Mobile optimizations */
+    @media only screen and (max-width: 599px) {
+      .email-container { width: 100% !important; margin: 0 !important; border-radius: 0 !important; }
+      .mobile-padding { padding: 16px !important; }
+      .mobile-small-padding { padding: 12px !important; }
+      .mobile-header-padding { padding: 16px 12px !important; }
+      .mobile-text { font-size: 13px !important; }
+      .mobile-small-text { font-size: 12px !important; }
+      .mobile-title { font-size: 16px !important; }
+      .mobile-subtitle { font-size: 14px !important; }
+      .mobile-button { padding: 10px 16px !important; font-size: 13px !important; }
+      .mobile-logo { width: 80px !important; height: 64px !important; }
+      .mobile-hide { display: none !important; }
+    }
+    
+    /* Outlook specific fixes */
+    .outlook-fix { mso-line-height-rule: exactly; }
+  </style>
+</head>
+<body style="margin:0; padding:0; background-color:#000000; font-family:Helvetica, Arial, sans-serif; -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%;" bgcolor="#000000" class="bg-black">
+  <center role="article" aria-roledescription="email" lang="en"
+          style="width:100%; background-color:#000000; font-family:Helvetica, Arial, sans-serif;" bgcolor="#000000" class="bg-black">
+    <!--[if mso]>
+    <table role="presentation" width="600" align="center" cellpadding="0" cellspacing="0" border="0">
+      <tr><td>
+    <![endif]-->
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+           class="email-container bg-dark"
+           style="max-width:600px; margin:0 auto; background-color:#1A1A1A !important; border-radius:12px; overflow:hidden; box-shadow:0 6px 18px rgba(0,0,0,0.6); font-family:Helvetica, Arial, sans-serif !important;" bgcolor="#1A1A1A">
+      
+      <!-- Header -->
+      <tr>
+        <td align="center"
+            class="mobile-header-padding bg-gradient"
+            style="padding:18px 16px; background:linear-gradient(180deg,#0F0F0F,#1A1A1A) !important; font-family:Helvetica, Arial, sans-serif !important;" bgcolor="#0F0F0F">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td align="center" style="padding:0;">
+                <img src="https://cdn.mcauto-images-production.sendgrid.net/136c04a1809caad9/3116b67a-957a-419b-a46b-8abe59fc0856/1024x1024.png"
+                     width="100" height="80" alt="Hands App Logo"
+                     class="mobile-logo"
+                     style="display:block; width:100px; height:80px; border:0; outline:none; text-decoration:none;">
+              </td>
+            </tr>
+            <tr>
+              <td align="center"
+                  class="mobile-title force-white"
+                  style="color:#FFFFFF !important; font-family:Helvetica, Arial, sans-serif !important; font-size:18px; font-weight:700; padding-top:10px; mso-line-height-rule:exactly;">
+                <span class="force-white" style="color:#FFFFFF !important;">{PERFORMANCE_EMOJI} Daily Summary • {FORMATTED_DATE}</span>
+              </td>
+            </tr>
+            <tr>
+              <td align="center"
+                  class="mobile-small-text force-light-gray"
+                  style="color:rgba(255,255,255,0.8) !important; font-family:Helvetica, Arial, sans-serif !important; font-size:13px; padding-top:3px; mso-line-height-rule:exactly;">
+                <span class="force-light-gray" style="color:rgba(255,255,255,0.8) !important;">{ORGANIZATION_NAME}</span>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+
+      <!-- Content -->
+      <tr>
+        <td class="mobile-padding force-white" style="padding:18px; color:#FFFFFF !important; font-family:Helvetica, Arial, sans-serif !important; line-height:1.4; font-size:14px; mso-line-height-rule:exactly;" bgcolor="#1A1A1A">
+          
+          <!-- Performance Summary -->
+          <div class="mobile-subtitle force-orange" style="color:#F05A2C !important; font-size:16px; font-weight:700; margin:0 0 6px; font-family:Helvetica, Arial, sans-serif !important;"><span class="force-orange" style="color:#F05A2C !important;">{PERFORMANCE_MESSAGE}</span></div>
+          
+          <!-- Overall Stats Box -->
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                 class="bg-darker" style="background:linear-gradient(180deg,#141414,#0b0b0b) !important; border:1px solid rgba(240,90,44,0.14); border-radius:8px; margin-bottom:14px;" bgcolor="#141414">
+            <tr><td class="mobile-small-padding force-white" style="padding:14px; color:#FFFFFF !important; font-family:Helvetica, Arial, sans-serif !important;" bgcolor="#141414">
+              <div class="mobile-text force-orange" style="color:#F05A2C !important; font-weight:700; margin:0 0 8px; font-size:14px; font-family:Helvetica, Arial, sans-serif !important;"><span class="force-orange" style="color:#F05A2C !important;">📊 Performance</span></div>
+              <div class="mobile-text force-white" style="margin:4px 0; font-size:14px; font-weight:600; color:#FFFFFF !important; font-family:Helvetica, Arial, sans-serif !important;">
+                <span class="force-green" style="color:#4CAF50 !important;">{OVERALL_PERCENTAGE}%</span> <span class="force-white" style="color:#FFFFFF !important;">Complete</span> 
+                <span class="force-gray" style="color:rgba(255,255,255,0.7) !important;">({COMPLETED_TASKS}/{TOTAL_TASKS})</span>
+              </div>
+              {LOCATION_SUMMARY}
+            </td></tr>
+          </table>
+
+          {LOCATION_BREAKDOWN}
+
+          {YESTERDAY_PROGRESS}
+
+          {INSIGHTS_SECTION}
+
+          {NOTABLE_ITEMS}
+
+          <!-- Action Items -->
+          <div class="mobile-text force-orange" style="font-weight:700; color:#F05A2C !important; margin:14px 0 6px; font-size:14px; font-family:Helvetica, Arial, sans-serif !important;"><span class="force-orange" style="color:#F05A2C !important;">🎯 Actions</span></div>
+          <ul class="mobile-small-text force-white" style="padding-left:14px !important; margin:8px 0 12px !important; font-size:13px; color:#FFFFFF !important; font-family:Helvetica, Arial, sans-serif !important; list-style-type:disc !important;">
+            {ACTION_ITEMS}
+          </ul>
+
+          <!-- CTA to view web portal -->
+          <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:16px auto;">
+            <tr>
+              <td align="center">
+                <!--[if mso]>
+                <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="https://plan-with-hands.web.app/dashboard?src=daily_summary"
+                  style="height:40px;v-text-anchor:middle;width:240px;" arcsize="20%" stroke="f" fillcolor="#F05A2C">
+                  <w:anchorlock/>
+                  <center style="color:#FFFFFF;font-family:Arial;font-size:13px;font-weight:700;">
+                    � View Performance Dashboard
+                  </center>
+                </v:roundrect>
+                <![endif]-->
+                <!--[if !mso]><!-- -->
+                <a href="https://plan-with-hands.web.app/dashboard?src=daily_summary" target="_blank" rel="noopener"
+                   class="mobile-button"
+                   style="display:inline-block; background:#F05A2C; color:#FFFFFF; padding:10px 18px; border-radius:8px; font-weight:700; letter-spacing:0.4px; font-size:13px; font-family:Helvetica, Arial, sans-serif;">
+                   � View Performance Dashboard
+                </a>
+                <!--<![endif]-->
+              </td>
+            </tr>
+          </table>
+
+          <div class="mobile-small-text force-gray" style="margin-top:14px; color:rgba(255,255,255,0.70) !important; font-size:12px; text-align:center; font-family:Helvetica, Arial, sans-serif !important;">
+            <span class="force-gray" style="color:rgba(255,255,255,0.70) !important;">Summary for {FORMATTED_DATE} • {ORGANIZATION_NAME}</span>
+          </div>
+
+          <div class="mobile-small-text force-white" style="margin-top:10px; color:#FFFFFF !important; font-weight:600; text-align:center; font-size:12px; font-family:Helvetica, Arial, sans-serif !important;"><span class="force-white" style="color:#FFFFFF !important;">— Hands App Team</span></div>
+        </td>
+      </tr>
+
+      <!-- Footer -->
+      <tr>
+        <td align="center"
+            class="mobile-small-padding force-gray"
+            style="padding:12px 18px; color:rgba(255,255,255,0.70) !important; font-family:Helvetica, Arial, sans-serif !important; font-size:11px; border-top:1px solid rgba(255,255,255,0.06);" bgcolor="#1A1A1A">
+          <div class="mobile-small-text force-gray" style="font-size:11px; color:rgba(255,255,255,0.70) !important; font-family:Helvetica, Arial, sans-serif !important;"><span class="force-gray" style="color:rgba(255,255,255,0.70) !important;">Daily summary for </span><strong class="force-white" style="color:#FFFFFF !important;">{ORGANIZATION_NAME}</strong><span class="force-gray" style="color:rgba(255,255,255,0.70) !important;"> • {FORMATTED_DATE}</span></div>
+          <div class="mobile-small-text force-gray" style="margin-top:6px; font-size:10px; color:rgba(255,255,255,0.70) !important; font-family:Helvetica, Arial, sans-serif !important;">
+            <a href="https://plan-with-hands.web.app/dashboard" target="_blank" rel="noopener" class="force-gray" style="color:rgba(255,255,255,0.70) !important; text-decoration:underline;">Dashboard</a> <span class="force-gray" style="color:rgba(255,255,255,0.70) !important;">•</span>
+            <a href="https://plan-with-hands.web.app/settings" target="_blank" rel="noopener" class="force-gray" style="color:rgba(255,255,255,0.70) !important; text-decoration:underline;">Settings</a> <span class="force-gray" style="color:rgba(255,255,255,0.70) !important;">•</span>
+            <span class="mobile-hide"><a href="https://plan-with-hands.web.app/terms" target="_blank" rel="noopener" class="force-gray" style="color:rgba(255,255,255,0.70) !important; text-decoration:underline;">Terms</a> <span class="force-gray" style="color:rgba(255,255,255,0.70) !important;">•</span></span>
+            <a href="https://plan-with-hands.web.app/privacy" target="_blank" rel="noopener" class="force-gray" style="color:rgba(255,255,255,0.70) !important; text-decoration:underline;">Privacy</a>
+          </div>
+          <div class="mobile-small-text force-gray" style="margin-top:6px; font-size:10px; color:rgba(255,255,255,0.70) !important; font-family:Helvetica, Arial, sans-serif !important;">
+            <span class="force-gray" style="color:rgba(255,255,255,0.70) !important;">Manage email preferences in your dashboard settings.</span>
+          </div>
+        </td>
+      </tr>
+    </table>
+
+    <!--[if mso]></td></tr></table><![endif]-->
+  </center>
+</body>
+</html>

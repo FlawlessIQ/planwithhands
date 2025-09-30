@@ -494,23 +494,16 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
   // Roles step removed. Job type gating lives on checklist templates now.
 
   Widget _buildChecklistStep() {
-    // Since the location step is removed, fetch checklists for all available locations.
-    final locationIdsToFilter = widget.availableLocations.map((l) => l['id'] as String).toList();
-
-    // Build a Firestore query that filters checklist templates by the chosen
-    // location(s). Use array-contains for a single id and array-contains-any
-    // when multiple locations are selected.
+    // Filter checklist templates by the currently selected location only
+    // This prevents showing templates from other locations (e.g., Chickies templates when viewing Hamilton Pork)
     Query templatesQuery = FirestoreEnforcer.instance
         .collection('organizations')
         .doc(widget.organizationId)
         .collection('checklist_templates');
 
-    if (locationIdsToFilter.isNotEmpty) {
-      if (locationIdsToFilter.length == 1) {
-        templatesQuery = templatesQuery.where('locationIds', arrayContains: locationIdsToFilter.first);
-      } else {
-        templatesQuery = templatesQuery.where('locationIds', arrayContainsAny: locationIdsToFilter);
-      }
+    // Only show templates for the currently selected location
+    if (widget.selectedLocationId != null) {
+      templatesQuery = templatesQuery.where('locationIds', arrayContains: widget.selectedLocationId);
     }
 
     return FutureBuilder<QuerySnapshot>(
