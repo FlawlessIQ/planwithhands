@@ -1867,7 +1867,7 @@ Future<List<DailyChecklist>> _loadChecklistsForShiftSimple(
 
     // Safety net: Filter out any checklists whose templates do not belong to the current location.
     // This prevents cross-location mixing in the UI even if bad data is accidentally generated server-side.
-    Map<String, Set<String>>? _templateLocsCache;
+    Map<String, Set<String>>? templateLocsCache;
     try {
       if (checklists.isNotEmpty) {
         final templateIds = checklists.map((c) => c.checklistTemplateId).where((id) => id.isNotEmpty).toSet().toList();
@@ -1898,7 +1898,7 @@ Future<List<DailyChecklist>> _loadChecklistsForShiftSimple(
 
         final results = await Future.wait(futures);
         final Map<String, Set<String>> templateLocs = {for (final e in results) e.key: e.value};
-        _templateLocsCache = templateLocs;
+        templateLocsCache = templateLocs;
 
         final before = checklists.length;
         final filtered = <DailyChecklist>[];
@@ -1941,7 +1941,7 @@ Future<List<DailyChecklist>> _loadChecklistsForShiftSimple(
     // Auto-repair: if some templates assigned to the shift belong to this location but are missing daily_checklists, generate them now.
     try {
       // Build a templateLocs map if not already from the filter step
-      Map<String, Set<String>> templateLocs = _templateLocsCache ?? <String, Set<String>>{};
+      Map<String, Set<String>> templateLocs = templateLocsCache ?? <String, Set<String>>{};
       if (templateLocs.isEmpty) {
         final tids = shift.checklistTemplateIds;
         final futures =
