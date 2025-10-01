@@ -119,6 +119,15 @@ exports.syncTodayOnShiftChange = functions
             return 0;
         }
         const templateData = templateSnap.data() || {};
+        // Ownership guard: if template declares locationIds and does not include checklist's location, skip
+        try {
+            const declared = Array.isArray(templateData.locationIds) ? templateData.locationIds : [];
+            if (declared.length > 0 && !declared.includes(locationId)) {
+                console.warn(`[syncTodayOnShiftChange] skip template ${templateId} for checklist ${checklistId} at location ${locationId} (belongs to ${JSON.stringify(declared)})`);
+                return 0;
+            }
+        }
+        catch (_) { }
         const templateTasks = Array.isArray(templateData.tasks) ? templateData.tasks : [];
         let inserted = 0;
         const midnightIso = `${dateString}T00:00:00Z`;

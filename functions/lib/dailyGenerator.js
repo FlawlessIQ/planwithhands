@@ -88,6 +88,7 @@ exports.scheduledDailyGenerator = functions.pubsub
         for (const orgDoc of orgsSnap.docs) {
             const orgId = orgDoc.id;
             const orgData = orgDoc.data() || {};
+            const orgRef = db.collection("organizations").doc(orgId);
             // Page locations for this org
             const locationsRef = db.collection("organizations").doc(orgId).collection("locations");
             const locationsSnap = await locationsRef.get();
@@ -137,7 +138,9 @@ exports.scheduledDailyGenerator = functions.pubsub
                 for (const shiftDoc of shifts) {
                     const shiftId = shiftDoc.id;
                     const checklistId = checklistIdFor(orgId, locationId, shiftId, dateString);
-                    const checklistRef = db.collection("daily_checklists").doc(checklistId);
+                    const checklistRef = orgRef
+                        .collection("locations").doc(locationId)
+                        .collection("daily_checklists").doc(checklistId);
                     const checklistSnap = await checklistRef.get();
                     if (checklistSnap.exists) {
                         skipped++;
@@ -149,36 +152,62 @@ exports.scheduledDailyGenerator = functions.pubsub
                     const expiresAt = daysFromNow(30);
                     const checklistData = {
                         id: checklistId,
-                        orgId,
+                        organizationId: orgId,
                         locationId,
                         shiftId,
-                        dateString,
+                        date: dateString,
                         createdAt: nowTs,
                         createdBy: "generator",
+                        expiresAt,
                     };
                     firestoreTTLHelper_1.FirestoreTTLHelper.batchSetWithTTL(batch, checklistRef, checklistData);
-                    // Optional: create tasks from a template collection for this shift
+                    // Optional: create tasks from templates for this shift at this location
                     try {
-                        const templatesRef = db.collection("organizations").doc(orgId).collection("shift_templates").doc(shiftId).collection("tasks");
-                        const templatesSnap = await templatesRef.get();
-                        let taskCount = 0;
-                        for (const tmpl of templatesSnap.docs) {
-                            const tdata = tmpl.data() || {};
-                            const taskRef = checklistRef.collection("tasks").doc();
-                            const taskData = {
-                                title: tdata.title || tdata.name || "Task",
-                                order: tdata.order || taskCount,
-                                createdAt: nowTs,
-                                createdBy: "generator",
-                                isComplete: false,
-                                isCarryForwardEligible: tdata.isCarryForwardEligible === true,
-                            };
-                            firestoreTTLHelper_1.FirestoreTTLHelper.batchSetWithTTL(batch, taskRef, taskData);
-                            taskCount++;
+                        // Read the shift to find assigned checklistTemplateIds
+                        const shiftSnap = await orgRef.collection("shifts").doc(shiftId).get();
+                        const shiftData = shiftSnap.exists ? (shiftSnap.data() || {}) : {};
+                        const templateIds = Array.isArray(shiftData.checklistTemplateIds) ? shiftData.checklistTemplateIds : [];
+                        // For each templateId, verify it belongs to this location before seeding tasks
+                        for (const templateId of templateIds) {
+                            try {
+                                const tRef = orgRef.collection("checklist_templates").doc(templateId);
+                                const tSnap = await tRef.get();
+                                if (!tSnap.exists)
+                                    continue;
+                                const tData = tSnap.data() || {};
+                                const locIds = Array.isArray(tData.locationIds) ? tData.locationIds : [];
+                                if (locIds.length > 0 && !locIds.includes(locationId)) {
+                                    functions.logger.warn(`[dailyGenerator] Skip template ${templateId} for location ${locationId} (belongs to ${JSON.stringify(locIds)})`);
+                                    continue;
+                                }
+                                // Seed tasks from template's tasks subcollection
+                                const tmplTasksSnap = await tRef.collection("tasks").orderBy("order").get();
+                                let order = 0;
+                                for (const taskDoc of tmplTasksSnap.docs) {
+                                    const t = taskDoc.data() || {};
+                                    const taskRef = checklistRef.collection("tasks").doc(`${templateId}_${taskDoc.id}`);
+                                    const taskData = {
+                                        title: t.title || t.name || t.description || "Task",
+                                        order: typeof t.order === "number" ? t.order : order,
+                                        createdAt: nowTs,
+                                        createdBy: "generator",
+                                        isComplete: false,
+                                        isCarryForwardEligible: t.isCarryForwardEligible === true || t.photoRequired === true,
+                                        templateId,
+                                    };
+                                    firestoreTTLHelper_1.FirestoreTTLHelper.batchSetWithTTL(batch, taskRef, taskData);
+                                    order++;
+                                }
+                            }
+                            catch (err) {
+                                functions.logger.warn("template read error", err);
+                            }
                         }
                         // Carry-forward: copy incomplete tasks from yesterday
                         const yesterdayChecklistId = checklistIdFor(orgId, locationId, shiftId, yesterdayString);
-                        const yRef = db.collection("daily_checklists").doc(yesterdayChecklistId);
+                        const yRef = orgRef
+                            .collection("locations").doc(locationId)
+                            .collection("daily_checklists").doc(yesterdayChecklistId);
                         const yTasksSnap = await yRef.collection("tasks").where("isComplete", "==", false).get();
                         for (const ytask of yTasksSnap.docs) {
                             const ydata = ytask.data() || {};

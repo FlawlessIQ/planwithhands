@@ -130,6 +130,10 @@ async function generateAndSendDailySummary(orgId: string, date: Date, orgData: a
 
   // Collect summary data
   const summaryData = await collectDailySummaryData(orgId, date, orgData);
+  // Also collect yesterday's data for deltas/trends
+  const yesterday = new Date(date);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayData = await collectDailySummaryData(orgId, yesterday, orgData);
   
   // Check if there's meaningful content
   const hasContent = summaryData.totalTasks > 0 || 
@@ -158,7 +162,9 @@ async function generateAndSendDailySummary(orgId: string, date: Date, orgData: a
   await sendNotificationToAdmins(orgId, title, message, adminUsers);
 
   // Send SendGrid email to admin users
-  await sendDailySummaryEmails(orgId, orgData, summaryData, date, adminUsers);
+  // Build enhanced HTML sections (tables, top/bottom lists, deltas)
+  const enhancedSections = buildEnhancedHtmlSections(summaryData, yesterdayData);
+  await sendDailySummaryEmails(orgId, orgData, summaryData, date, adminUsers, enhancedSections);
 
   functions.logger.info(`Daily summary sent to ${adminUsers.length} admin(s) for org ${orgId} (both in-app and email)`);
 }
@@ -638,7 +644,8 @@ async function sendDailySummaryEmails(
   orgData: any, 
   summaryData: any, 
   date: Date, 
-  adminUsers: any[]
+  adminUsers: any[],
+  enhancedSections?: any
 ) {
   try {
     // Get organization name
@@ -655,7 +662,7 @@ async function sendDailySummaryEmails(
     }
 
     // SendGrid configuration
-    const templateId = 'd-b24a7a9c340046d3a5429f203c19470c';
+  const templateId = 'd-b24a7a9c340046d3a5429f203c19470e';
     const fromEmail = 'noreply@planwithhands.com';
     const fromName = 'Hands App';
 
@@ -664,97 +671,109 @@ async function sendDailySummaryEmails(
     const totalTasks = summaryData.totalTasks || 0;
     const summaryPeriod = summaryData.summaryPeriod || 'calendar-day';
 
-    // Prepare email data that matches the SendGrid template
-    const templateData = {
-      ORGANIZATION_NAME: organizationName,
-      FORMATTED_DATE: formatDateForDisplay(date),
-      PERFORMANCE_EMOJI: getPerformanceEmoji(overallPercentage),
-      PERFORMANCE_MESSAGE: getPerformanceMessage(overallPercentage, totalTasks),
-      OVERALL_PERCENTAGE: overallPercentage.toStringAsFixed(0),
-      COMPLETED_TASKS: completedTasks.toString(),
-      TOTAL_TASKS: totalTasks.toString(),
-      SUMMARY_PERIOD: summaryPeriod === 'business-day' ? ' (Business Day)' : '',
-      
-      // Notable items
-      MISSED_TASKS_COUNT: summaryData.missedTaskEntries?.length || 0,
-      PHOTO_BYPASSED_COUNT: summaryData.photoBypassed?.length || 0,
-      NOTES_COUNT: summaryData.notesEntries?.length || 0,
-      
-      // Generate HTML sections
-      NOTABLE_ITEMS: generateNotableItemsForEmail(summaryData),
-      ACTION_ITEMS: generateActionItemsForEmail(overallPercentage, summaryData),
-    };
+    // Debug logging for email template data
+    functions.logger.info(`Email template data debug: overallPercentage=${overallPercentage} (type: ${typeof overallPercentage}), completedTasks=${completedTasks}, totalTasks=${totalTasks}`);
 
-    // Send email to each admin user
-    for (const admin of adminUsers) {
-      if (!admin.email) {
-        functions.logger.warn(`Admin user ${admin.userId} has no email address`);
-        continue;
-      }
+    // Send email to each admin user using @sendgrid/mail for better error objects and consistency
+    try {
+      const sgMail = require('@sendgrid/mail');
+      sgMail.setApiKey(sendgridApiKey);
 
-      const subject = generateEmailSubject(organizationName, date, overallPercentage, summaryPeriod);
+      for (const admin of adminUsers) {
+        if (!admin.email) {
+          functions.logger.warn(`Admin user ${admin.userId} has no email address`);
+          continue;
+        }
 
-      const emailPayload = {
-        personalizations: [{
-          to: [{ email: admin.email, name: `${admin.firstName} ${admin.lastName}`.trim() }],
-          subject: subject,
-          dynamic_template_data: templateData,
-        }],
-        from: { email: fromEmail, name: fromName },
-        template_id: templateId,
-        categories: ['daily_summary'],
-        custom_args: {
-          email_type: 'daily_summary',
-          organization: organizationName,
-          date: formatDate(date),
-          summary_period: summaryPeriod
-        },
-      };
+        const subject = generateEmailSubject(organizationName, date, overallPercentage, summaryPeriod);
 
-      try {
-        const https = require('https');
-        const querystring = require('querystring');
-
-        const postData = JSON.stringify(emailPayload);
-        
-        const options = {
-          hostname: 'api.sendgrid.com',
-          port: 443,
-          path: '/v3/mail/send',
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${sendgridApiKey}`,
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(postData)
-          }
+        // Build dynamic template data with both normalized (lower_snake_case) and legacy uppercase keys
+        const normalizedTemplateData: any = {
+          organization_name: organizationName,
+          company_name: organizationName, // Alias for flexibility
+          formatted_date: formatDateForDisplay(date),
+          logo_url: 'http://cdn.mcauto-images-production.sendgrid.net/136c04a1809caad9/3116b67a-957a-419b-a46b-8abe59fc0856/1024x1024.png',
+          performance_emoji: getPerformanceEmoji(overallPercentage),
+          performance_message: getPerformanceMessage(overallPercentage, totalTasks),
+          overall_percentage: overallPercentage.toFixed(0),
+          completed_tasks: completedTasks.toString(),
+          total_tasks: totalTasks.toString(),
+          summary_period: summaryPeriod === 'business-day' ? ' (Business Day)' : '',
+          missed_tasks_count: summaryData.missedTaskEntries?.length || 0,
+          photo_bypassed_count: summaryData.photoBypassed?.length || 0,
+          notes_count: summaryData.notesEntries?.length || 0,
+          notable_items: generateNotableItemsForEmail(summaryData),
+          action_items: generateActionItemsForEmail(overallPercentage, summaryData),
         };
 
-        await new Promise<void>((resolve, reject) => {
-          const req = https.request(options, (res: any) => {
-            if (res.statusCode === 202) {
-              functions.logger.info(`SendGrid email sent successfully to ${admin.email}`);
-              resolve();
-            } else {
-              let data = '';
-              res.on('data', (chunk: any) => data += chunk);
-              res.on('end', () => {
-                functions.logger.error(`SendGrid email failed for ${admin.email}: ${res.statusCode} - ${data}`);
-                resolve(); // Don't reject, just log the error
-              });
-            }
-          });
-
-          req.on('error', (error: any) => {
-            functions.logger.error(`Error sending email to ${admin.email}:`, error);
-            resolve(); // Don't reject, just log the error
-          });
-
-          req.write(postData);
-          req.end();
+        // Also include the original uppercase keys to maximize compatibility with existing templates
+        const templatePayload: any = Object.assign({}, normalizedTemplateData, {
+          ORGANIZATION_NAME: organizationName,
+          COMPANY_NAME: organizationName, // Alias for flexibility
+          FORMATTED_DATE: formatDateForDisplay(date),
+          LOGO_URL: 'http://cdn.mcauto-images-production.sendgrid.net/136c04a1809caad9/3116b67a-957a-419b-a46b-8abe59fc0856/1024x1024.png',
+          PERFORMANCE_EMOJI: getPerformanceEmoji(overallPercentage),
+          PERFORMANCE_MESSAGE: getPerformanceMessage(overallPercentage, totalTasks),
+          OVERALL_PERCENTAGE: overallPercentage.toFixed(0),
+          COMPLETED_TASKS: completedTasks.toString(),
+          TOTAL_TASKS: totalTasks.toString(),
+          SUMMARY_PERIOD: summaryPeriod === 'business-day' ? ' (Business Day)' : '',
+          MISSED_TASKS_COUNT: summaryData.missedTaskEntries?.length || 0,
+          PHOTO_BYPASSED_COUNT: summaryData.photoBypassed?.length || 0,
+          NOTES_COUNT: summaryData.notesEntries?.length || 0,
+          NOTABLE_ITEMS: generateNotableItemsForEmail(summaryData),
+          ACTION_ITEMS: generateActionItemsForEmail(overallPercentage, summaryData),
         });
-      } catch (emailError) {
-        functions.logger.error(`Error sending email to ${admin.email}:`, emailError);
+
+        // Add enhanced sections to both normalized and uppercase keys
+        if (enhancedSections) {
+          templatePayload.overall_delta_html = enhancedSections.overallDeltaHtml;
+          templatePayload.missed_tasks_html = enhancedSections.missedTasksHtml;
+          templatePayload.staff_notes_html = enhancedSections.staffNotesHtml;
+          templatePayload.photo_compliance_html = enhancedSections.photoComplianceHtml;
+          templatePayload.key_metrics_html = enhancedSections.keyMetricsHtml;
+          
+          templatePayload.OVERALL_DELTA_HTML = enhancedSections.overallDeltaHtml;
+          templatePayload.MISSED_TASKS_HTML = enhancedSections.missedTasksHtml;
+          templatePayload.STAFF_NOTES_HTML = enhancedSections.staffNotesHtml;
+          templatePayload.PHOTO_COMPLIANCE_HTML = enhancedSections.photoComplianceHtml;
+          templatePayload.KEY_METRICS_HTML = enhancedSections.keyMetricsHtml;
+        }
+
+        const msg = {
+          to: admin.email,
+          from: { email: fromEmail, name: fromName },
+          templateId: templateId,
+          subject: subject,
+          dynamicTemplateData: templatePayload,
+          categories: ['daily_summary'],
+          customArgs: {
+            email_type: 'daily_summary',
+            organization: organizationName,
+            date: formatDate(date),
+            summary_period: summaryPeriod,
+          },
+        };
+
+        // Log the template id and keys being sent (avoid logging large HTML blobs)
+        functions.logger.info(`Sending daily summary email`, {
+          to: admin.email,
+          templateId: templateId,
+          dataKeys: Object.keys(templatePayload),
+        });
+
+        try {
+          const response = await sgMail.send(msg);
+          functions.logger.info(`SendGrid send response for ${admin.email}:`, Array.isArray(response) ? response[0].statusCode : response);
+        } catch (sendErr: any) {
+          functions.logger.error(`SendGrid send error for ${admin.email}:`, sendErr?.message || sendErr);
+          if (sendErr && sendErr.response && sendErr.response.body) {
+            functions.logger.error('SendGrid response body:', sendErr.response.body);
+          }
+        }
       }
+    } catch (outerErr) {
+      functions.logger.error('Error preparing SendGrid client or sending emails:', outerErr);
     }
 
   } catch (error) {
@@ -838,6 +857,129 @@ function formatDateForDisplay(date: Date): string {
 function formatDateForSubject(date: Date): string {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${months[date.getMonth()]} ${date.getDate()}`;
+}
+
+/**
+ * Build enhanced HTML sections for the email: task insights, staff performance, and actionable metrics
+ */
+function buildEnhancedHtmlSections(summaryData: any, yesterdayData: any) {
+  try {
+    // Overall delta vs yesterday
+    const todayPct = summaryData.overallPercentage || 0;
+    const yesterdayPct = yesterdayData?.overallPercentage || 0;
+    const delta = Math.round(todayPct - yesterdayPct);
+    const deltaText = delta === 0 ? 'no change' : `${delta >= 0 ? '+' : ''}${delta}%`;
+    const deltaColor = delta >= 0 ? '#8cf68c' : '#ff6b6b';
+    const overallDeltaHtml = `<span style="color:${deltaColor}; font-weight:700;">${deltaText} vs yesterday</span>`;
+
+    // Build top missed tasks breakdown
+    const missedTasks = summaryData.missedTaskEntries || [];
+    let missedTasksHtml = '';
+    if (missedTasks.length > 0) {
+      const topMissed = missedTasks.slice(0, 5); // Top 5 missed tasks
+      missedTasksHtml = '<div style="margin-top:8px;">';
+      topMissed.forEach((task: any, index: number) => {
+        const reason = task.reason || 'No reason provided';
+        missedTasksHtml += `<div style="margin-bottom:8px; padding:8px; background:rgba(255,107,45,0.1); border-left:3px solid #ff6b2d; border-radius:3px;">
+          <div style="font-weight:600; color:#fff;">${escapeHtml(task.taskName)}</div>
+          <div style="font-size:12px; color:#bfbfbf; margin-top:2px;">${escapeHtml(task.shiftName)} • ${escapeHtml(task.checklistName)}</div>
+          <div style="font-size:12px; color:#ff9d7a; margin-top:4px;">Reason: ${escapeHtml(reason)}</div>
+        </div>`;
+      });
+      if (missedTasks.length > 5) {
+        missedTasksHtml += `<div style="color:#9b9b9b; font-size:12px; text-align:center; margin-top:8px;">... and ${missedTasks.length - 5} more missed tasks</div>`;
+      }
+      missedTasksHtml += '</div>';
+    } else {
+      missedTasksHtml = '<div style="color:#8cf68c; font-style:italic; margin-top:8px;">All tasks completed successfully! 🎉</div>';
+    }
+
+    // Build staff notes highlight
+    const notes = summaryData.notesEntries || [];
+    let staffNotesHtml = '';
+    if (notes.length > 0) {
+      const topNotes = notes.slice(0, 3); // Top 3 most recent notes
+      staffNotesHtml = '<div style="margin-top:8px;">';
+      topNotes.forEach((note: any) => {
+        staffNotesHtml += `<div style="margin-bottom:8px; padding:8px; background:rgba(140,246,140,0.1); border-left:3px solid #8cf68c; border-radius:3px;">
+          <div style="font-weight:600; color:#fff;">${escapeHtml(note.taskName)}</div>
+          <div style="font-size:12px; color:#bfbfbf; margin-top:2px;">by ${escapeHtml(note.userName)} • ${escapeHtml(note.shiftName)}</div>
+          <div style="font-size:13px; color:#fff; margin-top:4px; font-style:italic;">"${escapeHtml(note.notes)}"</div>
+        </div>`;
+      });
+      if (notes.length > 3) {
+        staffNotesHtml += `<div style="color:#9b9b9b; font-size:12px; text-align:center; margin-top:8px;">... and ${notes.length - 3} more staff notes</div>`;
+      }
+      staffNotesHtml += '</div>';
+    } else {
+      staffNotesHtml = '<div style="color:#9b9b9b; font-style:italic; margin-top:8px;">No additional notes recorded today.</div>';
+    }
+
+    // Build photo compliance section
+    const photoBypassed = summaryData.photoBypassed || [];
+    let photoComplianceHtml = '';
+    if (photoBypassed.length > 0) {
+      photoComplianceHtml = `<div style="margin-top:8px; padding:8px; background:rgba(255,190,8,0.1); border-left:3px solid #ffbe08; border-radius:3px;">
+        <div style="font-weight:600; color:#ffbe08;">📷 Photo Requirements Missed (${photoBypassed.length})</div>
+        <div style="font-size:12px; color:#bfbfbf; margin-top:4px;">Tasks completed without required photos. Follow up with staff on photo compliance.</div>`;
+      
+      const topPhotoMissed = photoBypassed.slice(0, 2);
+      topPhotoMissed.forEach((item: any) => {
+        photoComplianceHtml += `<div style="font-size:12px; color:#fff; margin-top:6px;">• ${escapeHtml(item.taskName)} (${escapeHtml(item.userName)})</div>`;
+      });
+      
+      if (photoBypassed.length > 2) {
+        photoComplianceHtml += `<div style="font-size:12px; color:#9b9b9b; margin-top:4px;">... and ${photoBypassed.length - 2} more</div>`;
+      }
+      photoComplianceHtml += '</div>';
+    } else {
+      photoComplianceHtml = '<div style="color:#8cf68c; font-style:italic; margin-top:8px;">All photo requirements met! 📸</div>';
+    }
+
+    // Build key metrics summary table
+    const keyMetricsHtml = `<table style="width:100%; border-collapse:collapse; margin-top:8px;">
+      <tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+        <td style="padding:8px 0; color:#ff6b2d; font-weight:600;">Completion Rate</td>
+        <td style="padding:8px 0; text-align:right; color:#fff; font-weight:700;">${todayPct.toFixed(1)}%</td>
+      </tr>
+      <tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+        <td style="padding:8px 0; color:#ff6b2d; font-weight:600;">Tasks Completed</td>
+        <td style="padding:8px 0; text-align:right; color:#8cf68c; font-weight:700;">${summaryData.completedTasks || 0} of ${summaryData.totalTasks || 0}</td>
+      </tr>
+      <tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+        <td style="padding:8px 0; color:#ff6b2d; font-weight:600;">Tasks Missed</td>
+        <td style="padding:8px 0; text-align:right; color:#ff6b6b; font-weight:700;">${missedTasks.length}</td>
+      </tr>
+      <tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+        <td style="padding:8px 0; color:#ff6b2d; font-weight:600;">Staff Notes</td>
+        <td style="padding:8px 0; text-align:right; color:#8cf68c; font-weight:700;">${notes.length}</td>
+      </tr>
+      <tr>
+        <td style="padding:8px 0; color:#ff6b2d; font-weight:600;">vs Yesterday</td>
+        <td style="padding:8px 0; text-align:right;">${overallDeltaHtml}</td>
+      </tr>
+    </table>`;
+
+    return {
+      overallDeltaHtml,
+      missedTasksHtml,
+      staffNotesHtml,
+      photoComplianceHtml,
+      keyMetricsHtml
+    };
+  } catch (error) {
+    functions.logger.error('Error building enhanced HTML sections:', error);
+    return null;
+  }
+}
+
+function escapeHtml(s: string) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 /**

@@ -1865,6 +1865,178 @@ Future<List<DailyChecklist>> _loadChecklistsForShiftSimple(
       }
     }
 
+    // Safety net: Filter out any checklists whose templates do not belong to the current location.
+    // This prevents cross-location mixing in the UI even if bad data is accidentally generated server-side.
+    Map<String, Set<String>>? _templateLocsCache;
+    try {
+      if (checklists.isNotEmpty) {
+        final templateIds = checklists.map((c) => c.checklistTemplateId).where((id) => id.isNotEmpty).toSet().toList();
+        logger.d('[Dashboard] Location-ownership filter: evaluating ${templateIds.length} templates for loc $locId');
+
+        // Fetch templates in parallel
+        final futures =
+            templateIds.map((tid) async {
+              try {
+                final snap =
+                    await FirestoreEnforcer.instance
+                        .collection('organizations')
+                        .doc(organizationId)
+                        .collection('checklist_templates')
+                        .doc(tid)
+                        .get();
+                if (!snap.exists) return MapEntry(tid, <String>{});
+                final data = snap.data()!;
+                final raw = data['locationIds'];
+                final Set<String> locs =
+                    (raw is List) ? raw.map((e) => e.toString()).where((e) => e.isNotEmpty).toSet() : <String>{};
+                return MapEntry(tid, locs);
+              } catch (e) {
+                logger.w('[Dashboard] Failed fetching template $tid for location filter: $e');
+                return MapEntry(tid, <String>{});
+              }
+            }).toList();
+
+        final results = await Future.wait(futures);
+        final Map<String, Set<String>> templateLocs = {for (final e in results) e.key: e.value};
+        _templateLocsCache = templateLocs;
+
+        final before = checklists.length;
+        final filtered = <DailyChecklist>[];
+        final dropped = <DailyChecklist>[];
+        for (final c in checklists) {
+          final locs = templateLocs[c.checklistTemplateId] ?? <String>{};
+          // If the template declares ownership and current locId is not included, drop it.
+          if (locs.isNotEmpty && !locs.contains(locId)) {
+            dropped.add(c);
+          } else {
+            filtered.add(c);
+          }
+        }
+
+        if (dropped.isNotEmpty) {
+          logger.w(
+            '[Dashboard] Location-ownership filter dropped ${dropped.length} checklist(s) not belonging to $locId',
+          );
+          for (final c in dropped) {
+            logger.w('  • Dropped checklist ${c.id} (template ${c.checklistTemplateId}) for location $locId');
+          }
+        }
+
+        if (filtered.length != before) {
+          logger.d('[Dashboard] Location-ownership filter: kept ${filtered.length}/$before checklists for loc $locId');
+        }
+
+        // Replace the list with filtered version
+        // Note: We keep checklists whose templates have no locationIds (legacy templates) to avoid hiding valid data.
+        checklists
+          ..clear()
+          ..addAll(filtered);
+      }
+    } catch (e, st) {
+      logger.w('[Dashboard] Location-ownership safety filter failed: $e');
+      logger.w('$st');
+      // Fail open to avoid hiding data in case of transient errors
+    }
+
+    // Auto-repair: if some templates assigned to the shift belong to this location but are missing daily_checklists, generate them now.
+    try {
+      // Build a templateLocs map if not already from the filter step
+      Map<String, Set<String>> templateLocs = _templateLocsCache ?? <String, Set<String>>{};
+      if (templateLocs.isEmpty) {
+        final tids = shift.checklistTemplateIds;
+        final futures =
+            tids.map((tid) async {
+              try {
+                final snap =
+                    await FirestoreEnforcer.instance
+                        .collection('organizations')
+                        .doc(organizationId)
+                        .collection('checklist_templates')
+                        .doc(tid)
+                        .get();
+                if (!snap.exists) return MapEntry(tid, <String>{});
+                final data = snap.data()!;
+                final raw = data['locationIds'];
+                final Set<String> locs =
+                    (raw is List) ? raw.map((e) => e.toString()).where((e) => e.isNotEmpty).toSet() : <String>{};
+                return MapEntry(tid, locs);
+              } catch (_) {
+                return MapEntry(tid, <String>{});
+              }
+            }).toList();
+        final results = await Future.wait(futures);
+        templateLocs = {for (final e in results) e.key: e.value};
+      }
+
+      // Determine which assigned templates actually belong to this location
+      final List<String> assigned = List<String>.from(shift.checklistTemplateIds);
+      final Set<String> assignedAndOwned =
+          assigned.where((tid) {
+            final locs = templateLocs[tid] ?? <String>{};
+            return locs.isEmpty || locs.contains(locId); // keep legacy (no locIds) and owned
+          }).toSet();
+
+      // Existing templates present in current list
+      final Set<String> existingTemplateIds = checklists.map((c) => c.checklistTemplateId).toSet();
+      final List<String> missing = assignedAndOwned.difference(existingTemplateIds).toList();
+
+      if (missing.isNotEmpty) {
+        logger.w(
+          '[Dashboard] Auto-repair: ${missing.length} checklist(s) missing for shift ${shift.shiftName}. Generating now…',
+        );
+
+        final dailyChecklistService = DailyChecklistService();
+        final filteredShift = shift.copyWith(checklistTemplateIds: missing);
+        await dailyChecklistService.generateDailyChecklists(
+          organizationId: organizationId,
+          locationId: locId,
+          shiftId: shift.shiftId,
+          shiftData: filteredShift,
+          date: todayString,
+        );
+
+        // Refresh checklists snapshot after generation
+        final refreshedSnap =
+            await FirestoreEnforcer.instance
+                .collection('organizations')
+                .doc(organizationId)
+                .collection('locations')
+                .doc(locId)
+                .collection('daily_checklists')
+                .where('shiftId', isEqualTo: shift.shiftId)
+                .where('date', isEqualTo: todayString)
+                .get();
+
+        docs = refreshedSnap.docs;
+
+        // Re-apply non-admin job-type filtering if needed
+        if (userRole != 2 && userJobTypes.isNotEmpty) {
+          final lowerUserJobs = userJobTypes.map((j) => j.toLowerCase().trim()).where((j) => j.isNotEmpty).toSet();
+          docs =
+              docs.where((d) {
+                final raw = d.data() as Map<String, dynamic>?;
+                if (raw == null) return false;
+                final jtRaw = raw['jobTypes'] ?? raw['jobType'];
+                if (jtRaw == null) return true;
+                final list =
+                    (jtRaw is List)
+                        ? jtRaw.map((e) => e.toString().toLowerCase().trim()).toList()
+                        : [jtRaw.toString().toLowerCase().trim()];
+                final set = list.where((e) => e.isNotEmpty).toSet();
+                return set.isEmpty || set.intersection(lowerUserJobs).isNotEmpty;
+              }).toList();
+        }
+
+        // Rebuild checklists list
+        final rebuilt = docs.map((doc) => DailyChecklist.fromMap(doc.data() as Map<String, dynamic>, doc.id)).toList();
+        checklists
+          ..clear()
+          ..addAll(rebuilt);
+      }
+    } catch (e, st) {
+      logger.e('[Dashboard] Auto-repair generation failed: $e\n$st');
+    }
+
     // Fallback logic
     if (checklists.isEmpty && shift.checklistTemplateIds.isNotEmpty) {
       logger.d("[Dashboard] No existing checklists found, generating from templates: ${shift.checklistTemplateIds}");

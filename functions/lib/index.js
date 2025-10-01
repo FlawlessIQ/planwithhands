@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.backfillSubscriptionQuantityForOrg = exports.validateCoupon = exports.getSubscriptionData = exports.createBillingPortalSessionElements = exports.cancelSubscriptionElements = exports.updateSubscriptionQuantity = exports.getStripePublishableKeyHttp = exports.getStripePublishableKey = exports.getCheckoutSessionStatus = exports.createEmbeddedCheckoutSession = exports.createSetupIntentForCustomer = exports.createSubscriptionElements = exports.ensureStripeCustomer = exports.triggerDailySummary = exports.scheduledDailySummary = exports.scheduledDailyGenerator = exports.onNotificationOutboxCreated = exports.proxyDownload = exports.proxyUpload = exports.getSignedUploadUrl = exports.sendHelpRequest = exports.placeDetailsHttp = exports.placesAutocompleteHttp = exports.createBillingPortalSession = exports.updateSubscription = exports.cancelSubscription = exports.stripeWebhook = exports.createCheckoutSession = exports.sendOrganizationSignupNotification = exports.deleteUser = exports.createUser = exports.repairTaskTitlesFromCsv = exports.repairTemplateTaskTitles = exports.migrateChecklistTemplates = exports.syncTodayOnShiftChange = exports.cleanupDeletedTemplate = exports.syncTemplateNameChange = exports.syncTodayOnTemplateChange = void 0;
+exports.backfillSubscriptionQuantityForOrg = exports.validateCoupon = exports.getSubscriptionData = exports.createBillingPortalSessionElements = exports.cancelSubscriptionElements = exports.updateSubscriptionQuantity = exports.getStripePublishableKeyHttp = exports.getStripePublishableKey = exports.getCheckoutSessionStatus = exports.createEmbeddedCheckoutSession = exports.createSetupIntentForCustomer = exports.createSubscriptionElements = exports.ensureStripeCustomer = exports.enforceDailyChecklistOwnership = exports.diagnoseLocationChecklists = exports.auditOrgChecklists = exports.manualTestEmail = exports.triggerDailySummary = exports.scheduledDailySummary = exports.scheduledDailyGenerator = exports.onNotificationOutboxCreated = exports.proxyDownload = exports.proxyUpload = exports.getSignedUploadUrl = exports.sendHelpRequest = exports.placeDetailsHttp = exports.placesAutocompleteHttp = exports.createBillingPortalSession = exports.updateSubscription = exports.cancelSubscription = exports.stripeWebhook = exports.createCheckoutSession = exports.sendOrganizationSignupNotification = exports.deleteUser = exports.createUser = exports.repairTaskTitlesFromCsv = exports.repairTemplateTaskTitles = exports.migrateChecklistTemplates = exports.syncTodayOnShiftChange = exports.cleanupDeletedTemplate = exports.syncTemplateNameChange = exports.syncTodayOnTemplateChange = void 0;
 /* eslint-disable @typescript-eslint/no-require-imports */
 const admin = __importStar(require("firebase-admin"));
 // Ensure admin is initialized (idempotent)
@@ -112,6 +112,16 @@ Object.defineProperty(exports, "scheduledDailyGenerator", { enumerable: true, ge
 var scheduledDailySummary_1 = require("./scheduledDailySummary");
 Object.defineProperty(exports, "scheduledDailySummary", { enumerable: true, get: function () { return scheduledDailySummary_1.scheduledDailySummary; } });
 Object.defineProperty(exports, "triggerDailySummary", { enumerable: true, get: function () { return scheduledDailySummary_1.triggerDailySummary; } });
+// Export manual test email endpoint for one-off debugging
+var manualTestEmail_1 = require("./manualTestEmail");
+Object.defineProperty(exports, "manualTestEmail", { enumerable: true, get: function () { return manualTestEmail_1.manualTestEmail; } });
+// Export checklist auditing and diagnostics endpoints
+var auditOrgChecklists_1 = require("./auditOrgChecklists");
+Object.defineProperty(exports, "auditOrgChecklists", { enumerable: true, get: function () { return auditOrgChecklists_1.auditOrgChecklists; } });
+var diagnoseLocationChecklists_1 = require("./diagnoseLocationChecklists");
+Object.defineProperty(exports, "diagnoseLocationChecklists", { enumerable: true, get: function () { return diagnoseLocationChecklists_1.diagnoseLocationChecklists; } });
+var enforceDailyChecklistOwnership_1 = require("./enforceDailyChecklistOwnership");
+Object.defineProperty(exports, "enforceDailyChecklistOwnership", { enumerable: true, get: function () { return enforceDailyChecklistOwnership_1.enforceDailyChecklistOwnership; } });
 // Export new Payment Element Stripe functions
 var stripe_1 = require("./stripe");
 Object.defineProperty(exports, "ensureStripeCustomer", { enumerable: true, get: function () { return stripe_1.ensureStripeCustomer; } });

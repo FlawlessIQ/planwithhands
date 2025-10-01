@@ -1323,6 +1323,34 @@ class DailyChecklistService {
     final List<DailyChecklist> createdChecklists = [];
 
     for (final templateId in shiftData.checklistTemplateIds) {
+      // Guardrail: ensure the template belongs to this location before generating
+      try {
+        final tmplSnap =
+            await _firestore
+                .collection('organizations')
+                .doc(organizationId)
+                .collection('checklist_templates')
+                .doc(templateId)
+                .get();
+
+        if (!tmplSnap.exists) {
+          debugPrint('[DailyChecklistService] Skip template $templateId: template doc missing');
+          continue;
+        }
+
+        final tdata = tmplSnap.data() as Map<String, dynamic>;
+        final List<dynamic> tLocsDyn = (tdata['locationIds'] is List) ? (tdata['locationIds'] as List) : const [];
+        final Set<String> templateLocationIds = tLocsDyn.map((e) => e.toString()).toSet();
+
+        if (templateLocationIds.isNotEmpty && !templateLocationIds.contains(locationId)) {
+          debugPrint(
+            '[DailyChecklistService] MISMATCH: Template $templateId does not belong to location $locationId. Skipping.',
+          );
+          continue;
+        }
+      } catch (e) {
+        debugPrint('[DailyChecklistService] Warning: could not validate template $templateId location: $e');
+      }
       // Ensure the doc exists and seed tasks in subcollection from template's tasks
       await ensureDailyChecklistAndTasks(
         organizationId: organizationId,

@@ -62,6 +62,19 @@ class SessionManager {
 
     // If user is already signed in, start monitoring
     if (_auth.currentUser != null) {
+      // Check if session expired based on last activity and timeout
+      final now = DateTime.now();
+      if (_lastActivity != null) {
+        final timeoutDuration = _getSessionTimeout();
+        final elapsed = now.difference(_lastActivity!);
+        if (elapsed >= timeoutDuration) {
+          logger.w('[SessionManager] Session expired on app launch, logging out');
+          SessionNotificationService().showSessionTimeoutNotification();
+          await _forceLogout();
+          _isInitialized = true;
+          return;
+        }
+      }
       await _validateCurrentSession();
       _startSessionMonitoring();
       _recordActivity(); // Mark app startup as activity

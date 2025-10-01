@@ -103,6 +103,16 @@ export const syncTodayOnShiftChange = functions
         }
 
         const templateData = templateSnap.data() || {};
+        // Ownership guard: if template declares locationIds and does not include checklist's location, skip
+        try {
+          const declared = Array.isArray((templateData as any).locationIds) ? (templateData as any).locationIds : [];
+          if (declared.length > 0 && !declared.includes(locationId)) {
+            console.warn(
+              `[syncTodayOnShiftChange] skip template ${templateId} for checklist ${checklistId} at location ${locationId} (belongs to ${JSON.stringify(declared)})`,
+            );
+            return 0;
+          }
+        } catch (_) {}
         const templateTasks: any[] = Array.isArray(templateData.tasks) ? templateData.tasks : [];
 
         let inserted = 0;

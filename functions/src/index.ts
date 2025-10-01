@@ -90,6 +90,14 @@ export {scheduledDailyGenerator} from "./dailyGenerator";
 // Export scheduled daily summary (sends daily summary notifications to admins)
 export {scheduledDailySummary, triggerDailySummary} from "./scheduledDailySummary";
 
+// Export manual test email endpoint for one-off debugging
+export {manualTestEmail} from "./manualTestEmail";
+
+// Export checklist auditing and diagnostics endpoints
+export {auditOrgChecklists} from "./auditOrgChecklists";
+// export {diagnoseLocationChecklists} from "./diagnoseLocationChecklists";
+export {enforceDailyChecklistOwnership} from "./enforceDailyChecklistOwnership";
+
 // Export new Payment Element Stripe functions
 export {
   ensureStripeCustomer,

@@ -91,7 +91,14 @@ service cloud.firestore {
         allow get, list: if request.auth != null;
         allow create, update, delete: if request.auth != null && isOrgManagerOrAdmin(orgId);
         match /daily_checklists/{checklistId} {
-          allow get, list, create, update: if request.auth != null;
+          // Minimal ownership check for a single template association.
+          // If a checklist declares 'checklistTemplateId', ensure that template's locationIds includes this location.
+          allow get, list: if request.auth != null;
+          allow create, update: if request.auth != null && (
+            request.resource.data.checklistTemplateId == null ||
+            get(/databases/$(database)/documents/organizations/$(orgId)/checklist_templates/$(request.resource.data.checklistTemplateId)).data.locationIds == null ||
+            get(/databases/$(database)/documents/organizations/$(orgId)/checklist_templates/$(request.resource.data.checklistTemplateId)).data.locationIds.hasAny([locId])
+          );
           allow delete: if request.auth != null && isOrgManagerOrAdmin(orgId);
           match /tasks/{taskId} {
             allow get, list, create, update: if request.auth != null;

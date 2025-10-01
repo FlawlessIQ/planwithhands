@@ -1,0 +1,11 @@
+{
+  "name": "Plan with Hands",
+  "short_name": "Hands",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0F1113",
+  "theme_color": "#0F1113",
+  "icons": [
+    { "src": "/assets/images/20250930_0853_Minimalist Branding Design_remix_01k6dasfh1eayaax64vy5hmgsb.png", "sizes": "1200x630", "type": "image/png" }
+  ]
+}
