@@ -1,0 +1,5 @@
+#include "Generated.xcconfig"
+
+#if defined(PODS_ROOT)
+#include "${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"
+#endif
