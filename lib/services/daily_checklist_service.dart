@@ -183,7 +183,13 @@ class DailyChecklistService {
       }
 
       final templateData = templateDoc.data()!;
-      final templateName = templateData['name'] as String? ?? 'Unknown Template';
+      final templateName = templateData['name'] as String?;
+      
+      // CRITICAL FIX: Prevent creation of "Unknown Template" checklists
+      if (templateName == null || templateName.trim().isEmpty) {
+        debugPrint('[DailyChecklistService] BLOCKED: Preventing creation of checklist with missing template name for template $templateId');
+        return;
+      }
       // Read template tasks only from canonical 'tasks' subcollection (no legacy arrays)
       List<Map<String, dynamic>> templateTasks = [];
       try {
@@ -1323,6 +1329,12 @@ class DailyChecklistService {
     final List<DailyChecklist> createdChecklists = [];
 
     for (final templateId in shiftData.checklistTemplateIds) {
+      // CRITICAL FIX: Skip invalid template IDs to prevent Unknown Template checklists
+      if (templateId.isEmpty || templateId == 'unknown') {
+        debugPrint('[DailyChecklistService] Skip invalid template ID: $templateId');
+        continue;
+      }
+      
       // Guardrail: ensure the template belongs to this location before generating
       try {
         final tmplSnap =
@@ -2090,11 +2102,18 @@ class DailyChecklistService {
           if (anyChanges && carryForwardTasks.isNotEmpty) {
             await doc.reference.update({'tasks': updatedTasks, 'updatedAt': Timestamp.now()});
 
+            // CRITICAL FIX: Only carry forward tasks if we have a valid template ID
+            final originalTemplateId = (data['checklistTemplateId'] as String?);
+            if (originalTemplateId == null || originalTemplateId.isEmpty || originalTemplateId == 'unknown') {
+              debugPrint('[DailyChecklistService] carryForward: Skipping checklist ${doc.id} due to missing/invalid template ID');
+              continue;
+            }
+
             final todayChecklistId = _generateChecklistId(
               organizationId: organizationId,
               locationId: locationId,
               shiftId: (data['shiftId'] as String?) ?? 'unknown',
-              templateId: (data['checklistTemplateId'] as String?) ?? 'unknown',
+              templateId: originalTemplateId,
               date: todayStr,
             );
 
@@ -2108,7 +2127,7 @@ class DailyChecklistService {
 
             await todayRef.set({
               'id': todayChecklistId,
-              'checklistTemplateId': data['checklistTemplateId'],
+              'checklistTemplateId': originalTemplateId,
               'shiftId': data['shiftId'],
               'locationId': locationId,
               'organizationId': organizationId,
@@ -2145,7 +2164,7 @@ class DailyChecklistService {
                 'shiftId': (data['shiftId'] as String?) ?? 'unknown',
                 'checklistId': todayChecklistId,
                 'dailyChecklistId': todayChecklistId,
-                'checklistTemplateId': (data['checklistTemplateId'] as String?) ?? 'unknown',
+                'checklistTemplateId': originalTemplateId,
                 'checklistName': (data['templateName'] as String?) ?? 'Checklist',
                 'templateName': (data['templateName'] as String?) ?? 'Checklist',
                 'dateString': todayStr,
