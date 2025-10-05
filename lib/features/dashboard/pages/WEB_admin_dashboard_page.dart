@@ -8,6 +8,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/theme/theme.dart';
+import 'package:hands_app/services/activity_tracker.dart';
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
@@ -82,7 +83,7 @@ class WEBAdminDashboardPage extends StatefulWidget {
   State<WEBAdminDashboardPage> createState() => _WEBAdminDashboardPageState();
 }
 
-class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
+class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> with ActivityTrackingMixin {
   int? userRole;
   bool isLoading = true;
 

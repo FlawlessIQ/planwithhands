@@ -10,7 +10,9 @@ import 'package:intl/intl.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/theme/theme.dart';
+import 'package:hands_app/services/activity_tracker.dart';
 import 'package:hands_app/data/models/missed_tasks_section.dart';
+import 'package:hands_app/data/models/task_data.dart';
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
@@ -30,7 +32,8 @@ class ManagerDashboardPage extends StatefulWidget {
   State<ManagerDashboardPage> createState() => _ManagerDashboardPageState();
 }
 
-class _ManagerDashboardPageState extends State<ManagerDashboardPage> with WidgetsBindingObserver {
+class _ManagerDashboardPageState extends State<ManagerDashboardPage>
+    with WidgetsBindingObserver, ActivityTrackingMixin {
   // User / setup
   int? userRole;
   bool _isLoadingUserRole = true;
@@ -326,10 +329,10 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
       final today = DateTime.now();
       logger.d('[WEBManagerDashboard] _loadYesterdayMissed ENTER (today=$today, location=$_selectedLocationId)');
       logger.d(
-        '[WEBManagerDashboard] Using ONLY carry-forward tasks for Missed Yesterday (disabling supplemental enumeration)',
+        '[WEBManagerDashboard] Using carry-forward tasks AND direct yesterday tasks for comprehensive Missed Yesterday count',
       );
 
-      // Load carry-forward based sections (authoritative). Matches user dashboard logic exactly.
+      // Load carry-forward based sections AND direct missed tasks from yesterday
       final cfSections = await service.loadMissedTasksForToday(
         organizationId: widget.organizationId,
         targetDate: today,
@@ -337,10 +340,38 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
       );
       logger.d('[WEBManagerDashboard] CF loader returned ${cfSections.length} sections');
 
+      // Load direct missed tasks from yesterday ONLY AS A FALLBACK when CF returns nothing.
+      // CF is authoritative for "Missed Yesterday" once carry-forward has happened for today.
+      List<MissedTasksSection> directYesterdaySections = [];
+      if (cfSections.isEmpty) {
+        try {
+          directYesterdaySections = await service.loadMissedTasksDirectFromYesterday(
+            organizationId: widget.organizationId,
+            today: today,
+            locationId: _selectedLocationId,
+          );
+          logger.d(
+            '[WEBManagerDashboard] Direct yesterday loader (fallback) returned ${directYesterdaySections.length} sections',
+          );
+        } catch (e) {
+          logger.w('[WEBManagerDashboard] Direct yesterday loader failed: $e');
+        }
+      } else {
+        logger.d(
+          '[WEBManagerDashboard] Skipping direct-yesterday loader because CF sections present: ${cfSections.length}',
+        );
+      }
+
       // Build grouped representation (taskName+shiftId) for display while retaining raw sections for accurate counting
       final Map<String, Map<String, dynamic>> groupedCF = {};
+      final Set<String> processedTaskIds = {}; // Track processed tasks to avoid duplicates
+
+      // Process carry-forward tasks FIRST (these are authoritative)
       for (final section in cfSections) {
         for (final task in section.tasks) {
+          final taskId = task.taskId;
+          processedTaskIds.add(taskId);
+
           final key = '${task.taskName}_${section.shiftId}';
           final g = groupedCF.putIfAbsent(
             key,
@@ -350,7 +381,6 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
               'shiftName': section.shiftName,
               'locationId': section.locationId,
               'count': 0,
-              // Track whether at least one instance was completed today (boolean)
               'completedToday': false,
             },
           );
@@ -358,8 +388,112 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
           if (task.completed) g['completedToday'] = true;
         }
       }
-      _yesterdayMissedSections = cfSections;
+
+      // Process direct missed tasks from yesterday ONLY if they weren't already carried forward
+      for (final section in directYesterdaySections) {
+        for (final task in section.tasks) {
+          final taskId = task.taskId;
+
+          // Skip if this task was already processed as a carry-forward
+          if (processedTaskIds.contains(taskId)) {
+            continue;
+          }
+
+          final key = '${task.taskName}_${section.shiftId}';
+          final g = groupedCF.putIfAbsent(
+            key,
+            () => {
+              'taskName': task.taskName,
+              'shiftId': section.shiftId,
+              'shiftName': section.shiftName,
+              'locationId': section.locationId,
+              'count': 0,
+              'completedToday': false,
+            },
+          );
+          // For direct yesterday tasks, count them but they can't be "completed today" since they're yesterday's
+          g['count'] = (g['count'] as int) + 1;
+          // Don't update completedToday for yesterday's tasks
+        }
+      }
+
+      // Combine sections for accurate counting, but deduplicate by task ID
+      // Use a more robust deduplication key: checklistId + taskId to handle same task from different checklists
+      final combinedSections = <MissedTasksSection>[];
+      final seenTaskKeys = <String>{};
+
+      // Add carry-forward sections first (only incomplete tasks)
+      for (final section in cfSections) {
+        final deduplicatedTasks = <TaskData>[];
+
+        for (final task in section.tasks) {
+          // Skip completed tasks immediately
+          if (task.completed) continue;
+
+          // Create a unique key combining checklistId and taskId to properly deduplicate
+          final taskKey = '${task.checklistId}_${task.taskId}';
+
+          // Skip if we've already seen this exact task
+          if (seenTaskKeys.contains(taskKey)) continue;
+
+          seenTaskKeys.add(taskKey);
+          deduplicatedTasks.add(task);
+        }
+
+        if (deduplicatedTasks.isNotEmpty) {
+          combinedSections.add(
+            MissedTasksSection(
+              shiftId: section.shiftId,
+              shiftName: section.shiftName,
+              organizationId: widget.organizationId,
+              locationId: section.locationId,
+              tasks: deduplicatedTasks,
+            ),
+          );
+        }
+      }
+
+      // Add direct yesterday sections, but only tasks not already seen (and only incomplete tasks)
+      for (final section in directYesterdaySections) {
+        final deduplicatedTasks = <TaskData>[];
+
+        for (final task in section.tasks) {
+          // Skip completed tasks immediately
+          if (task.completed) continue;
+
+          // Create a unique key combining checklistId and taskId to properly deduplicate
+          final taskKey = '${task.checklistId}_${task.taskId}';
+
+          // Skip if we've already seen this exact task
+          if (seenTaskKeys.contains(taskKey)) continue;
+
+          seenTaskKeys.add(taskKey);
+          deduplicatedTasks.add(task);
+        }
+
+        if (deduplicatedTasks.isNotEmpty) {
+          combinedSections.add(
+            MissedTasksSection(
+              shiftId: section.shiftId,
+              shiftName: section.shiftName,
+              organizationId: widget.organizationId,
+              locationId: section.locationId,
+              tasks: deduplicatedTasks,
+            ),
+          );
+        }
+      }
+
+      _yesterdayMissedSections = combinedSections;
       _yesterdayMissed = groupedCF.values.toList();
+
+      // Diagnostics: log counts for CF, direct, and combined to verify no double-counting
+      final cfIncompleteCount = cfSections.fold<int>(0, (sum, s) => sum + s.tasks.where((t) => !t.completed).length);
+      final directCount = directYesterdaySections.fold<int>(0, (sum, s) => sum + s.tasks.length);
+      final combinedCount = _yesterdayMissedSections.fold<int>(0, (sum, s) => sum + s.tasks.length);
+      logger.d(
+        '[WEBManagerDashboard] Counts -> CF(incomplete)=$cfIncompleteCount, direct(fallback)=$directCount, combined=$combinedCount',
+      );
 
       if (_yesterdayMissedSections.isEmpty) {
         // As a safety, if CF failed to produce anything, fall back to legacy grouped method.
@@ -380,8 +514,17 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
       }
 
       final finalRaw = _yesterdayMissedSections.fold<int>(0, (s, sec) => s + sec.tasks.length);
+
+      // Debug: Log each section's tasks and their completion status
+      for (final section in _yesterdayMissedSections) {
+        logger.d('[WEBManagerDashboard] Section ${section.shiftName}: ${section.tasks.length} tasks');
+        for (final task in section.tasks) {
+          logger.d('[WEBManagerDashboard]   - ${task.taskId}: completed=${task.completed} "${task.taskName}"');
+        }
+      }
+
       logger.d(
-        '[WEBManagerDashboard] FINAL MissedYesterday (CF-only) groups=${_yesterdayMissed.length} rawTasks=$finalRaw',
+        '[WEBManagerDashboard] FINAL MissedYesterday (CF+Direct) groups=${_yesterdayMissed.length} rawTasks=$finalRaw cfSections=${cfSections.length} directSections=${directYesterdaySections.length}',
       );
     } catch (e, st) {
       logger.e('[ManagerDashboard] loadMissedTasksForToday error: $e\n$st');
@@ -669,13 +812,17 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
   Future<void> _loadFrequentMisses30d() async {
     setState(() => _loadingFrequent = true);
     try {
+      debugPrint(
+        '[ManagerDashboard] _loadFrequentMisses30d: calling with locationId="$_selectedLocationId" (isNull=${_selectedLocationId == null}, isEmpty=${_selectedLocationId?.isEmpty})',
+      );
       final service = DailyChecklistService();
       final list = await service.getFrequentlyMissedTasks(
         organizationId: widget.organizationId,
         days: 30,
         limit: 10,
-        locationId: _selectedLocationId,
+        locationId: _selectedLocationId?.isNotEmpty == true ? _selectedLocationId : null,
       );
+      debugPrint('[ManagerDashboard] _loadFrequentMisses30d: received ${list.length} items');
       if (!mounted) return;
       setState(() => _frequentMisses30d = list);
     } catch (e, st) {
@@ -753,7 +900,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
       }
 
       // If no docs found for preferred location, try other available locations
-      if (docs.isEmpty && _availableLocations.isNotEmpty) {
+      // DISABLED: Skip fallback when a location is selected to ensure proper filtering
+      if (docs.isEmpty && _availableLocations.isNotEmpty && preferredLocation == null) {
         logger.i(
           '[ManagerDashboard][DEBUG] No checklists found for selected location; trying other available locations',
         );
@@ -771,7 +919,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
       }
 
       // Last resort: if still empty, try querying without a location filter for the date range
-      if (docs.isEmpty) {
+      // DISABLED: Skip global fallback when a location is selected to ensure proper filtering
+      if (docs.isEmpty && preferredLocation == null) {
         logger.i(
           '[ManagerDashboard][DEBUG] No daily_checklists found scoped to locations, falling back to global date-range query',
         );
@@ -1066,7 +1215,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
                         // Main metric - use raw sections if available, otherwise fall back to grouped count
                         Text(
                           () {
-                            // Always use raw task count for consistency with user dashboard
+                            // Sections now only contain incomplete tasks, so count all tasks in sections
                             final rawTaskCount =
                                 _yesterdayMissedSections.isNotEmpty
                                     ? _yesterdayMissedSections.fold<int>(

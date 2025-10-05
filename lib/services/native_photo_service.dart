@@ -409,13 +409,12 @@ class NativePhotoService {
       // Show loading overlay
       _showLoadingOverlay(parentContext, 'Removing photo...');
 
-      // Update task with empty photo URL
-      await _checklistService.updateTaskPhotoInSubcollection(
+      // Clear photo via dedicated helper (handles both photoUrl/proofImageUrl and fallback lookup)
+      await _checklistService.clearTaskPhoto(
         organizationId: organizationId ?? task.organizationId ?? '',
         locationId: locationId ?? task.locationId ?? '',
         checklistId: checklistId ?? task.checklistId ?? '',
         taskId: task.taskId,
-        proofImageUrl: '',
       );
 
       // Close loading

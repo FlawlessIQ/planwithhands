@@ -459,7 +459,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
       logger.d('[ManagerDashboard] Loading 7-day missed tasks trend...');
       final now = DateTime.now();
       final futures = <Future<int>>[];
-      for (int i = 6; i >= 0; i--) {
+      // Show last 7 days ending with yesterday (exclude today)
+      for (int i = 7; i >= 1; i--) {
         final day = now.subtract(Duration(days: i));
         futures.add(_countMissedForDate(day));
       }
@@ -477,22 +478,33 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
   Future<int> _countMissedForDate(DateTime day) async {
     try {
       final service = DailyChecklistService();
+      final now = DateTime.now();
+      final yesterday = now.subtract(const Duration(days: 1));
+      final dayStr = _dateFormat.format(day);
+      final yesterdayStr = _dateFormat.format(yesterday);
 
-      // Use the same subcollection method for consistency
-      final sections = await service.loadMissedTasksForToday(
+      // For yesterday: use CF-based count (tasks carried INTO today FROM yesterday)
+      // This matches the "MISSED YESTERDAY" logic
+      if (dayStr == yesterdayStr) {
+        final sections = await service.loadMissedTasksForToday(
+          organizationId: widget.organizationId,
+          targetDate: now, // Query today to find CF tasks from yesterday
+          locationId: _selectedLocationId,
+        );
+        final count = sections.fold<int>(0, (sum, sec) => sum + sec.tasks.length);
+        logger.d('[ManagerDashboard] CF-based count for yesterday: $count');
+        return count;
+      }
+
+      // For older dates and today: use direct historical count
+      final count = await service.countMissedTasksForDate(
         organizationId: widget.organizationId,
-        targetDate: day,
+        date: day,
         locationId: _selectedLocationId,
       );
 
-      // Count total missed tasks across all sections
-      int totalMissed = 0;
-      for (final section in sections) {
-        totalMissed += section.tasks.length;
-      }
-
-      logger.d('[ManagerDashboard] Counted $totalMissed missed tasks for ${_dateFormat.format(day)}');
-      return totalMissed;
+      logger.d('[ManagerDashboard] Counted $count missed tasks for ${_dateFormat.format(day)}');
+      return count;
     } catch (e) {
       logger.w('[ManagerDashboard] _countMissedForDate failed for ${_dateFormat.format(day)}: $e');
       return 0;

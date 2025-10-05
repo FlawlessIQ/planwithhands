@@ -152,14 +152,7 @@ class DailyChecklistService {
     required String checklistId,
   }) async {
     try {
-      final checklistId = _generateChecklistIdDeterministic(
-        organizationId: organizationId,
-        locationId: locationId,
-        shiftId: shiftId,
-        templateId: templateId,
-        dateString: dateString,
-      );
-
+      // Use the provided deterministic checklistId directly to avoid divergence
       final checklistRef = _firestore
           .collection('organizations')
           .doc(organizationId)
@@ -184,10 +177,25 @@ class DailyChecklistService {
 
       final templateData = templateDoc.data()!;
       final templateName = templateData['name'] as String?;
-      
+      final isDeleted = templateData['deleted'] == true;
+      final isActive = templateData['active'] != false; // default to active if field missing
+
       // CRITICAL FIX: Prevent creation of "Unknown Template" checklists
       if (templateName == null || templateName.trim().isEmpty) {
-        debugPrint('[DailyChecklistService] BLOCKED: Preventing creation of checklist with missing template name for template $templateId');
+        debugPrint(
+          '[DailyChecklistService] BLOCKED: Preventing creation of checklist with missing template name for template $templateId',
+        );
+        return;
+      }
+
+      // CRITICAL FIX: Prevent creation of checklists from deleted or inactive templates
+      if (isDeleted) {
+        debugPrint('[DailyChecklistService] BLOCKED: Template $templateId is deleted, skipping checklist creation');
+        return;
+      }
+
+      if (!isActive) {
+        debugPrint('[DailyChecklistService] BLOCKED: Template $templateId is inactive, skipping checklist creation');
         return;
       }
       // Read template tasks only from canonical 'tasks' subcollection (no legacy arrays)
@@ -542,11 +550,24 @@ class DailyChecklistService {
 
       // Do not create placeholder docs; only update existing tasks
       try {
-        await taskRef.update({'notes': notes});
+        await taskRef.update({'notes': notes, 'updatedAt': FieldValue.serverTimestamp()});
       } on FirebaseException catch (fe) {
         if (fe.code == 'not-found') {
-          debugPrint('[DailyChecklistService] Skipping notes update; task doc not found for $taskId');
-          return;
+          // Fallback: locate by taskId field in case document ID differs from stored taskId
+          try {
+            final tasksColl = taskRef.parent;
+            final qs = await tasksColl.where('taskId', isEqualTo: taskId).limit(1).get();
+            if (qs.docs.isNotEmpty) {
+              await qs.docs.first.reference.update({'notes': notes, 'updatedAt': FieldValue.serverTimestamp()});
+              debugPrint('[DailyChecklistService] Updated notes via fallback lookup for task $taskId');
+              return;
+            }
+            debugPrint('[DailyChecklistService] Notes update fallback failed; no task doc found for $taskId');
+            return;
+          } catch (fallbackErr) {
+            debugPrint('[DailyChecklistService] Notes update fallback error for $taskId: $fallbackErr');
+            return;
+          }
         }
         rethrow;
       }
@@ -613,6 +634,53 @@ class DailyChecklistService {
       debugPrint('[DailyChecklistService] Updated photo for task $taskId');
     } catch (e) {
       debugPrint('[DailyChecklistService] Error updating task photo: $e');
+      rethrow;
+    }
+  }
+
+  /// Remove a task photo by clearing both photoUrl and proofImageUrl fields.
+  Future<void> clearTaskPhoto({
+    required String organizationId,
+    required String locationId,
+    required String checklistId,
+    required String taskId,
+  }) async {
+    try {
+      final taskRef = _firestore
+          .collection('organizations')
+          .doc(organizationId)
+          .collection('locations')
+          .doc(locationId)
+          .collection('daily_checklists')
+          .doc(checklistId)
+          .collection('tasks')
+          .doc(taskId);
+
+      try {
+        await taskRef.update({'photoUrl': '', 'proofImageUrl': '', 'updatedAt': FieldValue.serverTimestamp()});
+      } on FirebaseException catch (fe) {
+        if (fe.code == 'not-found') {
+          // Fallback: locate by taskId field
+          final tasksColl = taskRef.parent;
+          final qs = await tasksColl.where('taskId', isEqualTo: taskId).limit(1).get();
+          if (qs.docs.isNotEmpty) {
+            await qs.docs.first.reference.update({
+              'photoUrl': '',
+              'proofImageUrl': '',
+              'updatedAt': FieldValue.serverTimestamp(),
+            });
+            debugPrint('[DailyChecklistService] Cleared photo via fallback lookup for task $taskId');
+            return;
+          }
+          debugPrint('[DailyChecklistService] Clear photo fallback failed; no task doc found for $taskId');
+          return;
+        }
+        rethrow;
+      }
+
+      debugPrint('[DailyChecklistService] Cleared photo for task $taskId');
+    } catch (e) {
+      debugPrint('[DailyChecklistService] Error clearing task photo: $e');
       rethrow;
     }
   }
@@ -718,15 +786,23 @@ class DailyChecklistService {
     String? completedByUserId,
     String? completedByUserName,
     String? completedByUserEmail,
+    // Optional overrides to ensure valid paths in cases like missed tasks
+    String? organizationIdOverride,
+    String? locationIdOverride,
+    String? checklistIdOverride,
   }) async {
     try {
+      final orgId = organizationIdOverride ?? task.organizationId;
+      final locId = locationIdOverride ?? task.locationId;
+      final listId = checklistIdOverride ?? task.checklistId;
+
       final taskRef = _firestore
           .collection('organizations')
-          .doc(task.organizationId)
+          .doc(orgId)
           .collection('locations')
-          .doc(task.locationId)
+          .doc(locId)
           .collection('daily_checklists')
-          .doc(task.checklistId)
+          .doc(listId)
           .collection('tasks')
           .doc(task.taskId);
 
@@ -749,8 +825,9 @@ class DailyChecklistService {
         await taskRef.update(updateData);
       } on FirebaseException catch (fe) {
         if (fe.code == 'not-found') {
-          debugPrint('[DailyChecklistService] Skipping completion update; task doc not found for ${task.taskId}');
-          return;
+          // Surface not-found so callers (e.g., missed-task flow) can fallback to array update
+          debugPrint('[DailyChecklistService] Task doc not found for ${task.taskId}; throwing to trigger fallback.');
+          throw fe;
         }
         rethrow;
       }
@@ -797,13 +874,17 @@ class DailyChecklistService {
           // Filter out placeholder docs that are missing a valid name to avoid rendering "Unknown Task" in UI
           final tasks = <TaskData>[];
 
-          // If some seeded task docs don't include the photoRequired field (older seeds),
-          // load the checklist template tasks once and use their photoRequired values as a fallback.
+          // If some seeded task docs lack required fields (photoRequired or task name),
+          // load the checklist template tasks once and use them as a fallback.
           Map<String, Map<String, dynamic>>? templateTaskMap;
           bool needTemplateFallback = false;
           for (final doc in subcollectionSnapshot.docs) {
             final d = doc.data();
-            if (!d.containsKey('photoRequired')) {
+            final hasPhotoRequired = d.containsKey('photoRequired');
+            final candidateName =
+                (d['taskName'] ?? d['title'] ?? d['description'] ?? d['name'] ?? '').toString().trim();
+            final nameMissing = candidateName.isEmpty || candidateName.toLowerCase() == 'unknown task';
+            if (!hasPhotoRequired || nameMissing) {
               needTemplateFallback = true;
               break;
             }
@@ -844,15 +925,29 @@ class DailyChecklistService {
 
           for (final doc in subcollectionSnapshot.docs) {
             final data = doc.data();
-            // Exclude carry-forward tasks from normal checklist stream
+            // IMPORTANT: Do NOT include carry-forward tasks in the standard checklist stream.
+            // They are shown in the dedicated Missed Tasks flow. Including them here causes
+            // perceived duplication (template tasks + carried-forward copies).
             if (data['isCarryForward'] == true) {
               continue;
             }
-            final taskName =
-                (data['taskName'] ?? data['title'] ?? data['description'] ?? data['name'] ?? '').toString();
-            if (taskName.trim().isEmpty || taskName.trim().toLowerCase() == 'unknown task') {
-              debugPrint('[DailyChecklistService] Skipping nameless task doc ${doc.id} in checklist=$checklistId');
-              continue;
+            String taskName =
+                (data['taskName'] ?? data['title'] ?? data['description'] ?? data['name'] ?? '').toString().trim();
+            if (taskName.isEmpty || taskName.toLowerCase() == 'unknown task') {
+              // Try to recover name from template if available
+              final tmplTaskId = data['templateTaskId']?.toString();
+              if (tmplTaskId != null && templateTaskMap != null && templateTaskMap.containsKey(tmplTaskId)) {
+                final tmpl = templateTaskMap[tmplTaskId]!;
+                final fromTemplate =
+                    (tmpl['taskName'] ?? tmpl['title'] ?? tmpl['name'] ?? tmpl['description'] ?? '').toString().trim();
+                if (fromTemplate.isNotEmpty) {
+                  taskName = fromTemplate;
+                }
+              }
+              if (taskName.isEmpty) {
+                debugPrint('[DailyChecklistService] Skipping nameless task doc ${doc.id} in checklist=$checklistId');
+                continue;
+              }
             }
 
             // Determine photoRequired using seeded value if present, otherwise fall back to template task
@@ -860,8 +955,18 @@ class DailyChecklistService {
             if (data.containsKey('photoRequired')) {
               photoRequiredValue = data['photoRequired'] ?? false;
             } else {
-              final tmplTaskId = data['templateTaskId']?.toString();
-              if (tmplTaskId != null && templateTaskMap != null && templateTaskMap.containsKey(tmplTaskId)) {
+              // Try templateTaskId, or derive from originalTaskId (format: <templateId>_<templateTaskId>) for carry-forward
+              String? tmplTaskId = data['templateTaskId']?.toString();
+              if ((tmplTaskId == null || tmplTaskId.isEmpty) && (data['originalTaskId'] != null)) {
+                final parts = data['originalTaskId'].toString().split('_');
+                if (parts.length >= 2) {
+                  tmplTaskId = parts.sublist(1).join('_'); // preserve underscores in task id
+                }
+              }
+              if (tmplTaskId != null &&
+                  tmplTaskId.isNotEmpty &&
+                  templateTaskMap != null &&
+                  templateTaskMap.containsKey(tmplTaskId)) {
                 photoRequiredValue = templateTaskMap[tmplTaskId]!['photoRequired'] == true;
               } else {
                 photoRequiredValue = false;
@@ -905,8 +1010,9 @@ class DailyChecklistService {
               ),
             );
           }
-          // If no normal tasks remain after filtering, try to backfill from the template.
-          if (tasks.isEmpty && !seedAttempted) {
+          // If no normal tasks remain after filtering, consider backfilling from the template.
+          // Important: Only seed when the subcollection is truly empty, not just filtered empty.
+          if (tasks.isEmpty && !seedAttempted && subcollectionSnapshot.docs.isEmpty) {
             seedAttempted = true;
             try {
               final parentSnap = await checklistRef.get();
@@ -1334,7 +1440,7 @@ class DailyChecklistService {
         debugPrint('[DailyChecklistService] Skip invalid template ID: $templateId');
         continue;
       }
-      
+
       // Guardrail: ensure the template belongs to this location before generating
       try {
         final tmplSnap =
@@ -1353,6 +1459,24 @@ class DailyChecklistService {
         final tdata = tmplSnap.data() as Map<String, dynamic>;
         final List<dynamic> tLocsDyn = (tdata['locationIds'] is List) ? (tdata['locationIds'] as List) : const [];
         final Set<String> templateLocationIds = tLocsDyn.map((e) => e.toString()).toSet();
+
+        // CRITICAL FIX: Skip deleted or inactive templates
+        if (tdata['deleted'] == true) {
+          debugPrint('[DailyChecklistService] Skip template $templateId: template is deleted');
+          continue;
+        }
+
+        if (tdata['active'] == false) {
+          debugPrint('[DailyChecklistService] Skip template $templateId: template is inactive');
+          continue;
+        }
+
+        // CRITICAL FIX: Skip templates with no name (prevents Unknown Template checklists)
+        final templateName = tdata['name'] as String?;
+        if (templateName == null || templateName.trim().isEmpty) {
+          debugPrint('[DailyChecklistService] Skip template $templateId: template has no name');
+          continue;
+        }
 
         if (templateLocationIds.isNotEmpty && !templateLocationIds.contains(locationId)) {
           debugPrint(
@@ -1842,6 +1966,13 @@ class DailyChecklistService {
     final List<DailyChecklist> allCreatedChecklists = [];
 
     try {
+      final globalKey = 'allgen|$organizationId|$date';
+      // Prevent overlapping global generation across code paths
+      if (_generationInProgress.contains(globalKey)) {
+        debugPrint('[DailyChecklistService] Global generation already in progress for $globalKey');
+        return allCreatedChecklists;
+      }
+      _generationInProgress.add(globalKey);
       debugPrint('Starting daily checklist generation for org $organizationId on $date');
 
       // Get all locations in the organization
@@ -1912,7 +2043,14 @@ class DailyChecklistService {
       // After generating normal checklists, carry forward missed tasks from yesterday
       if (allCreatedChecklists.isNotEmpty) {
         try {
-          await carryForwardMissedTasks(organizationId: organizationId, targetDate: DateTime.parse(date));
+          final cfKey = 'cf|$organizationId|$date';
+          if (!_generationInProgress.contains(cfKey)) {
+            _generationInProgress.add(cfKey);
+            await carryForwardMissedTasks(organizationId: organizationId, targetDate: DateTime.parse(date));
+            _generationInProgress.remove(cfKey);
+          } else {
+            debugPrint('[DailyChecklistService] carryForward already in progress for $cfKey');
+          }
         } catch (e) {
           debugPrint('Error during carry-forward process: $e');
           // Don't fail the entire generation if carry-forward fails
@@ -1924,6 +2062,10 @@ class DailyChecklistService {
       debugPrint('Error in generateAllDailyChecklistsForDate: $e');
       debugPrint('Stack trace: $stackTrace');
       return allCreatedChecklists;
+    } finally {
+      try {
+        _generationInProgress.remove('allgen|$organizationId|$date');
+      } catch (_) {}
     }
   }
 
@@ -1936,9 +2078,159 @@ class DailyChecklistService {
       // Always generate checklists for today (idempotent)
       await generateAllDailyChecklistsForDate(organizationId: organizationId, date: dateString);
       debugPrint('Daily checklist generation completed for $dateString');
+      // One-time safety: dedupe today's tasks per org to fix any prior duplicates
+      final dedupeKey = 'dedupe|$organizationId|$dateString';
+      if (!_generationInProgress.contains(dedupeKey)) {
+        _generationInProgress.add(dedupeKey);
+        try {
+          final removed = await dedupeTodayForOrg(organizationId: organizationId, dateString: dateString);
+          debugPrint(
+            '[DailyChecklistService] Dedupe removed $removed duplicate tasks for $organizationId on $dateString',
+          );
+        } catch (e) {
+          debugPrint('[DailyChecklistService] Dedupe error for $organizationId on $dateString: $e');
+        } finally {
+          _generationInProgress.remove(dedupeKey);
+        }
+      }
     } catch (e) {
       debugPrint('Error in ensureDailyChecklistsExist: $e');
     }
+  }
+
+  /// Dedupe today's tasks for a single organization by scanning all locations and checklists on the date.
+  /// Returns total number of deleted duplicate docs.
+  Future<int> dedupeTodayForOrg({required String organizationId, required String dateString}) async {
+    int totalDeleted = 0;
+    try {
+      final locs = await _firestore.collection('organizations').doc(organizationId).collection('locations').get();
+      for (final loc in locs.docs) {
+        final locationId = loc.id;
+        final dls =
+            await _firestore
+                .collection('organizations')
+                .doc(organizationId)
+                .collection('locations')
+                .doc(locationId)
+                .collection('daily_checklists')
+                .where('date', isEqualTo: dateString)
+                .get();
+        for (final cl in dls.docs) {
+          totalDeleted += await _dedupeChecklistTasks(
+            organizationId: organizationId,
+            locationId: locationId,
+            checklistId: cl.id,
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('[DailyChecklistService] dedupeTodayForOrg error: $e');
+    }
+    return totalDeleted;
+  }
+
+  /// Dedupe a specific checklist's tasks based on stable keys.
+  /// - For carry-forward tasks: key = cf|originalChecklistId|originalTaskId
+  /// - For template tasks: key = tpl|templateTaskId (fallback to normalized name)
+  /// Keeps the earliest createdAt (or smallest doc id) and deletes the rest. Updates parent counters.
+  Future<int> _dedupeChecklistTasks({
+    required String organizationId,
+    required String locationId,
+    required String checklistId,
+  }) async {
+    int deleted = 0;
+    try {
+      final clRef = _firestore
+          .collection('organizations')
+          .doc(organizationId)
+          .collection('locations')
+          .doc(locationId)
+          .collection('daily_checklists')
+          .doc(checklistId);
+      final tasksSnap = await clRef.collection('tasks').get();
+      if (tasksSnap.docs.isEmpty) return 0;
+
+      final Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> keep = {};
+      final List<QueryDocumentSnapshot<Map<String, dynamic>>> toDelete = [];
+
+      for (final doc in tasksSnap.docs) {
+        final data = doc.data();
+        final isCF = data['isCarryForward'] == true;
+        String key;
+        if (isCF) {
+          final oc = (data['originalChecklistId']?.toString() ?? '');
+          final ot = (data['originalTaskId']?.toString() ?? '');
+          key = 'cf|$oc|$ot';
+        } else {
+          String tmpl = (data['templateTaskId']?.toString() ?? '').trim();
+          if (tmpl.isEmpty) {
+            final name =
+                (data['taskName'] ?? data['name'] ?? data['title'] ?? data['description'] ?? '')
+                    .toString()
+                    .trim()
+                    .toLowerCase();
+            tmpl = 'name:$name';
+          }
+          key = 'tpl|$tmpl';
+        }
+
+        if (!keep.containsKey(key)) {
+          keep[key] = doc;
+        } else {
+          // choose which to keep by createdAt asc then id asc
+          final prev = keep[key]!;
+          DateTime prevTs =
+              (prev.data()['createdAt'] is Timestamp)
+                  ? (prev.data()['createdAt'] as Timestamp).toDate()
+                  : DateTime.fromMillisecondsSinceEpoch(0);
+          DateTime curTs =
+              (data['createdAt'] is Timestamp)
+                  ? (data['createdAt'] as Timestamp).toDate()
+                  : DateTime.fromMillisecondsSinceEpoch(0);
+          final replace = curTs.isBefore(prevTs) || (curTs.isAtSameMomentAs(prevTs) && doc.id.compareTo(prev.id) < 0);
+          if (replace) {
+            toDelete.add(prev);
+            keep[key] = doc;
+          } else {
+            toDelete.add(doc);
+          }
+        }
+      }
+
+      // batch delete in chunks
+      int idx = 0;
+      while (idx < toDelete.length) {
+        final batch = _firestore.batch();
+        int ops = 0;
+        for (; idx < toDelete.length && ops < 450; idx++, ops++) {
+          batch.delete(toDelete[idx].reference);
+        }
+        if (ops > 0) {
+          await batch.commit();
+          deleted += ops;
+        }
+      }
+
+      // Update parent counters after dedupe
+      try {
+        final afterSnap = await clRef.collection('tasks').get();
+        final total = afterSnap.docs.length;
+        int completed = 0;
+        for (final d in afterSnap.docs) {
+          final m = d.data();
+          if (m['completed'] == true || m['isCompleted'] == true) completed++;
+        }
+        await clRef.set({
+          'totalItems': total,
+          'completedItems': completed,
+          'isCompleted': total > 0 && completed == total,
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } catch (_) {}
+    } catch (e) {
+      debugPrint('[DailyChecklistService] _dedupeChecklistTasks error for $checklistId: $e');
+    }
+    return deleted;
   }
 
   /// Carry forward missed tasks from yesterday into today's checklists.
@@ -2105,7 +2397,9 @@ class DailyChecklistService {
             // CRITICAL FIX: Only carry forward tasks if we have a valid template ID
             final originalTemplateId = (data['checklistTemplateId'] as String?);
             if (originalTemplateId == null || originalTemplateId.isEmpty || originalTemplateId == 'unknown') {
-              debugPrint('[DailyChecklistService] carryForward: Skipping checklist ${doc.id} due to missing/invalid template ID');
+              debugPrint(
+                '[DailyChecklistService] carryForward: Skipping checklist ${doc.id} due to missing/invalid template ID',
+              );
               continue;
             }
 
@@ -2141,12 +2435,37 @@ class DailyChecklistService {
 
             final tasksColl = todayRef.collection('tasks');
             final batch = _firestore.batch();
+
+            // Avoid re-inserting CF tasks when a same-name task already exists today
+            String _norm(String? s) => (s ?? '').trim().toLowerCase().replaceAll(RegExp('\\s+'), ' ');
+            final existingTodaySnap = await tasksColl.get();
+            final Set<String> todayNameKeys = {};
+            for (final d in existingTodaySnap.docs) {
+              try {
+                final m = d.data();
+                final name = (m['taskName'] ?? m['name'] ?? m['title'] ?? m['description'] ?? '').toString();
+                if (name.isNotEmpty) todayNameKeys.add(_norm(name));
+              } catch (_) {}
+            }
             int i = 0;
             for (final cf in carryForwardTasks) {
               final originalTaskId = cf['originalTaskId'] as String;
               final digest = sha1.convert(utf8.encode('cf|${doc.id}|$originalTaskId|$todayChecklistId')).toString();
               final cfId = digest.substring(0, 16);
               final ref = tasksColl.doc(cfId);
+              // Skip if already exists
+              try {
+                final existsSnap = await ref.get();
+                if (existsSnap.exists) {
+                  continue;
+                }
+              } catch (_) {}
+              // Skip if a same-name task exists already for today (prevents regenerate-after-delete)
+              final cfNameKey = _norm((cf['taskName'] ?? '').toString());
+              if (cfNameKey.isNotEmpty && todayNameKeys.contains(cfNameKey)) {
+                debugPrint('[DailyChecklistService] carryForward: Skip CF by name match for ${cf['taskName']} into $todayChecklistId');
+                continue;
+              }
               final cfTaskData = {
                 'taskId': cfId,
                 'taskName': cf['taskName'],
@@ -2328,7 +2647,24 @@ class DailyChecklistService {
     }
 
     if (collected.isEmpty) {
-      debugPrint('[MissedTasks][NX] FINAL RESULT: 0 sections (no CF tasks for yesterday)');
+      debugPrint('[MissedTasks][NX] FINAL RESULT: 0 CF task docs for yesterday');
+      // Final fallback: for managers/admins, surface read-only yesterday misses directly
+      try {
+        final isStaff = (userRole == 0);
+        if (!isStaff) {
+          final sections = await loadMissedTasksDirectFromYesterday(
+            organizationId: organizationId,
+            today: targetDate,
+            locationId: locationId,
+          );
+          if (sections.isNotEmpty) {
+            debugPrint('[MissedTasks][NX] Using direct-yesterday fallback sections: ${sections.length}');
+            return sections;
+          }
+        }
+      } catch (e) {
+        debugPrint('[MissedTasks][NX] direct-yesterday fallback failed (non-fatal): $e');
+      }
       return [];
     }
     // Apply checklist-level jobTypes filtering for staff users (userRole == 0)
@@ -2522,9 +2858,15 @@ class DailyChecklistService {
             try {
               final completed = (t['completed'] == true) || (t['isCompleted'] == true);
               if (completed) continue; // Only interested in tasks STILL missed yesterday
+
+              // CRITICAL: Exclude carry-forward tasks - we only want tasks that originated on yesterday
+              final isCarryForward = (t['isCarryForward'] == true);
+              if (isCarryForward) continue;
+
               // Confirm task belongs to yesterday by date fields if present
               final dateStr = t['dateString'];
               if (dateStr != null && dateStr != yesterdayStr) continue;
+
               // Build normalized key
               final taskName = (t['taskName'] ?? t['name'] ?? t['title'] ?? t['description'] ?? '').toString().trim();
               final normalizedName = taskName.isEmpty ? '(unnamed task)' : taskName;
@@ -2727,25 +3069,55 @@ class DailyChecklistService {
     );
 
     try {
-      // Helper to aggregate missed and total occurrences with shift tracking
-      Map<String, Map<String, dynamic>> taskStats = {};
-      if (locationId != null) {
-        // Query specific location - only look at past dates (not today)
-        final query = _firestore
+      // Helper: query checklists for a location between cutoff..yesterday (inclusive),
+      // trying string date first; if empty, retry with Timestamp range.
+      Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> queryLocationChecklists(String locId) async {
+        debugPrint('[DailyChecklistService] _queryLocationChecklists called with locId=$locId');
+        final base = _firestore
             .collection('organizations')
             .doc(organizationId)
             .collection('locations')
-            .doc(locationId)
-            .collection('daily_checklists')
-            .where('date', isGreaterThanOrEqualTo: cutoffStr)
-            .where('date', isLessThanOrEqualTo: yesterdayStr); // Only past dates
+            .doc(locId)
+            .collection('daily_checklists');
 
-        final snaps = await query.get();
-        debugPrint(
-          '[DailyChecklistService] Found ${snaps.docs.length} checklists for location $locationId (past dates only)',
+        // Try string range first
+        try {
+          final snapStr =
+              await base
+                  .where('date', isGreaterThanOrEqualTo: cutoffStr)
+                  .where('date', isLessThanOrEqualTo: yesterdayStr)
+                  .get();
+          if (snapStr.docs.isNotEmpty) return snapStr.docs;
+        } catch (e) {
+          // proceed to TS fallback
+          debugPrint('[DailyChecklistService] String date query failed for loc=$locId, will try Timestamp: $e');
+        }
+
+        // Timestamp fallback: [cutoff, yesterday end-of-day)
+        final startTs = Timestamp.fromDate(DateTime(cutoff.year, cutoff.month, cutoff.day));
+        final endExclusive = Timestamp.fromDate(
+          DateTime(yesterday.year, yesterday.month, yesterday.day).add(const Duration(days: 1)),
         );
+        try {
+          final snapTs =
+              await base.where('date', isGreaterThanOrEqualTo: startTs).where('date', isLessThan: endExclusive).get();
+          return snapTs.docs;
+        } catch (e) {
+          debugPrint('[DailyChecklistService] Timestamp date query failed for loc=$locId: $e');
+          return const <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+        }
+      }
 
-        for (final doc in snaps.docs) {
+      // Helper to aggregate missed and total occurrences with shift tracking
+      Map<String, Map<String, dynamic>> taskStats = {};
+      if (locationId != null) {
+        debugPrint('[DailyChecklistService] BRANCH: Querying specific location: $locationId');
+        // Query specific location - only look at past dates (not today), with date-type fallback
+        final snaps = await queryLocationChecklists(locationId);
+        debugPrint(
+          '[DailyChecklistService] Found ${snaps.length} checklists for location $locationId (past dates only)',
+        );
+        for (final doc in snaps) {
           final data = doc.data();
           final docDate = data['date'] as String?;
           final shiftId = data['shiftId'] as String?;
@@ -2779,7 +3151,8 @@ class DailyChecklistService {
                   '';
               key = key.trim();
               if (key.isEmpty) {
-                key = jsonEncode(t); // Fallback for safety
+                // Use hashCode instead of jsonEncode to avoid Timestamp serialization errors
+                key = 'task_${t.hashCode}';
               }
               if (seenKeys.contains(key)) continue;
               seenKeys.add(key);
@@ -2836,20 +3209,15 @@ class DailyChecklistService {
           }
         }
       } else {
-        // Query all locations - this requires aggregating across locations
+        debugPrint('[DailyChecklistService] BRANCH: Querying ALL locations (locationId is null)');
+        // Query all locations - aggregate across locations, exclude today
         final locationsSnap =
             await _firestore.collection('organizations').doc(organizationId).collection('locations').get();
+        debugPrint('[DailyChecklistService] Found ${locationsSnap.docs.length} total locations to query');
         for (final locationDoc in locationsSnap.docs) {
-          final query = _firestore
-              .collection('organizations')
-              .doc(organizationId)
-              .collection('locations')
-              .doc(locationDoc.id)
-              .collection('daily_checklists')
-              .where('date', isGreaterThanOrEqualTo: cutoffStr);
-
-          final snaps = await query.get();
-          for (final doc in snaps.docs) {
+          debugPrint('[DailyChecklistService] Processing location: ${locationDoc.id}');
+          final snaps = await queryLocationChecklists(locationDoc.id);
+          for (final doc in snaps) {
             final data = doc.data();
 
             // Combine tasks from both document array and subcollection
@@ -2877,8 +3245,8 @@ class DailyChecklistService {
                     '';
                 key = key.trim();
                 if (key.isEmpty) {
-                  // Fall back to JSON fingerprint to avoid treating empty-named tasks as identical
-                  key = jsonEncode(t);
+                  // Use hashCode instead of jsonEncode to avoid Timestamp serialization errors
+                  key = 'task_${t.hashCode}';
                 }
                 if (seenKeys.contains(key)) continue;
                 seenKeys.add(key);
@@ -2977,6 +3345,7 @@ class DailyChecklistService {
       for (final task in sorted.take(limit)) {
         debugPrint('[DailyChecklistService] Task: ${task['taskName']}, Shifts: ${task['shiftNames']}');
       }
+      debugPrint('[DailyChecklistService] === FINAL RESULT FOR LOCATION $locationId ===');
       return sorted.take(limit).toList();
     } catch (e, st) {
       debugPrint('[DailyChecklistService] getFrequentlyMissedTasks error: $e\n$st');
@@ -3042,7 +3411,10 @@ class DailyChecklistService {
 
                 // Build a dedup key
                 var key = (t['taskId'] ?? t['id'] ?? t['templateTaskId'] ?? name).toString().trim();
-                if (key.isEmpty) key = jsonEncode(t);
+                if (key.isEmpty) {
+                  // Use hashCode instead of jsonEncode to avoid Timestamp serialization errors
+                  key = 'task_${t.hashCode}';
+                }
                 if (seen.contains(key)) continue;
                 seen.add(key);
 
@@ -3531,5 +3903,114 @@ class DailyChecklistService {
     }
 
     return 'Unknown Shift';
+  }
+
+  /// Count missed tasks for a specific historical date (not carry-forward based).
+  /// This method directly queries the daily_checklists for the given date and counts
+  /// incomplete tasks. Use this for historical trend analysis (7-day, 30-day, etc).
+  /// NOTE: Returns 0 for today (since tasks are still in progress).
+  Future<int> countMissedTasksForDate({
+    required String organizationId,
+    required DateTime date,
+    String? locationId,
+  }) async {
+    final dateStr = _formatDate(date);
+    final todayStr = _formatDate(DateTime.now());
+
+    // Don't count today's incomplete tasks as "missed" - they're still in progress
+    if (dateStr == todayStr) {
+      debugPrint('[DailyChecklistService] countMissedTasksForDate: skipping today (tasks in progress)');
+      return 0;
+    }
+
+    debugPrint('[DailyChecklistService] countMissedTasksForDate: date=$dateStr, loc=$locationId');
+
+    try {
+      int totalMissed = 0;
+
+      // Helper to query and count for a location with date-type fallback
+      Future<int> countForLocation(String locId) async {
+        final base = _firestore
+            .collection('organizations')
+            .doc(organizationId)
+            .collection('locations')
+            .doc(locId)
+            .collection('daily_checklists');
+
+        List<QueryDocumentSnapshot<Map<String, dynamic>>> docs = [];
+
+        // Try string match first
+        try {
+          final snap = await base.where('date', isEqualTo: dateStr).get();
+          if (snap.docs.isNotEmpty) {
+            docs = snap.docs;
+          }
+        } catch (e) {
+          debugPrint('[DailyChecklistService] String date match failed for $locId: $e');
+        }
+
+        // Timestamp fallback if empty
+        if (docs.isEmpty) {
+          try {
+            // FIX: Use UTC to ensure consistent date boundaries regardless of server/client timezones
+            final utcDate = DateTime.utc(date.year, date.month, date.day);
+            final dayStart = Timestamp.fromDate(utcDate);
+            final dayEnd = Timestamp.fromDate(utcDate.add(const Duration(days: 1)));
+
+            final snap =
+                await base.where('date', isGreaterThanOrEqualTo: dayStart).where('date', isLessThan: dayEnd).get();
+            docs = snap.docs;
+          } catch (e) {
+            debugPrint('[DailyChecklistService] Timestamp date match failed for $locId: $e');
+          }
+        }
+
+        int missed = 0;
+        for (final doc in docs) {
+          final data = doc.data();
+          // Combine legacy array and subcollection
+          final List<Map<String, dynamic>> tasksList = [];
+          tasksList.addAll(_extractTasksList(data));
+          try {
+            final subSnap = await doc.reference.collection('tasks').get();
+            for (final t in subSnap.docs) {
+              tasksList.add(t.data());
+            }
+          } catch (_) {}
+
+          // Dedupe tasks
+          final seen = <String>{};
+          for (final t in tasksList) {
+            final key = (t['taskId'] ?? t['id'] ?? t['taskName'] ?? t['description'] ?? '').toString().trim();
+            if (key.isEmpty || seen.contains(key)) continue;
+            seen.add(key);
+
+            final completed = (t['completed'] == true) || (t['isCompleted'] == true);
+            final isCarryForward = (t['isCarryForward'] == true);
+            // Count tasks that are incomplete and NOT carry-forward (we want original misses)
+            if (!completed && !isCarryForward) {
+              missed++;
+            }
+          }
+        }
+        return missed;
+      }
+
+      if (locationId != null) {
+        totalMissed = await countForLocation(locationId);
+      } else {
+        // Aggregate across all locations
+        final locs = await _firestore.collection('organizations').doc(organizationId).collection('locations').get();
+        final futures = locs.docs.map((l) => countForLocation(l.id));
+        final results = await Future.wait(futures);
+        totalMissed = results.fold(0, (sum, val) => sum + val);
+      }
+
+      debugPrint('[DailyChecklistService] countMissedTasksForDate result: $totalMissed for $dateStr');
+      return totalMissed;
+    } catch (e, st) {
+      debugPrint('[DailyChecklistService] countMissedTasksForDate error: $e\n$st');
+      return 0;
+    }
   }
 }

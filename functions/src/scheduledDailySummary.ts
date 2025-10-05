@@ -387,15 +387,19 @@ async function processTaskForSummary(params: {
     });
   }
 
-  // Check for not completed reasons
-  const reason = taskData.reason || taskData.notCompletedReason;
-  if (!isCompleted && reason && reason.trim()) {
+  // Check for not completed tasks - ALL incomplete tasks are "missed"
+  // Reason is optional detail, not required to count as incomplete
+  if (!isCompleted) {
+    const reason = taskData.reason || taskData.notCompletedReason;
+    const hasReason = !!(reason && reason.trim());
+    
     missedTaskEntries.push({
       taskName,
       shiftName,
       checklistName: templateName,
       locationName,
-      reason
+      reason: hasReason ? reason : 'No reason provided',
+      hasReason: hasReason
     });
   }
 
@@ -811,9 +815,18 @@ function generateEmailSubject(organizationName: string, date: Date, percentage: 
 
 function generateNotableItemsForEmail(summaryData: any): string {
   const items = [];
+  const totalTasks = summaryData.totalTasks || 0;
+  const completedTasks = summaryData.completedTasks || 0;
+  const incompleteTasks = totalTasks - completedTasks;
   
-  if (summaryData.missedTaskEntries?.length > 0) {
-    items.push(`❌ ${summaryData.missedTaskEntries.length} tasks not completed`);
+  if (incompleteTasks > 0) {
+    items.push(`❌ ${incompleteTasks} tasks not completed`);
+    
+    // Show breakdown if we have detailed info
+    const missedWithReasons = summaryData.missedTaskEntries?.filter((t: any) => t.hasReason).length || 0;
+    if (missedWithReasons > 0) {
+      items.push(`📝 ${missedWithReasons} with explanations provided`);
+    }
   }
   
   if (summaryData.photoBypassed?.length > 0) {
@@ -824,7 +837,14 @@ function generateNotableItemsForEmail(summaryData: any): string {
     items.push(`📝 ${summaryData.notesEntries.length} staff notes recorded`);
   }
   
-  return items.length > 0 ? items.join('<br>') : 'All tasks completed successfully';
+  // ONLY say "all tasks completed" if actually 100% or no tasks exist
+  if (totalTasks === 0) {
+    return 'No tasks scheduled for this period';
+  } else if (incompleteTasks === 0) {
+    return 'All tasks completed successfully! 🎉';
+  }
+  
+  return items.length > 0 ? items.join('<br>') : 'Task details not available';
 }
 
 function generateActionItemsForEmail(percentage: number, summaryData: any): string {
@@ -874,23 +894,34 @@ function buildEnhancedHtmlSections(summaryData: any, yesterdayData: any) {
 
     // Build top missed tasks breakdown
     const missedTasks = summaryData.missedTaskEntries || [];
+    const totalTasks = summaryData.totalTasks || 0;
+    const completedTasks = summaryData.completedTasks || 0;
+    const incompleteTasks = totalTasks - completedTasks;
+    
     let missedTasksHtml = '';
-    if (missedTasks.length > 0) {
-      const topMissed = missedTasks.slice(0, 5); // Top 5 missed tasks
+    if (incompleteTasks > 0 && missedTasks.length > 0) {
+      const topMissed = missedTasks.slice(0, 5); // Top 5 incomplete tasks
       missedTasksHtml = '<div style="margin-top:8px;">';
       topMissed.forEach((task: any, index: number) => {
         const reason = task.reason || 'No reason provided';
+        const reasonColor = task.hasReason ? '#ff9d7a' : '#bfbfbf';
         missedTasksHtml += `<div style="margin-bottom:8px; padding:8px; background:rgba(255,107,45,0.1); border-left:3px solid #ff6b2d; border-radius:3px;">
           <div style="font-weight:600; color:#fff;">${escapeHtml(task.taskName)}</div>
           <div style="font-size:12px; color:#bfbfbf; margin-top:2px;">${escapeHtml(task.shiftName)} • ${escapeHtml(task.checklistName)}</div>
-          <div style="font-size:12px; color:#ff9d7a; margin-top:4px;">Reason: ${escapeHtml(reason)}</div>
+          <div style="font-size:12px; color:${reasonColor}; margin-top:4px;">Reason: ${escapeHtml(reason)}</div>
         </div>`;
       });
-      if (missedTasks.length > 5) {
-        missedTasksHtml += `<div style="color:#9b9b9b; font-size:12px; text-align:center; margin-top:8px;">... and ${missedTasks.length - 5} more missed tasks</div>`;
+      if (incompleteTasks > 5) {
+        missedTasksHtml += `<div style="color:#9b9b9b; font-size:12px; text-align:center; margin-top:8px;">... and ${incompleteTasks - 5} more incomplete tasks</div>`;
       }
       missedTasksHtml += '</div>';
+    } else if (incompleteTasks > 0 && missedTasks.length === 0) {
+      // If incomplete count exists but no task details, show generic message
+      missedTasksHtml = `<div style="color:#ffbe08; margin-top:8px;">⚠️ ${incompleteTasks} tasks incomplete - details not recorded</div>`;
+    } else if (totalTasks === 0) {
+      missedTasksHtml = '<div style="color:#9b9b9b; font-style:italic; margin-top:8px;">No tasks scheduled for this period.</div>';
     } else {
+      // ONLY show success if truly 100% complete
       missedTasksHtml = '<div style="color:#8cf68c; font-style:italic; margin-top:8px;">All tasks completed successfully! 🎉</div>';
     }
 
@@ -947,8 +978,8 @@ function buildEnhancedHtmlSections(summaryData: any, yesterdayData: any) {
         <td style="padding:8px 0; text-align:right; color:#8cf68c; font-weight:700;">${summaryData.completedTasks || 0} of ${summaryData.totalTasks || 0}</td>
       </tr>
       <tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
-        <td style="padding:8px 0; color:#ff6b2d; font-weight:600;">Tasks Missed</td>
-        <td style="padding:8px 0; text-align:right; color:#ff6b6b; font-weight:700;">${missedTasks.length}</td>
+        <td style="padding:8px 0; color:#ff6b2d; font-weight:600;">Tasks Incomplete</td>
+        <td style="padding:8px 0; text-align:right; color:#ff6b6b; font-weight:700;">${incompleteTasks}</td>
       </tr>
       <tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
         <td style="padding:8px 0; color:#ff6b2d; font-weight:600;">Staff Notes</td>
@@ -1010,15 +1041,15 @@ async function sendNotificationToAdmins(orgId: string, title: string, message: s
     const batch = db.batch();
     const timestamp = admin.firestore.FieldValue.serverTimestamp();
 
-    for (const admin of adminUsers) {
+    for (const adminUser of adminUsers) {
       const userNotificationRef = db
         .collection("userNotifications")
-        .doc(admin.userId)
+        .doc(adminUser.userId)
         .collection("notifications")
         .doc();
 
       batch.set(userNotificationRef, {
-        userId: admin.userId,
+        userId: adminUser.userId,
         orgId,
         type: "daily_summary",
         title,
@@ -1027,7 +1058,7 @@ async function sendNotificationToAdmins(orgId: string, title: string, message: s
         archivedBy: [],
         createdAt: timestamp,
         targetType: "user",
-        targetId: admin.userId,
+        targetId: adminUser.userId,
         expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         outboxId: notificationRef.id,
       });

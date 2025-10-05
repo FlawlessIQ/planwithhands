@@ -404,30 +404,13 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
 
     return Consumer(
       builder: (context, ref, child) {
-        final unreadCountAsync = ref.watch(unreadNotificationsCountProvider);
+        final unreadCount = ref.watch(notificationCountProvider);
         // Check session validity before showing unread indicator
         final sessionValid = FirebaseAuth.instance.currentUser != null;
-        final hasUnread = unreadCountAsync.when(
-          data: (count) {
-            if (kDebugMode) {
-              print('[UnifiedMenuButton] Unread count: $count, hasUnread: ${count > 0}, sessionValid: $sessionValid');
-            }
-            return sessionValid && count > 0;
-          },
-          loading: () {
-            if (kDebugMode) {
-              print('[UnifiedMenuButton] Provider loading... showing no indicator');
-            }
-            return false;
-          },
-          error: (error, stack) {
-            if (kDebugMode) {
-              print('[UnifiedMenuButton] Provider error: $error - hiding indicator');
-            }
-            // Hide indicator on error to prevent confusion
-            return false;
-          },
-        );
+        if (kDebugMode) {
+          print('[UnifiedMenuButton] Unread count: $unreadCount, sessionValid: $sessionValid');
+        }
+        final hasUnread = sessionValid && unreadCount > 0;
 
         if (kDebugMode) {
           print('[UnifiedMenuButton] Final hasUnread: $hasUnread');

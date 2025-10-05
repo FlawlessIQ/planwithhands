@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/services/web_optimized_firestore_service.dart';
 import 'package:hands_app/services/session_notification_service.dart';
+import 'package:hands_app/services/local_storage_service.dart';
 
 /// Session manager that handles Firebase Auth token validation and refresh
 /// Ensures users stay authenticated with valid tokens for optimal app functionality
@@ -23,22 +24,23 @@ class SessionManager {
   static const Duration _sessionCheckInterval = Duration(minutes: 15);
   static const Duration _tokenRefreshCooldown = Duration(minutes: 5);
 
-  // Session timeout options (in hours)
+  // Session timeout options
   static const Map<String, Duration> sessionTimeoutOptions = {
+    '2_hours': Duration(hours: 2),
     '4_hours': Duration(hours: 4),
     '8_hours': Duration(hours: 8),
     '24_hours': Duration(hours: 24),
   };
 
-  // Default session timeout
-  static const Duration _defaultSessionTimeout = Duration(hours: 8);
+  // Default session timeout (auto-logout after 2 hours of inactivity)
+  static const Duration _defaultSessionTimeout = Duration(hours: 2);
 
   // Callbacks for session events
   VoidCallback? _onSessionExpired;
   VoidCallback? _onSessionWarning;
 
   // Session timeout preference (in-memory for now)
-  String _sessionTimeoutKey = '8_hours';
+  String _sessionTimeoutKey = '2_hours';
 
   bool _isInitialized = false;
   StreamSubscription<User?>? _authStateSubscription;
@@ -49,6 +51,17 @@ class SessionManager {
     if (_isInitialized) return;
 
     logger.d('[SessionManager] Initializing session management');
+
+    // Load last activity from local storage (to survive web refresh)
+    try {
+      final stored = LocalStorageService.getString('session_last_activity_at');
+      if (stored != null && stored.isNotEmpty) {
+        _lastActivity = DateTime.tryParse(stored);
+        logger.d('[SessionManager] Restored last activity from storage: $_lastActivity');
+      }
+    } catch (e) {
+      logger.w('[SessionManager] Failed to restore last activity: $e');
+    }
 
     // Listen to auth state changes
     _authStateSubscription = _auth.authStateChanges().listen((user) {
@@ -87,6 +100,10 @@ class SessionManager {
   /// Record user activity to reset session timeout
   void _recordActivity() {
     _lastActivity = DateTime.now();
+    // Persist to local storage so refresh respects inactivity window
+    try {
+      LocalStorageService.saveString('session_last_activity_at', _lastActivity!.toIso8601String());
+    } catch (_) {}
     _resetSessionTimeout();
     logger.d('[SessionManager] Activity recorded, session timeout reset');
   }
@@ -223,9 +240,19 @@ class SessionManager {
     }
 
     try {
-      // Check if we should refresh the token
-      if (_shouldRefreshToken()) {
-        logger.d('[SessionManager] Refreshing auth token');
+      // Check if there was a long period of inactivity
+      final inactiveDuration =
+          _lastActivity != null
+              ? DateTime.now().difference(_lastActivity!)
+              : const Duration(hours: 999); // Assume very long if no activity recorded
+
+      // Force refresh after 1+ hour of inactivity OR if cooldown expired
+      final shouldForceRefresh = inactiveDuration >= const Duration(hours: 1) || _shouldRefreshToken();
+
+      if (shouldForceRefresh) {
+        logger.d(
+          '[SessionManager] Refreshing auth token (inactive: ${inactiveDuration.inHours}h ${inactiveDuration.inMinutes.remainder(60)}m, last refresh: ${_lastTokenRefresh != null ? DateTime.now().difference(_lastTokenRefresh!).inMinutes : "never"}m ago)',
+        );
 
         // Force token refresh
         final token = await user.getIdToken(true);
@@ -238,7 +265,7 @@ class SessionManager {
         // Just validate the current token
         final token = await user.getIdToken(false);
         if (token != null && token.isNotEmpty) {
-          logger.d('[SessionManager] Current token is valid');
+          logger.d('[SessionManager] Current token is valid (inactive: ${inactiveDuration.inMinutes}m)');
           return true;
         }
       }

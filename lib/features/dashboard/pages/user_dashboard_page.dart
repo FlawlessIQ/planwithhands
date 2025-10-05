@@ -1714,6 +1714,40 @@ Future<List<DailyChecklist>> _loadChecklistsForShiftSimple(
     // If we didn't use server-side filtering, apply client-side jobTypes filtering where needed
     List<QueryDocumentSnapshot> docs = checklistSnapshot.docs;
 
+    // SAFETY FILTER: Drop aggregated shift-level checklists that don't point to a single template.
+    // These legacy docs were shaped like: id = org_loc_shift_date (no template in id) and either
+    //  - have no `checklistTemplateId` field, or
+    //  - carry an array `checklistTemplateIds` of multiple templates and a mixed tasks subcollection.
+    // They cause the UI to render a header with "Unknown Template" since there is no single template to resolve.
+    // We only display per-template checklists that include a non-empty `checklistTemplateId`.
+    final beforeSafety = docs.length;
+    docs =
+        docs.where((d) {
+          try {
+            final raw = d.data() as Map<String, dynamic>?;
+            if (raw == null) return false;
+            final singleId = (raw['checklistTemplateId'] ?? '').toString();
+            final hasSingle = singleId.trim().isNotEmpty;
+            if (!hasSingle) {
+              final hasArray = raw['checklistTemplateIds'] is List && (raw['checklistTemplateIds'] as List).isNotEmpty;
+              debugPrint(
+                '[Dashboard] 🔥 SAFETY: Dropping aggregated checklist doc ${d.id} (hasSingle=$hasSingle, hasArray=$hasArray)',
+              );
+              logger.w(
+                '[Dashboard] SAFETY: Dropping aggregated checklist doc ${d.id} (hasSingle=$hasSingle, hasArray=$hasArray)',
+              );
+              return false;
+            }
+            return true;
+          } catch (e) {
+            logger.w('[Dashboard] SAFETY: Failed to parse checklist doc ${d.id}, dropping. Error: $e');
+            return false; // fail closed
+          }
+        }).toList();
+    if (docs.length != beforeSafety) {
+      logger.d('[Dashboard] SAFETY: Filtered out ${beforeSafety - docs.length} aggregated checklist(s)');
+    }
+
     // CRITICAL DEBUG: Log what we found before filtering
     debugPrint("[Dashboard] 🔥🔍 RAW CHECKLISTS FOUND: ${docs.length}");
     logger.d("[Dashboard] 🔍 RAW CHECKLISTS FOUND: ${docs.length}");
@@ -2742,6 +2776,53 @@ class _NotesDialogState extends State<_NotesDialog> {
     return HandsDialog(
       title: 'Task Notes',
       actions: [
+        // Delete/Clear notes button (only enabled when there is content)
+        TextButton.icon(
+          onPressed:
+              _isSaving
+                  ? null
+                  : () async {
+                    try {
+                      setState(() => _isSaving = true);
+                      final svc = DailyChecklistService();
+                      if (widget.checklist != null) {
+                        await svc.updateTaskNotes(
+                          organizationId: widget.checklist.organizationId,
+                          locationId: widget.checklist.locationId,
+                          checklistId: widget.checklist.id,
+                          taskId: widget.task.taskId,
+                          notes: '',
+                        );
+                      } else if (widget.task != null && (widget.task.organizationId != null)) {
+                        await svc.updateTaskNotes(
+                          organizationId: widget.task.organizationId,
+                          locationId: widget.task.locationId,
+                          checklistId: widget.task.checklistId ?? widget.task.originalChecklistId ?? '',
+                          taskId: widget.task.taskId,
+                          notes: '',
+                        );
+                      }
+                      widget.onNotesUpdated();
+                      if (mounted) {
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(const SnackBar(content: Text('Notes cleared'), backgroundColor: Colors.orange));
+                        Navigator.pop(context, '');
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Failed to clear notes: $e'), backgroundColor: Colors.red),
+                        );
+                      }
+                    } finally {
+                      if (mounted) setState(() => _isSaving = false);
+                    }
+                  },
+          icon: const Icon(Icons.delete_outline),
+          style: TextButton.styleFrom(foregroundColor: HandsColors.white70),
+          label: const Text('Clear'),
+        ),
         TextButton(
           onPressed: _isSaving ? null : () => Navigator.pop(context),
           style: TextButton.styleFrom(foregroundColor: HandsColors.white70),
@@ -2980,8 +3061,28 @@ class _NotCompletedReasonDialogState extends State<_NotCompletedReasonDialog> {
       final svc = DailyChecklistService();
       if (widget.checklist != null) {
         await svc.updateTaskNotCompletedReason(widget.task, finalReason);
+        // Also clear any existing notes when a not-completed reason is added
+        if ((widget.task.notes ?? '').isNotEmpty) {
+          await svc.updateTaskNotes(
+            organizationId: widget.task.organizationId ?? widget.checklist.organizationId,
+            locationId: widget.task.locationId ?? widget.checklist.locationId,
+            checklistId: widget.task.checklistId ?? widget.checklist.id,
+            taskId: widget.task.taskId,
+            notes: '',
+          );
+        }
       } else if (widget.task != null && (widget.task.organizationId != null)) {
         await svc.updateTaskNotCompletedReason(widget.task, finalReason);
+        // Also clear any existing notes when a not-completed reason is added
+        if ((widget.task.notes ?? '').isNotEmpty) {
+          await svc.updateTaskNotes(
+            organizationId: widget.task.organizationId,
+            locationId: widget.task.locationId,
+            checklistId: widget.task.checklistId ?? widget.task.originalChecklistId ?? '',
+            taskId: widget.task.taskId,
+            notes: '',
+          );
+        }
       }
 
       widget.onReasonUpdated();
@@ -3996,7 +4097,54 @@ class _TaskTileFromData extends HookWidget {
             }
             // If a photo was added, continue to mark completed below
           }
-          // if choice == 'complete_without_photo' fall through and complete
+          if (choice == 'complete_without_photo') {
+            // Require a note explaining why no photo was added
+            final noteController = TextEditingController();
+            final String? note = await showDialog<String?>(
+              context: context,
+              barrierDismissible: false,
+              builder:
+                  (ctx) => AlertDialog(
+                    title: const Text('Add note (required)'),
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('Please add a brief note explaining why no photo was added.'),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: noteController,
+                          maxLines: 3,
+                          decoration: const InputDecoration(hintText: 'Enter note...'),
+                        ),
+                      ],
+                    ),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.of(ctx).pop(null), child: const Text('Cancel')),
+                      TextButton(
+                        onPressed: () {
+                          final text = noteController.text.trim();
+                          if (text.isEmpty) return; // keep dialog open until non-empty
+                          Navigator.of(ctx).pop(text);
+                        },
+                        child: const Text('Save'),
+                      ),
+                    ],
+                  ),
+            );
+            if (note == null || note.isEmpty) return; // user canceled or empty
+
+            // Persist the required note before marking completion
+            final orgId = taskData.organizationId ?? checklist.organizationId;
+            final locId = taskData.locationId ?? checklist.locationId;
+            final listId = taskData.checklistId ?? checklist.id;
+            await DailyChecklistService().updateTaskNotes(
+              organizationId: orgId,
+              locationId: locId,
+              checklistId: listId,
+              taskId: taskData.taskId,
+              notes: note,
+            );
+          }
         }
       }
 
@@ -4312,6 +4460,50 @@ class _MissedTaskInteractionTile extends HookWidget {
                 } else {
                   return; // Widget unmounted, can't show photo dialog
                 }
+              } else if (choice == 'complete_without_photo') {
+                // Require a note before allowing completion without a required photo
+                final noteController = TextEditingController();
+                final String? note = await showDialog<String?>(
+                  context: context,
+                  barrierDismissible: false,
+                  builder:
+                      (ctx) => AlertDialog(
+                        title: const Text('Add note (required)'),
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text('Please add a brief note explaining why no photo was added.'),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: noteController,
+                              maxLines: 3,
+                              decoration: const InputDecoration(hintText: 'Enter note...'),
+                            ),
+                          ],
+                        ),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.of(ctx).pop(null), child: const Text('Cancel')),
+                          TextButton(
+                            onPressed: () {
+                              final text = noteController.text.trim();
+                              if (text.isEmpty) return; // keep dialog open until non-empty
+                              Navigator.of(ctx).pop(text);
+                            },
+                            child: const Text('Save'),
+                          ),
+                        ],
+                      ),
+                );
+                if (note == null || note.isEmpty) return; // user canceled or empty
+
+                // Persist the required note before marking completion
+                await DailyChecklistService().updateTaskNotes(
+                  organizationId: section.organizationId,
+                  locationId: section.locationId ?? (task.locationId ?? ''),
+                  checklistId: section.checklistId ?? (task.checklistId ?? task.originalChecklistId ?? ''),
+                  taskId: task.taskId,
+                  notes: note,
+                );
               }
             }
           }
@@ -4322,6 +4514,9 @@ class _MissedTaskInteractionTile extends HookWidget {
             completedByUserEmail: user.email,
             completedByUserId: user.uid,
             completedByUserName: user.displayName,
+            organizationIdOverride: task.organizationId ?? section.organizationId,
+            locationIdOverride: task.locationId ?? section.locationId,
+            checklistIdOverride: task.checklistId ?? section.checklistId ?? task.originalChecklistId,
           );
         } catch (e) {
           logger.w('[MissedTask] Falling back to checklist array update due to error: $e');

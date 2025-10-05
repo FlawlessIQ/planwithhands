@@ -232,15 +232,18 @@ class HandsDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Constrain dialog to viewport and allow content scrolling on small screens
+    final media = MediaQuery.of(context);
+    final maxDialogHeight = media.size.height * 0.9; // leave some margin for status bar
     return Dialog(
       backgroundColor: HandsColors.primaryContainer,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
-        width: width,
-        height: height,
+        width: width ?? media.size.width.clamp(0, 600),
+        constraints: BoxConstraints(maxHeight: height ?? maxDialogHeight),
         padding: const EdgeInsets.all(24),
         child: Column(
-          mainAxisSize: height != null ? MainAxisSize.max : MainAxisSize.min,
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Title
@@ -273,7 +276,8 @@ class HandsDialog extends StatelessWidget {
               const SizedBox(height: 16),
             ],
             // Content
-            Expanded(flex: height != null ? 1 : 0, child: child),
+            // Wrap in Flexible + SingleChildScrollView so it scrolls when content exceeds height
+            Flexible(fit: FlexFit.loose, child: SingleChildScrollView(child: child)),
             // Actions
             if (actions != null && actions!.isNotEmpty) ...[
               const SizedBox(height: 24),

@@ -22,7 +22,7 @@
   "dependencies": {
     "@sendgrid/mail": "^8.1.5",
     "csv-parse": "^6.1.0",
-    "firebase-admin": "^12.6.0",
+    "firebase-admin": "^12.7.0",
     "firebase-functions": "^4.9.0",
     "luxon": "^3.7.1",
     "stripe": "^18.3.0"

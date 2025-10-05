@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hands_app/state/user_state.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'dart:async';
+import 'package:hands_app/services/local_storage_service.dart';
 
 /// Notifier for managing notification state refresh
 class NotificationStateNotifier extends Notifier<int> {
@@ -12,6 +13,10 @@ class NotificationStateNotifier extends Notifier<int> {
 
   @override
   int build() {
+    // Seed from cached value to avoid flicker on cold start/refresh
+    final cached = LocalStorageService.getInt(_cacheKey());
+    final initialValue = cached ?? 0;
+
     // Start listening to notification count
     _startListening();
 
@@ -25,7 +30,7 @@ class NotificationStateNotifier extends Notifier<int> {
       debugPrint('[NotificationStateNotifier] Disposed notification listeners');
     });
 
-    return 0;
+    return initialValue;
   }
 
   void _startListening() {
@@ -83,6 +88,8 @@ class NotificationStateNotifier extends Notifier<int> {
 
             debugPrint('[NotificationStateNotifier] Final unread count: $count');
             state = count;
+            // Persist to cache for resilience across refreshes
+            unawaited(LocalStorageService.saveInt(_cacheKey(), count));
           },
           onError: (error) {
             debugPrint('[NotificationStateNotifier] Stream error: $error');
@@ -90,6 +97,11 @@ class NotificationStateNotifier extends Notifier<int> {
             // This prevents notification indicator from disappearing due to network issues
           },
         );
+  }
+
+  String _cacheKey() {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'anonymous';
+    return 'unread_count_$uid';
   }
 
   /// Set up periodic refresh for long-running sessions

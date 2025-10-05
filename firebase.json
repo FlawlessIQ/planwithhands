@@ -11,10 +11,18 @@
       "codebase": "default",
       "ignore": [
         "node_modules",
+        "**/node_modules/**",
         ".git",
         "firebase-debug.log",
         "firebase-debug.*.log",
-        "*.local"
+        "*.local",
+        "build",
+        "build/**",
+        "coverage",
+        "coverage/**",
+        "test",
+        "test/**",
+        "**/*.map"
       ],
       "predeploy": [
         "npm --prefix \"$RESOURCE_DIR\" run build"

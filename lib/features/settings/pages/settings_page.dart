@@ -59,7 +59,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
   bool _dailySummaryEnabled = true;
   TimeOfDay _dailySummaryTime = const TimeOfDay(hour: 20, minute: 0); // Default to 8:00 PM
   String _summaryPeriod = 'calendar-day'; // 'calendar-day' or 'business-day'
-  String _sessionTimeout = '8_hours'; // '4_hours', '8_hours', '24_hours'
+  String _sessionTimeout = '2_hours'; // '2_hours','4_hours','8_hours','24_hours'
   bool _isLoadingPreferences = false;
 
   @override
@@ -511,17 +511,25 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                   child: CupertinoPicker(
                     itemExtent: 70,
                     scrollController: FixedExtentScrollController(
-                      initialItem: _sessionTimeout == '4_hours' ? 0 : (_sessionTimeout == '8_hours' ? 1 : 2),
+                      initialItem:
+                          _sessionTimeout == '2_hours'
+                              ? 0
+                              : (_sessionTimeout == '4_hours'
+                                  ? 1
+                                  : (_sessionTimeout == '8_hours' ? 2 : 3)),
                     ),
                     onSelectedItemChanged: (int index) {
                       switch (index) {
                         case 0:
-                          tempSelection = '4_hours';
+                          tempSelection = '2_hours';
                           break;
                         case 1:
-                          tempSelection = '8_hours';
+                          tempSelection = '4_hours';
                           break;
                         case 2:
+                          tempSelection = '8_hours';
+                          break;
+                        case 3:
                           tempSelection = '24_hours';
                           break;
                       }
@@ -533,11 +541,27 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text(
+                              '2 Hours',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: HandsColors.white),
+                            ),
+                            Text(
+                              'High security - auto logout after 2 hours',
+                              style: TextStyle(fontSize: 12, color: HandsColors.white.withOpacity(0.7)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
                               '4 Hours',
                               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: HandsColors.white),
                             ),
                             Text(
-                              'High security - auto logout after 4 hours',
+                              'Balanced security - auto logout after 4 hours',
                               style: TextStyle(fontSize: 12, color: HandsColors.white.withOpacity(0.7)),
                             ),
                           ],
@@ -1591,9 +1615,11 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              _sessionTimeout == '4_hours'
-                                  ? '4 Hours'
-                                  : (_sessionTimeout == '8_hours' ? '8 Hours' : '24 Hours'),
+                              _sessionTimeout == '2_hours'
+                                  ? '2 Hours'
+                                  : (_sessionTimeout == '4_hours'
+                                      ? '4 Hours'
+                                      : (_sessionTimeout == '8_hours' ? '8 Hours' : '24 Hours')),
                               style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
                             ),
                             const SizedBox(width: 2),

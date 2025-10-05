@@ -282,15 +282,19 @@ class DailySummaryService {
       });
     }
 
-    // Check for not completed reasons
-    final reason = taskData['reason'] as String? ?? taskData['notCompletedReason'] as String?;
-    if (!isCompleted && reason != null && reason.trim().isNotEmpty) {
+    // Check for not completed tasks - ALL incomplete tasks are "missed"
+    // Reason is optional detail, not required to count as incomplete
+    if (!isCompleted) {
+      final reason = taskData['reason'] as String? ?? taskData['notCompletedReason'] as String?;
+      final hasReason = reason != null && reason.trim().isNotEmpty;
+
       missedTaskEntries.add({
         'taskName': taskName,
         'shiftName': shiftName,
         'checklistName': templateName,
         'locationName': locationName,
-        'reason': reason,
+        'reason': hasReason ? reason : 'No reason provided',
+        'hasReason': hasReason,
       });
     }
 

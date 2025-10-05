@@ -244,11 +244,18 @@ class HandsApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
 
-    return MaterialApp.router(
-      title: 'Hands',
-      theme: handsTheme,
-      routerConfig: router,
-      debugShowCheckedModeBanner: false,
+    // Wrap entire app with global gesture detection for activity tracking
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () => ActivityTracker().recordActivity(source: 'global_tap'),
+      onScaleStart: (_) => ActivityTracker().recordActivity(source: 'global_interaction'),
+      onScaleUpdate: (_) => ActivityTracker().recordActivity(source: 'global_interaction'),
+      child: MaterialApp.router(
+        title: 'Hands',
+        theme: handsTheme,
+        routerConfig: router,
+        debugShowCheckedModeBanner: false,
+      ),
     );
   }
 }

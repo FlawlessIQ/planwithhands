@@ -25,6 +25,7 @@ import 'package:hands_app/state/app_state.dart';
 import 'package:hands_app/data/models/location_data.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/services/location_selection_service.dart';
+import 'package:hands_app/services/activity_tracker.dart';
 // Admin tools widgets removed from this page; imports intentionally removed
 import 'dart:convert';
 import 'package:crypto/crypto.dart' as crypto;
@@ -42,7 +43,7 @@ class AdminDashboardPage extends ConsumerStatefulWidget {
   ConsumerState<AdminDashboardPage> createState() => _AdminDashboardPageState();
 }
 
-class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
+class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with ActivityTrackingMixin {
   int? userRole;
   String? organizationId;
   bool isLoading = true;

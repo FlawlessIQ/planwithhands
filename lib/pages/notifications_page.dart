@@ -184,7 +184,7 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
 
       // Force refresh the unread count provider
       if (mounted) {
-        ref.invalidate(unreadNotificationsCountProvider);
+        ref.invalidate(notificationCountProvider);
         // Refresh current view
         await _loadNotifications(isLoadMore: false);
       }
@@ -210,7 +210,7 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
 
       // Force refresh the unread count provider
       if (mounted) {
-        ref.invalidate(unreadNotificationsCountProvider);
+        ref.invalidate(notificationCountProvider);
         // Refresh current view
         await _loadNotifications(isLoadMore: false);
       }
@@ -268,7 +268,7 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
             ),
           );
           // Force refresh the unread count provider
-          ref.invalidate(unreadNotificationsCountProvider);
+          ref.invalidate(notificationCountProvider);
           // Refresh current view
           await _loadNotifications(isLoadMore: false);
         }
@@ -316,7 +316,7 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
 
       // Force refresh the unread count provider by invalidating it
       if (mounted) {
-        ref.invalidate(unreadNotificationsCountProvider);
+        ref.invalidate(notificationCountProvider);
       }
     } catch (e) {
       if (kDebugMode) {

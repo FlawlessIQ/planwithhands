@@ -1,6 +1,11 @@
 import 'package:flutter/widgets.dart';
 import 'package:hands_app/services/session_manager.dart';
 import 'package:hands_app/core/logging/logger.dart';
+import 'package:flutter/foundation.dart';
+
+// Conditionally import dart:html for web to listen to user events safely
+// ignore: avoid_web_libraries_in_flutter
+import 'activity_tracker_stub.dart' if (dart.library.html) 'activity_tracker_web.dart';
 
 /// Global activity tracker that monitors user interactions
 /// and keeps sessions alive during active usage
@@ -17,6 +22,24 @@ class ActivityTracker {
 
     _isTracking = true;
     logger.d('[ActivityTracker] Activity tracking initialized');
+
+    // On web, subscribe to global user interaction and visibility events
+    if (kIsWeb) {
+      try {
+        ActivityTrackerPlatformBindings.installGlobalWebListeners(
+          onUserActivity: () {
+            recordActivity(source: 'web_event');
+          },
+          onVisibilityGained: () {
+            recordActivity(source: 'visibility_gained');
+            // Also prompt a session validation on resume
+            SessionManager().handleAppResume();
+          },
+        );
+      } catch (e) {
+        logger.w('[ActivityTracker] Failed to install web listeners: $e');
+      }
+    }
   }
 
   /// Record user activity - call this on any meaningful user interaction
@@ -31,6 +54,12 @@ class ActivityTracker {
   void dispose() {
     _isTracking = false;
     logger.d('[ActivityTracker] Activity tracking disposed');
+
+    if (kIsWeb) {
+      try {
+        ActivityTrackerPlatformBindings.removeGlobalWebListeners();
+      } catch (_) {}
+    }
   }
 }
 
