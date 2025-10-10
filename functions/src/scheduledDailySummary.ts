@@ -254,32 +254,18 @@ async function collectDailySummaryData(orgId: string, date: Date, orgData?: any)
             continue;
           }
 
-          // Process tasks from subcollection
+          // PRIORITY 2 FIX: Process tasks from subcollection ONLY
+          // Legacy array is deprecated and can cause double-counting
+          // All task data should now be in the subcollection
           const tasksSnapshot = await checklistDoc.ref.collection("tasks").get();
+          
+          if (tasksSnapshot.empty) {
+            functions.logger.warn(`No tasks found in subcollection for checklist ${checklistDoc.id} - may need migration`);
+          }
+          
           for (const taskDoc of tasksSnapshot.docs) {
             const taskData = taskDoc.data();
             
-            await processTaskForSummary({
-              taskData,
-              shiftName,
-              templateName,
-              locationName,
-              userNames,
-              notesEntries,
-              missedTaskEntries,
-              photoBypassed
-            });
-
-            totalTasks++;
-            const isCompleted = taskData.completed || taskData.isCompleted || false;
-            if (isCompleted) {
-              completedTasks++;
-            }
-          }
-
-          // Also process legacy tasks array
-          const tasks = checklistData.tasks || [];
-          for (const taskData of tasks) {
             await processTaskForSummary({
               taskData,
               shiftName,
@@ -302,8 +288,12 @@ async function collectDailySummaryData(orgId: string, date: Date, orgData?: any)
     }
 
     const overallPercentage = totalTasks > 0 ? (completedTasks / totalTasks * 100) : 0;
+    
+    // CRITICAL FIX: Calculate incomplete from missed array length for consistency
+    // This ensures the "incomplete" count matches what's actually shown in the missed tasks list
+    const incompleteTasks = missedTaskEntries.length;
 
-    functions.logger.info(`Summary data collected for org ${orgId}: ${totalTasks} total tasks, ${completedTasks} completed (${Math.round(overallPercentage)}%)`);
+    functions.logger.info(`Summary data collected for org ${orgId}: ${totalTasks} total tasks, ${completedTasks} completed, ${incompleteTasks} incomplete (${Math.round(overallPercentage)}%)`);
 
     return {
       notesEntries,
@@ -311,6 +301,7 @@ async function collectDailySummaryData(orgId: string, date: Date, orgData?: any)
       photoBypassed,
       totalTasks,
       completedTasks,
+      incompleteTasks,  // NEW: Explicit incomplete count from array
       overallPercentage,
       summaryPeriod
     };
@@ -323,6 +314,7 @@ async function collectDailySummaryData(orgId: string, date: Date, orgData?: any)
       photoBypassed: [],
       totalTasks: 0,
       completedTasks: 0,
+      incompleteTasks: 0,  // NEW: Explicit incomplete count
       overallPercentage: 0,
       summaryPeriod: 'calendar-day'
     };
@@ -331,6 +323,7 @@ async function collectDailySummaryData(orgId: string, date: Date, orgData?: any)
 
 /**
  * Determine if a checklist should be included in the summary based on period and timing
+ * PRIORITY 2 FIX: Improved business-day filtering logic
  */
 function shouldIncludeChecklistInSummary(
   checklistData: any, 
@@ -343,10 +336,25 @@ function shouldIncludeChecklistInSummary(
     return true;
   }
 
-  // For business-day mode, we might want to filter by shift timing
-  // For now, include all checklists from both dates
-  // Future enhancement: could filter by shift start/end times
-  return true;
+  // PRIORITY 2 FIX: For business-day mode, only include checklists from the target date
+  // The business day represents "close to close", which means we want tasks from
+  // the calendar day itself. The query already includes yesterday and today for context,
+  // but we should primarily focus on the target date's tasks.
+  // 
+  // NOTE: If you need to capture late-night shifts that span dates (e.g., bar closing at 2am),
+  // implement shift-time-based filtering here using checklistData.shiftStartTime/shiftEndTime
+  
+  const checklistDate = checklistData.date;
+  const targetDateStr = formatDateForComparison(targetDate);
+  
+  // Only include if the checklist is for the target date
+  return checklistDate === targetDateStr;
+}
+
+function formatDateForComparison(date: Date): string {
+  return date.getFullYear() + '-' +
+    String(date.getMonth() + 1).padStart(2, '0') + '-' +
+    String(date.getDate()).padStart(2, '0');
 }
 
 /**
@@ -366,7 +374,9 @@ async function processTaskForSummary(params: {
   
   const taskName = taskData.taskName || taskData.description || taskData.title || taskData.name || "Unknown Task";
   const isCompleted = taskData.completed || taskData.isCompleted || false;
-  const photoRequired = taskData.photoRequired || false;
+  const isCarryForward = taskData.isCarryForward || false;
+  // FIX: Consistent photo detection - check both photoRequired AND isCarryForwardEligible
+  const photoRequired = taskData.photoRequired || taskData.isCarryForwardEligible || false;
   const hasPhoto = !!(taskData.proofImageUrl || taskData.photoUrl);
 
   // Check for task notes
@@ -387,9 +397,10 @@ async function processTaskForSummary(params: {
     });
   }
 
-  // Check for not completed tasks - ALL incomplete tasks are "missed"
-  // Reason is optional detail, not required to count as incomplete
-  if (!isCompleted) {
+  // Check for not completed tasks - CRITICAL FIX: Exclude carry-forward tasks
+  // Carry-forward tasks are incomplete by design (from yesterday) and shouldn't count as "missed" today
+  // Only count tasks that were supposed to be completed today as "missed"
+  if (!isCompleted && !isCarryForward) {
     const reason = taskData.reason || taskData.notCompletedReason;
     const hasReason = !!(reason && reason.trim());
     
@@ -691,6 +702,9 @@ async function sendDailySummaryEmails(
 
         const subject = generateEmailSubject(organizationName, date, overallPercentage, summaryPeriod);
 
+        // PRIORITY 2 FIX: Use explicit incomplete count from summaryData
+        const incompleteTasks = summaryData.incompleteTasks || 0;
+        
         // Build dynamic template data with both normalized (lower_snake_case) and legacy uppercase keys
         const normalizedTemplateData: any = {
           organization_name: organizationName,
@@ -702,6 +716,7 @@ async function sendDailySummaryEmails(
           overall_percentage: overallPercentage.toFixed(0),
           completed_tasks: completedTasks.toString(),
           total_tasks: totalTasks.toString(),
+          incomplete_tasks: incompleteTasks.toString(),  // NEW: Explicit incomplete count
           summary_period: summaryPeriod === 'business-day' ? ' (Business Day)' : '',
           missed_tasks_count: summaryData.missedTaskEntries?.length || 0,
           photo_bypassed_count: summaryData.photoBypassed?.length || 0,
@@ -721,6 +736,7 @@ async function sendDailySummaryEmails(
           OVERALL_PERCENTAGE: overallPercentage.toFixed(0),
           COMPLETED_TASKS: completedTasks.toString(),
           TOTAL_TASKS: totalTasks.toString(),
+          INCOMPLETE_TASKS: incompleteTasks.toString(),  // NEW: Explicit incomplete count
           SUMMARY_PERIOD: summaryPeriod === 'business-day' ? ' (Business Day)' : '',
           MISSED_TASKS_COUNT: summaryData.missedTaskEntries?.length || 0,
           PHOTO_BYPASSED_COUNT: summaryData.photoBypassed?.length || 0,
@@ -817,7 +833,8 @@ function generateNotableItemsForEmail(summaryData: any): string {
   const items = [];
   const totalTasks = summaryData.totalTasks || 0;
   const completedTasks = summaryData.completedTasks || 0;
-  const incompleteTasks = totalTasks - completedTasks;
+  // FIX: Use explicit incomplete count from summaryData instead of calculation
+  const incompleteTasks = summaryData.incompleteTasks || 0;
   
   if (incompleteTasks > 0) {
     items.push(`❌ ${incompleteTasks} tasks not completed`);
@@ -896,7 +913,8 @@ function buildEnhancedHtmlSections(summaryData: any, yesterdayData: any) {
     const missedTasks = summaryData.missedTaskEntries || [];
     const totalTasks = summaryData.totalTasks || 0;
     const completedTasks = summaryData.completedTasks || 0;
-    const incompleteTasks = totalTasks - completedTasks;
+    // FIX: Use explicit incomplete count from summaryData
+    const incompleteTasks = summaryData.incompleteTasks || 0;
     
     let missedTasksHtml = '';
     if (incompleteTasks > 0 && missedTasks.length > 0) {

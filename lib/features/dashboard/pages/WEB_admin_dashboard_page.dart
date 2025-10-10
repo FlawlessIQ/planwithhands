@@ -686,6 +686,64 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> with Acti
       ),
       child: Column(
         children: [
+          // Location indicator (only show if multiple locations exist)
+          if (_availableLocations.length > 1) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: HandsColors.secondaryContainer,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: HandsColors.handsOrange.withOpacity(0.3), width: 1.5),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.location_on, color: HandsColors.handsOrange, size: 24),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Current Location',
+                          style: GoogleFonts.comfortaa(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: HandsColors.white70,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _selectedLocationName ?? 'All Locations',
+                          style: GoogleFonts.comfortaa(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: HandsColors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: HandsColors.handsOrange.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: HandsColors.handsOrange.withOpacity(0.3)),
+                    ),
+                    child: Text(
+                      '${_availableLocations.length} locations',
+                      style: GoogleFonts.comfortaa(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: HandsColors.handsOrange,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           Row(
             children: [
               // Search field

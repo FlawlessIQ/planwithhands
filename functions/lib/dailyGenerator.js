@@ -175,6 +175,7 @@ async function carryForwardTasks(params) {
     candidateIds.push(primaryId);
     let carried = 0;
     const processedOrigins = new Set();
+    const processedTaskNames = new Set(); // Prevent duplicate task names from being carried forward
     for (const candidateId of candidateIds) {
         const yRef = orgRef
             .collection("locations").doc(locationId)
@@ -186,7 +187,20 @@ async function carryForwardTasks(params) {
         for (const ytask of yTasksSnap.docs) {
             const ydata = ytask.data() || {};
             const isCompleted = ydata.completed === true || ydata.isComplete === true;
+            // Skip already-completed tasks
             if (isCompleted) {
+                continue;
+            }
+            // IMPORTANT: don't carry-forward tasks that are themselves carry-forwards.
+            // Allow only original tasks from yesterday to be carried into today. This
+            // prevents chaining where a carried task from an earlier run is carried
+            // forward again and again, creating duplicate carry-forwards.
+            if (ydata.isCarryForward === true) {
+                continue;
+            }
+            // CRITICAL FIX: Skip tasks that are already carry-forwards to prevent cascading duplicates
+            // Only carry forward original tasks from templates, not previously carried-forward tasks
+            if (ydata.isCarryForward === true) {
                 continue;
             }
             const matchesTemplate = (ydata.checklistTemplateId && ydata.checklistTemplateId === template.id) ||
@@ -201,9 +215,30 @@ async function carryForwardTasks(params) {
             }
             processedOrigins.add(originKey);
             const taskName = ydata.taskName || ydata.name || ydata.title || "Task";
+            // CRITICAL FIX: Prevent duplicate carry-forwards with the same task name
+            if (processedTaskNames.has(taskName)) {
+                continue;
+            }
+            processedTaskNames.add(taskName);
             const cfDigest = crypto.createHash("sha1").update(`cf|${candidateId}|${originalTaskId}|${checklistId}`).digest("hex");
             const cfId = cfDigest.substring(0, 16);
             const newTaskRef = checklistRef.collection("tasks").doc(cfId);
+            // Safety: if the deterministic carry-forward doc already exists, skip creating it.
+            // This guards against race conditions and duplicate writes across multiple runs.
+            try {
+                const existing = await newTaskRef.get();
+                if (existing.exists) {
+                    // Already present (possibly created by a previous run) - don't duplicate
+                    continue;
+                }
+            }
+            catch (err) {
+                // If a read fails, log and proceed to attempt creation (we don't want to
+                // silently stop producing carry-forwards). The higher-level logic/tests
+                // will catch anomalies.
+                // eslint-disable-next-line no-console
+                console.warn(`carryForwardTasks: could not check existing carry-forward doc ${cfId}`, err);
+            }
             const newTask = {
                 taskId: cfId,
                 taskName,

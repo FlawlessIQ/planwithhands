@@ -15,6 +15,7 @@ import 'package:hands_app/state/user_state.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/utils/app_platform.dart';
 import 'package:hands_app/widgets/hands_text_field.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class LoginPage extends HookConsumerWidget {
   const LoginPage({super.key});
@@ -405,7 +406,7 @@ class LoginPage extends HookConsumerWidget {
                             // Email Field
                             HandsTextFormField(
                               controller: emailController,
-                              autofillHints: const [AutofillHints.email, AutofillHints.username],
+                              autofillHints: const [AutofillHints.username],
                               decoration: InputDecoration(
                                 hintText: 'Email',
                                 prefixIcon: Icon(Icons.email_outlined, color: HandsColors.white70),
@@ -542,6 +543,24 @@ class LoginPage extends HookConsumerWidget {
                 // Sign Up Link - Different behavior based on platform
                 Padding(padding: const EdgeInsets.symmetric(vertical: 32.0), child: _buildSignUpSection(context)),
                 const SizedBox(height: 20),
+                // Version number at bottom
+                FutureBuilder<PackageInfo>(
+                  future: PackageInfo.fromPlatform(),
+                  builder: (context, snapshot) {
+                    if (snapshot.hasData) {
+                      return Text(
+                        'v${snapshot.data!.version}',
+                        style: GoogleFonts.comfortaa(
+                          fontSize: 10,
+                          fontWeight: FontWeight.normal,
+                          color: HandsColors.white70.withOpacity(0.5),
+                        ),
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  },
+                ),
+                const SizedBox(height: 16),
               ],
             ),
           ),

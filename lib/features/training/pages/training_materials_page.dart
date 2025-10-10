@@ -48,9 +48,24 @@ class ViewDocumentsPage extends HookConsumerWidget {
     final selectedCategory = useState<String>('All');
     final organizationId = useState<String?>(null);
     final isLoadingOrgId = useState<bool>(true);
+    final availableLocations = useState<List<Map<String, dynamic>>>([]);
 
     // Use LocationSelectionService instead of local state
     final currentLocationId = useValueListenable(LocationSelectionService.instance.listenable);
+
+    // Helper to get current location name
+    String getCurrentLocationName() {
+      if (currentLocationId == null) return 'All Locations';
+      try {
+        final match = availableLocations.value.firstWhere(
+          (l) => l['id'] == currentLocationId,
+          orElse: () => <String, dynamic>{},
+        );
+        return match.isNotEmpty ? match['name'] as String : 'Unknown Location';
+      } catch (_) {
+        return 'Unknown Location';
+      }
+    }
 
     logger.d('DEBUG: userState: $userState');
     logger.d('DEBUG: userState.userData: ${userState.userData}');
@@ -96,6 +111,33 @@ class ViewDocumentsPage extends HookConsumerWidget {
       loadOrganizationId();
       return null;
     }, [userState.userData?.organizationId]);
+
+    // Load available locations
+    useEffect(() {
+      if (organizationId.value == null) return null;
+
+      Future<void> loadLocations() async {
+        try {
+          final locationsSnapshot =
+              await FirestoreEnforcer.instance
+                  .collection('organizations')
+                  .doc(organizationId.value!)
+                  .collection('locations')
+                  .get();
+
+          availableLocations.value =
+              locationsSnapshot.docs.map((doc) {
+                final data = doc.data();
+                return {'id': doc.id, 'name': data['locationName'] ?? 'Unnamed Location'};
+              }).toList();
+        } catch (e) {
+          logger.e('Error loading locations: $e', e);
+        }
+      }
+
+      loadLocations();
+      return null;
+    }, [organizationId.value]);
 
     final categories = [
       'All',
@@ -243,6 +285,52 @@ class ViewDocumentsPage extends HookConsumerWidget {
               : null,
       body: Column(
         children: [
+          // Location indicator (only show if multiple locations exist)
+          if (availableLocations.value.length > 1) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              margin: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+              decoration: BoxDecoration(
+                color: HandsColors.cardPrimary,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: HandsColors.handsOrange.withOpacity(0.3), width: 1.5),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.location_on, color: HandsColors.handsOrange, size: 24),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Current Location',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: HandsColors.white70),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          getCurrentLocationName(),
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: HandsColors.white),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: HandsColors.handsOrange.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: HandsColors.handsOrange.withOpacity(0.3)),
+                    ),
+                    child: Text(
+                      '${availableLocations.value.length} locations',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: HandsColors.handsOrange),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           // Category Filter
           Container(
             height: 42,

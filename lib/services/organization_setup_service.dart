@@ -71,18 +71,26 @@ class OrganizationSetupService {
         return false;
       }
 
-      // Enable metrics in organization document
+      // Enable metrics in organization document and enable daily summary notifications
       final orgRef = _firestore.collection('organizations').doc(organizationId);
       await orgRef.update({
         'metricsEnabled': true,
         'metricsEnabledAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
+        // Enable daily summary emails and in-app notifications
+        'dailySummarySettings': {
+          'enabled': true,
+          'enabledAt': FieldValue.serverTimestamp(),
+          'hour': 18, // Default to 6 PM
+          'minute': 0,
+          'timezone': 'America/New_York', // Default timezone
+        },
       });
 
       // Log the activation for audit purposes
       await _logSetupActivation(organizationId);
 
-      logger.d('[OrganizationSetupService] Successfully enabled metrics tracking');
+      logger.d('[OrganizationSetupService] Successfully enabled metrics tracking and daily summaries');
       return true;
     } catch (e, stackTrace) {
       logger.e('[OrganizationSetupService] Error enabling metrics tracking', e, stackTrace);

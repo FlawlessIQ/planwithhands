@@ -514,9 +514,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                       initialItem:
                           _sessionTimeout == '2_hours'
                               ? 0
-                              : (_sessionTimeout == '4_hours'
-                                  ? 1
-                                  : (_sessionTimeout == '8_hours' ? 2 : 3)),
+                              : (_sessionTimeout == '4_hours' ? 1 : (_sessionTimeout == '8_hours' ? 2 : 3)),
                     ),
                     onSelectedItemChanged: (int index) {
                       switch (index) {

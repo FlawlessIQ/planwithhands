@@ -940,94 +940,104 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage>
 
       final Map<String, Map<String, num>> agg = {}; // key: shiftName, values: {'done':x,'total':y}
 
-      // Cache to avoid repeated reads for the same shiftId
-      final Map<String, String?> shiftNameCache = {};
-
+      // OPTIMIZATION: Batch-fetch all unique shift IDs in parallel
+      final uniqueShiftIds = <String>{};
       for (final d in docs) {
         final dataRaw = d.data();
         final data = (dataRaw is Map<String, dynamic>) ? dataRaw : <String, dynamic>{};
         final shiftId = (data['shiftId'] ?? '').toString();
-
-        if (shiftId.isEmpty) {
-          logger.w('[ManagerDashboard][DEBUG] Skipping daily_checklist ${d.id} due to missing shiftId.');
-          continue;
+        if (shiftId.isNotEmpty) {
+          uniqueShiftIds.add(shiftId);
         }
+      }
 
-        String? shiftName;
+      logger.i('[ManagerDashboard][DEBUG] Batch-fetching ${uniqueShiftIds.length} unique shift names');
 
-        // Check cache first
-        if (shiftNameCache.containsKey(shiftId)) {
-          shiftName = shiftNameCache[shiftId];
-        } else {
-          // Fetch from Firestore
-          try {
-            final shiftDoc =
-                await FirestoreEnforcer.instance
-                    .collection('organizations')
-                    .doc(widget.organizationId)
-                    .collection('shifts')
-                    .doc(shiftId)
-                    .get();
-            if (shiftDoc.exists) {
-              final sdata = shiftDoc.data();
-              final resolved = (sdata?['shiftName'] ?? sdata?['name'] ?? '').toString();
-              if (resolved.isNotEmpty) {
-                shiftName = resolved;
-                shiftNameCache[shiftId] = resolved; // Cache the name
-              } else {
-                // Shift exists but has no name, treat as invalid
-                shiftNameCache[shiftId] = null;
+      final Map<String, String?> shiftNameCache = {};
+      final shiftFutures =
+          uniqueShiftIds.map((shiftId) async {
+            try {
+              final shiftDoc =
+                  await FirestoreEnforcer.instance
+                      .collection('organizations')
+                      .doc(widget.organizationId)
+                      .collection('shifts')
+                      .doc(shiftId)
+                      .get();
+              if (shiftDoc.exists) {
+                final sdata = shiftDoc.data();
+                final resolved = (sdata?['shiftName'] ?? sdata?['name'] ?? '').toString();
+                return MapEntry(shiftId, resolved.isNotEmpty ? resolved : null);
               }
-            } else {
-              // Shift is deleted, cache this info so we don't look it up again
-              shiftNameCache[shiftId] = null; // Null indicates deleted
+            } catch (e) {
+              logger.w('[ManagerDashboard][DEBUG] Failed to resolve shiftName for shiftId=$shiftId: $e');
             }
-          } catch (e) {
-            logger.w('[ManagerDashboard][DEBUG] Failed to resolve shiftName for shiftId=$shiftId: $e');
-            shiftNameCache[shiftId] = null; // Also cache failure to avoid retries
-          }
-        }
+            return MapEntry(shiftId, null);
+          }).toList();
 
-        // If shiftName is null or empty, it means the shift was deleted or invalid. Skip it.
-        if (shiftName == null || shiftName.isEmpty) {
-          logger.i(
-            '[ManagerDashboard][DEBUG] Skipping checklist ${d.id} because shift $shiftId is deleted or invalid.',
-          );
-          continue;
-        }
+      final shiftResults = await Future.wait(shiftFutures);
+      for (final entry in shiftResults) {
+        shiftNameCache[entry.key] = entry.value;
+      }
 
-        logger.i('[ManagerDashboard][DEBUG] Processing checklist docId: ${d.id}, shiftName: $shiftName');
+      logger.i('[ManagerDashboard][DEBUG] Resolved ${shiftNameCache.length} shift names from cache');
 
-        // Check if tasks are in subcollection (new way) or in document (old way)
-        List<Map<String, dynamic>> tasks = [];
+      // OPTIMIZATION: Batch-read all tasks subcollections in parallel
+      final tasksFutures =
+          docs.map((d) async {
+            final dataRaw = d.data();
+            final data = (dataRaw is Map<String, dynamic>) ? dataRaw : <String, dynamic>{};
+            final shiftId = (data['shiftId'] ?? '').toString();
 
-        if (data.containsKey('tasks') && data['tasks'] != null) {
-          // Old way: tasks in document
-          tasks = List<Map<String, dynamic>>.from(data['tasks'] ?? const []);
-          logger.i(
-            '[ManagerDashboard][DEBUG] Found ${tasks.length} tasks in document for shift: $shiftName, checklist: ${d.id}',
-          );
-        } else {
-          // New way: tasks in subcollection - need to fetch them
-          try {
-            final tasksSnap = await d.reference.collection('tasks').get();
-            tasks = tasksSnap.docs.map((taskDoc) => taskDoc.data()).toList();
-            logger.i(
-              '[ManagerDashboard][DEBUG] Found ${tasks.length} tasks in subcollection for shift: $shiftName, checklist: ${d.id}',
-            );
-          } catch (e) {
-            logger.e('[ManagerDashboard][DEBUG] Failed to load tasks subcollection for doc ${d.id}: $e');
-          }
-        }
+            if (shiftId.isEmpty) {
+              return null;
+            }
 
-        final total = tasks.length;
-        final done =
-            tasks.where((t) {
-              final completed = t['completed'] == true || t['isCompleted'] == true || t['status'] == 'completed';
-              return completed;
-            }).length;
+            final shiftName = shiftNameCache[shiftId];
 
-        logger.i('[ManagerDashboard][DEBUG] Shift $shiftName: $done/$total completed');
+            // If shiftName is null or empty, it means the shift was deleted or invalid. Skip it.
+            if (shiftName == null || shiftName.isEmpty) {
+              return null;
+            }
+
+            // Check if tasks are in subcollection (new way) or in document (old way)
+            List<Map<String, dynamic>> tasks = [];
+
+            if (data.containsKey('tasks') && data['tasks'] != null) {
+              // Old way: tasks in document
+              tasks = List<Map<String, dynamic>>.from(data['tasks'] ?? const []);
+            } else {
+              // New way: tasks in subcollection - need to fetch them
+              try {
+                final tasksSnap = await d.reference.collection('tasks').get();
+                tasks = tasksSnap.docs.map((taskDoc) => taskDoc.data()).toList();
+              } catch (e) {
+                logger.e('[ManagerDashboard][DEBUG] Failed to load tasks subcollection for doc ${d.id}: $e');
+              }
+            }
+
+            final total = tasks.length;
+            final done =
+                tasks.where((t) {
+                  final completed = t['completed'] == true || t['isCompleted'] == true || t['status'] == 'completed';
+                  return completed;
+                }).length;
+
+            return {'shiftName': shiftName, 'done': done, 'total': total, 'docId': d.id};
+          }).toList();
+
+      final allTasksData = await Future.wait(tasksFutures);
+
+      // Aggregate results
+      for (final taskData in allTasksData) {
+        if (taskData == null) continue;
+
+        final shiftName = taskData['shiftName'] as String;
+        final done = taskData['done'] as int;
+        final total = taskData['total'] as int;
+        final docId = taskData['docId'] as String;
+
+        logger.i('[ManagerDashboard][DEBUG] Shift $shiftName: $done/$total completed (doc: $docId)');
 
         final entry = agg.putIfAbsent(shiftName, () => {'done': 0, 'total': 0});
         entry['done'] = (entry['done'] ?? 0) + done;

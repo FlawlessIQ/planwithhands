@@ -949,6 +949,65 @@ class UserDashboardPage extends HookConsumerWidget {
                   // ...existing code...
                   if (errorMessage.value != null) _InfoCard(message: errorMessage.value!, color: Colors.red),
 
+                  // Location indicator at top of page (only show if multiple locations exist)
+                  if (availableLocations.value.length > 1) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: HandsColors.cardPrimary,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: HandsColors.handsOrange.withOpacity(0.3), width: 1.5),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.location_on, color: HandsColors.handsOrange, size: 24),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Current Location',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                    color: HandsColors.white70,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  getCurrentLocationName(),
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: HandsColors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: HandsColors.handsOrange.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: HandsColors.handsOrange.withOpacity(0.3)),
+                            ),
+                            child: Text(
+                              '${availableLocations.value.length} locations',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: HandsColors.handsOrange,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
                   // Instructional text (hide when there is an active assigned shift)
                   if (assignedShifts.value.isEmpty) _InstructionCard(),
                   const SizedBox(height: 24),
@@ -1228,6 +1287,7 @@ class UserDashboardPage extends HookConsumerWidget {
                   _ConsolidatedMissedTasksCard(
                     sections: missedTasksSections.value,
                     isLoading: missedTasksLoading.value,
+                    locationName: getCurrentLocationName(),
                     onUpdate: (updatedSection) {
                       // Update local missedTasksSections in-place so completed missed tasks remain visible
                       final updated =
@@ -1876,6 +1936,7 @@ Future<List<DailyChecklist>> _loadChecklistsForShiftSimple(
                 .collection('daily_checklists')
                 .doc(checklist.id)
                 .collection('tasks')
+                .orderBy('order')
                 .get();
         if (tasksSnap.docs.isNotEmpty) {
           logger.d('[Dashboard] Hydrating ${tasksSnap.docs.length} subcollection tasks for checklist ${checklist.id}');
@@ -3279,8 +3340,14 @@ class _ConsolidatedMissedTasksCard extends HookWidget {
   final List<MissedTasksSection> sections;
   final bool isLoading;
   final void Function(MissedTasksSection updatedSection) onUpdate;
+  final String? locationName;
 
-  const _ConsolidatedMissedTasksCard({required this.sections, required this.isLoading, required this.onUpdate});
+  const _ConsolidatedMissedTasksCard({
+    required this.sections,
+    required this.isLoading,
+    required this.onUpdate,
+    this.locationName,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -3402,9 +3469,30 @@ class _ConsolidatedMissedTasksCard extends HookWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            "Missed Tasks from Yesterday",
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                          Row(
+                            children: [
+                              const Text(
+                                "Missed Tasks from Yesterday",
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                              ),
+                              if (locationName != null) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
+                                  ),
+                                  child: Text(
+                                    '📍 $locationName',
+                                    style: const TextStyle(fontSize: 10, color: Colors.white),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                           const SizedBox(height: 2),
                           Text(

@@ -65,7 +65,9 @@ mixin _$TaskData {
   String? get checklistName => throw _privateConstructorUsedError;
   String? get shiftId => throw _privateConstructorUsedError;
   String? get templateId => throw _privateConstructorUsedError;
-  String? get dateString => throw _privateConstructorUsedError;
+  String? get dateString => throw _privateConstructorUsedError; // 'YYYY-MM-DD'
+  // Display order
+  int? get order => throw _privateConstructorUsedError;
 
   /// Serializes this TaskData to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -115,6 +117,7 @@ abstract class $TaskDataCopyWith<$Res> {
     String? shiftId,
     String? templateId,
     String? dateString,
+    int? order,
   });
 }
 
@@ -165,6 +168,7 @@ class _$TaskDataCopyWithImpl<$Res, $Val extends TaskData>
     Object? shiftId = freezed,
     Object? templateId = freezed,
     Object? dateString = freezed,
+    Object? order = freezed,
   }) {
     return _then(
       _value.copyWith(
@@ -328,6 +332,11 @@ class _$TaskDataCopyWithImpl<$Res, $Val extends TaskData>
                     ? _value.dateString
                     : dateString // ignore: cast_nullable_to_non_nullable
                         as String?,
+            order:
+                freezed == order
+                    ? _value.order
+                    : order // ignore: cast_nullable_to_non_nullable
+                        as int?,
           )
           as $Val,
     );
@@ -376,6 +385,7 @@ abstract class _$$TaskDataImplCopyWith<$Res>
     String? shiftId,
     String? templateId,
     String? dateString,
+    int? order,
   });
 }
 
@@ -425,6 +435,7 @@ class __$$TaskDataImplCopyWithImpl<$Res>
     Object? shiftId = freezed,
     Object? templateId = freezed,
     Object? dateString = freezed,
+    Object? order = freezed,
   }) {
     return _then(
       _$TaskDataImpl(
@@ -588,6 +599,11 @@ class __$$TaskDataImplCopyWithImpl<$Res>
                 ? _value.dateString
                 : dateString // ignore: cast_nullable_to_non_nullable
                     as String?,
+        order:
+            freezed == order
+                ? _value.order
+                : order // ignore: cast_nullable_to_non_nullable
+                    as int?,
       ),
     );
   }
@@ -629,6 +645,7 @@ class _$TaskDataImpl implements _TaskData {
     this.shiftId,
     this.templateId,
     this.dateString,
+    this.order,
   });
 
   factory _$TaskDataImpl.fromJson(Map<String, dynamic> json) =>
@@ -721,10 +738,14 @@ class _$TaskDataImpl implements _TaskData {
   final String? templateId;
   @override
   final String? dateString;
+  // 'YYYY-MM-DD'
+  // Display order
+  @override
+  final int? order;
 
   @override
   String toString() {
-    return 'TaskData(taskId: $taskId, taskName: $taskName, createdAt: $createdAt, dueDate: $dueDate, completed: $completed, photoRequired: $photoRequired, completedBy: $completedBy, completedByUserId: $completedByUserId, completedByUserName: $completedByUserName, completedByUserEmail: $completedByUserEmail, completedAt: $completedAt, notes: $notes, photoUrl: $photoUrl, proofImageUrl: $proofImageUrl, description: $description, notCompletedReason: $notCompletedReason, isCarryForward: $isCarryForward, originalDate: $originalDate, originalChecklistId: $originalChecklistId, originalTaskId: $originalTaskId, carriedIntoDate: $carriedIntoDate, carryForwardAttempted: $carryForwardAttempted, excludedFromMetrics: $excludedFromMetrics, resolvedLate: $resolvedLate, resolvedAt: $resolvedAt, organizationId: $organizationId, locationId: $locationId, checklistId: $checklistId, checklistName: $checklistName, shiftId: $shiftId, templateId: $templateId, dateString: $dateString)';
+    return 'TaskData(taskId: $taskId, taskName: $taskName, createdAt: $createdAt, dueDate: $dueDate, completed: $completed, photoRequired: $photoRequired, completedBy: $completedBy, completedByUserId: $completedByUserId, completedByUserName: $completedByUserName, completedByUserEmail: $completedByUserEmail, completedAt: $completedAt, notes: $notes, photoUrl: $photoUrl, proofImageUrl: $proofImageUrl, description: $description, notCompletedReason: $notCompletedReason, isCarryForward: $isCarryForward, originalDate: $originalDate, originalChecklistId: $originalChecklistId, originalTaskId: $originalTaskId, carriedIntoDate: $carriedIntoDate, carryForwardAttempted: $carryForwardAttempted, excludedFromMetrics: $excludedFromMetrics, resolvedLate: $resolvedLate, resolvedAt: $resolvedAt, organizationId: $organizationId, locationId: $locationId, checklistId: $checklistId, checklistName: $checklistName, shiftId: $shiftId, templateId: $templateId, dateString: $dateString, order: $order)';
   }
 
   @override
@@ -791,7 +812,8 @@ class _$TaskDataImpl implements _TaskData {
             (identical(other.templateId, templateId) ||
                 other.templateId == templateId) &&
             (identical(other.dateString, dateString) ||
-                other.dateString == dateString));
+                other.dateString == dateString) &&
+            (identical(other.order, order) || other.order == order));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -830,6 +852,7 @@ class _$TaskDataImpl implements _TaskData {
     shiftId,
     templateId,
     dateString,
+    order,
   ]);
 
   /// Create a copy of TaskData
@@ -880,6 +903,7 @@ abstract class _TaskData implements TaskData {
     final String? shiftId,
     final String? templateId,
     final String? dateString,
+    final int? order,
   }) = _$TaskDataImpl;
 
   factory _TaskData.fromJson(Map<String, dynamic> json) =
@@ -955,7 +979,10 @@ abstract class _TaskData implements TaskData {
   @override
   String? get templateId;
   @override
-  String? get dateString;
+  String? get dateString; // 'YYYY-MM-DD'
+  // Display order
+  @override
+  int? get order;
 
   /// Create a copy of TaskData
   /// with the given fields replaced by the non-null parameter values.

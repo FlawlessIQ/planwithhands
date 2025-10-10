@@ -42,6 +42,7 @@ _$TaskDataImpl _$$TaskDataImplFromJson(Map<String, dynamic> json) =>
       shiftId: json['shiftId'] as String?,
       templateId: json['templateId'] as String?,
       dateString: json['dateString'] as String?,
+      order: (json['order'] as num?)?.toInt(),
     );
 
 Map<String, dynamic> _$$TaskDataImplToJson(_$TaskDataImpl instance) =>
@@ -90,6 +91,7 @@ Map<String, dynamic> _$$TaskDataImplToJson(_$TaskDataImpl instance) =>
       'shiftId': instance.shiftId,
       'templateId': instance.templateId,
       'dateString': instance.dateString,
+      'order': instance.order,
     };
 
 Json? _$JsonConverterToJson<Json, Value>(

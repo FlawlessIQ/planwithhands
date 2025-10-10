@@ -126,12 +126,20 @@ class DailySummaryService {
           // Initialize shift stats
           shiftStats.putIfAbsent(shiftId, () => {'total': 0, 'completed': 0});
 
-          // Process tasks from subcollection (new system) and legacy tasks array
+          // PRIORITY 2 FIX: Process tasks from subcollection ONLY
+          // Legacy array is deprecated and can cause double-counting
+          // All task data should now be in the subcollection
           int checklistTotal = 0;
           int checklistCompleted = 0;
 
-          // 1. Process subcollection tasks
           final tasksQuery = await checklistDoc.reference.collection('tasks').get();
+
+          if (tasksQuery.docs.isEmpty) {
+            logger.w(
+              '[DailySummaryService] No tasks found in subcollection for checklist ${checklistDoc.id} - may need migration',
+            );
+          }
+
           for (final taskDoc in tasksQuery.docs) {
             final taskData = taskDoc.data();
             await _processTaskForSummary(
@@ -147,27 +155,6 @@ class DailySummaryService {
 
             checklistTotal++;
             final isCompleted = taskData['completed'] as bool? ?? false;
-            if (isCompleted) {
-              checklistCompleted++;
-            }
-          }
-
-          // 2. Process legacy tasks array (for backward compatibility)
-          final tasks = List<Map<String, dynamic>>.from(checklistData['tasks'] ?? []);
-          for (final taskData in tasks) {
-            await _processTaskForSummary(
-              taskData: taskData,
-              shiftName: shiftName,
-              templateName: templateName,
-              locationName: locationName,
-              userNames: userNames,
-              notesEntries: notesEntries,
-              missedTaskEntries: missedTaskEntries,
-              photoBypassed: photoBypassed,
-            );
-
-            checklistTotal++;
-            final isCompleted = taskData['completed'] as bool? ?? taskData['isCompleted'] as bool? ?? false;
             if (isCompleted) {
               checklistCompleted++;
             }
@@ -211,8 +198,12 @@ class DailySummaryService {
 
       final overallPercentage = totalTasks > 0 ? (completedTasks / totalTasks * 100) : 0.0;
 
+      // CRITICAL FIX: Calculate incomplete from missed array length for consistency
+      // This ensures the "incomplete" count matches what's actually shown in the missed tasks list
+      final incompleteTasks = missedTaskEntries.length;
+
       logger.d(
-        '[DailySummaryService] Summary: ${notesEntries.length} notes, ${missedTaskEntries.length} missed tasks, ${photoBypassed.length} photo bypassed, Overall: $completedTasks/$totalTasks (${overallPercentage.toStringAsFixed(1)}%)',
+        '[DailySummaryService] Summary: ${notesEntries.length} notes, $incompleteTasks missed tasks, ${photoBypassed.length} photo bypassed, Overall: $completedTasks/$totalTasks (${overallPercentage.toStringAsFixed(1)}%)',
       );
 
       return {
@@ -224,6 +215,7 @@ class DailySummaryService {
         'overallStats': {
           'totalTasks': totalTasks,
           'completedTasks': completedTasks,
+          'incompleteTasks': incompleteTasks, // NEW: Explicit incomplete count from array
           'overallPercentage': overallPercentage,
         },
       };
@@ -235,7 +227,7 @@ class DailySummaryService {
         'photoBypassed': <Map<String, dynamic>>[],
         'shiftCompletions': <Map<String, dynamic>>[],
         'yesterdayMissedProgress': <Map<String, dynamic>>[],
-        'overallStats': {'totalTasks': 0, 'completedTasks': 0, 'overallPercentage': 0.0},
+        'overallStats': {'totalTasks': 0, 'completedTasks': 0, 'incompleteTasks': 0, 'overallPercentage': 0.0},
       };
     }
   }
@@ -259,7 +251,9 @@ class DailySummaryService {
         'Unknown Task';
 
     final isCompleted = taskData['completed'] as bool? ?? taskData['isCompleted'] as bool? ?? false;
-    final photoRequired = taskData['photoRequired'] as bool? ?? false;
+    final isCarryForward = taskData['isCarryForward'] as bool? ?? false;
+    // FIX: Consistent photo detection - check both photoRequired AND isCarryForwardEligible
+    final photoRequired = taskData['photoRequired'] as bool? ?? taskData['isCarryForwardEligible'] as bool? ?? false;
     final hasPhoto =
         (taskData['proofImageUrl'] as String?)?.isNotEmpty == true ||
         (taskData['photoUrl'] as String?)?.isNotEmpty == true;
@@ -282,9 +276,10 @@ class DailySummaryService {
       });
     }
 
-    // Check for not completed tasks - ALL incomplete tasks are "missed"
-    // Reason is optional detail, not required to count as incomplete
-    if (!isCompleted) {
+    // Check for not completed tasks - CRITICAL FIX: Exclude carry-forward tasks
+    // Carry-forward tasks are incomplete by design (from yesterday) and shouldn't count as "missed" today
+    // Only count tasks that were supposed to be completed today as "missed"
+    if (!isCompleted && !isCarryForward) {
       final reason = taskData['reason'] as String? ?? taskData['notCompletedReason'] as String?;
       final hasReason = reason != null && reason.trim().isNotEmpty;
 
