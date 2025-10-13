@@ -40,9 +40,21 @@ export const scheduledDailySummary = functions.pubsub
         try {
           functions.logger.info(`Checking daily summary schedule for organization: ${orgId}`);
           
-          // Check if summary already sent today
-          const today = new Date();
-          const dateStr = formatDate(today);
+          // Get organization timezone
+          const orgTimezone = orgData.timezone || 'America/New_York';
+          
+          // Convert current UTC time to organization's timezone
+          const nowInOrgTZ = DateTime.now().setZone(orgTimezone);
+          
+          // Calculate "yesterday" in the organization's timezone
+          // When the summary runs at 4 AM on Oct 12, we want to summarize Oct 11
+          const yesterdayInOrgTZ = nowInOrgTZ.minus({ days: 1 });
+          const summaryDate = yesterdayInOrgTZ.toJSDate();
+          const dateStr = formatDate(summaryDate);
+          
+          functions.logger.info(`Org ${orgId} timezone: ${orgTimezone}, current time: ${nowInOrgTZ.toISO()}, summary date: ${dateStr}`);
+          
+          // Check if summary already sent for this date
           const alreadySent = await hasDailySummaryBeenSent(orgId, dateStr);
           
           if (alreadySent) {
@@ -58,16 +70,19 @@ export const scheduledDailySummary = functions.pubsub
             continue;
           }
 
-          functions.logger.info(`Sending daily summary for org ${orgId} at ${currentUTCHour}:00 UTC`);
+          functions.logger.info(`Sending daily summary for org ${orgId} at ${currentUTCHour}:00 UTC for date ${dateStr}`);
 
-          // Generate and send daily summary
-          await generateAndSendDailySummary(orgId, today, orgData);
+          // Generate and send daily summary for yesterday's date
+          const wasSent = await generateAndSendDailySummary(orgId, summaryDate, orgData);
           
-          // Mark as sent
-          await markDailySummaryAsSent(orgId, dateStr);
-          
-          summariesSent++;
-          functions.logger.info(`Daily summary sent successfully for organization: ${orgId}`);
+          // Only mark as sent if summary was actually sent
+          if (wasSent) {
+            await markDailySummaryAsSent(orgId, dateStr);
+            summariesSent++;
+            functions.logger.info(`Daily summary sent successfully for organization: ${orgId}`);
+          } else {
+            functions.logger.info(`Daily summary skipped for org ${orgId} (no meaningful content)`);
+          }
           
         } catch (error) {
           errors++;
@@ -123,8 +138,9 @@ export const triggerDailySummary = functions.https.onCall(async (data, context) 
 
 /**
  * Generate and send daily summary for an organization
+ * @returns true if summary was sent, false if skipped
  */
-async function generateAndSendDailySummary(orgId: string, date: Date, orgData: any) {
+async function generateAndSendDailySummary(orgId: string, date: Date, orgData: any): Promise<boolean> {
   const dateStr = formatDate(date);
   functions.logger.info(`Generating daily summary for org ${orgId}, date: ${dateStr}`);
 
@@ -143,7 +159,7 @@ async function generateAndSendDailySummary(orgId: string, date: Date, orgData: a
 
   if (!hasContent) {
     functions.logger.info(`No meaningful activity for ${orgId} on ${dateStr} - skipping summary`);
-    return;
+    return false;
   }
 
   // Get admin users
@@ -151,7 +167,7 @@ async function generateAndSendDailySummary(orgId: string, date: Date, orgData: a
   
   if (adminUsers.length === 0) {
     functions.logger.warn(`No admin users found for organization ${orgId}`);
-    return;
+    return false;
   }
 
   // Generate notification content for in-app notifications
@@ -167,6 +183,7 @@ async function generateAndSendDailySummary(orgId: string, date: Date, orgData: a
   await sendDailySummaryEmails(orgId, orgData, summaryData, date, adminUsers, enhancedSections);
 
   functions.logger.info(`Daily summary sent to ${adminUsers.length} admin(s) for org ${orgId} (both in-app and email)`);
+  return true;
 }
 
 /**
@@ -289,11 +306,15 @@ async function collectDailySummaryData(orgId: string, date: Date, orgData?: any)
 
     const overallPercentage = totalTasks > 0 ? (completedTasks / totalTasks * 100) : 0;
     
-    // CRITICAL FIX: Calculate incomplete from missed array length for consistency
-    // This ensures the "incomplete" count matches what's actually shown in the missed tasks list
-    const incompleteTasks = missedTaskEntries.length;
+    // Calculate incomplete tasks as total - completed (not from missedTaskEntries)
+    // missedTaskEntries only contains non-carry-forward incomplete tasks
+    const incompleteTasks = totalTasks - completedTasks;
 
-    functions.logger.info(`Summary data collected for org ${orgId}: ${totalTasks} total tasks, ${completedTasks} completed, ${incompleteTasks} incomplete (${Math.round(overallPercentage)}%)`);
+    functions.logger.info(`Summary data collected for org ${orgId}, date ${formatDate(date)}: ${totalTasks} total tasks, ${completedTasks} completed, ${incompleteTasks} incomplete (${Math.round(overallPercentage)}%)`);
+    
+    if (totalTasks === 0) {
+      functions.logger.warn(`No tasks found for org ${orgId} on date ${formatDate(date)} - verify date calculation and checklist existence`);
+    }
 
     return {
       notesEntries,
@@ -537,35 +558,17 @@ async function shouldSendDailySummaryNow(orgId: string, orgData: any, currentUTC
 
     functions.logger.info(`Checking daily summary time for org ${orgId}: target=${targetHour}:${targetMinute.toString().padStart(2, '0')} ${orgTimezone} = ${targetUTCHour}:${targetUTCMinute.toString().padStart(2, '0')} UTC, current=${currentUTCHour}:00 UTC`);
 
-    // Check if we're at the right UTC hour
+    // Check if we're at the exact target UTC hour
+    // Since the function runs hourly at :00, we trigger at the start of the target hour
+    // The minute parameter is informational only - we can't trigger at specific minutes
     const isTargetHour = currentUTCHour === targetUTCHour;
     
-    // If it's the target hour, also check if we're past the target minute
     if (isTargetHour) {
-      const currentUTCMinute = new Date().getUTCMinutes();
-      const pastTargetMinute = currentUTCMinute >= targetUTCMinute;
-      
-      if (pastTargetMinute) {
-        functions.logger.info(`Time match for org ${orgId}: sending daily summary at ${currentUTCHour}:${currentUTCMinute.toString().padStart(2, '0')} UTC`);
-        return true;
-      } else {
-        functions.logger.debug(`Waiting for target minute for org ${orgId}: current=${currentUTCMinute}, target=${targetUTCMinute}`);
-        return false;
-      }
+      functions.logger.info(`Time match for org ${orgId}: sending daily summary at ${currentUTCHour}:00 UTC (target was ${targetUTCHour}:${targetUTCMinute.toString().padStart(2, '0')} UTC)`);
+      return true;
     }
 
-    // Also check if we're in the next hour but the target was late in the previous hour
-    // This handles cases where the target minute is late (e.g., 14:55) and we might miss it
-    const isPreviousHour = currentUTCHour === (targetUTCHour + 1) % 24;
-    if (isPreviousHour && targetUTCMinute >= 45) {
-      const currentUTCMinute = new Date().getUTCMinutes();
-      if (currentUTCMinute <= 15) { // Within 15 minutes of the next hour
-        functions.logger.info(`Late catch for org ${orgId}: sending daily summary at ${currentUTCHour}:${currentUTCMinute.toString().padStart(2, '0')} UTC (target was ${targetUTCHour}:${targetUTCMinute})`);
-        return true;
-      }
-    }
-
-    functions.logger.debug(`Time mismatch for org ${orgId}: current UTC hour ${currentUTCHour}, target UTC hour ${targetUTCHour}`);
+    functions.logger.debug(`Not yet time for org ${orgId}: current UTC hour ${currentUTCHour}, target UTC hour ${targetUTCHour}`);
     return false;
 
   } catch (error) {
