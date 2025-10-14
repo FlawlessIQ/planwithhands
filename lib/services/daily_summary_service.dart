@@ -422,6 +422,7 @@ class DailySummaryService {
     final totalTasks = overallStats['totalTasks'] as int? ?? 0;
     final completedTasks = overallStats['completedTasks'] as int? ?? 0;
     final overallPercentage = overallStats['overallPercentage'] as double? ?? 0.0;
+    final incompleteTasks = overallStats['incompleteTasks'] as int? ?? 0;
 
     // Generate performance emoji and message
     final performanceEmoji = _getPerformanceEmoji(overallPercentage);
@@ -433,7 +434,9 @@ class DailySummaryService {
     if (totalTasks > 0) {
       buffer.writeln(performanceMessage);
       buffer.writeln('');
+      // Show missed tasks count using incompleteTasks
       buffer.writeln('📊 ${overallPercentage.toStringAsFixed(0)}% Complete ($completedTasks/$totalTasks tasks)');
+      buffer.writeln('❌ Missed Tasks: $incompleteTasks');
       buffer.writeln('');
 
       // Shift-by-shift breakdown with more detail

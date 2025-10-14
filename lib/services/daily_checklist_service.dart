@@ -2725,49 +2725,6 @@ class DailyChecklistService {
       }
       return [];
     }
-
-    // CRITICAL FIX: Filter out tasks from shifts that weren't scheduled for yesterday
-    // This prevents "OPEN - WEEKDAY" shifts from showing on Monday when yesterday was Sunday
-    debugPrint('[MissedTasks][NX] Checking shift schedules (collected=${collected.length} before filter)');
-    final yesterday = targetDate.subtract(const Duration(days: 1));
-    final List<Map<String, dynamic>> scheduledCollected = [];
-    final Map<String, bool> shiftScheduleCache = {}; // Cache shift schedule checks
-    
-    for (final task in collected) {
-      final shiftId = task['shiftId'] as String?;
-      if (shiftId == null || shiftId.isEmpty) {
-        // No shiftId - include by default
-        scheduledCollected.add(task);
-        continue;
-      }
-
-      // Check cache first
-      bool? wasScheduled = shiftScheduleCache[shiftId];
-      if (wasScheduled == null) {
-        // Not in cache - check if shift was scheduled for yesterday
-        wasScheduled = await _wasShiftScheduledForDate(
-          organizationId: organizationId,
-          shiftId: shiftId,
-          date: yesterday,
-        );
-        shiftScheduleCache[shiftId] = wasScheduled;
-      }
-
-      if (wasScheduled) {
-        scheduledCollected.add(task);
-      } else {
-        debugPrint('[MissedTasks][NX] Filtered out task from shift $shiftId (not scheduled for yesterday)');
-      }
-    }
-    
-    collected = scheduledCollected;
-    debugPrint('[MissedTasks][NX] After shift schedule filter: ${collected.length} tasks remain');
-
-    if (collected.isEmpty) {
-      debugPrint('[MissedTasks][NX] No tasks remain after shift schedule filtering');
-      return [];
-    }
-
     // Apply checklist-level jobTypes filtering for staff users (userRole == 0)
     try {
       final isStaff = (userRole == 0);
@@ -3787,8 +3744,7 @@ class DailyChecklistService {
     String? locationId,
   }) async {
     final todayStr = _formatDate(today);
-    final yesterday = today.subtract(const Duration(days: 1));
-    final yesterdayStr = _formatDate(yesterday);
+    final yesterdayStr = _formatDate(today.subtract(const Duration(days: 1)));
     debugPrint(
       '[DailyChecklistService] getYesterdayMissedFromTodayCarryForward: orgId=$organizationId, today=$todayStr, locationId=$locationId',
     );
@@ -3810,22 +3766,6 @@ class DailyChecklistService {
         for (final doc in snaps.docs) {
           final data = doc.data();
           final shiftId = data['shiftId'] as String? ?? 'unknown';
-
-          // CRITICAL FIX: Check if this shift was actually scheduled for yesterday
-          // Only include carry-forward tasks from shifts that were supposed to run yesterday
-          final wasScheduledYesterday = await _wasShiftScheduledForDate(
-            organizationId: organizationId,
-            shiftId: shiftId,
-            date: yesterday,
-          );
-
-          if (!wasScheduledYesterday) {
-            debugPrint(
-              '[DailyChecklistService] Skipping CF tasks from shift $shiftId - not scheduled for $yesterdayStr',
-            );
-            continue; // Skip this checklist - shift wasn't scheduled for yesterday
-          }
-
           final shiftName = await _getShiftName(organizationId, shiftId);
           // Merge parent array tasks + subcollection tasks (subcollection authoritative for CF)
           final List<Map<String, dynamic>> tasksList = [];
@@ -4086,44 +4026,6 @@ class DailyChecklistService {
     }
 
     return 'Unknown Shift';
-  }
-
-  /// Check if a shift was scheduled for a specific day of the week
-  /// Returns true if the shift should run on the given date
-  Future<bool> _wasShiftScheduledForDate({
-    required String organizationId,
-    required String shiftId,
-    required DateTime date,
-  }) async {
-    try {
-      final shiftDoc =
-          await _firestore.collection('organizations').doc(organizationId).collection('shifts').doc(shiftId).get();
-
-      if (!shiftDoc.exists) return false;
-
-      final data = shiftDoc.data()!;
-
-      // Check if repeatsDaily is true - if so, shift runs every day
-      final repeatsDaily = data['repeatsDaily'] as bool? ?? false;
-      if (repeatsDaily) return true;
-
-      // Check the days array
-      final days = data['days'] as List<dynamic>? ?? [];
-      if (days.isEmpty) {
-        // No days specified and not repeatsDaily - assume shift doesn't run
-        return false;
-      }
-
-      // Get the day name for the given date
-      const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-      final dayName = dayNames[date.weekday - 1];
-
-      // Check if the shift runs on this day
-      return days.any((day) => day.toString().toLowerCase() == dayName.toLowerCase());
-    } catch (e) {
-      debugPrint('[DailyChecklistService] Error checking shift schedule for $shiftId: $e');
-      return false; // Default to false if error
-    }
   }
 
   /// Count missed tasks for a specific historical date (not carry-forward based).
