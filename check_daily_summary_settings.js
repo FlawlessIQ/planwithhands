@@ -20,6 +20,23 @@ async function checkDailySummarySettings() {
   console.log('\n=== DAILY SUMMARY DIAGNOSTICS ===\n');
   
   try {
+    // Check if Hamilton Pork exists in organizations collection
+    console.log('🔍 FIRST: Checking if Hamilton Pork exists in organizations collection...');
+    
+    const allOrgsSnapshot = await db.collection('organizations').get();
+    console.log(`   Total organizations in database: ${allOrgsSnapshot.size}`);
+    
+    const hamiltonOrgDoc = await db.collection('organizations').doc(ORG_ID).get();
+    console.log(`   Hamilton Pork exists: ${hamiltonOrgDoc.exists ? '✅ YES' : '❌ NO'}`);
+    
+    if (!hamiltonOrgDoc.exists) {
+      console.log('\n🚨 CRITICAL ISSUE: Hamilton Pork organization document does not exist!');
+      console.log('   This explains why the scheduled function is not checking it.');
+      console.log(`   Expected document path: organizations/${ORG_ID}`);
+      return;
+    }
+    
+    console.log('   Hamilton Pork document found, continuing diagnostics...\n');
     // 1. Check Organization Settings
     console.log('1. ORGANIZATION SETTINGS:');
     const orgDoc = await db.collection('organizations').doc(ORG_ID).get();

@@ -90,6 +90,11 @@ export {scheduledDailyGenerator} from "./dailyGenerator";
 // Export scheduled daily summary (sends daily summary notifications to admins)
 export {scheduledDailySummary, triggerDailySummary} from "./scheduledDailySummary";
 
+// Export daily summary time change validation and update functions
+export {validateDailySummaryTimeChange} from "./validateDailySummaryTimeChange";
+export {updateOrganizationDailySummaryTime} from "./updateOrganizationDailySummaryTime";
+export {sendTodaySummaryNow} from "./sendTodaySummaryNow";
+
 // Export manual test email endpoint for one-off debugging
 export {manualTestEmail} from "./manualTestEmail";
 

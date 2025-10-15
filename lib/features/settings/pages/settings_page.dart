@@ -10,6 +10,7 @@ import 'package:hands_app/services/stripe_service.dart';
 import 'package:hands_app/services/pricing_service.dart';
 import 'package:hands_app/services/dashboard_data_service.dart';
 import 'package:hands_app/services/session_manager.dart';
+import 'package:hands_app/services/daily_summary_time_service.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
@@ -380,7 +381,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
     );
   }
 
-  /// Show Cupertino time picker for daily summary
+  /// Show Cupertino time picker for daily summary with validation
   Future<void> _selectDailySummaryTime() async {
     DateTime initialDateTime = DateTime(2024, 1, 1, _dailySummaryTime.hour, _dailySummaryTime.minute);
 
@@ -416,21 +417,25 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                           final newTime = TimeOfDay(hour: tempDateTime.hour, minute: tempDateTime.minute);
 
                           if (newTime != _dailySummaryTime) {
-                            setState(() {
-                              _dailySummaryTime = newTime;
-                            });
-
-                            // Save to both user preferences and organization settings
-                            await _saveUserPreferences();
-
-                            // If user is admin, also update organization settings
-                            if (_isAdmin && _organizationId.isNotEmpty) {
-                              await _saveOrganizationDailySummarySettings();
+                            // Close the time picker first
+                            if (context.mounted) {
+                              Navigator.of(context).pop();
                             }
-                          }
 
-                          if (context.mounted) {
-                            Navigator.of(context).pop();
+                            // Validate the time change before saving (only for admins)
+                            if (_isAdmin && _organizationId.isNotEmpty) {
+                              await _validateAndSaveTimeChange(newTime);
+                            } else {
+                              // Regular users just save to preferences
+                              setState(() {
+                                _dailySummaryTime = newTime;
+                              });
+                              await _saveUserPreferences();
+                            }
+                          } else {
+                            if (context.mounted) {
+                              Navigator.of(context).pop();
+                            }
                           }
                         },
                         child: const Text('OK'),
@@ -453,6 +458,175 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
           ),
         );
       },
+    );
+  }
+
+  /// Validates and saves time change with rate limiting and warnings
+  Future<void> _validateAndSaveTimeChange(TimeOfDay newTime) async {
+    // Get organization timezone
+    final orgDoc = await FirestoreEnforcer.instance.collection('organizations').doc(_organizationId).get();
+    final timezone = orgDoc.data()?['timezone'] as String? ?? 'America/New_York';
+
+    // Format time as HH:mm
+    final timeString = '${newTime.hour.toString().padLeft(2, '0')}:${newTime.minute.toString().padLeft(2, '0')}';
+
+    // Show loading
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    // Call validation function
+    final validation = await DailySummaryTimeService.validateTimeChange(
+      organizationId: _organizationId,
+      newTime: timeString,
+      timezone: timezone,
+    );
+
+    // Close loading
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+
+    if (!validation.allowed) {
+      // Rate limit exceeded - show error
+      if (mounted) {
+        _showValidationDialog(
+          title: '⏱️ Rate Limit',
+          message: validation.message ?? 'Cannot change time right now',
+          actions: [
+            CupertinoDialogAction(
+              child: const Text('OK'),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ],
+        );
+      }
+      return;
+    }
+
+    // Check if we need to show confirmation
+    if (validation.requiresConfirmation) {
+      final confirmed = await _showTimeChangeConfirmation(validation);
+      
+      if (!confirmed) {
+        return; // User cancelled
+      }
+
+      // If time has passed and user wants to send immediately
+      if (validation.timePassed && validation.offerImmediateSend) {
+        final sendNow = await _offerImmediateSend();
+        if (sendNow) {
+          await _sendSummaryImmediately();
+        }
+      }
+    }
+
+    // Save the time change
+    setState(() {
+      _dailySummaryTime = newTime;
+    });
+
+    await _saveUserPreferences();
+    await _saveOrganizationDailySummarySettings();
+  }
+
+  /// Shows confirmation dialog for time change
+  Future<bool> _showTimeChangeConfirmation(TimeChangeValidationResult validation) async {
+    return await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: Text(validation.timePassed ? '⚠️ Time Has Passed' : '✅ Confirm Time Change'),
+        content: Text(validation.message ?? 'Proceed with time change?'),
+        actions: [
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            child: const Text('Cancel'),
+            onPressed: () => Navigator.of(context).pop(false),
+          ),
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            child: const Text('Proceed'),
+            onPressed: () => Navigator.of(context).pop(true),
+          ),
+        ],
+      ),
+    ) ?? false;
+  }
+
+  /// Offers to send summary immediately
+  Future<bool> _offerImmediateSend() async {
+    return await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('📧 Send Now?'),
+        content: const Text('Would you like to send today\'s summary immediately instead of waiting until tomorrow?'),
+        actions: [
+          CupertinoDialogAction(
+            child: const Text('No, Wait'),
+            onPressed: () => Navigator.of(context).pop(false),
+          ),
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            child: const Text('Yes, Send Now'),
+            onPressed: () => Navigator.of(context).pop(true),
+          ),
+        ],
+      ),
+    ) ?? false;
+  }
+
+  /// Sends today's summary immediately
+  Future<void> _sendSummaryImmediately() async {
+    // Show loading
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final result = await DailySummaryTimeService.sendSummaryNow(
+      organizationId: _organizationId,
+    );
+
+    // Close loading
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+
+    // Show result
+    if (mounted) {
+      _showValidationDialog(
+        title: result.success ? '✅ Success' : '❌ Error',
+        message: result.message,
+        actions: [
+          CupertinoDialogAction(
+            child: const Text('OK'),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
+      );
+    }
+  }
+
+  /// Shows a validation dialog
+  void _showValidationDialog({
+    required String title,
+    required String message,
+    required List<CupertinoDialogAction> actions,
+  }) {
+    showCupertinoDialog(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: actions,
+      ),
     );
   }
 

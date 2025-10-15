@@ -191,6 +191,7 @@ async function collectDailySummaryData(orgId: string, date: Date, orgData?: any)
   const photoBypassed: any[] = [];
   let totalTasks = 0;
   let completedTasks = 0;
+  let carryForwardTasks = 0;
 
   try {
     // Get summary period setting (default to calendar-day for backward compatibility)
@@ -291,6 +292,12 @@ async function collectDailySummaryData(orgId: string, date: Date, orgData?: any)
 
             totalTasks++;
             const isCompleted = taskData.completed || taskData.isCompleted || false;
+            const isCarryForward = taskData.isCarryForward || false;
+            
+            if (isCarryForward) {
+              carryForwardTasks++;
+            }
+            
             if (isCompleted) {
               completedTasks++;
             }
@@ -299,16 +306,19 @@ async function collectDailySummaryData(orgId: string, date: Date, orgData?: any)
       }
     }
 
-    const overallPercentage = totalTasks > 0 ? (completedTasks / totalTasks * 100) : 0;
+    // CRITICAL FIX: Calculate metrics excluding carry-forward tasks
+    // Carry-forward tasks are from previous days and shouldn't affect today's performance metrics
+    const tasksScheduledForToday = totalTasks - carryForwardTasks;
+    const overallPercentage = tasksScheduledForToday > 0 ? (completedTasks / tasksScheduledForToday * 100) : 0;
     
     // CRITICAL FIX: Calculate incomplete from missed array length for consistency
     // This ensures the "incomplete" count matches what's actually shown in the missed tasks list
     const incompleteTasks = missedTaskEntries.length;
 
-    functions.logger.info(`Summary data collected for org ${orgId}, date ${formatDate(date)}: ${totalTasks} total tasks, ${completedTasks} completed, ${incompleteTasks} incomplete (${Math.round(overallPercentage)}%)`);
+    functions.logger.info(`Summary data collected for org ${orgId}, date ${formatDate(date)}: ${totalTasks} total tasks (${carryForwardTasks} carry-forward), ${tasksScheduledForToday} scheduled for today, ${completedTasks} completed, ${incompleteTasks} incomplete (${Math.round(overallPercentage)}%)`);
     
-    if (totalTasks === 0) {
-      functions.logger.warn(`No tasks found for org ${orgId} on date ${formatDate(date)} - verify date calculation and checklist existence`);
+    if (tasksScheduledForToday === 0) {
+      functions.logger.warn(`No tasks scheduled for today for org ${orgId} on date ${formatDate(date)} - verify date calculation and checklist existence`);
     }
 
     return {
@@ -319,7 +329,9 @@ async function collectDailySummaryData(orgId: string, date: Date, orgData?: any)
       completedTasks,
       incompleteTasks,  // NEW: Explicit incomplete count from array
       overallPercentage,
-      summaryPeriod
+      summaryPeriod,
+      carryForwardTasks,  // NEW: Track carry-forward tasks separately
+      tasksScheduledForToday  // NEW: Tasks actually scheduled for today
     };
 
   } catch (error) {
@@ -332,7 +344,9 @@ async function collectDailySummaryData(orgId: string, date: Date, orgData?: any)
       completedTasks: 0,
       incompleteTasks: 0,  // NEW: Explicit incomplete count
       overallPercentage: 0,
-      summaryPeriod: 'calendar-day'
+      summaryPeriod: 'calendar-day',
+      carryForwardTasks: 0,  // NEW: Track carry-forward tasks separately
+      tasksScheduledForToday: 0  // NEW: Tasks actually scheduled for today
     };
   }
 }
@@ -699,11 +713,12 @@ async function sendDailySummaryEmails(
 
     const overallPercentage = summaryData.overallPercentage || 0;
     const completedTasks = summaryData.completedTasks || 0;
-    const totalTasks = summaryData.totalTasks || 0;
+    const tasksScheduledForToday = summaryData.tasksScheduledForToday || summaryData.totalTasks || 0; // Fallback for backward compatibility
+    const carryForwardTasks = summaryData.carryForwardTasks || 0;
     const summaryPeriod = summaryData.summaryPeriod || 'calendar-day';
 
     // Debug logging for email template data
-    functions.logger.info(`Email template data debug: overallPercentage=${overallPercentage} (type: ${typeof overallPercentage}), completedTasks=${completedTasks}, totalTasks=${totalTasks}`);
+    functions.logger.info(`Email template data debug: overallPercentage=${overallPercentage} (type: ${typeof overallPercentage}), completedTasks=${completedTasks}, tasksScheduledForToday=${tasksScheduledForToday}, carryForwardTasks=${carryForwardTasks}`);
 
     // Send email to each admin user using @sendgrid/mail for better error objects and consistency
     try {
@@ -728,10 +743,10 @@ async function sendDailySummaryEmails(
           formatted_date: formatDateForDisplay(date),
           logo_url: 'http://cdn.mcauto-images-production.sendgrid.net/136c04a1809caad9/3116b67a-957a-419b-a46b-8abe59fc0856/1024x1024.png',
           performance_emoji: getPerformanceEmoji(overallPercentage),
-          performance_message: getPerformanceMessage(overallPercentage, totalTasks),
+          performance_message: getPerformanceMessage(overallPercentage, tasksScheduledForToday),
           overall_percentage: overallPercentage.toFixed(0),
           completed_tasks: completedTasks.toString(),
-          total_tasks: totalTasks.toString(),
+          total_tasks: tasksScheduledForToday.toString(),
           incomplete_tasks: incompleteTasks.toString(),  // NEW: Explicit incomplete count
           summary_period: summaryPeriod === 'business-day' ? ' (Business Day)' : '',
           missed_tasks_count: summaryData.missedTaskEntries?.length || 0,
@@ -748,10 +763,10 @@ async function sendDailySummaryEmails(
           FORMATTED_DATE: formatDateForDisplay(date),
           LOGO_URL: 'http://cdn.mcauto-images-production.sendgrid.net/136c04a1809caad9/3116b67a-957a-419b-a46b-8abe59fc0856/1024x1024.png',
           PERFORMANCE_EMOJI: getPerformanceEmoji(overallPercentage),
-          PERFORMANCE_MESSAGE: getPerformanceMessage(overallPercentage, totalTasks),
+          PERFORMANCE_MESSAGE: getPerformanceMessage(overallPercentage, tasksScheduledForToday),
           OVERALL_PERCENTAGE: overallPercentage.toFixed(0),
           COMPLETED_TASKS: completedTasks.toString(),
-          TOTAL_TASKS: totalTasks.toString(),
+          TOTAL_TASKS: tasksScheduledForToday.toString(),
           INCOMPLETE_TASKS: incompleteTasks.toString(),  // NEW: Explicit incomplete count
           SUMMARY_PERIOD: summaryPeriod === 'business-day' ? ' (Business Day)' : '',
           MISSED_TASKS_COUNT: summaryData.missedTaskEntries?.length || 0,
@@ -1111,12 +1126,12 @@ async function sendNotificationToAdmins(orgId: string, title: string, message: s
  * Build notification content from summary data
  */
 function buildNotificationContent(summaryData: any, date: Date): string {
-  const { notesEntries, missedTaskEntries, photoBypassed, totalTasks, completedTasks, overallPercentage, summaryPeriod } = summaryData;
+  const { notesEntries, missedTaskEntries, photoBypassed, completedTasks, overallPercentage, summaryPeriod, tasksScheduledForToday } = summaryData;
   
   // Add period indicator to title
   const periodText = summaryPeriod === 'business-day' ? ' (Business Day)' : '';
   let content = `📊 Daily Summary${periodText}\n\n`;
-  content += `Overall Progress: ${Math.round(overallPercentage)}% (${completedTasks}/${totalTasks} tasks completed)\n\n`;
+  content += `Overall Progress: ${Math.round(overallPercentage)}% (${completedTasks}/${tasksScheduledForToday} tasks completed)\n\n`;
 
   // Performance message
   if (overallPercentage >= 95) {
