@@ -497,12 +497,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
         _showValidationDialog(
           title: '⏱️ Rate Limit',
           message: validation.message ?? 'Cannot change time right now',
-          actions: [
-            CupertinoDialogAction(
-              child: const Text('OK'),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-          ],
+          actions: [CupertinoDialogAction(child: const Text('OK'), onPressed: () => Navigator.of(context).pop())],
         );
       }
       return;
@@ -511,7 +506,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
     // Check if we need to show confirmation
     if (validation.requiresConfirmation) {
       final confirmed = await _showTimeChangeConfirmation(validation);
-      
+
       if (!confirmed) {
         return; // User cancelled
       }
@@ -537,46 +532,52 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
   /// Shows confirmation dialog for time change
   Future<bool> _showTimeChangeConfirmation(TimeChangeValidationResult validation) async {
     return await showCupertinoDialog<bool>(
-      context: context,
-      builder: (context) => CupertinoAlertDialog(
-        title: Text(validation.timePassed ? '⚠️ Time Has Passed' : '✅ Confirm Time Change'),
-        content: Text(validation.message ?? 'Proceed with time change?'),
-        actions: [
-          CupertinoDialogAction(
-            isDestructiveAction: true,
-            child: const Text('Cancel'),
-            onPressed: () => Navigator.of(context).pop(false),
-          ),
-          CupertinoDialogAction(
-            isDefaultAction: true,
-            child: const Text('Proceed'),
-            onPressed: () => Navigator.of(context).pop(true),
-          ),
-        ],
-      ),
-    ) ?? false;
+          context: context,
+          builder:
+              (context) => CupertinoAlertDialog(
+                title: Text(validation.timePassed ? '⚠️ Time Has Passed' : '✅ Confirm Time Change'),
+                content: Text(validation.message ?? 'Proceed with time change?'),
+                actions: [
+                  CupertinoDialogAction(
+                    isDestructiveAction: true,
+                    child: const Text('Cancel'),
+                    onPressed: () => Navigator.of(context).pop(false),
+                  ),
+                  CupertinoDialogAction(
+                    isDefaultAction: true,
+                    child: const Text('Proceed'),
+                    onPressed: () => Navigator.of(context).pop(true),
+                  ),
+                ],
+              ),
+        ) ??
+        false;
   }
 
   /// Offers to send summary immediately
   Future<bool> _offerImmediateSend() async {
     return await showCupertinoDialog<bool>(
-      context: context,
-      builder: (context) => CupertinoAlertDialog(
-        title: const Text('📧 Send Now?'),
-        content: const Text('Would you like to send today\'s summary immediately instead of waiting until tomorrow?'),
-        actions: [
-          CupertinoDialogAction(
-            child: const Text('No, Wait'),
-            onPressed: () => Navigator.of(context).pop(false),
-          ),
-          CupertinoDialogAction(
-            isDefaultAction: true,
-            child: const Text('Yes, Send Now'),
-            onPressed: () => Navigator.of(context).pop(true),
-          ),
-        ],
-      ),
-    ) ?? false;
+          context: context,
+          builder:
+              (context) => CupertinoAlertDialog(
+                title: const Text('📧 Send Now?'),
+                content: const Text(
+                  'Would you like to send today\'s summary immediately instead of waiting until tomorrow?',
+                ),
+                actions: [
+                  CupertinoDialogAction(
+                    child: const Text('No, Wait'),
+                    onPressed: () => Navigator.of(context).pop(false),
+                  ),
+                  CupertinoDialogAction(
+                    isDefaultAction: true,
+                    child: const Text('Yes, Send Now'),
+                    onPressed: () => Navigator.of(context).pop(true),
+                  ),
+                ],
+              ),
+        ) ??
+        false;
   }
 
   /// Sends today's summary immediately
@@ -590,9 +591,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
       );
     }
 
-    final result = await DailySummaryTimeService.sendSummaryNow(
-      organizationId: _organizationId,
-    );
+    final result = await DailySummaryTimeService.sendSummaryNow(organizationId: _organizationId);
 
     // Close loading
     if (mounted) {
@@ -604,12 +603,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
       _showValidationDialog(
         title: result.success ? '✅ Success' : '❌ Error',
         message: result.message,
-        actions: [
-          CupertinoDialogAction(
-            child: const Text('OK'),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-        ],
+        actions: [CupertinoDialogAction(child: const Text('OK'), onPressed: () => Navigator.of(context).pop())],
       );
     }
   }
@@ -622,11 +616,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
   }) {
     showCupertinoDialog(
       context: context,
-      builder: (context) => CupertinoAlertDialog(
-        title: Text(title),
-        content: Text(message),
-        actions: actions,
-      ),
+      builder: (context) => CupertinoAlertDialog(title: Text(title), content: Text(message), actions: actions),
     );
   }
 
@@ -1636,177 +1626,180 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
             Text('Preferences', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
 
-            // Daily Summary Toggle
             if (_isLoadingPreferences)
               const Center(child: CircularProgressIndicator())
             else ...[
+              // Admin-only features (userRole 2)
+              if (_userRole != null && _userRole! >= 2) ...[
+                // Daily Summary Toggle
+                Row(
+                  children: [
+                    Icon(Icons.mail_outline, color: Theme.of(context).primaryColor),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Daily Summary Email', style: TextStyle(fontWeight: FontWeight.w600)),
+                          Text(
+                            'Receive daily task completion summaries',
+                            style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                          ),
+                        ],
+                      ),
+                    ),
+                    CupertinoSwitch(
+                      value: _dailySummaryEnabled,
+                      onChanged: (value) async {
+                        setState(() => _dailySummaryEnabled = value);
+                        await _saveUserPreferences();
+
+                        // If user is admin, also update organization settings
+                        if (_isAdmin && _organizationId.isNotEmpty) {
+                          await _saveOrganizationDailySummarySettings();
+                        }
+                      },
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 16),
+
+                // Daily Summary Time Picker
+                if (_dailySummaryEnabled) ...[
+                  Row(
+                    children: [
+                      Icon(Icons.schedule, color: Theme.of(context).primaryColor),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Daily Summary Time', style: TextStyle(fontWeight: FontWeight.w600)),
+                            Text(
+                              'When to receive your daily summary',
+                              style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                            ),
+                          ],
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: _selectDailySummaryTime,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey[400]!, width: 1),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _dailySummaryTime.format(context),
+                                style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                              ),
+                              const SizedBox(width: 2),
+                              const Icon(Icons.keyboard_arrow_down, size: 14),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Summary Period Selection
+                  Row(
+                    children: [
+                      Icon(Icons.date_range, color: Theme.of(context).primaryColor),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Summary Period', style: TextStyle(fontWeight: FontWeight.w600)),
+                            Text(
+                              'Choose if summary includes late-night tasks',
+                              style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                            ),
+                          ],
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: _selectSummaryPeriod,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey[400]!, width: 1),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _summaryPeriod == 'calendar-day' ? 'Calendar Day' : 'Business Day',
+                                style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                              ),
+                              const SizedBox(width: 2),
+                              const Icon(Icons.keyboard_arrow_down, size: 14),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ],
+
+              // Session Timeout Setting (available for all users)
               Row(
                 children: [
-                  Icon(Icons.mail_outline, color: Theme.of(context).primaryColor),
+                  Icon(Icons.timer, color: Colors.blue),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Daily Summary Email', style: TextStyle(fontWeight: FontWeight.w600)),
+                        const Text('Session Timeout', style: TextStyle(fontWeight: FontWeight.w600)),
                         Text(
-                          'Receive daily task completion summaries',
+                          'Automatically logout after period of inactivity',
                           style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                         ),
                       ],
                     ),
                   ),
-                  CupertinoSwitch(
-                    value: _dailySummaryEnabled,
-                    onChanged: (value) async {
-                      setState(() => _dailySummaryEnabled = value);
-                      await _saveUserPreferences();
-
-                      // If user is admin, also update organization settings
-                      if (_isAdmin && _organizationId.isNotEmpty) {
-                        await _saveOrganizationDailySummarySettings();
-                      }
-                    },
+                  GestureDetector(
+                    onTap: _selectSessionTimeout,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey[400]!, width: 1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _sessionTimeout == '2_hours'
+                                ? '2 Hours'
+                                : (_sessionTimeout == '4_hours'
+                                    ? '4 Hours'
+                                    : (_sessionTimeout == '8_hours' ? '8 Hours' : '24 Hours')),
+                            style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                          ),
+                          const SizedBox(width: 2),
+                          const Icon(Icons.keyboard_arrow_down, size: 14),
+                        ],
+                      ),
+                    ),
                   ),
                 ],
               ),
 
-              const SizedBox(height: 16),
-
-              // Daily Summary Time Picker
-              if (_dailySummaryEnabled) ...[
-                Row(
-                  children: [
-                    Icon(Icons.schedule, color: Theme.of(context).primaryColor),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Daily Summary Time', style: TextStyle(fontWeight: FontWeight.w600)),
-                          Text(
-                            'When to receive your daily summary',
-                            style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-                          ),
-                        ],
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: _selectDailySummaryTime,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey[400]!, width: 1),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              _dailySummaryTime.format(context),
-                              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
-                            ),
-                            const SizedBox(width: 2),
-                            const Icon(Icons.keyboard_arrow_down, size: 14),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
-                // Summary Period Selection
-                Row(
-                  children: [
-                    Icon(Icons.date_range, color: Theme.of(context).primaryColor),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Summary Period', style: TextStyle(fontWeight: FontWeight.w600)),
-                          Text(
-                            'Choose if summary includes late-night tasks',
-                            style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-                          ),
-                        ],
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: _selectSummaryPeriod,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey[400]!, width: 1),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              _summaryPeriod == 'calendar-day' ? 'Calendar Day' : 'Business Day',
-                              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
-                            ),
-                            const SizedBox(width: 2),
-                            const Icon(Icons.keyboard_arrow_down, size: 14),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
-                // Session Timeout Setting
-                Row(
-                  children: [
-                    Icon(Icons.timer, color: Colors.blue),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Session Timeout', style: TextStyle(fontWeight: FontWeight.w600)),
-                          Text(
-                            'Automatically logout after period of inactivity',
-                            style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-                          ),
-                        ],
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: _selectSessionTimeout,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey[400]!, width: 1),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              _sessionTimeout == '2_hours'
-                                  ? '2 Hours'
-                                  : (_sessionTimeout == '4_hours'
-                                      ? '4 Hours'
-                                      : (_sessionTimeout == '8_hours' ? '8 Hours' : '24 Hours')),
-                              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
-                            ),
-                            const SizedBox(width: 2),
-                            const Icon(Icons.keyboard_arrow_down, size: 14),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-              ],
-
-              // Dashboard Metrics Refresh Button (Admin/Manager only)
+              // Dashboard Metrics Refresh Button (Admin only)
               if (_userRole != null && _userRole! >= 2) ...[
+                const SizedBox(height: 16),
                 const Divider(),
                 const SizedBox(height: 12),
                 Row(
@@ -2625,11 +2618,8 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                           ),
                         ),
                       ),
-                      // Preferences Card - visible to managers and admins (userRole >= 1)
-                      if (_userRole != null && _userRole! >= 1) ...[
-                        const SizedBox(height: 16),
-                        _buildPreferencesCard(),
-                      ],
+                      // Preferences Card - visible to all users
+                      if (_userRole != null) ...[const SizedBox(height: 16), _buildPreferencesCard()],
                       // Business Information Card - Only visible to admin users
                       if (_isAdmin) ...[
                         const SizedBox(height: 16),

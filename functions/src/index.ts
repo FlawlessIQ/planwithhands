@@ -90,6 +90,9 @@ export {scheduledDailyGenerator} from "./dailyGenerator";
 // Export scheduled daily summary (sends daily summary notifications to admins)
 export {scheduledDailySummary, triggerDailySummary} from "./scheduledDailySummary";
 
+// Export scheduled carry-forward function (carries forward missed tasks daily)
+export {dailyCarryForwardMissedTasks} from "./scheduledCarryForward";
+
 // Export daily summary time change validation and update functions
 export {validateDailySummaryTimeChange} from "./validateDailySummaryTimeChange";
 export {updateOrganizationDailySummaryTime} from "./updateOrganizationDailySummaryTime";

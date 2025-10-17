@@ -406,7 +406,7 @@ class LoginPage extends HookConsumerWidget {
                             // Email Field
                             HandsTextFormField(
                               controller: emailController,
-                              autofillHints: const [AutofillHints.username],
+                              autofillHints: const [AutofillHints.email, AutofillHints.username],
                               decoration: InputDecoration(
                                 hintText: 'Email',
                                 prefixIcon: Icon(Icons.email_outlined, color: HandsColors.white70),

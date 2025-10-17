@@ -5,6 +5,7 @@ import 'package:hands_app/services/daily_checklist_service.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'dart:convert';
 import 'package:image/image.dart' as img;
+import 'package:permission_handler/permission_handler.dart';
 // Conditional native IO helpers (macOS) - use platform-specific implementation when available
 import 'native_io_stub.dart' if (dart.library.io) 'native_io_macos.dart';
 import 'package:hands_app/data/models/task_data.dart';
@@ -344,24 +345,94 @@ class NativePhotoService {
       } catch (_) {}
 
       final err = e.toString();
-      // Detect common local emulator connection problems and give actionable advice
-      String userMessage;
-      if (err.contains('127.0.0.1') ||
-          err.contains('Connection refused') ||
-          err.contains('Failed host lookup') ||
-          err.contains('ERR_CONNECTION_REFUSED')) {
-        userMessage =
-            'Unable to reach the Firebase Storage emulator at 127.0.0.1:9199.\nStart the emulator (e.g. `firebase emulators:start --only storage`) or switch to production Storage in your web config.';
-      } else {
-        userMessage = 'Error uploading photo: $err';
-      }
 
-      // Show error
-      try {
-        messenger.showSnackBar(
-          SnackBar(content: Text(userMessage), backgroundColor: Colors.red, duration: const Duration(seconds: 6)),
-        );
-      } catch (_) {}
+      // Check for camera permission denial
+      if (err.contains('camera_access_denied') ||
+          err.contains('The user did not allow camera access') ||
+          err.contains('Camera permission')) {
+        // Show user-friendly dialog with option to open settings
+        try {
+          await showDialog(
+            context: parentContext,
+            builder:
+                (dialogContext) => AlertDialog(
+                  title: Row(
+                    children: const [
+                      Icon(Icons.camera_alt, color: Colors.orange, size: 28),
+                      SizedBox(width: 12),
+                      Expanded(child: Text('Camera Access Required')),
+                    ],
+                  ),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text(
+                        'To take photos for task completion, this app needs access to your camera.',
+                        style: TextStyle(fontSize: 16),
+                      ),
+                      SizedBox(height: 16),
+                      Text(
+                        'Please allow camera access in your device settings.',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                  ),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Not Now')),
+                    ElevatedButton.icon(
+                      onPressed: () async {
+                        Navigator.pop(dialogContext);
+                        // Open app settings
+                        try {
+                          await _openAppSettings();
+                        } catch (settingsError) {
+                          messenger.showSnackBar(
+                            SnackBar(
+                              content: Text('Please enable camera access in Settings → Plan with Hands → Camera'),
+                              backgroundColor: Colors.orange,
+                              duration: const Duration(seconds: 5),
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.settings),
+                      label: const Text('Open Settings'),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+                    ),
+                  ],
+                ),
+          );
+        } catch (_) {
+          // Fallback to simple snackbar if dialog fails
+          messenger.showSnackBar(
+            const SnackBar(
+              content: Text('Camera access denied. Please enable it in your device settings.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
+      } else {
+        // Detect common local emulator connection problems and give actionable advice
+        String userMessage;
+        if (err.contains('127.0.0.1') ||
+            err.contains('Connection refused') ||
+            err.contains('Failed host lookup') ||
+            err.contains('ERR_CONNECTION_REFUSED')) {
+          userMessage =
+              'Unable to reach the Firebase Storage emulator at 127.0.0.1:9199.\nStart the emulator (e.g. `firebase emulators:start --only storage`) or switch to production Storage in your web config.';
+        } else {
+          userMessage = 'Error uploading photo: $err';
+        }
+
+        // Show error
+        try {
+          messenger.showSnackBar(
+            SnackBar(content: Text(userMessage), backgroundColor: Colors.red, duration: const Duration(seconds: 6)),
+          );
+        } catch (_) {}
+      }
 
       // Close sheet/dialog with null indicating failure
       try {
@@ -641,5 +712,15 @@ class NativePhotoService {
             ),
           ),
     );
+  }
+
+  /// Open app settings to allow user to grant camera permission
+  static Future<void> _openAppSettings() async {
+    try {
+      await openAppSettings();
+    } catch (e) {
+      // If openAppSettings fails, throw to trigger fallback message
+      throw Exception('Could not open settings');
+    }
   }
 }

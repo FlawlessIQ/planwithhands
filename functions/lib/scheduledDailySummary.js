@@ -189,6 +189,8 @@ async function collectDailySummaryData(orgId, date, orgData) {
     let totalTasks = 0;
     let completedTasks = 0;
     let carryForwardTasks = 0;
+    // NEW: Track per-location statistics (excluding carry-forward tasks)
+    const locationStats = {};
     try {
         // Get summary period setting (default to calendar-day for backward compatibility)
         const dailySummarySettings = orgData?.dailySummarySettings || {};
@@ -227,6 +229,16 @@ async function collectDailySummaryData(orgId, date, orgData) {
             const locationId = locationDoc.id;
             const locationData = locationDoc.data();
             const locationName = locationData.locationName || "Unknown Location";
+            // Initialize location stats
+            if (!locationStats[locationId]) {
+                locationStats[locationId] = {
+                    locationName,
+                    totalRegular: 0,
+                    completedRegular: 0,
+                    incompletedRegular: 0,
+                    totalCarryForward: 0,
+                };
+            }
             // Query daily checklists for this location across all relevant dates
             for (const queryDate of dateQueries) {
                 const checklistsSnapshot = await db
@@ -271,8 +283,20 @@ async function collectDailySummaryData(orgId, date, orgData) {
                         const isCarryForward = taskData.isCarryForward || false;
                         if (isCarryForward) {
                             carryForwardTasks++;
+                            locationStats[locationId].totalCarryForward++;
                         }
-                        if (isCompleted) {
+                        else {
+                            // Only count non-carry-forward tasks for location performance
+                            locationStats[locationId].totalRegular++;
+                            if (isCompleted) {
+                                locationStats[locationId].completedRegular++;
+                            }
+                            else {
+                                locationStats[locationId].incompletedRegular++;
+                            }
+                        }
+                        // CRITICAL FIX: Only count completed tasks that were scheduled for today (not carry-forward)
+                        if (isCompleted && !isCarryForward) {
                             completedTasks++;
                         }
                     }
@@ -290,6 +314,15 @@ async function collectDailySummaryData(orgId, date, orgData) {
         if (tasksScheduledForToday === 0) {
             functions.logger.warn(`No tasks scheduled for today for org ${orgId} on date ${formatDate(date)} - verify date calculation and checklist existence`);
         }
+        // Convert locationStats to array and calculate percentages
+        const locationBreakdown = Object.values(locationStats).map(loc => ({
+            locationName: loc.locationName,
+            totalRegular: loc.totalRegular,
+            completedRegular: loc.completedRegular,
+            incompletedRegular: loc.incompletedRegular,
+            completionPercentage: loc.totalRegular > 0 ? (loc.completedRegular / loc.totalRegular * 100) : 0,
+            totalCarryForward: loc.totalCarryForward,
+        })).filter(loc => loc.totalRegular > 0); // Only include locations with regular tasks
         return {
             notesEntries,
             missedTaskEntries,
@@ -300,7 +333,8 @@ async function collectDailySummaryData(orgId, date, orgData) {
             overallPercentage,
             summaryPeriod,
             carryForwardTasks, // NEW: Track carry-forward tasks separately
-            tasksScheduledForToday // NEW: Tasks actually scheduled for today
+            tasksScheduledForToday, // NEW: Tasks actually scheduled for today
+            locationBreakdown, // NEW: Per-location performance breakdown
         };
     }
     catch (error) {
@@ -315,7 +349,8 @@ async function collectDailySummaryData(orgId, date, orgData) {
             overallPercentage: 0,
             summaryPeriod: 'calendar-day',
             carryForwardTasks: 0, // NEW: Track carry-forward tasks separately
-            tasksScheduledForToday: 0 // NEW: Tasks actually scheduled for today
+            tasksScheduledForToday: 0, // NEW: Tasks actually scheduled for today
+            locationBreakdown: [], // NEW: Per-location performance breakdown
         };
     }
 }
@@ -680,11 +715,13 @@ async function sendDailySummaryEmails(orgId, orgData, summaryData, date, adminUs
                     templatePayload.staff_notes_html = enhancedSections.staffNotesHtml;
                     templatePayload.photo_compliance_html = enhancedSections.photoComplianceHtml;
                     templatePayload.key_metrics_html = enhancedSections.keyMetricsHtml;
+                    templatePayload.location_breakdown_html = enhancedSections.locationBreakdownHtml;
                     templatePayload.OVERALL_DELTA_HTML = enhancedSections.overallDeltaHtml;
                     templatePayload.MISSED_TASKS_HTML = enhancedSections.missedTasksHtml;
                     templatePayload.STAFF_NOTES_HTML = enhancedSections.staffNotesHtml;
                     templatePayload.PHOTO_COMPLIANCE_HTML = enhancedSections.photoComplianceHtml;
                     templatePayload.KEY_METRICS_HTML = enhancedSections.keyMetricsHtml;
+                    templatePayload.LOCATION_BREAKDOWN_HTML = enhancedSections.locationBreakdownHtml;
                 }
                 const msg = {
                     to: admin.email,
@@ -925,12 +962,36 @@ function buildEnhancedHtmlSections(summaryData, yesterdayData) {
         <td style="padding:8px 0; text-align:right;">${overallDeltaHtml}</td>
       </tr>
     </table>`;
+        // Build location breakdown HTML
+        const locationBreakdown = summaryData.locationBreakdown || [];
+        let locationBreakdownHtml = '';
+        if (locationBreakdown.length > 0) {
+            locationBreakdownHtml = '<table style="width:100%; border-collapse:collapse; margin-top:8px;">';
+            locationBreakdownHtml += '<tr style="border-bottom:2px solid rgba(255,255,255,0.2);"><td colspan="2" style="padding:8px 0; color:#ff6b2d; font-weight:700; font-size:14px;">📍 Performance by Location (Today\'s Tasks Only)</td></tr>';
+            for (const loc of locationBreakdown) {
+                const percentage = loc.completionPercentage || 0;
+                const emoji = percentage >= 90 ? '✅' : percentage >= 70 ? '⚠️' : '❌';
+                const color = percentage >= 90 ? '#8cf68c' : percentage >= 70 ? '#ffbe08' : '#ff6b6b';
+                locationBreakdownHtml += `<tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+          <td style="padding:8px 0; color:#fff;">${emoji} ${escapeHtml(loc.locationName)}</td>
+          <td style="padding:8px 0; text-align:right;">
+            <span style="color:${color}; font-weight:700;">${percentage.toFixed(0)}%</span>
+            <span style="color:#9b9b9b; font-size:12px; margin-left:8px;">(${loc.completedRegular}/${loc.totalRegular})</span>
+          </td>
+        </tr>`;
+            }
+            locationBreakdownHtml += '</table>';
+        }
+        else {
+            locationBreakdownHtml = '<div style="color:#9b9b9b; font-style:italic; margin-top:8px;">No location data available.</div>';
+        }
         return {
             overallDeltaHtml,
             missedTasksHtml,
             staffNotesHtml,
             photoComplianceHtml,
-            keyMetricsHtml
+            keyMetricsHtml,
+            locationBreakdownHtml
         };
     }
     catch (error) {
@@ -992,6 +1053,96 @@ async function sendNotificationToAdmins(orgId, title, message, adminUsers) {
             });
         }
         await batch.commit();
+        // Get FCM tokens and send push notifications to admin users
+        const tokenPromises = adminUsers.map(async (adminUser) => {
+            try {
+                // First try user-specific subcollection (new format)
+                const userTokenSnap = await db
+                    .collection("users")
+                    .doc(adminUser.userId)
+                    .collection("deviceTokens")
+                    .where("isActive", "==", true)
+                    .get();
+                let tokens = [];
+                if (!userTokenSnap.empty) {
+                    tokens = userTokenSnap.docs.map((doc) => doc.data().fcmToken).filter(Boolean);
+                }
+                else {
+                    // Fallback to legacy top-level collection
+                    const legacyTokenSnap = await db
+                        .collection("deviceTokens")
+                        .where("userId", "==", adminUser.userId)
+                        .where("isActive", "==", true)
+                        .get();
+                    tokens = legacyTokenSnap.docs.map((doc) => doc.data().fcmToken).filter(Boolean);
+                }
+                return { userId: adminUser.userId, tokens };
+            }
+            catch (error) {
+                functions.logger.error(`Error fetching tokens for user ${adminUser.userId}:`, error);
+                return { userId: adminUser.userId, tokens: [] };
+            }
+        });
+        const userTokens = await Promise.all(tokenPromises);
+        // Flatten and de-duplicate tokens
+        const tokenSet = new Set();
+        userTokens.forEach(({ tokens }) => {
+            for (const t of tokens)
+                tokenSet.add(t);
+        });
+        const allTokens = Array.from(tokenSet);
+        // Send FCM push notifications if we have tokens
+        if (allTokens.length > 0) {
+            functions.logger.info(`🔔 Sending push notifications to ${allTokens.length} tokens for daily summary`);
+            const baseMessage = {
+                notification: {
+                    title: title || "Daily Summary",
+                    body: message || "",
+                },
+                data: {
+                    type: "daily_summary",
+                    orgId: orgId,
+                    outboxId: notificationRef.id,
+                },
+                apns: {
+                    payload: {
+                        aps: {
+                            sound: "default",
+                            badge: 1,
+                        },
+                    },
+                },
+            };
+            // FCM enforces a 500-token limit per multicast send
+            const chunkSize = 500;
+            let totalSuccess = 0;
+            let totalFailure = 0;
+            for (let i = 0; i < allTokens.length; i += chunkSize) {
+                const chunk = allTokens.slice(i, i + chunkSize);
+                const fcmMessage = { ...baseMessage, tokens: chunk };
+                try {
+                    const response = await admin.messaging().sendEachForMulticast(fcmMessage);
+                    totalSuccess += response.successCount;
+                    totalFailure += response.failureCount;
+                    // Log sample errors for diagnostics
+                    const sampleErrors = response.responses
+                        .map((r, idx) => ({ idx, error: r.error }))
+                        .filter((x) => !!x.error)
+                        .slice(0, 3);
+                    if (sampleErrors.length > 0) {
+                        functions.logger.warn(`⚠️ Push notification errors in chunk ${Math.floor(i / chunkSize) + 1}:`, sampleErrors.map(e => ({ index: e.idx, code: e.error?.code, message: e.error?.message })));
+                    }
+                }
+                catch (error) {
+                    totalFailure += chunk.length;
+                    functions.logger.error(`❌ Error sending push notification chunk ${Math.floor(i / chunkSize) + 1}:`, error);
+                }
+            }
+            functions.logger.info(`✅ Push notifications sent: ${totalSuccess} successful, ${totalFailure} failed`);
+        }
+        else {
+            functions.logger.info(`📱 No FCM tokens found for admin users`);
+        }
         functions.logger.info(`Daily summary notifications created for ${adminUsers.length} admin users`);
     }
     catch (error) {
@@ -1003,54 +1154,79 @@ async function sendNotificationToAdmins(orgId, title, message, adminUsers) {
  * Build notification content from summary data
  */
 function buildNotificationContent(summaryData, date) {
-    const { notesEntries, missedTaskEntries, photoBypassed, completedTasks, overallPercentage, summaryPeriod, tasksScheduledForToday } = summaryData;
+    const { notesEntries, missedTaskEntries, photoBypassed, completedTasks, overallPercentage, summaryPeriod, tasksScheduledForToday, locationBreakdown } = summaryData;
     // Add period indicator to title
     const periodText = summaryPeriod === 'business-day' ? ' (Business Day)' : '';
     let content = `📊 Daily Summary${periodText}\n\n`;
-    content += `Overall Progress: ${Math.round(overallPercentage)}% (${completedTasks}/${tasksScheduledForToday} tasks completed)\n\n`;
+    // Overall performance with emoji
+    const performanceEmoji = overallPercentage >= 95 ? '🎉' : overallPercentage >= 85 ? '✅' : overallPercentage >= 70 ? '👍' : '⚠️';
+    content += `${performanceEmoji} Overall Progress: ${Math.round(overallPercentage)}% (${completedTasks}/${tasksScheduledForToday} tasks completed)\n\n`;
     // Performance message
     if (overallPercentage >= 95) {
-        content += `🎉 Outstanding work! Nearly perfect completion rate.\n\n`;
+        content += `Outstanding work! Nearly perfect completion rate.\n\n`;
     }
     else if (overallPercentage >= 85) {
-        content += `✅ Great job! Strong performance across all areas.\n\n`;
+        content += `Great job! Strong performance across all areas.\n\n`;
     }
     else if (overallPercentage >= 70) {
-        content += `👍 Good progress! A few items need attention.\n\n`;
+        content += `Good progress! A few items need attention.\n\n`;
     }
     else {
-        content += `⚠️ Action needed! Several tasks require follow-up.\n\n`;
+        content += `Action needed! Several tasks require follow-up.\n\n`;
     }
-    // Key highlights
+    // Location breakdown (only regular tasks, excluding carry-forward)
+    if (locationBreakdown && locationBreakdown.length > 0) {
+        content += `📍 Performance by Location:\n`;
+        for (const loc of locationBreakdown) {
+            const emoji = loc.completionPercentage >= 90 ? '✅' : loc.completionPercentage >= 70 ? '⚠️' : '❌';
+            content += `${emoji} ${loc.locationName}: ${Math.round(loc.completionPercentage)}% (${loc.completedRegular}/${loc.totalRegular})\n`;
+        }
+        content += `\n`;
+    }
+    // Missed tasks section with more detail
     if (missedTaskEntries.length > 0) {
         content += `❌ Missed Tasks (${missedTaskEntries.length}):\n`;
-        missedTaskEntries.slice(0, 3).forEach((entry) => {
-            content += `• ${entry.taskName} - ${entry.reason}\n`;
+        missedTaskEntries.slice(0, 5).forEach((entry) => {
+            const reason = entry.reason || 'No reason provided';
+            const shift = entry.shiftName ? ` - ${entry.shiftName}` : '';
+            content += `• ${entry.taskName}${shift}\n  Reason: ${reason}\n`;
         });
-        if (missedTaskEntries.length > 3) {
-            content += `• ... and ${missedTaskEntries.length - 3} more\n`;
+        if (missedTaskEntries.length > 5) {
+            content += `• ... and ${missedTaskEntries.length - 5} more\n`;
         }
         content += `\n`;
     }
+    // Photo bypassed section
     if (photoBypassed.length > 0) {
         content += `📷 Missing Photos (${photoBypassed.length}):\n`;
-        photoBypassed.slice(0, 2).forEach((entry) => {
-            content += `• ${entry.taskName} by ${entry.userName}\n`;
+        photoBypassed.slice(0, 3).forEach((entry) => {
+            const shift = entry.shiftName ? ` - ${entry.shiftName}` : '';
+            content += `• ${entry.taskName}${shift}\n  by ${entry.userName}\n`;
         });
-        if (photoBypassed.length > 2) {
-            content += `• ... and ${photoBypassed.length - 2} more\n`;
+        if (photoBypassed.length > 3) {
+            content += `• ... and ${photoBypassed.length - 3} more\n`;
         }
         content += `\n`;
     }
+    // Staff notes section with more context
     if (notesEntries.length > 0) {
-        content += `📝 Important Notes (${notesEntries.length}):\n`;
-        notesEntries.slice(0, 2).forEach((entry) => {
-            content += `• ${entry.taskName}: "${entry.notes}" - ${entry.userName}\n`;
+        content += `📝 Staff Notes (${notesEntries.length}):\n`;
+        notesEntries.slice(0, 3).forEach((entry) => {
+            const shift = entry.shiftName ? ` - ${entry.shiftName}` : '';
+            content += `• ${entry.taskName}${shift}\n  "${entry.notes}" - ${entry.userName}\n`;
         });
-        if (notesEntries.length > 2) {
-            content += `• ... and ${notesEntries.length - 2} more notes\n`;
+        if (notesEntries.length > 3) {
+            content += `• ... and ${notesEntries.length - 3} more\n`;
         }
         content += `\n`;
+    }
+    // Summary of key metrics
+    const incompleteTasks = missedTaskEntries.length;
+    if (incompleteTasks === 0 && tasksScheduledForToday > 0) {
+        content += `✨ All tasks completed successfully!\n\n`;
+    }
+    else if (incompleteTasks > 10) {
+        content += `⚠️ Significant attention needed: ${incompleteTasks} tasks incomplete\n\n`;
     }
     content += `📱 View full details in the app`;
     return content;

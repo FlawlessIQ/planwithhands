@@ -273,27 +273,56 @@ async function createChecklistForTemplate(params) {
         .collection("locations").doc(locationId)
         .collection("daily_checklists").doc(checklistId);
     const existingChecklist = await checklistRef.get();
+    // CRITICAL FIX: Check if template tasks exist, not just if checklist exists
+    // The carry-forward function may create the checklist document before we run,
+    // but we still need to seed template tasks
+    let shouldSeedTasks = false;
     if (existingChecklist.exists) {
-        stats.skipped++;
-        return;
+        // Check if template tasks already exist
+        const templateTasksSnap = await checklistRef.collection("tasks")
+            .where("isCarryForward", "==", false)
+            .limit(1)
+            .get();
+        if (templateTasksSnap.empty) {
+            // Checklist exists but has no template tasks - we need to seed them
+            functions.logger.info(`${logPrefix} Checklist ${checklistId} exists but has no template tasks, seeding...`);
+            shouldSeedTasks = true;
+        }
+        else {
+            // Template tasks already exist, skip
+            stats.skipped++;
+            return;
+        }
     }
     const batch = db.batch();
     const nowTs = admin.firestore.Timestamp.now();
     const expiresAt = daysFromNow(30);
-    const checklistData = {
-        id: checklistId,
-        organizationId: orgId,
-        locationId,
-        shiftId,
-        checklistTemplateId: template.id,
-        templateId: template.id,
-        templateName: template.name,
-        date: dateString,
-        createdAt: nowTs,
-        createdBy: "generator",
-        expiresAt,
-    };
-    firestoreTTLHelper_1.FirestoreTTLHelper.batchSetWithTTL(batch, checklistRef, checklistData);
+    // Create or update checklist document
+    if (!existingChecklist.exists) {
+        const checklistData = {
+            id: checklistId,
+            organizationId: orgId,
+            locationId,
+            shiftId,
+            checklistTemplateId: template.id,
+            templateId: template.id,
+            templateName: template.name,
+            date: dateString,
+            createdAt: nowTs,
+            createdBy: "generator",
+            expiresAt,
+        };
+        firestoreTTLHelper_1.FirestoreTTLHelper.batchSetWithTTL(batch, checklistRef, checklistData);
+    }
+    else {
+        // Update existing checklist to ensure it has correct metadata
+        batch.set(checklistRef, {
+            templateName: template.name,
+            checklistTemplateId: template.id,
+            templateId: template.id,
+            updatedAt: nowTs,
+        }, { merge: true });
+    }
     await seedTemplateTasks({
         batch,
         orgRef,

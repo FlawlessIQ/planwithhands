@@ -19,6 +19,10 @@ class _QuickAction {
 class RecipeHelpPage extends ConsumerStatefulWidget {
   final int? userRole;
 
+  // Admin tutorial video URL
+  static const String _adminVideoUrl =
+      'https://firebasestorage.googleapis.com/v0/b/plan-with-hands.firebasestorage.app/o/HandsAdminDemo.mp4?alt=media&token=c7bc227b-590a-48ed-9631-bb1e440f6450';
+
   const RecipeHelpPage({super.key, this.userRole});
 
   @override
@@ -549,28 +553,8 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
           ),
         ];
       case AppRole.admin:
-        // Build admin actions but hide web-management on iOS (App Store review restriction)
-        final actions = <_QuickAction>[
-          _QuickAction(
-            title: 'System Overview',
-            description: 'View organization-wide metrics and status',
-            icon: Icons.dashboard_rounded,
-            onTap: () => context.go('/admin'),
-          ),
-          _QuickAction(
-            title: 'Web Management',
-            description: 'Access advanced settings and configuration',
-            icon: Icons.settings_rounded,
-            onTap: () => _launchWebPortal(),
-          ),
-        ];
-
-        // If running on native iOS (not iOS web), hide the Web Management action to satisfy App Review
-        if (isIOS) {
-          return actions.where((a) => a.title != 'Web Management').toList();
-        }
-
-        return actions;
+        // Admin users don't need quick actions - they have the video tutorial
+        return [];
     }
   }
 
@@ -631,7 +615,69 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
                               color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
                               borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                             ),
-                            child: _buildWideQuickActions(),
+                            child: Column(
+                              children: [
+                                _buildWideQuickActions(),
+
+                                // Admin-only video tutorial banner
+                                if (_currentRole == AppRole.admin) ...[
+                                  const SizedBox(height: 16),
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context).colorScheme.surface,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
+                                        width: 2,
+                                      ),
+                                    ),
+                                    child: Material(
+                                      color: Colors.transparent,
+                                      child: InkWell(
+                                        onTap:
+                                            () => launchUrl(
+                                              Uri.parse(RecipeHelpPage._adminVideoUrl),
+                                              mode: LaunchMode.externalApplication,
+                                            ),
+                                        borderRadius: BorderRadius.circular(12),
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(16),
+                                          child: Row(
+                                            children: [
+                                              Icon(
+                                                Icons.play_circle_outline,
+                                                size: 40,
+                                                color: Theme.of(context).colorScheme.primary,
+                                              ),
+                                              const SizedBox(width: 16),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      '📹 Admin Tutorial Video',
+                                                      style: Theme.of(
+                                                        context,
+                                                      ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    Text(
+                                                      'Watch this video guide to learn how to manage your organization',
+                                                      style: Theme.of(context).textTheme.bodySmall,
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              Icon(Icons.open_in_new, color: Theme.of(context).colorScheme.primary),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
                           ),
 
                           // Content sections in a two-column layout
@@ -984,7 +1030,69 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
                             color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
                             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                           ),
-                          child: _buildMediumQuickActions(),
+                          child: Column(
+                            children: [
+                              _buildMediumQuickActions(),
+
+                              // Admin-only video tutorial banner
+                              if (_currentRole == AppRole.admin) ...[
+                                const SizedBox(height: 16),
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).colorScheme.surface,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
+                                      width: 2,
+                                    ),
+                                  ),
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap:
+                                          () => launchUrl(
+                                            Uri.parse(RecipeHelpPage._adminVideoUrl),
+                                            mode: LaunchMode.externalApplication,
+                                          ),
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(16),
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              Icons.play_circle_outline,
+                                              size: 40,
+                                              color: Theme.of(context).colorScheme.primary,
+                                            ),
+                                            const SizedBox(width: 16),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    '📹 Admin Tutorial Video',
+                                                    style: Theme.of(
+                                                      context,
+                                                    ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    'Watch this video guide to learn how to manage your organization',
+                                                    style: Theme.of(context).textTheme.bodySmall,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            Icon(Icons.open_in_new, color: Theme.of(context).colorScheme.primary),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
                         ),
 
                         // Content in two columns
@@ -1124,6 +1232,60 @@ class _RecipeHelpPageState extends ConsumerState<RecipeHelpPage> with TickerProv
                   ),
 
                   const SizedBox(height: 24),
+
+                  // Admin-only video tutorial banner
+                  if (_currentRole == AppRole.admin) ...[
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surface,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
+                          width: 2,
+                        ),
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap:
+                              () => launchUrl(
+                                Uri.parse(RecipeHelpPage._adminVideoUrl),
+                                mode: LaunchMode.externalApplication,
+                              ),
+                          borderRadius: BorderRadius.circular(16),
+                          child: Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Row(
+                              children: [
+                                Icon(Icons.play_circle_outline, size: 48, color: Theme.of(context).colorScheme.primary),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '📹 Admin Tutorial Video',
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        'Watch this video guide to learn how to manage your organization',
+                                        style: Theme.of(context).textTheme.bodySmall,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Icon(Icons.open_in_new, color: Theme.of(context).colorScheme.primary, size: 20),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
 
                   // Featured guides
                   Container(

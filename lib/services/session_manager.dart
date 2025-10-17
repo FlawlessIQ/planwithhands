@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/services/web_optimized_firestore_service.dart';
@@ -64,8 +65,10 @@ class SessionManager {
     }
 
     // Listen to auth state changes
-    _authStateSubscription = _auth.authStateChanges().listen((user) {
+    _authStateSubscription = _auth.authStateChanges().listen((user) async {
       if (user != null) {
+        // Load user's session timeout preference from Firestore
+        await _loadUserSessionPreference(user.uid);
         _startSessionMonitoring();
         _recordActivity(); // Mark login as activity
       } else {
@@ -75,6 +78,9 @@ class SessionManager {
 
     // If user is already signed in, start monitoring
     if (_auth.currentUser != null) {
+      // Load user's session timeout preference
+      await _loadUserSessionPreference(_auth.currentUser!.uid);
+
       // Check if session expired based on last activity and timeout
       final now = DateTime.now();
       if (_lastActivity != null) {
@@ -117,6 +123,35 @@ class SessionManager {
   /// Get current session timeout duration
   Duration _getSessionTimeout() {
     return sessionTimeoutOptions[_sessionTimeoutKey] ?? _defaultSessionTimeout;
+  }
+
+  /// Load user's session timeout preference from Firestore
+  Future<void> _loadUserSessionPreference(String userId) async {
+    try {
+      final prefsDoc =
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(userId)
+              .collection('preferences')
+              .doc('notifications')
+              .get();
+
+      if (prefsDoc.exists && prefsDoc.data() != null) {
+        final data = prefsDoc.data()!;
+        if (data['sessionTimeout'] != null) {
+          final savedTimeout = data['sessionTimeout'] as String;
+          if (sessionTimeoutOptions.containsKey(savedTimeout)) {
+            _sessionTimeoutKey = savedTimeout;
+            logger.d('[SessionManager] Loaded user session timeout preference: $savedTimeout');
+          }
+        }
+      } else {
+        logger.d('[SessionManager] No saved session timeout preference, using default');
+      }
+    } catch (e) {
+      logger.w('[SessionManager] Failed to load session timeout preference: $e');
+      // Continue with default timeout
+    }
   }
 
   /// Set session timeout preference

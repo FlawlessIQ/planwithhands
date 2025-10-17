@@ -207,7 +207,15 @@ export const onNotificationOutboxCreated = functions.firestore
           orgId: orgId,
           outboxId: notifId,
         },
-      } as const;
+        apns: {
+          payload: {
+            aps: {
+              sound: "default" as const,
+              badge: 1,
+            },
+          },
+        },
+      };
 
       // FCM enforces a 500-token limit per multicast send. Chunk accordingly.
       const chunkSize = 500;

@@ -833,9 +833,56 @@ class DailyChecklistService {
       }
 
       debugPrint('[DailyChecklistService] Updated completion status for task ${task.taskId} to $completed');
+
+      // After updating task, check if ALL tasks in checklist are complete and update checklist status
+      await _updateChecklistCompletionStatus(organizationId: orgId, locationId: locId, checklistId: listId);
     } catch (e) {
       debugPrint('[DailyChecklistService] Error updating task completion: $e');
       rethrow;
+    }
+  }
+
+  /// Check if all tasks in a checklist are complete and update the checklist's isCompleted field
+  Future<void> _updateChecklistCompletionStatus({
+    required String organizationId,
+    required String locationId,
+    required String checklistId,
+  }) async {
+    try {
+      final checklistRef = _firestore
+          .collection('organizations')
+          .doc(organizationId)
+          .collection('locations')
+          .doc(locationId)
+          .collection('daily_checklists')
+          .doc(checklistId);
+
+      // Get all tasks (excluding carry-forward tasks, as they're not part of checklist completion)
+      final tasksSnapshot = await checklistRef.collection('tasks').where('isCarryForward', isEqualTo: false).get();
+
+      if (tasksSnapshot.docs.isEmpty) {
+        // No regular tasks, checklist can't be complete
+        debugPrint('[DailyChecklistService] No regular tasks found for checklist $checklistId');
+        return;
+      }
+
+      // Check if all regular tasks are completed
+      final allTasksCompleted = tasksSnapshot.docs.every((doc) {
+        final data = doc.data();
+        return data['completed'] == true;
+      });
+
+      debugPrint(
+        '[DailyChecklistService] Checklist $checklistId: ${tasksSnapshot.docs.length} tasks, all completed: $allTasksCompleted',
+      );
+
+      // Update checklist document
+      await checklistRef.update({'isCompleted': allTasksCompleted, 'updatedAt': FieldValue.serverTimestamp()});
+
+      debugPrint('[DailyChecklistService] Updated checklist $checklistId isCompleted to $allTasksCompleted');
+    } catch (e) {
+      debugPrint('[DailyChecklistService] Error updating checklist completion status: $e');
+      // Don't rethrow - this is a best-effort update
     }
   }
 

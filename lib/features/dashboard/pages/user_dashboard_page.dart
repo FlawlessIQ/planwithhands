@@ -1920,12 +1920,18 @@ Future<List<DailyChecklist>> _loadChecklistsForShiftSimple(
     final checklists = docs.map((doc) => DailyChecklist.fromMap(doc.data() as Map<String, dynamic>, doc.id)).toList();
 
     // NEW: Hydrate tasks from subcollection if parent 'tasks' array is empty (post-migration storage)
+    debugPrint("🔥🔥🔥 STARTING TASK HYDRATION FOR ${checklists.length} CHECKLISTS");
     for (int i = 0; i < checklists.length; i++) {
       final checklist = checklists[i];
+      debugPrint(
+        "🔥 HYDRATION CHECK: Checklist ${checklist.templateName} has ${checklist.tasks.length} tasks initially",
+      );
       if (checklist.tasks.isNotEmpty) {
         logger.d("[Dashboard] Checklist ${checklist.id} already has ${checklist.tasks.length} inline tasks.");
+        debugPrint("🔥 SKIPPING HYDRATION: Already has inline tasks");
         continue; // already has inline tasks
       }
+      debugPrint("🔥 ATTEMPTING TO HYDRATE FROM SUBCOLLECTION for ${checklist.id}");
       try {
         final tasksSnap =
             await FirestoreEnforcer.instance
@@ -2230,6 +2236,9 @@ Future<List<DailyChecklist>> _loadChecklistsForShiftSimple(
 
     logger.d(
       "[Dashboard] Returning ${checklists.length} checklists for shift ${shift.shiftName}. Task counts: ${checklists.map((c) => c.tasks.length).toList()}",
+    );
+    debugPrint(
+      "🔥🔥🔥 RETURNING ${checklists.length} CHECKLISTS WITH TASK COUNTS: ${checklists.map((c) => '${c.templateName}=${c.tasks.length}').join(', ')}",
     );
     return checklists;
   } catch (e, stack) {
@@ -3469,11 +3478,18 @@ class _ConsolidatedMissedTasksCard extends HookWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          const Text(
+                            "Missed Tasks from Yesterday",
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                          ),
+                          const SizedBox(height: 4),
                           Row(
                             children: [
-                              const Text(
-                                "Missed Tasks from Yesterday",
-                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                              Flexible(
+                                child: Text(
+                                  "${sections.length} shift${sections.length != 1 ? 's' : ''} • $totalTasks task${totalTasks != 1 ? 's' : ''}",
+                                  style: const TextStyle(fontSize: 12, color: Colors.white70),
+                                ),
                               ),
                               if (locationName != null) ...[
                                 const SizedBox(width: 8),
@@ -3494,14 +3510,10 @@ class _ConsolidatedMissedTasksCard extends HookWidget {
                               ],
                             ],
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            "${sections.length} shift${sections.length != 1 ? 's' : ''} • $totalTasks task${totalTasks != 1 ? 's' : ''}",
-                            style: const TextStyle(fontSize: 12, color: Colors.white70),
-                          ),
                         ],
                       ),
                     ),
+                    const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
@@ -3766,82 +3778,89 @@ class _ChecklistCard extends HookConsumerWidget {
       child: Column(
         children: [
           // Header displays current template name from Firestore
-          ListTile(
-            title: FutureBuilder<String>(
-              future: _getCurrentTemplateName(
-                checklist.organizationId,
-                checklist.checklistTemplateId,
-                fallbackCachedName: checklist.templateName,
-              ),
-              builder: (context, templateNameSnapshot) {
-                if (templateNameSnapshot.connectionState == ConnectionState.waiting) {
-                  return Text(
-                    checklist.templateName ?? 'Loading...',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                  );
-                }
-
-                final currentName = templateNameSnapshot.data ?? checklist.templateName ?? 'Unknown Template';
-                return Row(
-                  children: [
-                    Expanded(
-                      child: Text(currentName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                    ),
-                    if (templateNameSnapshot.hasError)
-                      Tooltip(
-                        message: 'Error loading current template name: ${templateNameSnapshot.error}',
-                        child: Icon(Icons.error_outline, size: 16, color: Colors.red.shade600),
-                      ),
-                  ],
-                );
-              },
+          // Add green background when checklist is fully complete
+          Container(
+            decoration: BoxDecoration(
+              color: checklist.isCompleted ? HandsColors.sageGreen.withOpacity(0.2) : null,
+              borderRadius: const BorderRadius.only(topLeft: Radius.circular(4), topRight: Radius.circular(4)),
             ),
-            subtitle: StreamBuilder<List<TaskData>>(
-              stream: DailyChecklistService().streamChecklistTasks(
-                organizationId: checklist.organizationId,
-                locationId: checklist.locationId,
-                checklistId: checklist.id,
+            child: ListTile(
+              title: FutureBuilder<String>(
+                future: _getCurrentTemplateName(
+                  checklist.organizationId,
+                  checklist.checklistTemplateId,
+                  fallbackCachedName: checklist.templateName,
+                ),
+                builder: (context, templateNameSnapshot) {
+                  if (templateNameSnapshot.connectionState == ConnectionState.waiting) {
+                    return Text(
+                      checklist.templateName ?? 'Loading...',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    );
+                  }
+
+                  final currentName = templateNameSnapshot.data ?? checklist.templateName ?? 'Unknown Template';
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: Text(currentName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                      ),
+                      if (templateNameSnapshot.hasError)
+                        Tooltip(
+                          message: 'Error loading current template name: ${templateNameSnapshot.error}',
+                          child: Icon(Icons.error_outline, size: 16, color: Colors.red.shade600),
+                        ),
+                    ],
+                  );
+                },
               ),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) {
+              subtitle: StreamBuilder<List<TaskData>>(
+                stream: DailyChecklistService().streamChecklistTasks(
+                  organizationId: checklist.organizationId,
+                  locationId: checklist.locationId,
+                  checklistId: checklist.id,
+                ),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 4),
+                        LinearProgressIndicator(value: 0.0, backgroundColor: Colors.grey[300]),
+                      ],
+                    );
+                  }
+
+                  final tasks = snapshot.data ?? [];
+                  final totalTasks = tasks.length;
+                  final completedTasksCount = tasks.where((t) => t.completed).length;
+                  final progressPercentage = totalTasks > 0 ? completedTasksCount / totalTasks : 0.0;
+
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Text("$completedTasksCount of $totalTasks tasks completed"),
                       const SizedBox(height: 4),
-                      LinearProgressIndicator(value: 0.0, backgroundColor: Colors.grey[300]),
+                      LinearProgressIndicator(
+                        value: progressPercentage,
+                        backgroundColor: Colors.grey[300],
+                        valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+                      ),
                     ],
                   );
-                }
-
-                final tasks = snapshot.data ?? [];
-                final totalTasks = tasks.length;
-                final completedTasksCount = tasks.where((t) => t.completed).length;
-                final progressPercentage = totalTasks > 0 ? completedTasksCount / totalTasks : 0.0;
-
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text("$completedTasksCount of $totalTasks tasks completed"),
-                    const SizedBox(height: 4),
-                    LinearProgressIndicator(
-                      value: progressPercentage,
-                      backgroundColor: Colors.grey[300],
-                      valueColor: AlwaysStoppedAnimation<Color>(statusColor),
-                    ),
-                  ],
-                );
-              },
+                },
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(checklist.isCompleted ? Icons.check_circle : Icons.pending_actions, color: statusColor),
+                  const SizedBox(width: 8),
+                  // Expand/collapse affordance
+                  Icon(isExpanded.value ? Icons.expand_less : Icons.expand_more, color: Colors.grey[600]),
+                ],
+              ),
+              onTap: () => isExpanded.value = !isExpanded.value,
             ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(checklist.isCompleted ? Icons.check_circle : Icons.pending_actions, color: statusColor),
-                const SizedBox(width: 8),
-                // Expand/collapse affordance
-                Icon(isExpanded.value ? Icons.expand_less : Icons.expand_more, color: Colors.grey[600]),
-              ],
-            ),
-            onTap: () => isExpanded.value = !isExpanded.value,
           ),
 
           if (isExpanded.value)

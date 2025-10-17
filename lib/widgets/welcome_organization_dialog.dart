@@ -5,6 +5,10 @@ import 'package:url_launcher/url_launcher.dart';
 class WelcomeOrganizationDialog extends StatelessWidget {
   final VoidCallback? onProceedToLocationSetup;
 
+  // Admin tutorial video URL
+  static const String _adminVideoUrl =
+      'https://firebasestorage.googleapis.com/v0/b/plan-with-hands.firebasestorage.app/o/HandsAdminDemo.mp4?alt=media&token=c7bc227b-590a-48ed-9631-bb1e440f6450';
+
   const WelcomeOrganizationDialog({super.key, this.onProceedToLocationSetup});
 
   @override
@@ -59,6 +63,39 @@ class WelcomeOrganizationDialog extends StatelessWidget {
               title: 'Account & Subscription Management',
               content:
                   'All billing, subscription changes, and account settings must be managed through this web portal.',
+            ),
+            const SizedBox(height: 20),
+
+            // Video Tutorial Section
+            _buildSection(
+              icon: Icons.play_circle_outline,
+              title: 'Watch Tutorial Video',
+              content:
+                  'New to Plan With Hands? Watch our quick video guide to learn how to set up your organization, create shifts, and manage your team.',
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const SizedBox(width: 32), // Align with section content
+                InkWell(
+                  onTap: () => _launchUrl(_adminVideoUrl),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(color: HandsColors.handsOrange, borderRadius: BorderRadius.circular(8)),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.play_arrow, color: HandsColors.white, size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Watch Now',
+                          style: TextStyle(color: HandsColors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 20),
 
