@@ -153,10 +153,17 @@ class DailySummaryService {
               photoBypassed: photoBypassed,
             );
 
-            checklistTotal++;
-            final isCompleted = taskData['completed'] as bool? ?? false;
-            if (isCompleted) {
-              checklistCompleted++;
+            // CRITICAL FIX: Exclude carry forward tasks from today's task count
+            // Carry forward tasks are tracked separately in the "Yesterday's Missed Tasks Progress" section
+            final isCarryForward = taskData['isCarryForward'] as bool? ?? false;
+
+            if (!isCarryForward) {
+              // Only count tasks that were generated for TODAY
+              checklistTotal++;
+              final isCompleted = taskData['completed'] as bool? ?? false;
+              if (isCompleted) {
+                checklistCompleted++;
+              }
             }
           }
 
@@ -203,7 +210,7 @@ class DailySummaryService {
       final incompleteTasks = missedTaskEntries.length;
 
       logger.d(
-        '[DailySummaryService] Summary: ${notesEntries.length} notes, $incompleteTasks missed tasks, ${photoBypassed.length} photo bypassed, Overall: $completedTasks/$totalTasks (${overallPercentage.toStringAsFixed(1)}%)',
+        '[DailySummaryService] Summary: ${notesEntries.length} notes, $incompleteTasks missed tasks, ${photoBypassed.length} photo bypassed, Overall: $completedTasks/$totalTasks (${overallPercentage.toStringAsFixed(1)}%) - excludes carry forward tasks',
       );
 
       return {

@@ -1068,7 +1068,7 @@ function buildEnhancedHtmlSections(summaryData: any, yesterdayData: any) {
       </tr>
       <tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
         <td style="padding:8px 0; color:#ff6b2d; font-weight:600;">Tasks Completed</td>
-        <td style="padding:8px 0; text-align:right; color:#8cf68c; font-weight:700;">${summaryData.completedTasks || 0} of ${summaryData.totalTasks || 0}</td>
+        <td style="padding:8px 0; text-align:right; color:#8cf68c; font-weight:700;">${summaryData.completedTasks || 0} of ${summaryData.tasksScheduledForToday || 0}</td>
       </tr>
       <tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
         <td style="padding:8px 0; color:#ff6b2d; font-weight:600;">Tasks Incomplete</td>
