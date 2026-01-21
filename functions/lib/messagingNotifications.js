@@ -86,6 +86,14 @@ exports.onNotificationOutboxCreated = functions.firestore
     // Determine recipients
     let recipientUserIds = [];
     switch (notif.targetType) {
+        case "users":
+        case "user_ids": {
+            const raw = (notif.userIds || notif.targetIds || notif.userIDs);
+            const ids = Array.isArray(raw) ? raw : [];
+            recipientUserIds = Array.from(new Set(ids.filter((id) => typeof id === "string" && id.length > 0)));
+            console.log(`[Outbox] Targeting explicit user IDs: ${recipientUserIds.length}`);
+            break;
+        }
         case "all":
         case "all_users": {
             const snap = await db.collection("users")

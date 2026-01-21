@@ -3,9 +3,18 @@ import * as admin from "firebase-admin";
 import Stripe from "stripe";
 import {Firestore} from "@google-cloud/firestore";
 
-const stripe = new Stripe(functions.config().stripe.secret, {
-  apiVersion: "2025-06-30.basil",
-});
+let stripe: Stripe | null = null;
+function getStripe(): Stripe {
+  if (stripe) return stripe;
+  const secret = process.env.STRIPE_SECRET_KEY;
+  if (!secret) {
+    throw new functions.https.HttpsError("failed-precondition", "STRIPE_SECRET_KEY is not configured");
+  }
+  stripe = new Stripe(secret, {
+    apiVersion: "2025-06-30.basil",
+  });
+  return stripe;
+}
 
 // Ensure we use the correct Firestore database
 const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || "planwithhands";
@@ -36,7 +45,7 @@ async function ensureCustomer(orgId: string, email: string): Promise<string> {
   const orgDoc = await orgRef.get();
   let customerId = orgDoc.exists ? orgDoc.data()?.stripeCustomerId : null;
   if (!customerId) {
-    const customer = await stripe.customers.create({
+    const customer = await getStripe().customers.create({
       email,
       metadata: {orgId},
     });
@@ -86,7 +95,7 @@ export const createSubscriptionElements = addCallable<
     // IMPORTANT: Use discounts array for coupons on Subscriptions API
     ...(couponId ? { discounts: [{ coupon: couponId }] } : {}),
   };
-  const subscription = await stripe.subscriptions.create(subParams);
+  const subscription = await getStripe().subscriptions.create(subParams);
   const invoice = subscription.latest_invoice as Stripe.Invoice | null;
   const paymentIntent = (invoice as any)?.payment_intent as Stripe.PaymentIntent | undefined;
   // When a free trial is applied or the first invoice totals $0, Stripe may not create a PaymentIntent.
@@ -97,7 +106,7 @@ export const createSubscriptionElements = addCallable<
   let setupClientSecret: string | undefined;
   if (!clientSecret) {
     try {
-      const setupIntent = await stripe.setupIntents.create({
+      const setupIntent = await getStripe().setupIntents.create({
         customer: customerId,
         usage: "off_session",
         payment_method_types: ["card"],
@@ -152,7 +161,7 @@ export const createSetupIntentForCustomer = addCallable<
   const orgDoc = await orgRef.get();
   const email = (orgDoc.exists ? (orgDoc.data()?.email as string | undefined) : undefined) || "";
   const customerId = await ensureCustomer(orgId, email);
-  const setupIntent = await stripe.setupIntents.create({
+  const setupIntent = await getStripe().setupIntents.create({
     customer: customerId,
     usage: "off_session",
     payment_method_types: ["card"],
@@ -180,11 +189,8 @@ export const createEmbeddedCheckoutSession = addCallable<
   const email = (snap.exists ? (snap.data()?.email as string | undefined) : undefined) || "";
   const customerId = await ensureCustomer(orgId, email);
 
-  // Allow either env or functions config
-  const appBaseEnv = process.env.APP_BASE_URL;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const appBaseCfg = (functions.config() as any)?.app?.base_url as string | undefined;
-  let APP_BASE_URL = appBaseEnv || appBaseCfg;
+  // Use env var (dotenv) by default
+  let APP_BASE_URL = process.env.APP_BASE_URL;
 
   // Allow client-provided base URL (used by web app) to drive return URL
   if (returnBaseUrl) {
@@ -220,7 +226,7 @@ export const createEmbeddedCheckoutSession = addCallable<
         : { ...baseParams, allow_promotion_codes: true }
     );
 
-    const session = await stripe.checkout.sessions.create(sessionParams);
+    const session = await getStripe().checkout.sessions.create(sessionParams);
 
     if (!session.client_secret) {
       throw new functions.https.HttpsError("internal", "Missing client_secret on session");
@@ -242,7 +248,7 @@ export const getCheckoutSessionStatus = addCallable<
     throw new functions.https.HttpsError("invalid-argument", "sessionId is required");
   }
 
-  const session = await stripe.checkout.sessions.retrieve(sessionId);
+  const session = await getStripe().checkout.sessions.retrieve(sessionId);
   return {
     status: session.status,
     paymentStatus: session.payment_status,
@@ -255,10 +261,7 @@ export const getStripePublishableKey = addCallable<
   { publishableKey: string }
 >("getStripePublishableKey", async () => {
   // Safe to expose publishable key
-  // Prefer functions.config().stripe.publishable_key, fallback to env
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cfg: any = functions.config?.() || {};
-  const pk = cfg?.stripe?.publishable_key || process.env.STRIPE_PUBLISHABLE_KEY;
+  const pk = process.env.STRIPE_PUBLISHABLE_KEY;
   if (!pk) {
     throw new functions.https.HttpsError('failed-precondition', 'Stripe publishable key is not configured');
   }
@@ -279,9 +282,7 @@ export const getStripePublishableKeyHttp = functions
       return;
     }
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const cfg: any = (functions.config?.() || {});
-      const pk = cfg?.stripe?.publishable_key || process.env.STRIPE_PUBLISHABLE_KEY;
+      const pk = process.env.STRIPE_PUBLISHABLE_KEY;
       if (!pk) {
         res.status(500).json({ error: 'Stripe publishable key is not configured' });
         return;
@@ -300,16 +301,16 @@ export const updateSubscriptionQuantity = addCallable<
   if (!orgId || !subscriptionId || !newQuantity || newQuantity <= 0) {
     throw new functions.https.HttpsError("invalid-argument", "Invalid parameters");
   }
-  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const subscription = await getStripe().subscriptions.retrieve(subscriptionId);
   if (!subscription.items.data[0]) {
     throw new functions.https.HttpsError("not-found", "No subscription items found");
   }
   const itemId = subscription.items.data[0].id;
-  await stripe.subscriptionItems.update(itemId, {
+  await getStripe().subscriptionItems.update(itemId, {
     quantity: newQuantity,
     proration_behavior: "create_prorations",
   });
-  const updatedSubscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const updatedSubscription = await getStripe().subscriptions.retrieve(subscriptionId);
   return {
     quantity: newQuantity,
     status: updatedSubscription.status,
@@ -325,7 +326,7 @@ export const cancelSubscription = addCallable<
   if (!orgId || !subscriptionId) {
     throw new functions.https.HttpsError("invalid-argument", "orgId and subscriptionId are required");
   }
-  await stripe.subscriptions.update(subscriptionId, {
+  await getStripe().subscriptions.update(subscriptionId, {
     cancel_at_period_end: true,
   });
   return {cancel_at_period_end: true};
@@ -344,11 +345,8 @@ export const createBillingPortalSession = addCallable<
   const email = (orgDoc.exists ? (orgDoc.data()?.email as string | undefined) : undefined) || "";
   const customerId = await ensureCustomer(orgId, email);
   // Prefer configured base URL to ensure we land back in the correct environment
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const appBaseCfg = (functions.config() as any)?.app?.base_url as string | undefined;
-  const appBaseEnv = process.env.APP_BASE_URL;
-  const returnBase = appBaseEnv || appBaseCfg || "https://plan-with-hands.web.app";
-  const portalSession = await stripe.billingPortal.sessions.create({
+  const returnBase = process.env.APP_BASE_URL || "https://plan-with-hands.web.app";
+  const portalSession = await getStripe().billingPortal.sessions.create({
     customer: customerId,
     return_url: `${returnBase}/#/settings`,
   });
@@ -380,7 +378,7 @@ export const getSubscriptionData = addCallable<
     return {};
   }
   const {subscriptionId} = subscriptionDoc.data()!;
-  const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+  const subscription = await getStripe().subscriptions.retrieve(subscriptionId, {
     expand: ["latest_invoice", "default_payment_method"],
   });
   const result: any = {
@@ -432,7 +430,7 @@ export const backfillSubscriptionQuantityForOrg = addCallable<
     intendedQty = locSnap.size > 0 ? locSnap.size : 1;
   }
 
-  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const subscription = await getStripe().subscriptions.retrieve(subscriptionId);
   const item = subscription.items.data[0];
   const beforeQty = (item?.quantity as number | undefined) || 1;
   if (beforeQty === intendedQty) {
@@ -441,7 +439,7 @@ export const backfillSubscriptionQuantityForOrg = addCallable<
     return { updated: false, before: beforeQty, after: intendedQty, subscriptionId };
   }
 
-  const updated = await stripe.subscriptions.update(subscriptionId, {
+  const updated = await getStripe().subscriptions.update(subscriptionId, {
     items: [{ id: item!.id, quantity: intendedQty }],
   });
 
@@ -495,7 +493,7 @@ export const validateCoupon = addCallable<
     // First, try to find it as a promotion code
     try {
       console.log("Trying as promotion code...");
-      const promoCodes = await stripe.promotionCodes.list({
+      const promoCodes = await getStripe().promotionCodes.list({
         code: couponCode,
         limit: 1
       });
@@ -526,7 +524,7 @@ export const validateCoupon = addCallable<
     if (!coupon) {
       try {
         console.log("Trying as direct coupon ID...");
-        coupon = await stripe.coupons.retrieve(couponCode);
+        coupon = await getStripe().coupons.retrieve(couponCode);
         console.log("Found as direct coupon!");
       } catch (couponError: any) {
         console.log("Error retrieving coupon:", couponError.message);

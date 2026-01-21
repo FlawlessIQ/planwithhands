@@ -73,11 +73,15 @@ export const scheduledDailySummary = functions.pubsub
           functions.logger.info(`Sending daily summary for org ${orgId} at ${currentUTCHour}:00 UTC for date ${dateStr}`);
 
           // Generate and send daily summary for yesterday's date
-          await generateAndSendDailySummary(orgId, summaryDate, orgData);
-          
+          const sent = await generateAndSendDailySummary(orgId, summaryDate, orgData);
+          if (!sent) {
+            functions.logger.info(`Daily summary not sent for org ${orgId} on ${dateStr} (skipped)`);
+            continue;
+          }
+
           // Mark as sent
           await markDailySummaryAsSent(orgId, dateStr);
-          
+
           summariesSent++;
           functions.logger.info(`Daily summary sent successfully for organization: ${orgId}`);
           
@@ -121,8 +125,11 @@ export const triggerDailySummary = functions.https.onCall(async (data, context) 
     const date = targetDate ? new Date(targetDate) : new Date();
     const orgDoc = await db.collection("organizations").doc(orgId).get();
     const orgData = orgDoc.exists ? orgDoc.data() : {};
-    
-    await generateAndSendDailySummary(orgId, date, orgData);
+
+    const sent = await generateAndSendDailySummary(orgId, date, orgData);
+    if (!sent) {
+      return { success: true, message: "Daily summary skipped (no activity or no recipients)" };
+    }
     
     functions.logger.info(`Manual daily summary triggered for org ${orgId}`);
     return { success: true, message: "Daily summary sent successfully" };
@@ -136,7 +143,7 @@ export const triggerDailySummary = functions.https.onCall(async (data, context) 
 /**
  * Generate and send daily summary for an organization
  */
-async function generateAndSendDailySummary(orgId: string, date: Date, orgData: any) {
+export async function generateAndSendDailySummary(orgId: string, date: Date, orgData: any): Promise<boolean> {
   const dateStr = formatDate(date);
   functions.logger.info(`Generating daily summary for org ${orgId}, date: ${dateStr}`);
 
@@ -155,7 +162,7 @@ async function generateAndSendDailySummary(orgId: string, date: Date, orgData: a
 
   if (!hasContent) {
     functions.logger.info(`No meaningful activity for ${orgId} on ${dateStr} - skipping summary`);
-    return;
+    return false;
   }
 
   // Get admin users
@@ -163,7 +170,7 @@ async function generateAndSendDailySummary(orgId: string, date: Date, orgData: a
   
   if (adminUsers.length === 0) {
     functions.logger.warn(`No admin users found for organization ${orgId}`);
-    return;
+    return false;
   }
 
   // Generate notification content for in-app notifications
@@ -179,6 +186,8 @@ async function generateAndSendDailySummary(orgId: string, date: Date, orgData: a
   await sendDailySummaryEmails(orgId, orgData, summaryData, date, adminUsers, enhancedSections);
 
   functions.logger.info(`Daily summary sent to ${adminUsers.length} admin(s) for org ${orgId} (both in-app and email)`);
+
+  return true;
 }
 
 /**
@@ -582,9 +591,14 @@ async function getUserNames(orgId: string): Promise<Record<string, string>> {
 async function shouldSendDailySummaryNow(orgId: string, orgData: any, currentUTCHour: number): Promise<boolean> {
   try {
     // Check if daily summary is enabled
-    const dailySummarySettings = orgData.dailySummarySettings;
-    if (!dailySummarySettings || !dailySummarySettings.enabled) {
-      functions.logger.debug(`Daily summary disabled for org ${orgId}`);
+    const dailySummarySettings = orgData?.dailySummarySettings;
+    if (!dailySummarySettings) {
+      functions.logger.debug(`Daily summary disabled for org ${orgId} (no dailySummarySettings)`);
+      return false;
+    }
+
+    if (dailySummarySettings.enabled === false) {
+      functions.logger.debug(`Daily summary disabled for org ${orgId} (enabled=false)`);
       return false;
     }
 
@@ -604,6 +618,7 @@ async function shouldSendDailySummaryNow(orgId: string, orgData: any, currentUTC
     });
     
     const targetUTCTime = orgLocalTime.toUTC();
+
     const targetUTCHour = targetUTCTime.hour;
     const targetUTCMinute = targetUTCTime.minute;
 
@@ -653,9 +668,14 @@ async function shouldSendDailySummaryNow(orgId: string, orgData: any, currentUTC
 async function shouldSendDailySummary(orgId: string, orgData: any): Promise<boolean> {
   try {
     // Check if daily summary is enabled
-    const dailySummarySettings = orgData.dailySummarySettings;
-    if (!dailySummarySettings || !dailySummarySettings.enabled) {
-      functions.logger.info(`Daily summary disabled for org ${orgId}`);
+    const dailySummarySettings = orgData?.dailySummarySettings;
+    if (!dailySummarySettings) {
+      functions.logger.info(`Daily summary disabled for org ${orgId} (no dailySummarySettings)`);
+      return false;
+    }
+
+    if (dailySummarySettings.enabled === false) {
+      functions.logger.info(`Daily summary disabled for org ${orgId} (enabled=false)`);
       return false;
     }
 
@@ -738,20 +758,18 @@ async function sendDailySummaryEmails(
     // Get organization name
     const organizationName = orgData.organizationName || orgData.name || orgData.businessName || 'Your Organization';
 
-    // Check if SendGrid is configured
-    const functions = require('firebase-functions');
-    const sendgridConfig = functions.config().sendgrid;
-    const sendgridApiKey = sendgridConfig?.api_key;
-    
+    // Check if SendGrid is configured (dotenv env)
+    const sendgridApiKey = process.env.SENDGRID_API_KEY || process.env.SENDGRID_KEY;
+
     if (!sendgridApiKey) {
-      functions.logger.warn('SendGrid API key not configured - skipping email sending');
+      functions.logger.warn('SendGrid API key not configured (SENDGRID_API_KEY) - skipping email sending');
       return;
     }
 
     // SendGrid configuration
-  const templateId = 'd-b24a7a9c340046d3a5429f203c19470e';
-    const fromEmail = 'noreply@planwithhands.com';
-    const fromName = 'Hands App';
+  const templateId = 'd-000519b45ca84c0882d31d2cb7965948';
+    const fromEmail = process.env.SENDGRID_FROM_EMAIL || 'noreply@planwithhands.com';
+    const fromName = process.env.SENDGRID_FROM_NAME || 'Hands App';
 
     const overallPercentage = summaryData.overallPercentage || 0;
     const completedTasks = summaryData.completedTasks || 0;
@@ -1138,153 +1156,37 @@ function escapeHtml(s: string) {
  */
 async function sendNotificationToAdmins(orgId: string, title: string, message: string, adminUsers: any[]) {
   try {
-    // Create notification in the outbox for fan-out to individual user inboxes
+    const adminUserIds = Array.from(
+      new Set(
+        (adminUsers || [])
+          .map((u: any) => u?.userId)
+          .filter((id: any) => typeof id === "string" && id.length > 0)
+      )
+    );
+
+    if (adminUserIds.length === 0) {
+      functions.logger.warn(`No admin user IDs provided for daily summary notification in org ${orgId}`);
+      return;
+    }
+
+    // Create ONE notification in the outbox; fan-out + push are handled by onNotificationOutboxCreated.
     const notificationRef = db
       .collection("organizations")
       .doc(orgId)
       .collection("notificationOutbox")
       .doc();
 
-    const notificationData = {
+    await notificationRef.set({
       title,
       message,
       type: "daily_summary",
-      targetType: "all_users", // This will be filtered to admin users only
+      targetType: "user_ids",
+      userIds: adminUserIds,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      // Add TTL
       expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
-    };
-
-    await notificationRef.set(notificationData);
-
-    // Also create individual user notifications for immediate delivery
-    const batch = db.batch();
-    const timestamp = admin.firestore.FieldValue.serverTimestamp();
-
-    for (const adminUser of adminUsers) {
-      const userNotificationRef = db
-        .collection("userNotifications")
-        .doc(adminUser.userId)
-        .collection("notifications")
-        .doc();
-
-      batch.set(userNotificationRef, {
-        userId: adminUser.userId,
-        orgId,
-        type: "daily_summary",
-        title,
-        message,
-        readBy: [],
-        archivedBy: [],
-        createdAt: timestamp,
-        targetType: "user",
-        targetId: adminUser.userId,
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        outboxId: notificationRef.id,
-      });
-    }
-
-    await batch.commit();
-    
-    // Get FCM tokens and send push notifications to admin users
-    const tokenPromises = adminUsers.map(async (adminUser) => {
-      try {
-        // First try user-specific subcollection (new format)
-        const userTokenSnap = await db
-          .collection("users")
-          .doc(adminUser.userId)
-          .collection("deviceTokens")
-          .where("isActive", "==", true)
-          .get();
-
-        let tokens: string[] = [];
-        if (!userTokenSnap.empty) {
-          tokens = userTokenSnap.docs.map((doc) => doc.data().fcmToken).filter(Boolean);
-        } else {
-          // Fallback to legacy top-level collection
-          const legacyTokenSnap = await db
-            .collection("deviceTokens")
-            .where("userId", "==", adminUser.userId)
-            .where("isActive", "==", true)
-            .get();
-          tokens = legacyTokenSnap.docs.map((doc) => doc.data().fcmToken).filter(Boolean);
-        }
-        return { userId: adminUser.userId, tokens };
-      } catch (error) {
-        functions.logger.error(`Error fetching tokens for user ${adminUser.userId}:`, error);
-        return { userId: adminUser.userId, tokens: [] };
-      }
     });
 
-    const userTokens = await Promise.all(tokenPromises);
-    
-    // Flatten and de-duplicate tokens
-    const tokenSet = new Set<string>();
-    userTokens.forEach(({ tokens }) => {
-      for (const t of tokens) tokenSet.add(t);
-    });
-    const allTokens = Array.from(tokenSet);
-
-    // Send FCM push notifications if we have tokens
-    if (allTokens.length > 0) {
-      functions.logger.info(`🔔 Sending push notifications to ${allTokens.length} tokens for daily summary`);
-      
-      const baseMessage = {
-        notification: {
-          title: title || "Daily Summary",
-          body: message || "",
-        },
-        data: {
-          type: "daily_summary",
-          orgId: orgId,
-          outboxId: notificationRef.id,
-        },
-        apns: {
-          payload: {
-            aps: {
-              sound: "default" as const,
-              badge: 1,
-            },
-          },
-        },
-      };
-
-      // FCM enforces a 500-token limit per multicast send
-      const chunkSize = 500;
-      let totalSuccess = 0;
-      let totalFailure = 0;
-
-      for (let i = 0; i < allTokens.length; i += chunkSize) {
-        const chunk = allTokens.slice(i, i + chunkSize);
-        const fcmMessage = { ...baseMessage, tokens: chunk };
-
-        try {
-          const response = await admin.messaging().sendEachForMulticast(fcmMessage);
-          totalSuccess += response.successCount;
-          totalFailure += response.failureCount;
-
-          // Log sample errors for diagnostics
-          const sampleErrors = response.responses
-            .map((r, idx) => ({ idx, error: r.error }))
-            .filter((x) => !!x.error)
-            .slice(0, 3);
-          
-          if (sampleErrors.length > 0) {
-            functions.logger.warn(`⚠️ Push notification errors in chunk ${Math.floor(i / chunkSize) + 1}:`, 
-              sampleErrors.map(e => ({ index: e.idx, code: e.error?.code, message: e.error?.message })));
-          }
-        } catch (error) {
-          totalFailure += chunk.length;
-          functions.logger.error(`❌ Error sending push notification chunk ${Math.floor(i / chunkSize) + 1}:`, error);
-        }
-      }
-
-      functions.logger.info(`✅ Push notifications sent: ${totalSuccess} successful, ${totalFailure} failed`);
-    } else {
-      functions.logger.info(`📱 No FCM tokens found for admin users`);
-    }
-
-    functions.logger.info(`Daily summary notifications created for ${adminUsers.length} admin users`);
+    functions.logger.info(`Daily summary outbox notification created for ${adminUserIds.length} admin(s) in org ${orgId}`);
 
   } catch (error) {
     functions.logger.error("Error sending notifications to admins:", error);
@@ -1383,7 +1285,7 @@ function buildNotificationContent(summaryData: any, date: Date): string {
 /**
  * Check if daily summary has been sent for a specific date
  */
-async function hasDailySummaryBeenSent(orgId: string, dateStr: string): Promise<boolean> {
+export async function hasDailySummaryBeenSent(orgId: string, dateStr: string): Promise<boolean> {
   try {
     const doc = await db
       .collection("organizations")
@@ -1402,7 +1304,7 @@ async function hasDailySummaryBeenSent(orgId: string, dateStr: string): Promise<
 /**
  * Mark daily summary as sent
  */
-async function markDailySummaryAsSent(orgId: string, dateStr: string) {
+export async function markDailySummaryAsSent(orgId: string, dateStr: string) {
   try {
     const logRef = db
       .collection("organizations")
@@ -1427,7 +1329,7 @@ async function markDailySummaryAsSent(orgId: string, dateStr: string) {
 /**
  * Format date as YYYY-MM-DD
  */
-function formatDate(date: Date): string {
+export function formatDate(date: Date): string {
   return date.getFullYear() + '-' +
          String(date.getMonth() + 1).padStart(2, '0') + '-' +
          String(date.getDate()).padStart(2, '0');

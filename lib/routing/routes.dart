@@ -36,6 +36,7 @@ import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/config/feature_flags.dart';
 import 'package:hands_app/debug/stripe_probe_page.dart';
 import 'package:hands_app/billing/embedded_payment_page.dart';
+import 'package:hands_app/features/shared_mode/shared_mode_controller.dart';
 
 // Helper function to build the appropriate admin setup page based on platform
 Widget _buildAdminSetupPage(BuildContext ctx, {required String organizationId, String? tab}) {
@@ -706,6 +707,21 @@ GoRouter buildAppRouter(Ref ref) {
           if (restrictedPaths.any((path) => routerPath.startsWith(path))) {
             logger.d('[ROUTER] iOS compliance: blocking restricted path $routerPath');
             return '/not-available-ios';
+          }
+        }
+
+        // Shared Mode: force tasks-only dashboard and prevent navigating into admin/manager/settings.
+        final sharedMode = ref.read(sharedModeControllerProvider);
+        if (sharedMode.enabled) {
+          final allowedPaths = <String>{
+            AppRoutes.userDashboardPage.path,
+            AppRoutes.loginPage.path,
+            AppRoutes.signInPage.path,
+          };
+
+          if (!allowedPaths.contains(routerPath)) {
+            logger.d('[ROUTER] Shared Mode enabled; redirecting $routerPath -> ${AppRoutes.userDashboardPage.path}');
+            return AppRoutes.userDashboardPage.path;
           }
         }
 

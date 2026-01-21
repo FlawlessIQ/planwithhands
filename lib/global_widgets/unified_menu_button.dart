@@ -10,6 +10,8 @@ import 'package:hands_app/services/push_notification_service.dart';
 import 'package:hands_app/services/location_selection_service.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:hands_app/features/shared_mode/shared_mode_controller.dart';
+import 'package:hands_app/features/shared_mode/shared_mode_state.dart';
 
 class UnifiedMenuButton extends ConsumerStatefulWidget {
   final int? userRole;
@@ -221,6 +223,7 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
             position: offset,
             buttonSize: size,
             userRole: widget.userRole ?? 0,
+            sharedMode: ref.read(sharedModeControllerProvider),
             availableLocations: _availableLocations,
             onSelected: (action) {
               if (kDebugMode) {
@@ -228,6 +231,42 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
               }
               _closeMenu();
               _handleMenuAction(action);
+            },
+            onEnterSharedMode: () async {
+              final stableContext = _getStableContext();
+              if (stableContext == null) return;
+
+              final canEnter = await _ensureCurrentUserHasSharedModePin(stableContext);
+              if (!canEnter) return;
+
+              await ref.read(sharedModeControllerProvider.notifier).enterSharedMode();
+              if (stableContext.mounted) {
+                GoRouter.of(stableContext).go(AppRoutes.userDashboardPage.path);
+              }
+            },
+            onLockSharedMode: () async {
+              await ref.read(sharedModeControllerProvider.notifier).lock();
+            },
+            onLeaveSharedMode: () async {
+              final stableContext = _getStableContext();
+              if (stableContext == null) return;
+              final ok = await _promptOwnerPinAndExit(stableContext);
+              if (ok == true) {
+                await ref.read(sharedModeControllerProvider.notifier).disableSharedMode();
+              }
+            },
+            onSetSharedModePin: () async {
+              final stableContext = _getStableContext();
+              if (stableContext == null) return;
+              await _promptSetSharedModePin(stableContext);
+            },
+            onSignOutDevice: () async {
+              final stableContext = _getStableContext();
+              if (stableContext == null) return;
+              final ok = await _confirmSignOutDevice(stableContext);
+              if (ok == true) {
+                await ref.read(sharedModeControllerProvider.notifier).signOutDevice();
+              }
             },
             onLocationSelected: (locationId, locationName) async {
               if (kDebugMode) {
@@ -274,6 +313,172 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
         _overlayEntry = null;
       }
     }
+  }
+
+  Future<bool?> _promptOwnerPinAndExit(BuildContext context) async {
+    final pinController = TextEditingController();
+    String? error;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setState) {
+            return AlertDialog(
+              title: const Text('Leave Shared Mode'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Enter the PIN of the person who enabled Shared Mode.'),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: pinController,
+                    keyboardType: TextInputType.number,
+                    obscureText: true,
+                    decoration: InputDecoration(labelText: 'Owner PIN', errorText: error),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+                FilledButton(
+                  onPressed: () async {
+                    final pin = pinController.text.trim();
+                    final ok = await ref.read(sharedModeControllerProvider.notifier).verifyOwnerPinToExit(pin: pin);
+                    if (!ok) {
+                      setState(() => error = 'Invalid PIN');
+                      return;
+                    }
+                    if (ctx.mounted) Navigator.of(ctx).pop(true);
+                  },
+                  child: const Text('Leave'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    pinController.dispose();
+    return ok;
+  }
+
+  Future<void> _promptSetSharedModePin(BuildContext context) async {
+    final pinController = TextEditingController();
+    final confirmController = TextEditingController();
+    String? error;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setState) {
+            return AlertDialog(
+              title: const Text('Set Shared Mode PIN'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Choose a 4–10 digit PIN for switching users on shared devices.'),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: pinController,
+                    keyboardType: TextInputType.number,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: 'PIN'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: confirmController,
+                    keyboardType: TextInputType.number,
+                    obscureText: true,
+                    decoration: InputDecoration(labelText: 'Confirm PIN', errorText: error),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
+                FilledButton(
+                  onPressed: () async {
+                    final pin = pinController.text.trim();
+                    final confirm = confirmController.text.trim();
+                    if (pin != confirm) {
+                      setState(() => error = 'PINs do not match');
+                      return;
+                    }
+                    try {
+                      await ref.read(sharedModeControllerProvider.notifier).setPin(pin: pin);
+                      if (ctx.mounted) Navigator.of(ctx).pop();
+                    } catch (e) {
+                      setState(() => error = 'Failed to set PIN');
+                    }
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    pinController.dispose();
+    confirmController.dispose();
+  }
+
+  Future<bool> _ensureCurrentUserHasSharedModePin(BuildContext context) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return false;
+
+    final userDoc = await FirestoreEnforcer.instance.collection('users').doc(user.uid).get();
+    final data = userDoc.data();
+    final hasPin = (data?['hasSharedModePin'] == true);
+    if (hasPin) return true;
+
+    final shouldSet = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Set a Shared Mode PIN'),
+          content: const Text(
+            'You must set a Shared Mode PIN before enabling Shared Mode. This PIN is required to switch users and to leave Shared Mode on shared devices.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Set PIN')),
+          ],
+        );
+      },
+    );
+
+    if (shouldSet != true) return false;
+
+    await _promptSetSharedModePin(context);
+
+    // Re-check after saving.
+    final userDoc2 = await FirestoreEnforcer.instance.collection('users').doc(user.uid).get();
+    final data2 = userDoc2.data();
+    return (data2?['hasSharedModePin'] == true);
+  }
+
+  Future<bool?> _confirmSignOutDevice(BuildContext context) async {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Sign out device?'),
+          content: const Text('This will sign out of the device and return to the login screen.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Sign out')),
+          ],
+        );
+      },
+    );
   }
 
   // Get the most stable context possible for navigation
@@ -457,18 +662,30 @@ class _MenuOverlay extends StatefulWidget {
   final Offset position;
   final Size buttonSize;
   final int userRole;
+  final SharedModeState sharedMode;
   final List<Map<String, dynamic>> availableLocations;
   final Function(_MenuAction) onSelected;
   final Function(String locationId, String locationName) onLocationSelected;
+  final Future<void> Function() onEnterSharedMode;
+  final Future<void> Function() onLockSharedMode;
+  final Future<void> Function() onLeaveSharedMode;
+  final Future<void> Function() onSetSharedModePin;
+  final Future<void> Function() onSignOutDevice;
   final VoidCallback onDismiss;
 
   const _MenuOverlay({
     required this.position,
     required this.buttonSize,
     required this.userRole,
+    required this.sharedMode,
     required this.availableLocations,
     required this.onSelected,
     required this.onLocationSelected,
+    required this.onEnterSharedMode,
+    required this.onLockSharedMode,
+    required this.onLeaveSharedMode,
+    required this.onSetSharedModePin,
+    required this.onSignOutDevice,
     required this.onDismiss,
   });
 
@@ -564,6 +781,52 @@ class _MenuOverlayState extends State<_MenuOverlay> {
   List<Widget> _buildMenuItems() {
     final items = <Widget>[];
 
+    // Shared Mode: keep the menu extremely minimal.
+    if (widget.sharedMode.enabled) {
+      items.add(_buildSectionHeader('Shared Mode'));
+
+      items.add(
+        _buildMenuItem(
+          widget.sharedMode.locked ? 'Locked (select user)' : 'Switch user',
+          null,
+          Icons.switch_account,
+          subtitle: widget.sharedMode.locked ? 'Select a name and enter a PIN' : 'Lock and pick another user',
+          onTap: () async {
+            widget.onDismiss();
+            await widget.onLockSharedMode();
+          },
+        ),
+      );
+
+      items.add(
+        _buildMenuItem(
+          'Leave Shared Mode',
+          null,
+          Icons.lock_open,
+          subtitle: 'Requires the owner PIN',
+          onTap: () async {
+            widget.onDismiss();
+            await widget.onLeaveSharedMode();
+          },
+        ),
+      );
+
+      items.add(
+        _buildMenuItem(
+          'Sign out device',
+          null,
+          Icons.logout,
+          subtitle: 'Returns to login screen',
+          onTap: () async {
+            widget.onDismiss();
+            await widget.onSignOutDevice();
+          },
+        ),
+      );
+
+      return items;
+    }
+
     if (kDebugMode) {
       print('[UnifiedMenuButton] Building menu items. Available locations: ${widget.availableLocations.length}');
       print('[UnifiedMenuButton] Current location ID: ${LocationSelectionService.instance.currentLocationId}');
@@ -637,6 +900,30 @@ class _MenuOverlayState extends State<_MenuOverlay> {
         // Support & Settings section
         items.add(_buildSectionDivider());
         items.add(_buildSectionHeader('Support & Settings'));
+        items.add(
+          _buildMenuItem(
+            'Shared Mode PIN',
+            null,
+            Icons.pin,
+            subtitle: 'Set or change',
+            onTap: () async {
+              widget.onDismiss();
+              await widget.onSetSharedModePin();
+            },
+          ),
+        );
+        items.add(
+          _buildMenuItem(
+            'Enter Shared Mode',
+            null,
+            Icons.lock,
+            subtitle: 'Use this device for multiple staff',
+            onTap: () async {
+              widget.onDismiss();
+              await widget.onEnterSharedMode();
+            },
+          ),
+        );
         items.add(_buildMenuItem('Settings', _MenuAction.settings, Icons.settings));
         items.add(_buildMenuItem('How to use', _MenuAction.howToUse, Icons.help_center));
         items.add(_buildMenuItem('Contact us', _MenuAction.contactUs, Icons.contact_support));
@@ -656,6 +943,30 @@ class _MenuOverlayState extends State<_MenuOverlay> {
       // Support & Settings section
       items.add(_buildSectionDivider());
       items.add(_buildSectionHeader('Support & Settings'));
+      items.add(
+        _buildMenuItem(
+          'Shared Mode PIN',
+          null,
+          Icons.pin,
+          subtitle: 'Set or change',
+          onTap: () async {
+            widget.onDismiss();
+            await widget.onSetSharedModePin();
+          },
+        ),
+      );
+      items.add(
+        _buildMenuItem(
+          'Enter Shared Mode',
+          null,
+          Icons.lock,
+          subtitle: 'Use this device for multiple staff',
+          onTap: () async {
+            widget.onDismiss();
+            await widget.onEnterSharedMode();
+          },
+        ),
+      );
       items.add(_buildMenuItem('Settings', _MenuAction.settings, Icons.settings));
       items.add(_buildMenuItem('How to use', _MenuAction.howToUse, Icons.help_center));
       items.add(_buildMenuItem('Contact us', _MenuAction.contactUs, Icons.contact_support));

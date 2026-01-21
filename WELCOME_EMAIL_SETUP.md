@@ -12,7 +12,7 @@ The welcome email system for new organizations has been successfully set up and 
 
 ### 2. Welcome Email Function
 - **Function**: `sendWelcomeEmail` (helper function within stripe_functions.js)
-- **Template**: SendGrid template ID `d-575968e4e0c449f59ca89c1decdc8abc`
+- **Template**: SendGrid template ID `d-2132096e57f4469681694bf926fefd95`
 - **Sender**: `noreply@em5998.planwithhands.com`
 
 ### 3. Email Content
@@ -27,7 +27,7 @@ The welcome email includes:
 
 ### SendGrid Configuration
 - **API Key**: Configured via Firebase Functions config (`functions.config().sendgrid.key`)
-- **Template ID**: `d-575968e4e0c449f59ca89c1decdc8abc`
+- **Template ID**: `d-2132096e57f4469681694bf926fefd95`
 - **From Address**: `noreply@em5998.planwithhands.com`
 
 ### Stripe Configuration

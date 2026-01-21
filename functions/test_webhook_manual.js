@@ -1,6 +1,6 @@
 const functions = require("firebase-functions");
 const {admin, db} = require("./firebase_config");
-const stripe = require("stripe")(functions.config().stripe.secret);
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 // Manual webhook test function
 exports.testWebhookManual = functions

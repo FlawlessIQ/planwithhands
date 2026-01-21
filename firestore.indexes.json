@@ -302,6 +302,16 @@
       "fields": [
         { "fieldPath": "organizationId", "order": "ASCENDING" },
         { "fieldPath": "locationId", "order": "ASCENDING" },
+        { "fieldPath": "isCarryForward", "order": "ASCENDING" },
+        { "fieldPath": "dateString", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "tasks",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "organizationId", "order": "ASCENDING" },
+        { "fieldPath": "locationId", "order": "ASCENDING" },
         { "fieldPath": "dateString", "order": "ASCENDING" },
         { "fieldPath": "isCarryForward", "order": "ASCENDING" }
       ]

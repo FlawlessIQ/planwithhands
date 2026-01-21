@@ -82,7 +82,7 @@ async function checkEmailIssues() {
     console.log(`   From: noreply@planwithhands.com (Hands App)`);
     console.log(`   To: All ${usersSnapshot.size} admin users listed above`);
     console.log(`   Subject Pattern: [Emoji] Daily Summary: ${orgName} - [Date] ([X]% Complete)`);
-    console.log(`   Template ID: d-b24a7a9c340046d3a5429f203c19470e`);
+    console.log(`   Template ID: d-000519b45ca84c0882d31d2cb7965948`);
     console.log('');
     
     console.log('5. TROUBLESHOOTING STEPS:');

@@ -1,5 +1,5 @@
 const functions = require('firebase-functions');
-const stripe = require('stripe')(functions.config().stripe.secret);
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 async function testStripeCoupons() {
   console.log('🔍 Testing Stripe coupon validation directly...');

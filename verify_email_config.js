@@ -10,7 +10,7 @@ const sendgridConfig = functions.config().sendgrid;
 
 console.log('📧 SendGrid Configuration:');
 console.log('• API Key configured:', !!sendgridConfig?.api_key);
-console.log('• Template ID: d-b24a7a9c340046d3a5429f203c19470c');
+console.log('• Template ID: d-000519b45ca84c0882d31d2cb7965948');
 console.log('• From Email: noreply@planwithhands.com');
 console.log('• From Name: Hands App');
 
@@ -24,7 +24,7 @@ console.log('• Web Portal Links: ✅ Dashboard integration');
 console.log('\n📋 When Daily Summaries Run:');
 console.log('• Push notifications sent to admin users');
 console.log('• Email sent to each admin user with their name');
-console.log('• Email uses SendGrid Template ID d-b24a7a9c340046d3a5429f203c19470c');
+console.log('• Email uses SendGrid Template ID d-000519b45ca84c0882d31d2cb7965948');
 console.log('• All content sections populated with real data');
 
 console.log('\n🎯 Ready to Test:');

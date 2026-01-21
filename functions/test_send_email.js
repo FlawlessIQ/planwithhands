@@ -9,7 +9,7 @@ exports.testSendEmail = functions
       
       try {
         // Use the existing SendGrid configuration
-        sgMail.setApiKey(functions.config().sendgrid.key);
+        sgMail.setApiKey(process.env.SENDGRID_API_KEY || process.env.SENDGRID_KEY);
         
         const { email, orgId } = data;
         if (!email || !orgId) {

@@ -47,7 +47,7 @@ async function testWelcomeEmailWebhook() {
     
     // Mock the Stripe webhook constructor to skip signature verification
     const functions = require('firebase-functions');
-    const stripe = require('stripe')(functions.config().stripe.secret);
+    const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
     stripe.webhooks.constructEvent = () => ({
       type: 'checkout.session.completed',
       data: {

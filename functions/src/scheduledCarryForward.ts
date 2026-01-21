@@ -150,6 +150,13 @@ async function carryForwardForLocation(
     for (const task of incompleteTasks) {
       const originalTaskId = task.taskId || task.id;
 
+      // Preserve original lineage for tasks that were already carry-forward.
+      // Without this, backlog tasks get their originalDate overwritten each day and
+      // show up as "Missed Yesterday" indefinitely.
+      const preservedOriginalTaskId = task.originalTaskId || originalTaskId;
+      const preservedOriginalChecklistId = task.originalChecklistId || checklistDoc.id;
+      const preservedOriginalDate = task.originalDate || yesterdayStr;
+
       // Skip if already carried forward
       if (existingOriginalIds.has(originalTaskId)) {
         functions.logger.info(`  Skipping duplicate CF task: ${task.taskName}`);
@@ -165,9 +172,9 @@ async function carryForwardForLocation(
         completed: false,
         isCompleted: false,
         isCarryForward: true,
-        originalTaskId,
-        originalDate: yesterdayStr,
-        originalChecklistId: checklistDoc.id,
+        originalTaskId: preservedOriginalTaskId,
+        originalDate: preservedOriginalDate,
+        originalChecklistId: preservedOriginalChecklistId,
         organizationId,
         locationId,
         dateString: todayStr,

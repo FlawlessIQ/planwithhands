@@ -8,11 +8,16 @@ if (!admin.apps.length) {
   admin.initializeApp();
 }
 
-// Initialize SendGrid with API key from environment variable
-if (process.env.SENDGRID_API_KEY) {
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+function getSendGridApiKey() {
+  return process.env.SENDGRID_API_KEY || process.env.SENDGRID_KEY;
+}
+
+// Initialize SendGrid with API key from env (Firebase CLI dotenv support)
+const sendgridApiKey = getSendGridApiKey();
+if (sendgridApiKey) {
+  sgMail.setApiKey(sendgridApiKey);
 } else {
-  logger.warn("SENDGRID_API_KEY environment variable not set - emails will not be sent");
+  logger.warn("SendGrid API key not configured (SENDGRID_API_KEY)");
 }
 
 /**
@@ -83,7 +88,7 @@ exports.sendHelpRequest = functions.https.onRequest(async (req, res) => {
     logger.info(`Help request created: ${helpRequestRef.id}`, helpRequestData);
 
     // Send email via SendGrid
-    if (process.env.SENDGRID_API_KEY) {
+    if (sendgridApiKey) {
       try {
         const supportEmail = {
           to: 'conor@planwithhands.com',

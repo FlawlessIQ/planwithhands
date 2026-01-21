@@ -3,11 +3,12 @@ const {logger} = require("firebase-functions");
 const functions = require("firebase-functions");
 const sgMail = require("@sendgrid/mail");
 
-// Set SendGrid API key from Firebase Functions config
+// Set SendGrid API key from env (Firebase CLI dotenv support)
 let sendgridApiKey;
 try {
-  sendgridApiKey = functions.config().sendgrid &&
-    functions.config().sendgrid.key;
+  sendgridApiKey =
+    process.env.SENDGRID_API_KEY ||
+    process.env.SENDGRID_KEY;
   if (!sendgridApiKey) {
     logger.warn("SendGrid API key is not configured. Email sending will be skipped.");
   } else {

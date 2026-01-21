@@ -40,7 +40,7 @@ async function testWelcomeEmail() {
     const msg = {
       to: testData.email,
       from: 'noreply@em5998.planwithhands.com',
-      templateId: 'd-575968e4e0c449f59ca89c1decdc8abc',
+      templateId: 'd-2132096e57f4469681694bf926fefd95',
       dynamicTemplateData: testData,
     };
     

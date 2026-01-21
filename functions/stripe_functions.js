@@ -1,7 +1,30 @@
 const functions = require("firebase-functions");
 const {admin, db} = require("./firebase_config");
-const stripe = require("stripe")(functions.config().stripe.secret);
 const sgMail = require("@sendgrid/mail");
+
+let _stripe;
+function getStripe() {
+  if (_stripe) return _stripe;
+  const secret = process.env.STRIPE_SECRET_KEY;
+  if (!secret) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "STRIPE_SECRET_KEY is not configured"
+    );
+  }
+  _stripe = require("stripe")(secret);
+  return _stripe;
+}
+
+// Proxy lets existing code keep using `stripe.*` without eagerly initializing at module-load.
+const stripe = new Proxy(
+  {},
+  {
+    get(_target, prop) {
+      return getStripe()[prop];
+    },
+  },
+);
 
 // Create Stripe Checkout Session
 exports.createCheckoutSession = functions
@@ -112,8 +135,7 @@ exports.createBillingPortalSession = functions
         }
 
         // Prefer configured base URL if available
-        const cfg = functions.config() || {};
-        const appBase = (cfg.app && cfg.app.base_url) || process.env.APP_BASE_URL || "https://plan-with-hands.web.app";
+        const appBase = process.env.APP_BASE_URL || "https://plan-with-hands.web.app";
         const portalSession = await stripe.billingPortal.sessions.create({
           customer: stripeCustomerId,
           return_url: `${appBase}/#/settings`,
@@ -175,7 +197,11 @@ exports.stripeWebhook = functions
       const sig = req.headers["stripe-signature"];
       let event;
       try {
-        event = stripe.webhooks.constructEvent(req.rawBody, sig, functions.config().stripe.webhook_secret);
+        const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+        if (!webhookSecret) {
+          return res.status(500).send("STRIPE_WEBHOOK_SECRET is not configured");
+        }
+        event = stripe.webhooks.constructEvent(req.rawBody, sig, webhookSecret);
       } catch (err) {
         return res.status(400).send(`Webhook Error: ${err.message}`);
       }
@@ -539,9 +565,18 @@ exports.updateSubscription = functions
         throw new functions.https.HttpsError("invalid-argument", "Missing or invalid parameters");
       }
       try {
-        const updated = await stripe.subscriptions.update(subscriptionId, {
-          items: [{id: (await stripe.subscriptions.retrieve(subscriptionId)).items.data[0].id, quantity: newQuantity}],
+        // First retrieve the subscription to get all necessary details
+        const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+          expand: ['default_payment_method', 'latest_invoice.payment_intent'],
         });
+
+        // Update the subscription with existing payment method and payment behavior
+        const updated = await stripe.subscriptions.update(subscriptionId, {
+          items: [{id: subscription.items.data[0].id, quantity: newQuantity}],
+          default_payment_method: subscription.default_payment_method,
+          payment_behavior: 'allow_incomplete_reuse_existing',
+        });
+
         await db
             .collection("organizations")
             .doc(orgId)
@@ -566,7 +601,7 @@ async function sendWelcomeEmail(session, orgId, subscription) {
     console.log("Organization ID:", orgId);
     
     // Get SendGrid API key from environment
-    const sendgridApiKey = functions.config().sendgrid?.key || functions.config().sendgrid?.api_key;
+    const sendgridApiKey = process.env.SENDGRID_API_KEY || process.env.SENDGRID_KEY;
     console.log("SendGrid API key configured:", !!sendgridApiKey);
     
     if (!sendgridApiKey) {

@@ -2,7 +2,7 @@
 const https = require('https');
 
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
-const TEMPLATE_ID = 'd-b24a7a9c340046d3a5429f203c19470c';
+const TEMPLATE_ID = 'd-000519b45ca84c0882d31d2cb7965948';
 
 if (!SENDGRID_API_KEY) {
   console.error('❌ SENDGRID_API_KEY environment variable not set');

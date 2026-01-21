@@ -18,6 +18,7 @@ import 'package:crypto/crypto.dart';
 import 'dart:convert';
 
 class DailyChecklistService {
+  static final Map<String, Stream<List<TaskData>>> _tasksStreamCache = {};
   final FirebaseFirestore _firestore = FirestoreEnforcer.instance;
   final Uuid _uuid = const Uuid();
   // Tracks which (org|date|location) combinations have attempted an on-demand carry-forward fallback
@@ -892,6 +893,10 @@ class DailyChecklistService {
     required String locationId,
     required String checklistId,
   }) {
+    final cacheKey = '$organizationId|$locationId|$checklistId';
+    final cached = _tasksStreamCache[cacheKey];
+    if (cached != null) return cached;
+
     final checklistRef = _firestore
         .collection('organizations')
         .doc(organizationId)
@@ -1374,9 +1379,12 @@ class DailyChecklistService {
 
     controller.onCancel = () {
       sub.cancel();
+      _tasksStreamCache.remove(cacheKey);
     };
 
-    return controller.stream;
+    final stream = controller.stream;
+    _tasksStreamCache[cacheKey] = stream;
+    return stream;
   }
 
   /// Get completion stats for today's checklists
@@ -2579,9 +2587,11 @@ class DailyChecklistService {
                 'completed': false,
                 'isCarryForward': true,
                 'isCarryForwardEligible': true,
-                'originalDate': data['date'],
-                'originalChecklistId': doc.id,
-                'originalTaskId': originalTaskId,
+                // Preserve original linkage for tasks that were already carry-forward.
+                // This prevents multi-day backlog tasks being mis-counted as "missed yesterday".
+                'originalDate': cf['originalDate'] ?? data['date'],
+                'originalChecklistId': cf['originalChecklistId'] ?? doc.id,
+                'originalTaskId': cf['originalTaskId'] ?? originalTaskId,
                 'carriedIntoDate': todayStr,
                 'organizationId': organizationId,
                 'locationId': locationId,

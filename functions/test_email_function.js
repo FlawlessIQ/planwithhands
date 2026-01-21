@@ -2,7 +2,7 @@ const functions = require("firebase-functions");
 const sgMail = require("@sendgrid/mail");
 
 // Set SendGrid API key
-sgMail.setApiKey(functions.config().sendgrid.api_key);
+sgMail.setApiKey(process.env.SENDGRID_API_KEY || process.env.SENDGRID_KEY);
 
 // Function to test welcome email directly
 exports.testWelcomeEmail = functions

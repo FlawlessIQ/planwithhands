@@ -1202,7 +1202,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     final tempPw = const Uuid().v4().substring(0, 8);
     final orgName = await _getOrganizationName();
     final adminEmail = FirebaseAuth.instance.currentUser?.email ?? '';
-    final templateId = 'd-575968e4e0c449f59ca89c1decdc8abc';
+    final templateId = 'd-2132096e57f4469681694bf926fefd95';
 
     // Generate secure onboarding token
     final inviteToken = const Uuid().v4();

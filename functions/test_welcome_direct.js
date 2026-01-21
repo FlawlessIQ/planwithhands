@@ -46,7 +46,7 @@ async function sendWelcomeEmail(session, orgId, subscription) {
     }
 
     // Prepare welcome email with subscription success template
-    const templateId = "d-575968e4e0c449f59ca89c1decdc8abc";
+    const templateId = "d-2132096e57f4469681694bf926fefd95";
     
     const msg = {
       to: customerEmail,

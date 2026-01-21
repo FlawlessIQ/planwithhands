@@ -51,32 +51,42 @@ exports.manualTestEmail = functions.https.onRequest(async (req, res) => {
             res.status(400).json({ error: 'email is required' });
             return;
         }
-        // Read SendGrid API key from functions config
-        const sendgridConfig = functions.config().sendgrid || {};
-        const apiKey = sendgridConfig.key || sendgridConfig.api_key;
+        // Read SendGrid API key from env (Firebase CLI dotenv support injects this at deploy/runtime)
+        const apiKey = process.env.SENDGRID_API_KEY || process.env.SENDGRID_KEY;
         if (!apiKey) {
             functions.logger.warn('SendGrid API key not configured - cannot send test email');
             res.status(500).json({ error: 'SendGrid API key not configured' });
             return;
         }
         sgMail.setApiKey(apiKey);
-        const templateId = 'd-b24a7a9c340046d3a5429f203c19470e';
-        // Match final template: lowercase keys and HTML sections
+        const templateId = 'd-000519b45ca84c0882d31d2cb7965948';
+        // Match daily summary template variables used by the app/functions.
+        // Note: HTML sections must be injected unescaped in the template via {{{VAR}}}.
+        const displayDate = new Date().toDateString();
         const templateData = {
+            // Preferred (current) keys used by the template
+            ORGANIZATION_NAME: orgId || 'Test Organization',
+            FORMATTED_DATE: displayDate,
+            PERFORMANCE_EMOJI: '✅',
+            PERFORMANCE_MESSAGE: 'This is a test email from Plan With Hands.',
+            OVERALL_PERCENTAGE: '100',
+            COMPLETED_TASKS: '10',
+            TOTAL_TASKS: '10',
+            LOCATION_SUMMARY: '<div class="muted" style="margin-top:6px; font-size:12px; font-weight:700; color:rgba(255,255,255,0.72) !important;">1 location • 1 shift</div>',
+            LOCATION_BREAKDOWN: '',
+            YESTERDAY_PROGRESS: '',
+            INSIGHTS_SECTION: '',
+            NOTABLE_ITEMS: '',
+            ACTION_ITEMS: '<li>Review today\'s dashboard for details.</li><li>Confirm coverage for the next shift.</li>',
+            // Legacy keys (kept for older templates/tests)
             organization_name: orgId || 'Test Organization',
-            formatted_date: new Date().toDateString(),
+            formatted_date: displayDate,
             performance_emoji: '✅',
             performance_message: 'This is a test email from Plan With Hands.',
             overall_percentage: '100',
-            completed_tasks: '0',
-            total_tasks: '0',
-            // Sections expected in the template (safe defaults)
-            overall_delta_html: '<span style="color:#8cf68c;font-weight:700;">+0% vs yesterday</span>',
-            key_metrics_html: '<table width="100%" style="border-collapse:collapse;color:#ffffff;font-size:13px;"><tr><td style="padding:6px 0;">No additional metrics in test.</td></tr></table>',
-            missed_tasks_html: '<div style="color:#9b9b9b;">No missed tasks in this test email.</div>',
-            photo_compliance_html: '<div style="color:#9b9b9b;">No photo compliance issues in this test.</div>',
-            staff_notes_html: '<div style="color:#9b9b9b;">No staff notes recorded in this test.</div>',
-            action_items: 'Keep up the great work! Review dashboard for full details.',
+            completed_tasks: '10',
+            total_tasks: '10',
+            action_items: 'Review today\'s dashboard for details.',
         };
         const msg = {
             to: email,

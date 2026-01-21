@@ -158,7 +158,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
           // Load time preference
           if (data['dailySummaryTime'] != null) {
             final timeData = data['dailySummaryTime'] as Map<String, dynamic>;
-            _dailySummaryTime = TimeOfDay(hour: timeData['hour'] ?? 20, minute: timeData['minute'] ?? 0);
+            _dailySummaryTime = TimeOfDay(hour: timeData['hour'] ?? 20, minute: 0);
           }
 
           // Load summary period preference
@@ -191,7 +191,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
           .doc('notifications')
           .set({
             'dailySummaryEnabled': _dailySummaryEnabled,
-            'dailySummaryTime': {'hour': _dailySummaryTime.hour, 'minute': _dailySummaryTime.minute},
+            'dailySummaryTime': {'hour': _dailySummaryTime.hour, 'minute': 0},
             'summaryPeriod': _summaryPeriod,
             'sessionTimeout': _sessionTimeout,
             'updatedAt': FieldValue.serverTimestamp(),
@@ -227,8 +227,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
             _dailySummaryEnabled = dailySummarySettings['enabled'] ?? true;
 
             final hour = dailySummarySettings['hour'] as int? ?? 20;
-            final minute = dailySummarySettings['minute'] as int? ?? 0;
-            _dailySummaryTime = TimeOfDay(hour: hour, minute: minute);
+            _dailySummaryTime = TimeOfDay(hour: hour, minute: 0);
 
             // Load the summary period preference (defaults to calendar-day for backward compatibility)
             _summaryPeriod = dailySummarySettings['summaryPeriod'] as String? ?? 'calendar-day';
@@ -252,7 +251,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
       await FirestoreEnforcer.instance.collection('organizations').doc(_organizationId).update({
         'dailySummarySettings': {
           'hour': _dailySummaryTime.hour,
-          'minute': _dailySummaryTime.minute,
+          'minute': 0,
           'enabled': _dailySummaryEnabled,
           'summaryPeriod': _summaryPeriod,
           'updatedAt': FieldValue.serverTimestamp(),
@@ -261,7 +260,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Daily summary time updated for organization!'), backgroundColor: Colors.green),
+          const SnackBar(content: Text('Organization daily summary settings updated!'), backgroundColor: Colors.green),
         );
       }
     } catch (e) {
@@ -284,7 +283,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
           height: 280,
           padding: const EdgeInsets.only(top: 6.0),
           margin: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-          color: CupertinoColors.systemBackground.resolveFrom(context),
+          color: HandsColors.cardPrimary,
           child: SafeArea(
             top: false,
             child: Column(
@@ -292,12 +291,15 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                 // Header with cancel and done buttons
                 Container(
                   decoration: const BoxDecoration(
-                    border: Border(bottom: BorderSide(color: CupertinoColors.inactiveGray, width: 0.0)),
+                    border: Border(bottom: BorderSide(color: CupertinoColors.inactiveGray, width: 0.5)),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      CupertinoButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+                      CupertinoButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: Text('Cancel', style: TextStyle(color: HandsColors.white.withOpacity(0.7))),
+                      ),
                       Text(
                         'Select summary period',
                         style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: HandsColors.white),
@@ -322,7 +324,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                             Navigator.of(context).pop();
                           }
                         },
-                        child: const Text('OK'),
+                        child: Text('OK', style: TextStyle(color: HandsColors.accent)),
                       ),
                     ],
                   ),
@@ -383,18 +385,25 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
 
   /// Show Cupertino time picker for daily summary with validation
   Future<void> _selectDailySummaryTime() async {
-    DateTime initialDateTime = DateTime(2024, 1, 1, _dailySummaryTime.hour, _dailySummaryTime.minute);
+    final initialHour = _dailySummaryTime.hour;
 
     await showCupertinoModalPopup<void>(
       context: context,
       builder: (BuildContext context) {
-        DateTime tempDateTime = initialDateTime;
+        int tempHour = initialHour;
+        final controller = FixedExtentScrollController(initialItem: initialHour);
+
+        String formatHour(int hour) {
+          final localizations = MaterialLocalizations.of(context);
+          final use24Hour = MediaQuery.of(context).alwaysUse24HourFormat;
+          return localizations.formatTimeOfDay(TimeOfDay(hour: hour, minute: 0), alwaysUse24HourFormat: use24Hour);
+        }
 
         return Container(
           height: 280,
           padding: const EdgeInsets.only(top: 6.0),
           margin: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-          color: CupertinoColors.systemBackground.resolveFrom(context),
+          color: HandsColors.cardPrimary,
           child: SafeArea(
             top: false,
             child: Column(
@@ -402,19 +411,22 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                 // Header with cancel and done buttons
                 Container(
                   decoration: const BoxDecoration(
-                    border: Border(bottom: BorderSide(color: CupertinoColors.inactiveGray, width: 0.0)),
+                    border: Border(bottom: BorderSide(color: CupertinoColors.inactiveGray, width: 0.5)),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      CupertinoButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+                      CupertinoButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: Text('Cancel', style: TextStyle(color: HandsColors.white.withOpacity(0.7))),
+                      ),
                       Text(
-                        'Select daily summary time',
+                        'Select daily summary hour',
                         style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: HandsColors.white),
                       ),
                       CupertinoButton(
                         onPressed: () async {
-                          final newTime = TimeOfDay(hour: tempDateTime.hour, minute: tempDateTime.minute);
+                          final newTime = TimeOfDay(hour: tempHour, minute: 0);
 
                           if (newTime != _dailySummaryTime) {
                             // Close the time picker first
@@ -438,19 +450,43 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                             }
                           }
                         },
-                        child: const Text('OK'),
+                        child: Text('OK', style: TextStyle(color: HandsColors.accent)),
                       ),
                     ],
                   ),
                 ),
                 // Time picker
                 Expanded(
-                  child: CupertinoDatePicker(
-                    mode: CupertinoDatePickerMode.time,
-                    initialDateTime: initialDateTime,
-                    onDateTimeChanged: (DateTime newDateTime) {
-                      tempDateTime = newDateTime;
-                    },
+                  child: CupertinoTheme(
+                    data: const CupertinoThemeData(brightness: Brightness.dark),
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 6),
+                        Text(
+                          'Minutes are fixed to :00',
+                          style: TextStyle(fontSize: 12, color: HandsColors.white.withOpacity(0.7)),
+                        ),
+                        const SizedBox(height: 6),
+                        Expanded(
+                          child: CupertinoPicker(
+                            scrollController: controller,
+                            itemExtent: 40,
+                            onSelectedItemChanged: (int index) {
+                              tempHour = index;
+                            },
+                            children: List<Widget>.generate(
+                              24,
+                              (i) => Center(
+                                child: Text(
+                                  formatHour(i),
+                                  style: const TextStyle(color: HandsColors.white, fontSize: 18),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -653,7 +689,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                         style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: HandsColors.white),
                       ),
                       CupertinoButton(
-                        onPressed: () {
+                        onPressed: () async {
                           if (tempSelection != _sessionTimeout) {
                             setState(() {
                               _sessionTimeout = tempSelection;
@@ -661,9 +697,11 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                             // Update SessionManager with new timeout and persist the choice
                             SessionManager().setSessionTimeout(_sessionTimeout);
                             // Persist preference to Firestore so it survives app restarts/devices
-                            _saveUserPreferences();
+                            await _saveUserPreferences();
                           }
-                          Navigator.of(context).pop();
+                          if (context.mounted) {
+                            Navigator.of(context).pop();
+                          }
                         },
                         child: Text('Done', style: TextStyle(color: HandsColors.accent)),
                       ),

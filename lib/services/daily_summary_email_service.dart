@@ -5,7 +5,7 @@ import 'package:hands_app/core/logging/logger.dart';
 class DailySummaryEmailService {
   static const String _sendGridApiKey = String.fromEnvironment('SENDGRID_API_KEY');
   static const String _sendGridEndpoint = 'https://api.sendgrid.com/v3/mail/send';
-  static const String _templateId = 'd-b24a7a9c340046d3a5429f203c19470c';
+  static const String _templateId = 'd-000519b45ca84c0882d31d2cb7965948';
   static const String _fromEmail = 'noreply@planwithhands.com';
   static const String _fromName = 'Hands App';
 
@@ -172,7 +172,7 @@ class DailySummaryEmailService {
   static String _generateLocationSummary(List<Map<String, dynamic>> shiftCompletions) {
     if (shiftCompletions.length <= 1) return '';
     final locationCount = _getUniqueLocationCount(shiftCompletions);
-    return '<div style="color:rgba(255,255,255,0.8); font-size:14px; margin-top:8px;">$locationCount locations • ${shiftCompletions.length} shifts</div>';
+    return '<div class="muted" style="margin-top:6px; font-size:12px; font-weight:700; color:rgba(255,255,255,0.72) !important;">$locationCount locations • ${shiftCompletions.length} shifts</div>';
   }
 
   /// Generate location breakdown HTML section
@@ -180,11 +180,9 @@ class DailySummaryEmailService {
     if (shiftCompletions.isEmpty) return '';
 
     final buffer = StringBuffer();
+    buffer.writeln('<div class="section-title">Performance by location</div>');
     buffer.writeln(
-      '<div class="mobile-text force-orange" style="font-weight:700; color:#F05A2C !important; margin:14px 0 6px; font-size:14px; font-family:Helvetica, Arial, sans-serif !important;"><span class="force-orange" style="color:#F05A2C !important;">📍 Performance by Location</span></div>',
-    );
-    buffer.writeln(
-      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="bg-darker" style="background-color:#141414 !important; border:1px solid rgba(255,255,255,0.1); border-radius:8px; margin-bottom:14px;" bgcolor="#141414">',
+      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="card2" style="background-color:#141414 !important; border:1px solid rgba(255,255,255,0.08); border-radius:14px; overflow:hidden; margin-bottom:12px;" bgcolor="#141414">',
     );
 
     for (final shift in shiftCompletions.take(5)) {
@@ -208,26 +206,31 @@ class DailySummaryEmailService {
               : 'F44336';
 
       buffer.writeln(
-        '<tr><td class="force-white" style="padding:12px 16px; border-bottom:1px solid rgba(255,255,255,0.05); color:#FFFFFF !important; font-family:Helvetica, Arial, sans-serif !important;" bgcolor="#141414">',
+        '<tr><td class="row" style="padding:12px 14px; border-bottom:1px solid rgba(255,255,255,0.06);" bgcolor="#141414">',
       );
-      buffer.writeln('<div style="display:flex; justify-content:space-between; align-items:center;">');
-      buffer.writeln('<div><span style="font-size:16px;">$statusEmoji</span>');
+      buffer.writeln('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">');
+      buffer.writeln('<tr>');
+      buffer.writeln('<td align="left" valign="top" style="padding:0;">');
       buffer.writeln(
-        '<span class="force-white" style="font-weight:600; margin-left:8px; color:#FFFFFF !important;">$locationName</span>',
+        '<div style="font-size:13px; font-weight:800; color:#FFFFFF !important; line-height:1.25;">$statusEmoji $locationName</div>',
       );
       if (shiftName.isNotEmpty) {
         buffer.writeln(
-          '<span class="force-gray" style="color:rgba(255,255,255,0.6) !important; font-size:13px;"> ($shiftName)</span>',
+          '<div class="muted" style="margin-top:2px; font-size:11px; font-weight:700; color:rgba(255,255,255,0.60) !important;">$shiftName</div>',
         );
       }
-      buffer.writeln('</div><div style="text-align:right;">');
+      buffer.writeln('</td>');
+      buffer.writeln('<td align="right" valign="top" style="padding:0;">');
       buffer.writeln(
-        '<div style="color:#$percentageColor !important; font-weight:600;">${percentage.toStringAsFixed(0)}%</div>',
+        '<div style="font-size:13px; font-weight:900; color:#$percentageColor !important; line-height:1.25;">${percentage.toStringAsFixed(0)}%</div>',
       );
       buffer.writeln(
-        '<div class="force-gray" style="color:rgba(255,255,255,0.6) !important; font-size:12px;">$completed/$total</div>',
+        '<div class="muted" style="margin-top:2px; font-size:11px; font-weight:700; color:rgba(255,255,255,0.60) !important;">$completed/$total</div>',
       );
-      buffer.writeln('</div></div></td></tr>');
+      buffer.writeln('</td>');
+      buffer.writeln('</tr>');
+      buffer.writeln('</table>');
+      buffer.writeln('</td></tr>');
     }
 
     buffer.writeln('</table>');
@@ -246,28 +249,17 @@ class DailySummaryEmailService {
     final progressColor = _getProgressPercentageColor(yesterdayMissedProgress);
 
     final buffer = StringBuffer();
+    buffer.writeln('<div class="section-title">Follow-up progress</div>');
     buffer.writeln(
-      '<div class="mobile-text force-orange" style="font-weight:700; color:#F05A2C !important; margin:14px 0 6px; font-size:14px; font-family:Helvetica, Arial, sans-serif !important;"><span class="force-orange" style="color:#F05A2C !important;">$progressEmoji Follow-up Progress</span></div>',
+      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="card2" style="background-color:#141414 !important; border:1px solid rgba(255,255,255,0.08); border-radius:14px; overflow:hidden; margin-bottom:12px;" bgcolor="#141414">',
     );
+    buffer.writeln('<tr><td class="row row-last" style="padding:12px 14px;" bgcolor="#141414">');
     buffer.writeln(
-      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#2D1A0A !important; border:1px solid rgba(240,90,44,0.3); border-radius:8px; margin-bottom:14px;" bgcolor="#2D1A0A">',
+      '<div style="font-size:13px; font-weight:800; color:#FFFFFF !important; line-height:1.35;">$progressEmoji <span style="color:#$progressColor !important; font-weight:900;">${progressPercentage.toStringAsFixed(0)}%</span> complete <span class="muted" style="color:rgba(255,255,255,0.72) !important; font-weight:700;">($completedToday/$totalCarried)</span></div>',
     );
-    buffer.writeln(
-      '<tr><td class="mobile-small-padding force-white" style="padding:14px; color:#FFFFFF !important; font-family:Helvetica, Arial, sans-serif !important;" bgcolor="#2D1A0A">',
-    );
-    buffer.writeln(
-      '<div class="mobile-text" style="font-size:14px; margin-bottom:8px; color:#FFFFFF !important; font-family:Helvetica, Arial, sans-serif !important;">',
-    );
-    buffer.writeln(
-      '<span style="color:#$progressColor !important; font-weight:600;">${progressPercentage.toStringAsFixed(0)}%</span>',
-    );
-    buffer.writeln(
-      '<span class="force-white" style="color:#FFFFFF !important;"> of yesterday\'s items completed ($completedToday/$totalCarried)</span>',
-    );
-    buffer.writeln('</div>');
     if (remaining > 0) {
       buffer.writeln(
-        '<div class="force-light-gray" style="color:rgba(255,255,255,0.8) !important; font-size:13px;">⏳ $remaining items still need attention</div>',
+        '<div class="muted" style="margin-top:6px; color:rgba(255,255,255,0.72) !important; font-size:12px; font-weight:700;">⏳ $remaining items still need attention</div>',
       );
     }
     buffer.writeln('</td></tr></table>');
@@ -305,16 +297,17 @@ class DailySummaryEmailService {
     if (insights.isEmpty) return '';
 
     final buffer = StringBuffer();
+    buffer.writeln('<div class="section-title">Key insights</div>');
     buffer.writeln(
-      '<div class="mobile-text force-orange" style="font-weight:700; color:#F05A2C !important; margin:14px 0 6px; font-size:14px; font-family:Helvetica, Arial, sans-serif !important;"><span class="force-orange" style="color:#F05A2C !important;">💡 Key Insights</span></div>',
+      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="card2" style="background-color:#141414 !important; border:1px solid rgba(255,255,255,0.08); border-radius:14px; overflow:hidden; margin-bottom:12px;" bgcolor="#141414"><tr><td class="row row-last" style="padding:12px 14px;" bgcolor="#141414">',
     );
     buffer.writeln(
-      '<ul class="mobile-small-text force-white" style="padding-left:14px !important; margin:8px 0 12px !important; font-size:13px; color:#FFFFFF !important; font-family:Helvetica, Arial, sans-serif !important; list-style-type:disc !important;">',
+      '<ul class="small" style="padding-left:18px !important; margin:0 !important; font-size:12px; font-weight:700; color:#FFFFFF !important;">',
     );
     for (final insight in insights.take(3)) {
-      buffer.writeln('<li style="margin-bottom:6px !important; color:#FFFFFF !important;">$insight</li>');
+      buffer.writeln('<li style="margin:0 0 8px 0 !important; color:#FFFFFF !important;">$insight</li>');
     }
-    buffer.writeln('</ul>');
+    buffer.writeln('</ul></td></tr></table>');
     return buffer.toString();
   }
 
@@ -327,90 +320,76 @@ class DailySummaryEmailService {
     if (missedTaskEntries.isEmpty && photoBypassed.isEmpty && notesEntries.isEmpty) return '';
 
     final buffer = StringBuffer();
+    buffer.writeln('<div class="section-title">Notable items</div>');
     buffer.writeln(
-      '<div class="mobile-text force-orange" style="font-weight:700; color:#F05A2C !important; margin:14px 0 6px; font-size:14px; font-family:Helvetica, Arial, sans-serif !important;"><span class="force-orange" style="color:#F05A2C !important;">🔍 Notable Items</span></div>',
+      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="card2" style="background-color:#141414 !important; border:1px solid rgba(255,255,255,0.08); border-radius:14px; overflow:hidden; margin-bottom:12px;" bgcolor="#141414">',
     );
 
     // Missed tasks
     if (missedTaskEntries.isNotEmpty) {
-      buffer.writeln(
-        '<div style="color:#FF6B6B !important; font-weight:600; margin:12px 0 8px; font-size:13px;">❌ Tasks Not Completed:</div>',
-      );
-      buffer.writeln(
-        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#2D1414 !important; border:1px solid rgba(255,107,107,0.3); border-radius:8px; margin-bottom:12px;" bgcolor="#2D1414">',
-      );
+      buffer.writeln('<tr><td class="row" style="padding:12px 14px;" bgcolor="#141414">');
+      buffer.writeln('<div class="kicker">Tasks not completed</div>');
       for (final task in missedTaskEntries.take(3)) {
         final taskName = task['taskName'] as String? ?? 'Unknown Task';
         final locationName = task['locationName'] as String? ?? 'Unknown Location';
         final reason = task['reason'] as String? ?? 'No reason provided';
         buffer.writeln(
-          '<tr><td style="padding:10px 14px; border-bottom:1px solid rgba(255,107,107,0.1); color:#FFFFFF !important; font-family:Helvetica, Arial, sans-serif !important;" bgcolor="#2D1414">',
+          '<div style="margin:0 0 8px; font-size:12px; font-weight:800; color:#FFFFFF !important;">❌ $taskName <span class="muted" style="color:rgba(255,255,255,0.72) !important; font-weight:700;">— $locationName</span></div>',
         );
         buffer.writeln(
-          '<div style="font-weight:600; font-size:13px; color:#FFFFFF !important;">$taskName ($locationName)</div>',
+          '<div class="muted" style="margin:-4px 0 10px; font-size:11px; font-weight:700; color:rgba(255,255,255,0.60) !important;">Reason: $reason</div>',
         );
-        buffer.writeln(
-          '<div style="color:rgba(255,255,255,0.7) !important; font-size:12px; margin-top:2px;">Reason: $reason</div>',
-        );
-        buffer.writeln('</td></tr>');
       }
-      buffer.writeln('</table>');
+      buffer.writeln('</td></tr>');
     }
 
     // Photo bypassed
     if (photoBypassed.isNotEmpty) {
-      buffer.writeln(
-        '<div style="color:#FFB366 !important; font-weight:600; margin:12px 0 8px; font-size:13px;">📷 Photo Requirements Missed:</div>',
-      );
-      buffer.writeln(
-        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#2D1F0A !important; border:1px solid rgba(255,179,102,0.3); border-radius:8px; margin-bottom:12px;" bgcolor="#2D1F0A">',
-      );
+      buffer.writeln('<tr><td class="row" style="padding:12px 14px;" bgcolor="#141414">');
+      buffer.writeln('<div class="kicker">Photo requirement missed</div>');
       for (final task in photoBypassed.take(3)) {
         final taskName = task['taskName'] as String? ?? 'Unknown Task';
         final locationName = task['locationName'] as String? ?? 'Unknown Location';
         final userName = task['userName'] as String? ?? 'Unknown User';
         buffer.writeln(
-          '<tr><td style="padding:10px 14px; border-bottom:1px solid rgba(255,179,102,0.1); color:#FFFFFF !important; font-family:Helvetica, Arial, sans-serif !important;" bgcolor="#2D1F0A">',
+          '<div style="margin:0 0 8px; font-size:12px; font-weight:800; color:#FFFFFF !important;">📷 $taskName <span class="muted" style="color:rgba(255,255,255,0.72) !important; font-weight:700;">— $locationName</span></div>',
         );
         buffer.writeln(
-          '<div style="font-weight:600; font-size:13px; color:#FFFFFF !important;">$taskName at $locationName</div>',
+          '<div class="muted" style="margin:-4px 0 10px; font-size:11px; font-weight:700; color:rgba(255,255,255,0.60) !important;">Completed by $userName without photo</div>',
         );
-        buffer.writeln(
-          '<div style="color:rgba(255,255,255,0.7) !important; font-size:12px; margin-top:2px;">Completed by $userName without required photo</div>',
-        );
-        buffer.writeln('</td></tr>');
       }
-      buffer.writeln('</table>');
+      buffer.writeln('</td></tr>');
     }
 
     // Notes
     if (notesEntries.isNotEmpty) {
-      buffer.writeln(
-        '<div style="color:#66B2FF !important; font-weight:600; margin:12px 0 8px; font-size:13px;">📝 Staff Notes & Observations:</div>',
-      );
-      buffer.writeln(
-        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#141A2D !important; border:1px solid rgba(102,178,255,0.3); border-radius:8px; margin-bottom:12px;" bgcolor="#141A2D">',
-      );
+      buffer.writeln('<tr><td class="row row-last" style="padding:12px 14px;" bgcolor="#141414">');
+      buffer.writeln('<div class="kicker">Staff notes</div>');
       for (final note in notesEntries.take(3)) {
         final taskName = note['taskName'] as String? ?? 'Unknown Task';
         final locationName = note['locationName'] as String? ?? 'Unknown Location';
         final userName = note['userName'] as String? ?? 'Unknown User';
         final noteText = note['notes'] as String? ?? '';
-        final truncatedNote = noteText.length > 60 ? '${noteText.substring(0, 60)}...' : noteText;
+        final truncatedNote = noteText.length > 72 ? '${noteText.substring(0, 72)}...' : noteText;
         buffer.writeln(
-          '<tr><td style="padding:10px 14px; border-bottom:1px solid rgba(102,178,255,0.1); color:#FFFFFF !important; font-family:Helvetica, Arial, sans-serif !important;" bgcolor="#141A2D">',
+          '<div style="margin:0 0 8px; font-size:12px; font-weight:800; color:#FFFFFF !important;">📝 $taskName <span class="muted" style="color:rgba(255,255,255,0.72) !important; font-weight:700;">— $locationName</span></div>',
         );
+        if (truncatedNote.isNotEmpty) {
+          buffer.writeln(
+            '<div style="margin:-4px 0 2px; font-size:12px; font-weight:700; color:rgba(255,255,255,0.88) !important; font-style:italic;">"$truncatedNote"</div>',
+          );
+        }
         buffer.writeln(
-          '<div style="font-weight:600; font-size:13px; color:#FFFFFF !important;">$taskName ($locationName)</div>',
+          '<div class="muted" style="margin:0 0 10px; font-size:11px; font-weight:700; color:rgba(255,255,255,0.60) !important;">— $userName</div>',
         );
-        buffer.writeln(
-          '<div style="color:rgba(255,255,255,0.9) !important; font-size:12px; margin:4px 0 2px; font-style:italic;">"$truncatedNote"</div>',
-        );
-        buffer.writeln('<div style="color:rgba(255,255,255,0.6) !important; font-size:11px;">— $userName</div>');
-        buffer.writeln('</td></tr>');
       }
-      buffer.writeln('</table>');
+      buffer.writeln('</td></tr>');
+    } else {
+      // Ensure last row has no border if notes are empty
+      buffer.writeln('<tr><td class="row row-last" style="padding:0;" bgcolor="#141414"></td></tr>');
     }
+
+    buffer.writeln('</table>');
 
     return buffer.toString();
   }
@@ -447,12 +426,6 @@ class DailySummaryEmailService {
       buffer.writeln('<li style="margin-bottom:6px !important; color:#FFFFFF !important;">$action</li>');
     }
     return buffer.toString();
-  }
-
-  static String _getCompletionColor(double percentage) {
-    if (percentage >= 85) return '4CAF50'; // Green
-    if (percentage >= 70) return 'FF9800'; // Orange
-    return 'F44336'; // Red
   }
 
   static String _formatDate(DateTime date) {

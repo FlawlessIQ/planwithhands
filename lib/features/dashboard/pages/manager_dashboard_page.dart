@@ -12,6 +12,7 @@ import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/data/models/missed_tasks_section.dart';
+import 'package:hands_app/data/models/task_data.dart';
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/global_widgets/professional_harvey_ball.dart';
@@ -372,77 +373,41 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
       _loadingYesterday = true;
     });
     try {
-      final service = DailyChecklistService();
-      final today = DateTime.now();
+      // IMPORTANT: compute "missed yesterday" directly from yesterday's tasks,
+      // not from today's carry-forward lineage (which can be historically incorrect).
+      final now = DateTime.now();
+      final yesterday = now.subtract(const Duration(days: 1));
 
       debugPrint(
-        '[ManagerDashboard] Starting loadYesterdayMissed - today: $today, selectedLocation: $_selectedLocationId',
-      );
-      logger.d(
-        '[ManagerDashboard] Starting loadYesterdayMissed - today: $today, selectedLocation: $_selectedLocationId',
+        '[ManagerDashboard] _loadYesterdayMissed: yesterday=${_dateFormat.format(yesterday)}, location=$_selectedLocationId',
       );
 
-      // Use the same method as user dashboard to get real-time data from subcollections
-      debugPrint('[ManagerDashboard] About to call loadMissedTasksForToday...');
-      final sections = await service.loadMissedTasksForToday(
-        organizationId: widget.organizationId,
-        targetDate: today,
-        locationId: _selectedLocationId,
-      );
-      debugPrint('[ManagerDashboard] loadMissedTasksForToday completed with ${sections.length} sections');
-
-      debugPrint('[ManagerDashboard] loadMissedTasksForToday completed with ${sections.length} sections');
-
-      logger.d('[ManagerDashboard] loadMissedTasksForToday returned ${sections.length} sections');
-
-      // Convert sections to the format expected by the manager dashboard
-      final Map<String, Map<String, dynamic>> groupedTasks = {};
-      debugPrint('[ManagerDashboard] Processing ${sections.length} sections...');
+      final sections = await _loadMissedSectionsForDateDirect(yesterday);
+      final groupedTasks = <String, Map<String, dynamic>>{};
       for (final section in sections) {
-        logger.d('[ManagerDashboard] Processing section: ${section.shiftName} with ${section.tasks.length} tasks');
-        debugPrint('[ManagerDashboard] Processing section: ${section.shiftName} with ${section.tasks.length} tasks');
         for (final task in section.tasks) {
-          final taskName = task.taskName;
-          final shiftName = section.shiftName;
-          final key = '${taskName}_${section.shiftId}';
-
-          logger.d('[ManagerDashboard] Processing task: $taskName, completed: ${task.completed}');
-
+          final key = '${task.taskName}_${section.shiftId}';
           final group = groupedTasks.putIfAbsent(
             key,
             () => {
-              'taskName': taskName,
+              'taskName': task.taskName,
               'shiftId': section.shiftId,
-              'shiftName': shiftName,
+              'shiftName': section.shiftName,
               'locationId': section.locationId,
               'count': 0,
+              // For "missed yesterday" we only show incomplete tasks, so this stays false.
               'completedToday': false,
             },
           );
-
           group['count'] = (group['count'] as int) + 1;
-          if (task.completed) {
-            group['completedToday'] = true;
-          }
         }
       }
 
+      _yesterdayMissedSections = sections;
       _yesterdayMissed = groupedTasks.values.toList();
-      _yesterdayMissedSections = sections; // Store raw sections for accurate counting
-      debugPrint(
-        '[ManagerDashboard] Final result: ${_yesterdayMissed.length} carry-forward groups from yesterday (via subcollections)',
-      );
-      debugPrint(
-        '[ManagerDashboard] Raw sections: ${_yesterdayMissedSections.length} sections with ${_yesterdayMissedSections.fold<int>(0, (sum, section) => sum + section.tasks.length)} total tasks',
-      );
-      debugPrint(
-        '[ManagerDashboard] Groups: ${_yesterdayMissed.map((g) => '${g['taskName']} (${g['shiftName']}): ${g['count']}').join(', ')}',
-      );
+
       logger.d(
-        '[ManagerDashboard] Final result: ${_yesterdayMissed.length} carry-forward groups from yesterday (via subcollections)',
-      );
-      logger.d(
-        '[ManagerDashboard] Groups: ${_yesterdayMissed.map((g) => '${g['taskName']} (${g['shiftName']}): ${g['count']}').join(', ')}',
+        '[ManagerDashboard] _loadYesterdayMissed: sections=${sections.length} tasks=${sections.fold<int>(0, (s, sec) => s + sec.tasks.length)} grouped=${_yesterdayMissed.length}',
       );
     } catch (e, st) {
       debugPrint('[ManagerDashboard] loadMissedTasksForToday error: $e');
@@ -456,20 +421,59 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
 
   Future<void> _loadMissedTrend7d() async {
     try {
-      logger.d('[ManagerDashboard] Loading 7-day missed tasks trend...');
+      logger.d('[ManagerDashboard] Loading 7-day missed tasks trend (direct)...');
       final now = DateTime.now();
-      final futures = <Future<int>>[];
-      // Show last 7 days ending with yesterday (exclude today)
+      final startDay = now.subtract(const Duration(days: 7));
+      final endDay = now.subtract(const Duration(days: 1));
+      final startStr = _dateFormat.format(startDay);
+      final endStr = _dateFormat.format(endDay);
+
+      final Map<String, int> missedByDay = {};
+      try {
+        Query q = FirestoreEnforcer.instance
+            .collectionGroup('tasks')
+            .where('organizationId', isEqualTo: widget.organizationId)
+            .where('isCarryForward', isEqualTo: false)
+            .where('dateString', isGreaterThanOrEqualTo: startStr)
+            .where('dateString', isLessThanOrEqualTo: endStr);
+        if (_selectedLocationId != null && _selectedLocationId!.isNotEmpty) {
+          q = q.where('locationId', isEqualTo: _selectedLocationId);
+        }
+
+        final snap = await q.get();
+        for (final d in snap.docs) {
+          final raw = d.data();
+          final m = (raw is Map<String, dynamic>) ? raw : <String, dynamic>{};
+          if (m['excludedFromMetrics'] == true) continue;
+          if (_taskIsCompleted(m)) continue;
+          final ds = (m['dateString'] ?? '').toString();
+          if (ds.isEmpty) continue;
+          missedByDay[ds] = (missedByDay[ds] ?? 0) + 1;
+        }
+      } catch (e) {
+        // Fallback to slower but more robust historical counting.
+        logger.w('[ManagerDashboard] Trend direct query failed; falling back. error=$e');
+        final service = DailyChecklistService();
+        for (int i = 7; i >= 1; i--) {
+          final day = now.subtract(Duration(days: i));
+          final c = await service.countMissedTasksForDate(
+            organizationId: widget.organizationId,
+            date: day,
+            locationId: _selectedLocationId,
+          );
+          missedByDay[_dateFormat.format(day)] = c;
+        }
+      }
+
+      final results = <int>[];
       for (int i = 7; i >= 1; i--) {
         final day = now.subtract(Duration(days: i));
-        futures.add(_countMissedForDate(day));
+        results.add(missedByDay[_dateFormat.format(day)] ?? 0);
       }
-      final results = await Future.wait(futures);
+
       if (!mounted) return;
       setState(() => _missedTrend7d = results);
-      logger.d(
-        '[ManagerDashboard] 7-day trend loaded: $results (total: ${results.fold(0, (sum, val) => sum + val)} missed tasks)',
-      );
+      logger.d('[ManagerDashboard] 7-day trend loaded: $results');
     } catch (e) {
       logger.w('[ManagerDashboard] _loadMissedTrend7d failed: $e');
     }
@@ -477,59 +481,154 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
 
   Future<int> _countMissedForDate(DateTime day) async {
     try {
-      final service = DailyChecklistService();
-      final now = DateTime.now();
-      final yesterday = now.subtract(const Duration(days: 1));
-      final dayStr = _dateFormat.format(day);
-      final yesterdayStr = _dateFormat.format(yesterday);
-
-      // For yesterday: use CF-based count (tasks carried INTO today FROM yesterday)
-      // This matches the "MISSED YESTERDAY" logic
-      if (dayStr == yesterdayStr) {
-        final sections = await service.loadMissedTasksForToday(
-          organizationId: widget.organizationId,
-          targetDate: now, // Query today to find CF tasks from yesterday
-          locationId: _selectedLocationId,
-        );
-        final count = sections.fold<int>(0, (sum, sec) => sum + sec.tasks.length);
-        logger.d('[ManagerDashboard] CF-based count for yesterday: $count');
-        return count;
-      }
-
-      // For older dates and today: use direct historical count
-      final count = await service.countMissedTasksForDate(
-        organizationId: widget.organizationId,
-        date: day,
-        locationId: _selectedLocationId,
-      );
-
-      logger.d('[ManagerDashboard] Counted $count missed tasks for ${_dateFormat.format(day)}');
-      return count;
+      // Direct count from tasks for this day (incomplete, non-carry-forward).
+      final sections = await _loadMissedSectionsForDateDirect(day);
+      return sections.fold<int>(0, (sum, s) => sum + s.tasks.length);
     } catch (e) {
       logger.w('[ManagerDashboard] _countMissedForDate failed for ${_dateFormat.format(day)}: $e');
       return 0;
     }
   }
 
+  bool _taskIsCompleted(Map<String, dynamic> m) {
+    return (m['completed'] == true) || (m['isCompleted'] == true) || (m['status'] == 'completed');
+  }
+
+  DateTime _parseDateTime(dynamic v) {
+    if (v == null) return DateTime.now();
+    if (v is DateTime) return v;
+    if (v is Timestamp) return v.toDate();
+    if (v is String) return DateTime.tryParse(v) ?? DateTime.now();
+    return DateTime.now();
+  }
+
+  TaskData _taskDataFromDoc({required String docId, required Map<String, dynamic> m}) {
+    final createdAt = _parseDateTime(m['createdAt']);
+    final dueDateRaw = m['dueDate'] ?? m['dueAt'] ?? m['deadline'];
+    final dueDate = dueDateRaw != null ? _parseDateTime(dueDateRaw) : createdAt;
+
+    final taskId = (m['taskId'] ?? m['id'] ?? docId).toString();
+    final taskName = (m['taskName'] ?? m['name'] ?? m['title'] ?? m['description'] ?? '').toString().trim();
+
+    return TaskData(
+      taskId: taskId,
+      taskName: taskName.isNotEmpty ? taskName : 'Unknown Task',
+      createdAt: createdAt,
+      dueDate: dueDate,
+      completed: _taskIsCompleted(m),
+      isCarryForward: (m['isCarryForward'] == true),
+      excludedFromMetrics: (m['excludedFromMetrics'] == true),
+      organizationId: (m['organizationId'] ?? widget.organizationId).toString(),
+      locationId: (m['locationId'] ?? _selectedLocationId)?.toString(),
+      checklistId: (m['checklistId'] ?? m['dailyChecklistId'])?.toString(),
+      checklistName: (m['checklistName'] ?? m['templateName'])?.toString(),
+      shiftId: (m['shiftId'])?.toString(),
+      dateString: (m['dateString'])?.toString(),
+      order: (m['order'] is num) ? (m['order'] as num).toInt() : null,
+    );
+  }
+
+  Future<List<MissedTasksSection>> _loadMissedSectionsForDateDirect(DateTime date) async {
+    final dateStr = _dateFormat.format(date);
+
+    // Resolve shift names (and times if present) once.
+    final shiftsSnap =
+        await FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(widget.organizationId)
+            .collection('shifts')
+            .get();
+    final shiftMetaById = <String, Map<String, dynamic>>{for (final s in shiftsSnap.docs) s.id: s.data()};
+
+    final tasksByShiftId = <String, List<TaskData>>{};
+
+    Query q = FirestoreEnforcer.instance
+        .collectionGroup('tasks')
+        .where('organizationId', isEqualTo: widget.organizationId)
+        .where('isCarryForward', isEqualTo: false)
+        .where('dateString', isEqualTo: dateStr);
+    if (_selectedLocationId != null && _selectedLocationId!.isNotEmpty) {
+      q = q.where('locationId', isEqualTo: _selectedLocationId);
+    }
+
+    final snap = await q.get();
+    for (final d in snap.docs) {
+      final raw = d.data();
+      final m = (raw is Map<String, dynamic>) ? raw : <String, dynamic>{};
+      if (m['excludedFromMetrics'] == true) continue;
+      if (m['isCarryForward'] == true) continue;
+      if (_taskIsCompleted(m)) continue;
+      final shiftId = (m['shiftId'] ?? '').toString();
+      if (shiftId.isEmpty) continue;
+      final task = _taskDataFromDoc(docId: d.id, m: m);
+      if (task.taskName.trim().isEmpty) continue;
+      tasksByShiftId.putIfAbsent(shiftId, () => <TaskData>[]).add(task);
+    }
+
+    final sections = <MissedTasksSection>[];
+    for (final entry in tasksByShiftId.entries) {
+      final shiftId = entry.key;
+      final shiftMeta = shiftMetaById[shiftId] ?? const <String, dynamic>{};
+      final shiftName = (shiftMeta['shiftName'] ?? shiftMeta['name'] ?? '').toString();
+      if (shiftName.isEmpty) continue;
+      sections.add(
+        MissedTasksSection(
+          shiftId: shiftId,
+          shiftName: shiftName,
+          organizationId: widget.organizationId,
+          locationId: _selectedLocationId,
+          tasks: entry.value,
+        ),
+      );
+    }
+
+    sections.sort((a, b) => a.shiftName.compareTo(b.shiftName));
+    return sections;
+  }
+
   Future<void> _loadLiveShifts() async {
     setState(() => _loadingLive = true);
     try {
       logger.i('[ManagerDashboard][DEBUG] Entering _loadLiveShifts');
+      if (_selectedLocationId == null || _selectedLocationId!.isEmpty) {
+        logger.w('[ManagerDashboard][DEBUG] _loadLiveShifts aborted: no location selected');
+        if (!mounted) return;
+        setState(() {
+          _liveShifts = [];
+        });
+        return;
+      }
       final todayStr = _todayKey;
       logger.i('[ManagerDashboard][DEBUG] Today string: $todayStr, Selected Location: $_selectedLocationId');
-      final shiftsSnap =
-          await FirestoreEnforcer.instance
-              .collection('organizations')
-              .doc(widget.organizationId)
-              .collection('shifts')
-              .where('locationIds', arrayContains: _selectedLocationId)
-              .get();
-      logger.i('[ManagerDashboard][DEBUG] Found ${shiftsSnap.docs.length} shifts for location');
+      final shiftsColl = FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(widget.organizationId)
+          .collection('shifts');
+      final Map<String, QueryDocumentSnapshot> docsById = {};
+      final snapArray = await shiftsColl.where('locationIds', arrayContains: _selectedLocationId).get();
+      for (final d in snapArray.docs) {
+        docsById[d.id] = d;
+      }
+      int legacyCount = 0;
+      try {
+        // Some older shift docs store a single locationId instead of locationIds[]. Merge + dedupe.
+        final snapSingle = await shiftsColl.where('locationId', isEqualTo: _selectedLocationId).get();
+        legacyCount = snapSingle.docs.length;
+        for (final d in snapSingle.docs) {
+          docsById[d.id] = d;
+        }
+      } catch (e) {
+        logger.w('[ManagerDashboard][DEBUG] Legacy shift query (locationId) failed: $e');
+      }
+      final shiftDocs = docsById.values.toList();
+      logger.i(
+        '[ManagerDashboard][DEBUG] Found ${shiftDocs.length} shifts for location (locationIds=${snapArray.docs.length}, locationId=$legacyCount)',
+      );
 
       final List<Map<String, dynamic>> todaysShifts = [];
 
-      for (final shiftDoc in shiftsSnap.docs) {
-        final shiftData = shiftDoc.data();
+      for (final shiftDoc in shiftDocs) {
+        final shiftData = (shiftDoc.data() as Map<String, dynamic>?) ?? <String, dynamic>{};
         final shiftName = (shiftData['shiftName'] ?? 'Unnamed Shift').toString();
         final startTime = (shiftData['startTime'] ?? '').toString();
         final endTime = (shiftData['endTime'] ?? '').toString();
@@ -695,200 +794,144 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
 
       logger.i('[ManagerDashboard][DEBUG] Querying poor shifts from $start to $end for location: $_selectedLocationId');
 
-      // Determine which location(s) to query. Prefer the selected location but
-      // fallback to other available locations if it returns no data.
-      final preferredLocation = _selectedLocationId;
-
-      final List<QueryDocumentSnapshot> docs = [];
-
-      Future<List<QueryDocumentSnapshot>> queryForLocation(String locId) async {
-        try {
-          // Prefer location-scoped daily_checklists (locations/{locId}/daily_checklists)
-          final s =
-              await FirestoreEnforcer.instance
-                  .collection('organizations')
-                  .doc(widget.organizationId)
-                  .collection('locations')
-                  .doc(locId)
-                  .collection('daily_checklists')
-                  .where('date', isGreaterThanOrEqualTo: start)
-                  .where('date', isLessThanOrEqualTo: end)
-                  .get();
-          logger.i(
-            '[ManagerDashboard][DEBUG] queryForLocation($locId) (location-scoped) returned ${s.docs.length} docs',
-          );
-          return s.docs;
-        } catch (e) {
-          logger.w(
-            '[ManagerDashboard][DEBUG] queryForLocation($locId) failed (location-scoped), falling back to org-scoped query: $e',
-          );
-          // Fallback to org-root daily_checklists where we store a locationId field (legacy)
-          final s =
-              await FirestoreEnforcer.instance
-                  .collection('organizations')
-                  .doc(widget.organizationId)
-                  .collection('daily_checklists')
-                  .where('date', isGreaterThanOrEqualTo: start)
-                  .where('date', isLessThanOrEqualTo: end)
-                  .where('locationId', isEqualTo: locId)
-                  .get();
-          logger.i(
-            '[ManagerDashboard][DEBUG] queryForLocation($locId) (org-scoped fallback) returned ${s.docs.length} docs',
-          );
-          return s.docs;
+      // Fast path: aggregate directly from tasks subcollections (collectionGroup), excluding carry-forward tasks.
+      // This avoids N subcollection reads and dramatically reduces load time.
+      final Map<String, Map<String, int>> aggByShiftId = {}; // shiftId -> {'done':x,'total':y}
+      bool usedFastPath = false;
+      try {
+        Query q = FirestoreEnforcer.instance
+            .collectionGroup('tasks')
+            .where('organizationId', isEqualTo: widget.organizationId)
+            .where('isCarryForward', isEqualTo: false)
+            .where('dateString', isGreaterThanOrEqualTo: start)
+            .where('dateString', isLessThanOrEqualTo: end);
+        if (_selectedLocationId != null && _selectedLocationId!.isNotEmpty) {
+          q = q.where('locationId', isEqualTo: _selectedLocationId);
         }
-      }
-
-      // Try preferred location first (if any)
-      if (preferredLocation != null && preferredLocation.isNotEmpty) {
-        logger.i('[ManagerDashboard][DEBUG] Trying selected location for poor shifts: $preferredLocation');
-        final r = await queryForLocation(preferredLocation);
-        docs.addAll(r);
-        logger.i('[ManagerDashboard][DEBUG] Selected location returned ${r.length} docs');
-      }
-
-      // If no docs found for preferred location, try other available locations
-      if (docs.isEmpty && _availableLocations.isNotEmpty) {
-        logger.i(
-          '[ManagerDashboard][DEBUG] No checklists found for selected location; trying other available locations',
-        );
-        for (final loc in _availableLocations) {
-          final id = loc['id'] as String?;
-          if (id == null) continue;
-          if (id == preferredLocation) continue; // already tried
-          final r = await queryForLocation(id);
-          if (r.isNotEmpty) {
-            docs.addAll(r);
-            logger.i('[ManagerDashboard][DEBUG] Found ${r.length} docs for fallback location $id');
-            // don't break; we may want to aggregate across locations
-          }
+        final snap = await q.get();
+        usedFastPath = true;
+        logger.i('[ManagerDashboard][DEBUG] Poor shifts fast-path task docs=${snap.docs.length}');
+        for (final d in snap.docs) {
+          final raw = d.data();
+          final m = (raw is Map<String, dynamic>) ? raw : <String, dynamic>{};
+          if (m['excludedFromMetrics'] == true) continue;
+          final shiftId = (m['shiftId'] ?? '').toString();
+          if (shiftId.isEmpty) continue;
+          final completed = (m['completed'] == true) || (m['isCompleted'] == true) || (m['status'] == 'completed');
+          final entry = aggByShiftId.putIfAbsent(shiftId, () => {'done': 0, 'total': 0});
+          entry['total'] = (entry['total'] ?? 0) + 1;
+          if (completed) entry['done'] = (entry['done'] ?? 0) + 1;
         }
+      } catch (e) {
+        // Common failure: missing composite index for the range query. We'll fall back to a slower (but safer) path.
+        logger.w('[ManagerDashboard][DEBUG] Poor shifts fast-path failed; falling back. error=$e');
       }
 
-      // Last resort: if still empty, try querying without a location filter for the date range
-      if (docs.isEmpty) {
-        logger.i(
-          '[ManagerDashboard][DEBUG] No daily_checklists found scoped to locations, falling back to global date-range query',
-        );
-        final s =
-            await FirestoreEnforcer.instance
-                .collection('organizations')
-                .doc(widget.organizationId)
-                .collection('daily_checklists')
-                .where('date', isGreaterThanOrEqualTo: start)
-                .where('date', isLessThanOrEqualTo: end)
-                .get();
-        docs.addAll(s.docs);
-        logger.i('[ManagerDashboard][DEBUG] Global date-range query returned ${s.docs.length} docs');
-      }
+      if (!usedFastPath) {
+        // Fallback: read daily_checklists and, per checklist, count regular tasks only.
+        // Still avoids reading carry-forward tasks and runs in controlled parallel batches.
+        final preferredLocation = _selectedLocationId;
 
-      logger.i('[ManagerDashboard][DEBUG] Total daily_checklist docs to process: ${docs.length}');
-
-      final Map<String, Map<String, num>> agg = {}; // key: shiftName, values: {'done':x,'total':y}
-
-      // Cache to avoid repeated reads for the same shiftId
-      final Map<String, String?> shiftNameCache = {};
-
-      for (final d in docs) {
-        final dataRaw = d.data();
-        final data = (dataRaw is Map<String, dynamic>) ? dataRaw : <String, dynamic>{};
-        final shiftId = (data['shiftId'] ?? '').toString();
-
-        if (shiftId.isEmpty) {
-          logger.w('[ManagerDashboard][DEBUG] Skipping daily_checklist ${d.id} due to missing shiftId.');
-          continue;
-        }
-
-        String? shiftName;
-
-        // Check cache first
-        if (shiftNameCache.containsKey(shiftId)) {
-          shiftName = shiftNameCache[shiftId];
-        } else {
-          // Fetch from Firestore
+        Future<List<QueryDocumentSnapshot>> queryForLocation(String locId) async {
           try {
-            final shiftDoc =
+            final s =
                 await FirestoreEnforcer.instance
                     .collection('organizations')
                     .doc(widget.organizationId)
-                    .collection('shifts')
-                    .doc(shiftId)
+                    .collection('locations')
+                    .doc(locId)
+                    .collection('daily_checklists')
+                    .where('date', isGreaterThanOrEqualTo: start)
+                    .where('date', isLessThanOrEqualTo: end)
                     .get();
-            if (shiftDoc.exists) {
-              final sdata = shiftDoc.data();
-              final resolved = (sdata?['shiftName'] ?? sdata?['name'] ?? '').toString();
-              if (resolved.isNotEmpty) {
-                shiftName = resolved;
-                shiftNameCache[shiftId] = resolved; // Cache the name
-              } else {
-                // Shift exists but has no name, treat as invalid
-                shiftNameCache[shiftId] = null;
-              }
-            } else {
-              // Shift is deleted, cache this info so we don't look it up again
-              shiftNameCache[shiftId] = null; // Null indicates deleted
-            }
-          } catch (e) {
-            logger.w('[ManagerDashboard][DEBUG] Failed to resolve shiftName for shiftId=$shiftId: $e');
-            shiftNameCache[shiftId] = null; // Also cache failure to avoid retries
+            return s.docs;
+          } catch (_) {
+            final s =
+                await FirestoreEnforcer.instance
+                    .collection('organizations')
+                    .doc(widget.organizationId)
+                    .collection('daily_checklists')
+                    .where('date', isGreaterThanOrEqualTo: start)
+                    .where('date', isLessThanOrEqualTo: end)
+                    .where('locationId', isEqualTo: locId)
+                    .get();
+            return s.docs;
           }
         }
 
-        // If shiftName is null or empty, it means the shift was deleted or invalid. Skip it.
-        if (shiftName == null || shiftName.isEmpty) {
-          logger.i(
-            '[ManagerDashboard][DEBUG] Skipping checklist ${d.id} because shift $shiftId is deleted or invalid.',
-          );
-          continue;
-        }
-
-        logger.i('[ManagerDashboard][DEBUG] Processing checklist docId: ${d.id}, shiftName: $shiftName');
-
-        // Check if tasks are in subcollection (new way) or in document (old way)
-        List<Map<String, dynamic>> tasks = [];
-
-        if (data.containsKey('tasks') && data['tasks'] != null) {
-          // Old way: tasks in document
-          tasks = List<Map<String, dynamic>>.from(data['tasks'] ?? const []);
-          logger.i(
-            '[ManagerDashboard][DEBUG] Found ${tasks.length} tasks in document for shift: $shiftName, checklist: ${d.id}',
-          );
+        final List<QueryDocumentSnapshot> docs = [];
+        if (preferredLocation != null && preferredLocation.isNotEmpty) {
+          docs.addAll(await queryForLocation(preferredLocation));
         } else {
-          // New way: tasks in subcollection - need to fetch them
+          // No selected location; avoid fan-out across all locations on mobile.
+          logger.w('[ManagerDashboard][DEBUG] Poor shifts fallback: no selected location; skipping.');
+        }
+
+        logger.i('[ManagerDashboard][DEBUG] Poor shifts fallback daily_checklists=${docs.length}');
+
+        Future<void> processChecklist(QueryDocumentSnapshot d) async {
+          final dataRaw = d.data();
+          final data = (dataRaw is Map<String, dynamic>) ? dataRaw : <String, dynamic>{};
+          final shiftId = (data['shiftId'] ?? '').toString();
+          if (shiftId.isEmpty) return;
+
+          // If parent counters exist, prefer them (fast).
+          final completedItems = data['completedItems'];
+          final totalItems = data['totalItems'];
+          if (completedItems is num && totalItems is num) {
+            final entry = aggByShiftId.putIfAbsent(shiftId, () => {'done': 0, 'total': 0});
+            entry['done'] = (entry['done'] ?? 0) + completedItems.toInt();
+            entry['total'] = (entry['total'] ?? 0) + totalItems.toInt();
+            return;
+          }
+
+          // Otherwise, count from subcollection but exclude carry-forward tasks.
           try {
-            final tasksSnap = await d.reference.collection('tasks').get();
-            tasks = tasksSnap.docs.map((taskDoc) => taskDoc.data()).toList();
-            logger.i(
-              '[ManagerDashboard][DEBUG] Found ${tasks.length} tasks in subcollection for shift: $shiftName, checklist: ${d.id}',
-            );
+            final tasksSnap = await d.reference.collection('tasks').where('isCarryForward', isEqualTo: false).get();
+            int total = 0;
+            int done = 0;
+            for (final td in tasksSnap.docs) {
+              final m = td.data();
+              if (m['excludedFromMetrics'] == true) continue;
+              total += 1;
+              if (m['completed'] == true || m['isCompleted'] == true || m['status'] == 'completed') done += 1;
+            }
+            final entry = aggByShiftId.putIfAbsent(shiftId, () => {'done': 0, 'total': 0});
+            entry['done'] = (entry['done'] ?? 0) + done;
+            entry['total'] = (entry['total'] ?? 0) + total;
           } catch (e) {
-            logger.e('[ManagerDashboard][DEBUG] Failed to load tasks subcollection for doc ${d.id}: $e');
+            logger.w('[ManagerDashboard][DEBUG] Poor shifts fallback task enumeration failed for ${d.id}: $e');
           }
         }
 
-        final total = tasks.length;
-        final done =
-            tasks.where((t) {
-              final completed = t['completed'] == true || t['isCompleted'] == true || t['status'] == 'completed';
-              return completed;
-            }).length;
-
-        logger.i('[ManagerDashboard][DEBUG] Shift $shiftName: $done/$total completed');
-
-        final entry = agg.putIfAbsent(shiftName, () => {'done': 0, 'total': 0});
-        entry['done'] = (entry['done'] ?? 0) + done;
-        entry['total'] = (entry['total'] ?? 0) + total;
+        const batchSize = 10;
+        for (int i = 0; i < docs.length; i += batchSize) {
+          final chunk = docs.sublist(i, min(i + batchSize, docs.length));
+          await Future.wait(chunk.map(processChecklist));
+        }
       }
 
+      // Resolve shift names in one read.
+      final shiftsSnap =
+          await FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(widget.organizationId)
+              .collection('shifts')
+              .get();
+      final Map<String, String> shiftNameById = {
+        for (final s in shiftsSnap.docs) s.id: ((s.data()['shiftName'] ?? s.data()['name'] ?? '').toString()),
+      };
+
       final list =
-          agg.entries
+          aggByShiftId.entries
               .map((e) {
                 final done = (e.value['done'] ?? 0).toInt();
                 final total = max((e.value['total'] ?? 0).toInt(), 1);
                 final pct = done / total;
-                return {'shiftName': e.key, 'avgCompletion': pct, 'done': done, 'total': total};
+                final shiftName = shiftNameById[e.key] ?? '';
+                return {'shiftId': e.key, 'shiftName': shiftName, 'avgCompletion': pct, 'done': done, 'total': total};
               })
-              .where((m) => (m['total'] as int) > 0)
+              .where((m) => (m['total'] as int) > 0 && (m['shiftName'] as String).isNotEmpty)
               .toList()
             ..sort((a, b) => (a['avgCompletion'] as double).compareTo(b['avgCompletion'] as double));
 
@@ -2037,7 +2080,12 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
       final now = DateTime.now();
       final dateStr = DateFormat('yyyy-MM-dd').format(now);
       final start = DateFormat('yyyy-MM-dd HH:mm').parse('$dateStr $startTime');
-      final end = DateFormat('yyyy-MM-dd HH:mm').parse('$dateStr $endTime');
+      var end = DateFormat('yyyy-MM-dd HH:mm').parse('$dateStr $endTime');
+
+      // Handle overnight shifts (e.g., 18:00-02:00) by rolling the end time to the next day.
+      if (end.isBefore(start)) {
+        end = end.add(const Duration(days: 1));
+      }
       if (now.isBefore(start)) {
         final d = start.difference(now);
         return 'Starts in ${_formatDuration(d)}';

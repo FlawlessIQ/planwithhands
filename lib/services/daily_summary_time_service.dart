@@ -89,8 +89,8 @@ class DailySummaryTimeService {
         debugPrint('sendTodaySummaryNow not available, using triggerDailySummary');
 
         await _functions.httpsCallable('triggerDailySummary').call({
-          'organizationId': organizationId,
-          if (summaryDate != null) 'summaryDate': summaryDate,
+          'orgId': organizationId,
+          if (summaryDate != null) 'targetDate': summaryDate,
         });
 
         return SendNowResult(success: true, message: '✅ Daily summary has been sent successfully!', alreadySent: false);

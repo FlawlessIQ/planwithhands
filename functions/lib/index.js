@@ -33,9 +33,18 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.backfillSubscriptionQuantityForOrg = exports.validateCoupon = exports.getSubscriptionData = exports.createBillingPortalSessionElements = exports.cancelSubscriptionElements = exports.updateSubscriptionQuantity = exports.getStripePublishableKeyHttp = exports.getStripePublishableKey = exports.getCheckoutSessionStatus = exports.createEmbeddedCheckoutSession = exports.createSetupIntentForCustomer = exports.createSubscriptionElements = exports.ensureStripeCustomer = exports.enforceDailyChecklistOwnership = exports.auditOrgChecklists = exports.manualTestEmail = exports.sendTodaySummaryNow = exports.updateOrganizationDailySummaryTime = exports.validateDailySummaryTimeChange = exports.dailyCarryForwardMissedTasks = exports.triggerDailySummary = exports.scheduledDailySummary = exports.scheduledDailyGenerator = exports.onNotificationOutboxCreated = exports.proxyDownload = exports.proxyUpload = exports.getSignedUploadUrl = exports.sendHelpRequest = exports.placeDetailsHttp = exports.placesAutocompleteHttp = exports.createBillingPortalSession = exports.updateSubscription = exports.cancelSubscription = exports.stripeWebhook = exports.createCheckoutSession = exports.sendOrganizationSignupNotification = exports.deleteUser = exports.createUser = exports.repairTaskTitlesFromCsv = exports.repairTemplateTaskTitles = exports.migrateChecklistTemplates = exports.syncTodayOnShiftChange = exports.cleanupDeletedTemplate = exports.syncTemplateNameChange = exports.syncTodayOnTemplateChange = void 0;
+exports.backfillSubscriptionQuantityForOrg = exports.validateCoupon = exports.getSubscriptionData = exports.createBillingPortalSessionElements = exports.cancelSubscriptionElements = exports.updateSubscriptionQuantity = exports.getStripePublishableKeyHttp = exports.getStripePublishableKey = exports.getCheckoutSessionStatus = exports.createEmbeddedCheckoutSession = exports.createSetupIntentForCustomer = exports.createSubscriptionElements = exports.ensureStripeCustomer = exports.enforceDailyChecklistOwnership = exports.auditOrgChecklists = exports.manualTestEmail = exports.sharedModeVerifyPin = exports.sharedModeSetPin = exports.diagnoseRuntimeEnv = exports.sendTodaySummaryNow = exports.updateOrganizationDailySummaryTime = exports.validateDailySummaryTimeChange = exports.dailyCarryForwardMissedTasks = exports.triggerDailySummary = exports.scheduledDailySummary = exports.scheduledDailyGenerator = exports.onNotificationOutboxCreated = exports.proxyDownload = exports.proxyUpload = exports.getSignedUploadUrl = exports.sendHelpRequest = exports.placeDetailsHttp = exports.placesAutocompleteHttp = exports.createBillingPortalSession = exports.updateSubscription = exports.cancelSubscription = exports.stripeWebhook = exports.createCheckoutSession = exports.sendOrganizationSignupNotification = exports.deleteUser = exports.createUser = exports.repairTaskTitlesFromCsv = exports.repairTemplateTaskTitles = exports.migrateChecklistTemplates = exports.syncTodayOnShiftChange = exports.cleanupDeletedTemplate = exports.syncTemplateNameChange = exports.syncTodayOnTemplateChange = void 0;
 /* eslint-disable @typescript-eslint/no-require-imports */
+const dotenv = __importStar(require("dotenv"));
 const admin = __importStar(require("firebase-admin"));
+// Load local env vars for local/dev + deploy trigger discovery.
+// In production, env vars are provided by the Functions runtime; missing .env is OK.
+try {
+    dotenv.config({ path: `${__dirname}/../.env` });
+}
+catch {
+    // ignore
+}
 // Ensure admin is initialized (idempotent)
 try {
     admin.initializeApp();
@@ -122,6 +131,12 @@ var updateOrganizationDailySummaryTime_1 = require("./updateOrganizationDailySum
 Object.defineProperty(exports, "updateOrganizationDailySummaryTime", { enumerable: true, get: function () { return updateOrganizationDailySummaryTime_1.updateOrganizationDailySummaryTime; } });
 var sendTodaySummaryNow_1 = require("./sendTodaySummaryNow");
 Object.defineProperty(exports, "sendTodaySummaryNow", { enumerable: true, get: function () { return sendTodaySummaryNow_1.sendTodaySummaryNow; } });
+var diagnoseRuntimeEnv_1 = require("./diagnoseRuntimeEnv");
+Object.defineProperty(exports, "diagnoseRuntimeEnv", { enumerable: true, get: function () { return diagnoseRuntimeEnv_1.diagnoseRuntimeEnv; } });
+// Shared Mode (communal device / PIN)
+var sharedMode_1 = require("./sharedMode");
+Object.defineProperty(exports, "sharedModeSetPin", { enumerable: true, get: function () { return sharedMode_1.sharedModeSetPin; } });
+Object.defineProperty(exports, "sharedModeVerifyPin", { enumerable: true, get: function () { return sharedMode_1.sharedModeVerifyPin; } });
 // Export manual test email endpoint for one-off debugging
 var manualTestEmail_1 = require("./manualTestEmail");
 Object.defineProperty(exports, "manualTestEmail", { enumerable: true, get: function () { return manualTestEmail_1.manualTestEmail; } });

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -1006,7 +1007,12 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> with Acti
     return DataRow(
       cells: [
         DataCell(
-          SizedBox(width: 150, child: Text(shift['name'], style: GoogleFonts.comfortaa(color: HandsColors.white))),
+          Text(
+            shift['name'],
+            style: GoogleFonts.comfortaa(color: HandsColors.white),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
         DataCell(Text(timeRange, style: GoogleFonts.comfortaa(color: HandsColors.white70))),
         DataCell(
@@ -1018,20 +1024,21 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> with Acti
               final tids = (checklistData as List? ?? []).map((e) => e.toString()).where((e) => e.isNotEmpty).toList();
               final names = tids.map((t) => _checklistNameById[t] ?? 'Unknown Checklist').toList();
 
-              return SizedBox(
-                width: 250, // Constrains the width, forcing text to wrap
-                child: Text(
-                  names.isEmpty ? 'No Checklists' : names.join(', '),
-                  style: GoogleFonts.comfortaa(color: HandsColors.white70),
-                ),
+              return Text(
+                names.isEmpty ? 'No Checklists' : names.join(', '),
+                style: GoogleFonts.comfortaa(color: HandsColors.white70),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               );
             },
           ),
         ),
         DataCell(
-          SizedBox(
-            width: 150,
-            child: Text(_formatSchedule(shift), style: GoogleFonts.comfortaa(color: HandsColors.white70)),
+          Text(
+            _formatSchedule(shift),
+            style: GoogleFonts.comfortaa(color: HandsColors.white70),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
         // Locations cell removed - do not display location names in shifts table
@@ -1912,45 +1919,54 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> with Acti
       children: [
         // Allow both vertical and horizontal scrolling for large tables on web
         Expanded(
-          child: Scrollbar(
-            controller: _verticalTableController,
-            thumbVisibility: true,
-            child: SingleChildScrollView(
-              controller: _verticalTableController,
-              padding: EdgeInsets.zero,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: EdgeInsets.zero,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(minWidth: 1000),
-                  child: DataTable(
-                    columnSpacing: 8,
-                    horizontalMargin: 8,
-                    headingRowHeight: 48,
-                    dataRowMinHeight: 56,
-                    dataRowMaxHeight: 56,
-                    sortColumnIndex: _sortColumnIndex,
-                    sortAscending: _sortAscending,
-                    headingRowColor: WidgetStateProperty.all(HandsColors.cardPrimary),
-                    dataRowColor: WidgetStateProperty.resolveWith((states) {
-                      return states.contains(WidgetState.selected)
-                          ? HandsColors.secondaryContainer
-                          : Colors.transparent;
-                    }),
-                    headingTextStyle: GoogleFonts.comfortaa(
-                      color: HandsColors.white,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final viewportWidth = constraints.maxWidth;
+              // Force the table to fill the available width to avoid the large “blank margins”
+              // on wide screens. Still allow horizontal scroll on smaller viewports.
+              final tableWidth = math.max(viewportWidth, 1000.0).toDouble();
+
+              return Scrollbar(
+                controller: _verticalTableController,
+                thumbVisibility: true,
+                child: SingleChildScrollView(
+                  controller: _verticalTableController,
+                  padding: EdgeInsets.zero,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: EdgeInsets.zero,
+                    child: SizedBox(
+                      width: tableWidth,
+                      child: DataTable(
+                        columnSpacing: 24,
+                        horizontalMargin: 16,
+                        headingRowHeight: 48,
+                        dataRowMinHeight: 56,
+                        dataRowMaxHeight: 56,
+                        sortColumnIndex: _sortColumnIndex,
+                        sortAscending: _sortAscending,
+                        headingRowColor: WidgetStateProperty.all(HandsColors.cardPrimary),
+                        dataRowColor: WidgetStateProperty.resolveWith((states) {
+                          return states.contains(WidgetState.selected)
+                              ? HandsColors.secondaryContainer
+                              : Colors.transparent;
+                        }),
+                        headingTextStyle: GoogleFonts.comfortaa(
+                          color: HandsColors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                        dataTextStyle: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 12),
+                        showBottomBorder: true,
+                        dividerThickness: 1,
+                        columns: columns,
+                        rows: paginatedRows.map(buildRow).toList(),
+                      ),
                     ),
-                    dataTextStyle: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 12),
-                    showBottomBorder: true,
-                    dividerThickness: 1,
-                    columns: columns,
-                    rows: paginatedRows.map(buildRow).toList(),
                   ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
         ),
         _buildPaginationControls(rows.length),

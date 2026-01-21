@@ -1,5 +1,14 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
+import * as dotenv from "dotenv";
 import * as admin from "firebase-admin";
+
+// Load local env vars for local/dev + deploy trigger discovery.
+// In production, env vars are provided by the Functions runtime; missing .env is OK.
+try {
+  dotenv.config({ path: `${__dirname}/../.env` });
+} catch {
+  // ignore
+}
 
 // Ensure admin is initialized (idempotent)
 try {
@@ -97,6 +106,10 @@ export {dailyCarryForwardMissedTasks} from "./scheduledCarryForward";
 export {validateDailySummaryTimeChange} from "./validateDailySummaryTimeChange";
 export {updateOrganizationDailySummaryTime} from "./updateOrganizationDailySummaryTime";
 export {sendTodaySummaryNow} from "./sendTodaySummaryNow";
+export {diagnoseRuntimeEnv} from "./diagnoseRuntimeEnv";
+
+// Shared Mode (communal device / PIN)
+export {sharedModeSetPin, sharedModeVerifyPin} from "./sharedMode";
 
 // Export manual test email endpoint for one-off debugging
 export {manualTestEmail} from "./manualTestEmail";

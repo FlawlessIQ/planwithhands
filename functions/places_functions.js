@@ -5,7 +5,7 @@ const sgMail = require('@sendgrid/mail');
 // Initialize SendGrid - use same approach as working user functions
 let sendgridApiKey;
 try {
-  sendgridApiKey = functions.config().sendgrid && functions.config().sendgrid.key;
+  sendgridApiKey = process.env.SENDGRID_API_KEY || process.env.SENDGRID_KEY;
   if (!sendgridApiKey) {
     console.warn("SendGrid API key is not configured. Email sending will be skipped.");
   } else {
@@ -20,11 +20,11 @@ try {
 const GOOGLE_PLACES_ROOT = "https://places.googleapis.com/v1";
 
 function getApiKey() {
-  const key = functions.config().google && functions.config().google.places_api_key;
+  const key = process.env.GOOGLE_PLACES_API_KEY || process.env.PLACES_API_KEY;
   if (!key) {
     throw new functions.https.HttpsError(
       "failed-precondition",
-      "Missing Google Places API key. Set functions config google.places_api_key"
+      "Missing Google Places API key. Set GOOGLE_PLACES_API_KEY"
     );
   }
   return key;
