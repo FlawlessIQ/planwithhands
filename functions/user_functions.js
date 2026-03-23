@@ -3,12 +3,24 @@ const {logger} = require("firebase-functions");
 const functions = require("firebase-functions");
 const sgMail = require("@sendgrid/mail");
 
-// Set SendGrid API key from env (Firebase CLI dotenv support)
+function getSendGridApiKey() {
+  try {
+    return (
+      process.env.SENDGRID_API_KEY ||
+      process.env.SENDGRID_KEY ||
+      functions.config()?.sendgrid?.api_key ||
+      functions.config()?.sendgrid?.key
+    );
+  } catch (error) {
+    logger.warn("Error reading SendGrid configuration:", error.message);
+    return process.env.SENDGRID_API_KEY || process.env.SENDGRID_KEY;
+  }
+}
+
+// Set SendGrid API key from env or Firebase runtime config
 let sendgridApiKey;
 try {
-  sendgridApiKey =
-    process.env.SENDGRID_API_KEY ||
-    process.env.SENDGRID_KEY;
+  sendgridApiKey = getSendGridApiKey();
   if (!sendgridApiKey) {
     logger.warn("SendGrid API key is not configured. Email sending will be skipped.");
   } else {
@@ -121,6 +133,8 @@ exports.createUser = functions.https.onCall(async (data, context) => {
     logger.info("User document created successfully");
 
     // Send welcome email if SendGrid template ID is provided
+    let emailSent = false;
+    let emailErrorMessage = null;
     if (templateId && sendgridApiKey) {
       try {
         logger.info("Sending welcome email...");
@@ -144,8 +158,10 @@ exports.createUser = functions.https.onCall(async (data, context) => {
 
         logger.info("Email message object:", JSON.stringify(msg, null, 2));
         await sgMail.send(msg);
+        emailSent = true;
         logger.info(`Welcome email sent to ${email} using template ${templateId}`);
       } catch (emailError) {
+        emailErrorMessage = emailError.message || "Unknown SendGrid error";
         logger.error("Failed to send welcome email:", emailError);
         logger.error("Email error details:", JSON.stringify(emailError, null, 2));
         logger.error("Email error code:", emailError.code);
@@ -159,6 +175,7 @@ exports.createUser = functions.https.onCall(async (data, context) => {
       logger.info("Skipping email send - no template ID or SendGrid API key");
       logger.info("Template ID present:", !!templateId);
       logger.info("SendGrid API key present:", !!sendgridApiKey);
+      emailErrorMessage = !templateId ? "Missing SendGrid template ID" : "Missing SendGrid API key";
     }
 
     logger.info("Function completed successfully");
@@ -166,6 +183,8 @@ exports.createUser = functions.https.onCall(async (data, context) => {
       success: true,
       uid: userRecord.uid,
       message: "User created successfully",
+      emailSent: emailSent,
+      emailError: emailErrorMessage,
     };
   } catch (error) {
     logger.error("Error creating user:", error);
@@ -173,6 +192,20 @@ exports.createUser = functions.https.onCall(async (data, context) => {
 
     if (error instanceof functions.https.HttpsError) {
       throw error;
+    }
+
+    if (error?.errorInfo?.code === "auth/email-already-exists") {
+      throw new functions.https.HttpsError(
+          "already-exists",
+          "A staff member with this email already exists.",
+      );
+    }
+
+    if (error?.errorInfo?.code === "auth/invalid-email") {
+      throw new functions.https.HttpsError(
+          "invalid-argument",
+          "The email address is invalid.",
+      );
     }
 
     throw new functions.https.HttpsError(

@@ -1302,8 +1302,17 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     logger.d('createUser result: ${result.data}');
 
     if (result.data != null && result.data['success'] == true) {
+      final emailSent = result.data['emailSent'] == true;
+      final emailError = result.data['emailError']?.toString();
+
       if (context.mounted) {
-        _showSnackBar(context, 'Staff created. A welcome email has been sent to $userEmail');
+        _showSnackBar(
+          context,
+          emailSent
+              ? 'Staff created. An invite email was sent to $userEmail'
+              : 'Staff created, but the invite email was not sent${emailError != null && emailError.isNotEmpty ? ': $emailError' : '.'}',
+          isError: !emailSent,
+        );
         Navigator.pop(context, true);
       }
     } else {

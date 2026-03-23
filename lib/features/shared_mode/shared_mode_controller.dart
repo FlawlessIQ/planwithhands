@@ -66,7 +66,7 @@ class SharedModeController extends StateNotifier<SharedModeState> {
     return false;
   }
 
-  SharedModeController(Ref _ref) : super(const SharedModeState.disabled());
+  SharedModeController(Ref ref) : super(const SharedModeState.disabled());
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();

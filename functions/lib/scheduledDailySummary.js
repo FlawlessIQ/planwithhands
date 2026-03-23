@@ -667,7 +667,7 @@ async function sendDailySummaryEmails(orgId, orgData, summaryData, date, adminUs
         }
         // SendGrid configuration
         const templateId = 'd-000519b45ca84c0882d31d2cb7965948';
-        const fromEmail = process.env.SENDGRID_FROM_EMAIL || 'noreply@planwithhands.com';
+        const fromEmail = process.env.SENDGRID_FROM_EMAIL || 'noreply@em5998.planwithhands.com';
         const fromName = process.env.SENDGRID_FROM_NAME || 'Hands App';
         const overallPercentage = summaryData.overallPercentage || 0;
         const completedTasks = summaryData.completedTasks || 0;
