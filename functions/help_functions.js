@@ -1,12 +1,7 @@
 const functions = require("firebase-functions");
 const {logger} = require("firebase-functions");
-const admin = require("firebase-admin");
+const {admin, db} = require("./firebase_config");
 const sgMail = require('@sendgrid/mail');
-
-// Initialize Firebase Admin if not already initialized
-if (!admin.apps.length) {
-  admin.initializeApp();
-}
 
 function getSendGridApiKey() {
   return process.env.SENDGRID_API_KEY || process.env.SENDGRID_KEY;
@@ -63,8 +58,6 @@ exports.sendHelpRequest = functions.https.onRequest(async (req, res) => {
   }
 
   try {
-    const db = admin.firestore();
-
     // Get user info - simplified for HTTP function
     let userInfo = {
       userId: "anonymous",

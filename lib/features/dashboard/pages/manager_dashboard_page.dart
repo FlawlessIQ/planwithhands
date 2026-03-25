@@ -3397,7 +3397,7 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                               border: Border.all(color: HandsColors.white12),
                             ),
                             child: DropdownButtonFormField<String>(
-                              value: _selectedShift,
+                              initialValue: _selectedShift,
                               dropdownColor: HandsColors.primaryContainer,
                               style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
                               decoration: InputDecoration(
@@ -3438,7 +3438,7 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                               border: Border.all(color: HandsColors.white12),
                             ),
                             child: DropdownButtonFormField<String>(
-                              value: _selectedCompletion,
+                              initialValue: _selectedCompletion,
                               dropdownColor: HandsColors.primaryContainer,
                               style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
                               decoration: InputDecoration(
@@ -3518,7 +3518,7 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                                 border: Border.all(color: HandsColors.white12),
                               ),
                               child: DropdownButtonFormField<String>(
-                                value: _selectedShift,
+                                initialValue: _selectedShift,
                                 dropdownColor: HandsColors.primaryContainer,
                                 style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
                                 decoration: InputDecoration(
@@ -3561,7 +3561,7 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                                 border: Border.all(color: HandsColors.white12),
                               ),
                               child: DropdownButtonFormField<String>(
-                                value: _selectedCompletion,
+                                initialValue: _selectedCompletion,
                                 dropdownColor: HandsColors.primaryContainer,
                                 style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
                                 decoration: InputDecoration(

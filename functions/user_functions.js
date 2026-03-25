@@ -5,12 +5,7 @@ const sgMail = require("@sendgrid/mail");
 
 function getSendGridApiKey() {
   try {
-    return (
-      process.env.SENDGRID_API_KEY ||
-      process.env.SENDGRID_KEY ||
-      functions.config()?.sendgrid?.api_key ||
-      functions.config()?.sendgrid?.key
-    );
+    return process.env.SENDGRID_API_KEY || process.env.SENDGRID_KEY;
   } catch (error) {
     logger.warn("Error reading SendGrid configuration:", error.message);
     return process.env.SENDGRID_API_KEY || process.env.SENDGRID_KEY;

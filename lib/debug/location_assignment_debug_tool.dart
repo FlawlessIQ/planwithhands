@@ -212,7 +212,7 @@ class _LocationAssignmentDebugToolState extends State<LocationAssignmentDebugToo
               const Text('Select Location:', style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
-                value: _selectedLocationId,
+                initialValue: _selectedLocationId,
                 decoration: const InputDecoration(border: OutlineInputBorder(), labelText: 'Choose location'),
                 items:
                     _locations.map((location) {

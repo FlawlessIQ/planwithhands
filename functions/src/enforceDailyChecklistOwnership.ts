@@ -9,6 +9,7 @@ const db = new Firestore({databaseId: FIRESTORE_DATABASE_ID});
  * If the checklist's template does not include the location, the document is deleted.
  */
 export const enforceDailyChecklistOwnership = functions.firestore
+  .database(FIRESTORE_DATABASE_ID)
   .document("organizations/{orgId}/locations/{locId}/daily_checklists/{checklistId}")
   .onCreate(async (snap, context) => {
     const orgId = context.params.orgId as string;

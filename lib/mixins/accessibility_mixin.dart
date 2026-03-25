@@ -259,7 +259,7 @@ mixin AccessibilityMixin<T extends StatefulWidget> on State<T> {
       hint: hint,
       isRequired: isRequired,
       child: DropdownButtonFormField<T>(
-        value: value,
+        initialValue: value,
         items: items,
         onChanged: onChanged,
         decoration: InputDecoration(labelText: isRequired ? '$label *' : label, hintText: hint),

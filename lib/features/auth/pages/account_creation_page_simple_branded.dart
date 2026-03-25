@@ -752,7 +752,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
 
                     // Billing Period selection
                     DropdownButtonFormField<String>(
-                      value: _isAnnual ? 'Annual' : 'Monthly',
+                      initialValue: _isAnnual ? 'Annual' : 'Monthly',
                       decoration: const InputDecoration(labelText: 'Billing Period', border: OutlineInputBorder()),
                       items: const [
                         DropdownMenuItem(value: 'Monthly', child: Text('Monthly')),
@@ -815,7 +815,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
 
                     // Restaurant/Service industry focused business types
                     DropdownButtonFormField<String>(
-                      value: businessType,
+                      initialValue: businessType,
                       decoration: const InputDecoration(labelText: 'Business Type', border: OutlineInputBorder()),
                       items: const [
                         DropdownMenuItem(value: 'Restaurant', child: Text('Restaurant')),
@@ -878,7 +878,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
 
                   if (!isInvitedUser) ...[
                     DropdownButtonFormField<String>(
-                      value: userRole,
+                      initialValue: userRole,
                       decoration: const InputDecoration(labelText: 'Your Role', border: OutlineInputBorder()),
                       items: const [
                         DropdownMenuItem(value: 'Owner', child: Text('Owner')),

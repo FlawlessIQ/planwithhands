@@ -44,7 +44,7 @@ class WebAssetService {
             cacheWidth: width?.round(),
             cacheHeight: height?.round(),
             errorBuilder:
-                (context, _, __) =>
+                (context, _, _) =>
                     errorWidget ??
                     Container(width: width, height: height, color: Colors.grey[300], child: const Icon(Icons.error)),
           );

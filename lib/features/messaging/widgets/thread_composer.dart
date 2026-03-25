@@ -29,7 +29,7 @@ class _ThreadComposerState extends State<ThreadComposer> {
             const Text('New Message', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              value: _targetType,
+              initialValue: _targetType,
               items: const [
                 DropdownMenuItem(value: 'all_users', child: Text('All Users')),
                 DropdownMenuItem(value: 'custom', child: Text('Custom (later)')),

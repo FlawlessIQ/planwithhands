@@ -1180,7 +1180,7 @@ class _HandsSettingsPageState extends State<HandsSettingsPage> {
                           ),
                           const SizedBox(height: 12),
                           DropdownButtonFormField<String>(
-                            value: localType,
+                            initialValue: localType,
                             items: _businessTypes.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                             onChanged: (v) => setState(() => localType = v),
                             decoration: const InputDecoration(

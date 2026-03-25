@@ -12,7 +12,7 @@ const db = new Firestore({ databaseId: FIRESTORE_DATABASE_ID });
 
 export const syncTodayOnShiftChange = functions
     .region(process.env.FUNCTION_REGION || "us-central1")
-    .firestore.document("organizations/{orgId}/shifts/{shiftId}")
+  .firestore.database(FIRESTORE_DATABASE_ID).document("organizations/{orgId}/shifts/{shiftId}")
     .onUpdate(async (change, context) => {
       const orgId = context.params.orgId as string;
       const shiftId = context.params.shiftId as string;

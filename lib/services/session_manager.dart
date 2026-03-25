@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/services/web_optimized_firestore_service.dart';
 import 'package:hands_app/services/session_notification_service.dart';
 import 'package:hands_app/services/local_storage_service.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 
 /// Session manager that handles Firebase Auth token validation and refresh
 /// Ensures users stay authenticated with valid tokens for optimal app functionality
@@ -129,7 +129,7 @@ class SessionManager {
   Future<void> _loadUserSessionPreference(String userId) async {
     try {
       final prefsDoc =
-          await FirebaseFirestore.instance
+          await FirestoreEnforcer.instance
               .collection('users')
               .doc(userId)
               .collection('preferences')

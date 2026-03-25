@@ -389,7 +389,7 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
 
                       // Category Dropdown
                       DropdownButtonFormField<String>(
-                        value: selectedCategory.value,
+                        initialValue: selectedCategory.value,
                         decoration: InputDecoration(
                           labelText: 'Category',
                           border: const OutlineInputBorder(),
@@ -624,7 +624,10 @@ class _InfoTipState extends State<_InfoTip> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(color: scheme.surfaceContainerHighest.withOpacity(0.5), borderRadius: BorderRadius.circular(6)),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(6),
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [

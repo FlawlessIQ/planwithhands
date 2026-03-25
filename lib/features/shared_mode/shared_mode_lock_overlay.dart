@@ -112,7 +112,7 @@ class _SharedModeLockOverlayState extends ConsumerState<SharedModeLockOverlay> {
 
                                   return ListView.separated(
                                     itemCount: filtered.length,
-                                    separatorBuilder: (_, __) => const Divider(height: 1, color: HandsColors.white12),
+                                    separatorBuilder: (_, _) => const Divider(height: 1, color: HandsColors.white12),
                                     itemBuilder: (context, index) {
                                       final u = filtered[index];
                                       final hasPin = (u['hasPin'] == true);

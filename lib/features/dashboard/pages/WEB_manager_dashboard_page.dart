@@ -2591,7 +2591,7 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                 children: [
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _selectedShift,
+                      initialValue: _selectedShift,
                       style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
                       dropdownColor: HandsColors.primaryContainer,
                       decoration: InputDecoration(
@@ -2637,7 +2637,7 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _selectedCompletion,
+                      initialValue: _selectedCompletion,
                       style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
                       dropdownColor: HandsColors.primaryContainer,
                       decoration: InputDecoration(

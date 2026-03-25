@@ -529,7 +529,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
 
                 // Staff Role Dropdown (0=Employee,1=Manager,2=Admin)
                 DropdownButtonFormField<int>(
-                  value: selectedAccessLevel.value,
+                  initialValue: selectedAccessLevel.value,
                   decoration: const InputDecoration(
                     labelText: 'Staff Role',
                     border: OutlineInputBorder(),

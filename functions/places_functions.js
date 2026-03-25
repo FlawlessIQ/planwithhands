@@ -1,5 +1,5 @@
 const functions = require("firebase-functions");
-const admin = require("firebase-admin");
+const {admin, db} = require("./firebase_config");
 const sgMail = require('@sendgrid/mail');
 
 // Initialize SendGrid - use same approach as working user functions
@@ -141,7 +141,6 @@ exports.placesAutocompleteHttp = functions
           return res.status(400).json({ error: "Message too short" });
         }
 
-        const db = admin.firestore();
         const helpRequestRef = await db.collection("help_requests").add({
           email: email.trim(),
           subject: subject.trim(),

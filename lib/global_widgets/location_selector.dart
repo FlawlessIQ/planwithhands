@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hands_app/services/location_selection_service.dart';
+import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -90,7 +91,7 @@ Future<void> setCurrentLocation({
   required DocumentReference<Map<String, dynamic>> locationRef,
   required String locationName,
 }) async {
-  await FirebaseFirestore.instance.collection('users').doc(uid).update({
+  await FirestoreEnforcer.instance.collection('users').doc(uid).update({
     'currentLocationRef': locationRef,
     'currentLocationId': locationRef.id,
     'currentLocationName': locationName,

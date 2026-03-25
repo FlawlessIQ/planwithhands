@@ -45,7 +45,7 @@ const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || "planwithhand
 const db = new firestore_1.Firestore({ databaseId: FIRESTORE_DATABASE_ID });
 exports.syncTodayOnTemplateChange = functions
     .region(process.env.FUNCTION_REGION || "us-central1")
-    .firestore.document("organizations/{orgId}/checklist_templates/{templateId}")
+    .firestore.database(FIRESTORE_DATABASE_ID).document("organizations/{orgId}/checklist_templates/{templateId}")
     .onWrite(async (change, context) => {
     const orgId = context.params.orgId;
     const templateId = context.params.templateId;

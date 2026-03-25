@@ -45,7 +45,7 @@ const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || "planwithhand
 const db = new firestore_1.Firestore({ databaseId: FIRESTORE_DATABASE_ID });
 exports.syncTodayOnShiftChange = functions
     .region(process.env.FUNCTION_REGION || "us-central1")
-    .firestore.document("organizations/{orgId}/shifts/{shiftId}")
+    .firestore.database(FIRESTORE_DATABASE_ID).document("organizations/{orgId}/shifts/{shiftId}")
     .onUpdate(async (change, context) => {
     const orgId = context.params.orgId;
     const shiftId = context.params.shiftId;

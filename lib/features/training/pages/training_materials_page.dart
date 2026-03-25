@@ -339,7 +339,7 @@ class ViewDocumentsPage extends HookConsumerWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12),
               scrollDirection: Axis.horizontal,
               itemCount: categories.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 6),
+              separatorBuilder: (_, _) => const SizedBox(width: 6),
               itemBuilder: (context, index) {
                 final category = categories[index];
                 final isSelected = selectedCategory.value == category;
@@ -416,7 +416,7 @@ class ViewDocumentsPage extends HookConsumerWidget {
 
                 return ListView.separated(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  separatorBuilder: (_, __) => const SizedBox(height: 6),
+                  separatorBuilder: (_, _) => const SizedBox(height: 6),
                   itemCount: docs.length,
                   itemBuilder: (context, index) {
                     final doc = docs[index];

@@ -191,7 +191,7 @@ class _SendNotificationSheetState extends ConsumerState<SendNotificationSheet> {
 
                 // Recipient type selector
                 DropdownButtonFormField<String>(
-                  value: _recipientType,
+                  initialValue: _recipientType,
                   items: const [
                     DropdownMenuItem(value: 'All Users', child: Text('All Users')),
                     DropdownMenuItem(value: 'Group', child: Text('Send to Group')),
@@ -237,7 +237,7 @@ class _SendNotificationSheetState extends ConsumerState<SendNotificationSheet> {
                 else ...[
                   if (_recipientType == 'Group')
                     DropdownButtonFormField<String>(
-                      value: _selectedGroup,
+                      initialValue: _selectedGroup,
                       decoration: InputDecoration(
                         labelText: 'Select Group',
                         labelStyle: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 14),
@@ -283,7 +283,7 @@ class _SendNotificationSheetState extends ConsumerState<SendNotificationSheet> {
                     ),
                   if (_recipientType == 'Location')
                     DropdownButtonFormField<String>(
-                      value: _selectedLocation,
+                      initialValue: _selectedLocation,
                       items:
                           _locations
                               .map(
@@ -421,7 +421,10 @@ class _InfoTipState extends State<_InfoTip> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(color: scheme.surfaceContainerHighest.withOpacity(0.5), borderRadius: BorderRadius.circular(6)),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(6),
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [

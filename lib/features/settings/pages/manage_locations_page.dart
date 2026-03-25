@@ -166,7 +166,7 @@ class _ManageLocationsPageState extends State<ManageLocationsPage> {
 
           return ListView.separated(
             itemCount: docs.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
+            separatorBuilder: (_, _) => const Divider(height: 1),
             itemBuilder: (context, index) {
               final d = docs[index];
               final data = d.data() as Map<String, dynamic>? ?? {};

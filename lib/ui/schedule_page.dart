@@ -514,7 +514,7 @@ class _SchedulePageState extends State<SchedulePage> {
                 // Location Selector - only show if multiple locations
                 if (_locations.length > 1)
                   DropdownButtonFormField<String>(
-                    value: _selectedLocation,
+                    initialValue: _selectedLocation,
                     decoration: const InputDecoration(labelText: 'Location', border: OutlineInputBorder()),
                     items:
                         _locations.map((loc) {

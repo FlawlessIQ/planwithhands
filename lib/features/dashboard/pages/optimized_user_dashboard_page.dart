@@ -227,7 +227,7 @@ class OptimizedUserDashboardPage extends HookWidget {
           const Text('Location: ', style: TextStyle(fontWeight: FontWeight.w500)),
           Expanded(
             child: DropdownButtonFormField<String?>(
-              value: _effectiveSelectedId(snapshot),
+              initialValue: _effectiveSelectedId(snapshot),
               decoration: const InputDecoration(
                 contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 border: OutlineInputBorder(),
