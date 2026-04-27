@@ -18,7 +18,11 @@ export const diagnoseRuntimeEnv = functions.https.onCall(async (_data, context) 
 
   return {
     firestoreDatabaseId: FIRESTORE_DATABASE_ID,
-    hasSendgridApiKey: !!process.env.SENDGRID_API_KEY,
+    hasSendgridApiKey: !!(process.env.SENDGRID_API_KEY || process.env.SENDGRID_KEY),
+    hasSendgridFromEmail: !!process.env.SENDGRID_FROM_EMAIL,
+    hasSendgridFromName: !!process.env.SENDGRID_FROM_NAME,
+    effectiveSendgridFromEmail: process.env.SENDGRID_FROM_EMAIL || "noreply@planwithhands.com",
+    effectiveSendgridFromName: process.env.SENDGRID_FROM_NAME || "Hands App",
     hasAppBaseUrl: !!process.env.APP_BASE_URL,
     hasStripeSecretKey: !!process.env.STRIPE_SECRET_KEY,
     hasGooglePlacesApiKey: !!process.env.GOOGLE_PLACES_API_KEY,

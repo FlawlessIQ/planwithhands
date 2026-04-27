@@ -19,23 +19,31 @@ class _ThreadComposerState extends State<ThreadComposer> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: Form(
         key: _formKey,
         child: ListView(
           padding: const EdgeInsets.all(16),
           shrinkWrap: true,
           children: [
-            const Text('New Message', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text(
+              'New Broadcast',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               initialValue: _targetType,
               items: const [
-                DropdownMenuItem(value: 'all_users', child: Text('All Users')),
-                DropdownMenuItem(value: 'custom', child: Text('Custom (later)')),
+                DropdownMenuItem(value: 'all_users', child: Text('Everyone')),
+                DropdownMenuItem(
+                  value: 'custom',
+                  child: Text('Custom audience (later)'),
+                ),
               ],
               onChanged: (v) => setState(() => _targetType = v!),
-              decoration: const InputDecoration(labelText: 'Target'),
+              decoration: const InputDecoration(labelText: 'Audience'),
             ),
             const SizedBox(height: 8),
             SwitchListTile(
@@ -46,8 +54,15 @@ class _ThreadComposerState extends State<ThreadComposer> {
             HandsTextFormField(
               controller: _messageCtrl,
               maxLines: 4,
-              decoration: const InputDecoration(labelText: 'Message', border: OutlineInputBorder()),
-              validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter a message' : null,
+              decoration: const InputDecoration(
+                labelText: 'Message',
+                border: OutlineInputBorder(),
+              ),
+              validator:
+                  (v) =>
+                      (v == null || v.trim().isEmpty)
+                          ? 'Enter a message'
+                          : null,
             ),
             const SizedBox(height: 16),
             ElevatedButton(
@@ -60,7 +75,8 @@ class _ThreadComposerState extends State<ThreadComposer> {
                   pushOnLogin: _pushOnLogin,
                 );
                 await svc.sendMessage(threadId, _messageCtrl.text.trim());
-                if (mounted) Navigator.pop(context, threadId);
+                if (!context.mounted) return;
+                Navigator.of(context).pop(threadId);
               },
               child: const Text('Send'),
             ),

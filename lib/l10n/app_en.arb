@@ -1,0 +1,2281 @@
+{
+  "@@locale": "en",
+  "languageTitle": "Language",
+  "languageDescription": "Choose the language used for your staff experience.",
+  "languageEnglish": "English",
+  "languageSpanish": "Spanish",
+  "languagePortuguese": "Portuguese (Brazil)",
+  "languageSaved": "Language updated.",
+  "commonCancel": "Cancel",
+  "commonDelete": "Delete",
+  "commonArchive": "Archive",
+  "commonUnarchive": "Unarchive",
+  "commonOk": "OK",
+  "commonDone": "Done",
+  "commonErrorTitle": "Error",
+  "commonEmail": "Email",
+  "commonPassword": "Password",
+  "commonClose": "Close",
+  "commonRole": "Role",
+  "commonName": "Name",
+  "commonBackToSignIn": "Back to Sign In",
+  "commonGoToSignIn": "Go to Sign In",
+  "commonOpenHands": "Open Hands",
+  "commonNotSpecified": "Not specified",
+  "commonContinueIn": "Continue in",
+  "commonWebApp": "Web App",
+  "loginTitle": "Sign in",
+  "loginIntroTitle": "Operations, minus the chaos.",
+  "loginIntroBody": "Sign in to manage shifts, tasks, documents, and team execution from one place.",
+  "loginFeatureLiveTaskTracking": "Live task tracking",
+  "loginFeatureSharedTeamWorkflows": "Shared team workflows",
+  "loginFeatureOperationalVisibility": "Operational visibility",
+  "loginWelcomeBack": "Welcome back",
+  "loginWelcomeBackBody": "Use your email and password to continue.",
+  "loginEmailLabel": "Email",
+  "loginEmailHint": "you@restaurant.com",
+  "loginPasswordLabel": "Password",
+  "loginPasswordHint": "Enter password",
+  "loginHidePassword": "Hide password",
+  "loginShowPassword": "Show password",
+  "loginSignIn": "Sign in",
+  "loginForgotPassword": "Forgot password?",
+  "loginNeedAccessTitle": "Need access?",
+  "loginNeedAccessBody": "If you need access to an existing organization, ask your manager to send you an invite.",
+  "loginNeedAccountTitle": "Need an account?",
+  "loginNeedAccountBody": "Create a trial organization or accept an invite from your manager.",
+  "loginSignUp": "Sign up",
+  "loginVersion": "Version {version}",
+  "@loginVersion": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "loginEnterEmail": "Please enter your email",
+  "loginEnterValidEmail": "Please enter a valid email",
+  "loginEnterPassword": "Please enter your password",
+  "loginProfileNotFound": "User profile not found. Please contact support.",
+  "loginResetPasswordTitle": "Reset Password",
+  "loginResetPasswordSubtitle": "Enter the email tied to your Hands account and we’ll send a secure reset link.",
+  "loginResetPasswordBody": "We’ll send a password reset email right away.",
+  "loginResetEmailAddressLabel": "Email address",
+  "loginResetEmailHint": "Email Address",
+  "loginResetSendButton": "Send Reset Link",
+  "loginResetEmailSent": "Password reset email sent to {email}",
+  "@loginResetEmailSent": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
+  "loginEnterEmailAddress": "Please enter your email address.",
+  "loginEnterValidEmailAddress": "Please enter a valid email address.",
+  "loginResetFailed": "Failed to send reset email.",
+  "loginNoAccountFound": "No account found with this email address.",
+  "loginTooManyRequests": "Too many requests. Please try again later.",
+  "welcomeInviteUnavailable": "Invite unavailable",
+  "welcomeToOrganization": "Welcome to {organizationName}!",
+  "@welcomeToOrganization": {
+    "placeholders": {
+      "organizationName": {
+        "type": "String"
+      }
+    }
+  },
+  "welcomeInviteBody": "You’ve been invited to join {organizationName}. Complete your account setup to get started.",
+  "@welcomeInviteBody": {
+    "placeholders": {
+      "organizationName": {
+        "type": "String"
+      }
+    }
+  },
+  "welcomeAccountDetails": "Account Details",
+  "welcomeCompleteSetupTitle": "Complete Your Account Setup",
+  "welcomeCompleteSetupBody": "Create a password to finish setting up your account. Your organization access and role will be applied automatically from this invite.",
+  "welcomeNewPasswordLabel": "New Password",
+  "welcomeNewPasswordHint": "Create a new password",
+  "welcomeConfirmPasswordLabel": "Confirm New Password",
+  "welcomeConfirmPasswordHint": "Confirm your new password",
+  "welcomeEnterNewPassword": "Please enter a new password",
+  "welcomePasswordMinLength": "Password must be at least 6 characters",
+  "welcomeConfirmNewPassword": "Please confirm your new password",
+  "welcomePasswordsDoNotMatch": "Passwords do not match",
+  "welcomeCompleteSetupButton": "Complete Setup",
+  "welcomeAccountSetupCompleteTitle": "Account Setup Complete",
+  "welcomeAccountReady": "Your account is ready to use.",
+  "welcomeOpenOnWeb": "You can open Hands on the web right now. Mobile app download is optional.",
+  "welcomeDownloadOnThe": "Download on the",
+  "welcomeAppStore": "App Store",
+  "welcomeUseSameCredentials": "Use the same email and password you just created anywhere you sign in.",
+  "welcomeInviteAccepted": "This invite has already been accepted. Sign in with your account to continue.",
+  "welcomeInviteExpired": "This invite link has expired. Ask your administrator to send you a new invite.",
+  "welcomeInviteRevoked": "This invite was revoked by your administrator. Ask them to send a new invite if you still need access.",
+  "welcomeInviteInvalid": "This invite link is not valid or is no longer available.",
+  "welcomeRoleGeneralUser": "General User",
+  "welcomeRoleManager": "Manager",
+  "welcomeRoleAdmin": "Admin",
+  "welcomeRoleUser": "User",
+  "welcomeFailedSetup": "Failed to set up account: {error}",
+  "@welcomeFailedSetup": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "welcomeInviteUsed": "This invite has already been used. Sign in with your account instead.",
+  "welcomeInviteExistingAccount": "An account already exists for this email. Sign in instead, or ask your administrator if you expected a fresh invite.",
+  "welcomeInviteExpiredError": "This invite has expired. Ask your administrator to send a new one.",
+  "welcomeInviteRevokedError": "This invite has been revoked. Ask your administrator for a new invite.",
+  "welcomeInviteMissingEmail": "Invite is missing an email address.",
+  "notificationsInbox": "Inbox",
+  "notificationsUnread": "Unread",
+  "notificationsRead": "Read",
+  "notificationsArchived": "Archived",
+  "notificationsHeaderSubtitle": "Unread updates, read items, and archived messages.",
+  "notificationsDeleteTitle": "Delete Message",
+  "notificationsDeleteBody": "Are you sure you want to permanently delete this message? This action cannot be undone.",
+  "notificationsDeleteSuccess": "Message deleted successfully",
+  "notificationsDeleteFailed": "Failed to delete message: {error}",
+  "@notificationsDeleteFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "notificationsNoMessagesIn": "No messages in {filter}",
+  "@notificationsNoMessagesIn": {
+    "placeholders": {
+      "filter": {
+        "type": "String"
+      }
+    }
+  },
+  "notificationsNewMessage": "New Message",
+  "notificationsNoContent": "No content",
+  "notificationsLoadMore": "Load More",
+  "notificationsYesterdayAt": "Yesterday {time}",
+  "@notificationsYesterdayAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "contactUsTitle": "Contact Us",
+  "contactUsSuccess": "Help request sent successfully! We’ll get back to you within 24 hours.",
+  "contactUsFailed": "Failed to send help request",
+  "contactUsNetworkError": "Network error. Please try again.",
+  "contactUsOverviewTitle": "Support, without the back-and-forth.",
+  "contactUsOverviewBody": "Send one clear request and our team will respond with the right help for setup, billing, bugs, or workflow questions.",
+  "contactUsTechnicalIssues": "Technical issues",
+  "contactUsBillingQuestions": "Billing questions",
+  "contactUsTeamSetupHelp": "Team setup help",
+  "contactUsWhatToExpect": "What to expect",
+  "contactUsTypicalResponse": "Typical response",
+  "contactUsTypicalResponseValue": "Within 24 hours",
+  "contactUsBestFor": "Best for",
+  "contactUsBestForValue": "Product help, billing, and setup",
+  "contactUsHelpfulDetails": "Helpful details",
+  "contactUsHelpfulDetailsValue": "Location, role, and what happened",
+  "contactUsSupportContext": "Support context",
+  "contactUsSupportContextBody": "We will include the current help and location context automatically.",
+  "bottomNavTodayTasks": "Today's Tasks",
+  "bottomNavDashboard": "Dashboard",
+  "bottomNavSetup": "Setup",
+  "bottomNavDocumentCenter": "Document Center",
+  "messagesTitle": "Communications",
+  "messagesHeaderSubtitle": "Inbox keeps everyone up to date. Broadcasts send new updates. Audiences organize who receives them.",
+  "messagesInboxTab": "Inbox",
+  "messagesBroadcastsTab": "Broadcasts",
+  "messagesAudiencesTab": "Audiences",
+  "messagesBroadcastsTitle": "Broadcasts",
+  "messagesBroadcastsBody": "Send a clear update to everyone, a location, or a custom audience.",
+  "messagesBroadcastsHelp": "Use broadcasts for clean team-wide or location-specific updates that should stay visible in Inbox.",
+  "messagesNewBroadcast": "New broadcast",
+  "messagesBroadcastsUnavailable": "Broadcasts unavailable",
+  "messagesOrgContextMissing": "We could not determine your organization context.",
+  "messagesNoBroadcasts": "No broadcasts yet",
+  "messagesNoBroadcastsBody": "Your sent updates will appear here once you broadcast to the team.",
+  "messagesSending": "Sending...",
+  "messagesEveryone": "Everyone",
+  "messagesCustomAudience": "Custom audience",
+  "messagesLocation": "Location",
+  "messagesUntitledBroadcast": "Untitled broadcast",
+  "messagesAudiencesTitle": "Audiences",
+  "messagesAudiencesBody": "Create reusable audience lists so the right team gets the right update every time.",
+  "messagesAudiencesHelp": "Audiences are reusable recipient groups that help you send the right broadcast to the right team.",
+  "broadcastSheetTitle": "New broadcast",
+  "broadcastSheetSubtitle": "Send a clear update to everyone, a location, or a saved audience.",
+  "broadcastSendButton": "Send broadcast",
+  "broadcastInfoTip": "Broadcasts appear in the team inbox and can also send a push notification.",
+  "broadcastAudienceSectionTitle": "Audience",
+  "broadcastRecipientEveryone": "Everyone",
+  "broadcastRecipientSavedAudience": "Saved audience",
+  "broadcastRecipientLocation": "Specific location",
+  "broadcastSendToLabel": "Send to",
+  "broadcastChooseAudience": "Choose an audience",
+  "broadcastSelectAudience": "Select an audience",
+  "broadcastSelectLocation": "Select a location",
+  "broadcastMessageSectionTitle": "Message",
+  "broadcastHeadlineLabel": "Headline",
+  "broadcastEnterHeadline": "Enter a headline",
+  "broadcastMessageLabel": "Message",
+  "broadcastMessageHint": "What should the team know right now?",
+  "broadcastEnterMessage": "Enter a message",
+  "broadcastDismiss": "Dismiss",
+  "broadcastAutoTitleAudience": "Update for {name}",
+  "@broadcastAutoTitleAudience": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "broadcastAutoTitleAudienceFallback": "Audience update",
+  "broadcastAutoTitleLocation": "Update for {name}",
+  "@broadcastAutoTitleLocation": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "broadcastAutoTitleLocationFallback": "Location update",
+  "broadcastAutoTitleTeam": "Team update",
+  "audienceSheetSubtitle": "Create reusable audience lists so managers can target the right team quickly.",
+  "audienceSavedTitle": "Saved audiences",
+  "audienceNewTitle": "New audience",
+  "audienceNameLabel": "Audience name",
+  "audienceSearchMembers": "Search team members",
+  "audienceTeamMembers": "Team members",
+  "audienceMembersTitle": "Audience members",
+  "audienceCreateButton": "Create audience",
+  "audienceEditTitle": "Edit audience",
+  "audienceDeleteTitle": "Delete audience",
+  "audienceEnterNameAndMember": "Enter an audience name and select at least one team member.",
+  "audienceCreatedSuccess": "Audience created successfully!",
+  "audienceUpdatedSuccess": "Audience updated successfully!",
+  "audienceDeletedSuccess": "Audience deleted successfully!",
+  "audienceDeleteBody": "Are you sure you want to delete the audience \"{groupName}\"? This action cannot be undone.",
+  "@audienceDeleteBody": {
+    "placeholders": {
+      "groupName": {
+        "type": "String"
+      }
+    }
+  },
+  "messagesManageAudiences": "Manage audiences",
+  "messagesAudiencesUnavailable": "Audiences unavailable",
+  "messagesNoAudiences": "No custom audiences yet",
+  "messagesNoAudiencesBody": "Start with custom audiences for teams like Bar, Kitchen, or Weekend crew.",
+  "messagesCustomAudiencesMetric": "Custom audiences",
+  "messagesLinkedMembersMetric": "Linked members",
+  "messagesUnnamedAudience": "Unnamed audience",
+  "messagesMemberCount": "{count} members",
+  "@messagesMemberCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "threadTitle": "Thread",
+  "threadNoMessages": "No messages yet",
+  "threadMessageHint": "Message",
+  "threadDeleteTitle": "Delete Message",
+  "threadDeleteBody": "Are you sure you want to delete this message? This action cannot be undone.",
+  "threadDeleteSuccess": "Message deleted successfully",
+  "threadDeleteFailed": "Failed to delete message: {error}",
+  "@threadDeleteFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "commonOpen": "Open",
+  "commonReplay": "Replay",
+  "helpTitle": "Help",
+  "helpSubtitle": "Find the fastest way to complete work, set up operations, or fix a problem.",
+  "helpSearchHint": "Search help, setup, or troubleshooting",
+  "helpSearchResultsTitle": "Search results",
+  "helpNoSearchResults": "No help topics matched that search yet.",
+  "helpTopicsFoundForRole": "{count} topics found for {role}",
+  "@helpTopicsFoundForRole": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "role": {
+        "type": "String"
+      }
+    }
+  },
+  "helpStartHereTitle": "Start Here",
+  "helpOpenHelp": "Open Help",
+  "helpOpenWalkthrough": "Open walkthrough",
+  "helpStartHereSectionSubtitle": "Begin with the shortest path for your role.",
+  "helpNewHereTitle": "I'm new here",
+  "helpNewHereBody": "Get the role-aware walkthrough of the app without reading every guide first.",
+  "helpOpenStartHere": "Open Start Here",
+  "helpBrowseByRoleTitle": "Browse by role",
+  "helpBrowseByRoleBody": "See only the topics for your job.",
+  "helpFixProblemTitle": "Fix a problem",
+  "helpFixProblemBody": "Go straight to troubleshooting.",
+  "helpBrowseByRoleSectionSubtitle": "Switch perspective without changing accounts.",
+  "helpReplayGuidedTourTitle": "Replay guided tour",
+  "helpReplayGuidedTourSubtitle": "Jump back into the in-app walkthrough for your current role whenever you need a refresher.",
+  "helpWhatsNewTitle": "What's new",
+  "helpWhatsNewSubtitle": "Reopen the latest major update summary and jump into the guided tour again.",
+  "helpMajorUpdateAvailable": "Major update available",
+  "helpLatestMajorRelease": "Latest major release",
+  "helpOpenLatestReleaseUpdateBody": "Open the latest release summary and update instructions for your role.",
+  "helpOpenLatestReleaseTourBody": "Open the latest release summary and relaunch the guided tour for your role.",
+  "helpPopularTasksTitle": "Popular tasks",
+  "helpPopularTasksSubtitle": "The most useful guides for {role} right now.",
+  "@helpPopularTasksSubtitle": {
+    "placeholders": {
+      "role": {
+        "type": "String"
+      }
+    }
+  },
+  "helpRoleBannerTitle": "Help for {role}",
+  "@helpRoleBannerTitle": {
+    "placeholders": {
+      "role": {
+        "type": "String"
+      }
+    }
+  },
+  "helpStillStuckTitle": "Still stuck?",
+  "helpStillStuckBody": "Open troubleshooting first or contact support with the issue you are seeing right now.",
+  "helpContactSupport": "Contact support",
+  "settingsPageTitle": "Settings",
+  "settingsHeroTitle": "Account and workspace settings",
+  "settingsHeroHelp": "Use Settings for account details, preferences, and support without losing focus on operations.",
+  "settingsHeroAdminBody": "Manage your profile, business details, billing, and operational preferences from one place.",
+  "settingsHeroStaffBody": "Manage your profile, password, and notification preferences from one place.",
+  "settingsPreferencesTitle": "Preferences",
+  "settingsPreferencesSaved": "Preferences saved successfully!",
+  "settingsPreferencesSaveFailed": "Failed to save preferences: {error}",
+  "@settingsPreferencesSaveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsProfileTitle": "Profile",
+  "settingsProfileSubtitle": "Your account details and sign-in email.",
+  "settingsBusinessTitle": "Business",
+  "settingsBusinessSubtitle": "Core organization details shown across the app.",
+  "settingsLocationsTitle": "Locations",
+  "settingsLocationsSubtitle": "Manage where your team works and where shifts run.",
+  "settingsLocationsBody": "Add, review, or adjust locations tied to your organization.",
+  "settingsLocationSupportEmail": "Please email us at support@planwithhands.com",
+  "settingsGuidedToursTitle": "Guided tours",
+  "settingsGuidedToursSubtitle": "Replay the in-app walkthrough for your current role whenever you need a refresher.",
+  "settingsReplayTour": "Replay {role} tour",
+  "@settingsReplayTour": {
+    "placeholders": {
+      "role": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsWhatsNew": "What’s new",
+  "settingsSecurityTitle": "Security",
+  "settingsSecuritySubtitle": "Password reset and session-related access controls.",
+  "settingsResetPassword": "Reset password",
+  "settingsSignedInAs": "Signed in as",
+  "settingsOrganization": "Organization",
+  "settingsSessionTimeout": "Session Timeout",
+  "settingsSessionTimeoutSubtitle": "Automatically log out after a period of inactivity",
+  "settingsSessionTimeoutDone": "Done",
+  "settingsSessionTimeout2Hours": "2 Hours",
+  "settingsSessionTimeout2HoursBody": "High security - auto logout after 2 hours",
+  "settingsSessionTimeout4Hours": "4 Hours",
+  "settingsSessionTimeout4HoursBody": "Balanced security - auto logout after 4 hours",
+  "settingsSessionTimeout8Hours": "8 Hours",
+  "settingsSessionTimeout8HoursBody": "Recommended - good for work shifts",
+  "settingsSessionTimeout24Hours": "24 Hours",
+  "settingsSessionTimeout24HoursBody": "Extended access - logout after 1 day",
+  "settingsResetEmailInvalid": "Please enter a valid email address",
+  "settingsResetEmailSentVerified": "Password reset sent to verified email {email}. Verify your new email to use it for login.",
+  "@settingsResetEmailSentVerified": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsResetEmailSent": "Password reset email sent to {email}",
+  "@settingsResetEmailSent": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsResetEmailFailed": "Failed to send reset email",
+  "settingsResetEmailUserNotFound": "No account found with this email address",
+  "settingsResetEmailTooManyRequests": "Too many requests. Please try again later",
+  "settingsSummaryPeriodTitle": "Select summary period",
+  "settingsSummaryPeriodCalendar": "Calendar Day",
+  "settingsSummaryPeriodCalendarBody": "Today's tasks only (6am to 6am)",
+  "settingsSummaryPeriodBusiness": "Business Day",
+  "settingsSummaryPeriodBusinessBody": "Includes last night's closing tasks",
+  "settingsDailySummaryHourTitle": "Select daily summary hour",
+  "settingsDailySummaryFixedMinutes": "Minutes are fixed to :00",
+  "settingsOrganizationDailySummaryUpdated": "Organization daily summary settings updated!",
+  "settingsOrganizationDailySummaryFailed": "Failed to save organization settings: {error}",
+  "@settingsOrganizationDailySummaryFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsDailySummaryEmailTitle": "Daily Summary Email",
+  "settingsDailySummaryEmailSubtitle": "Receive daily task completion summaries",
+  "settingsDailySummaryTimeTitle": "Daily Summary Time",
+  "settingsDailySummaryTimeSubtitle": "When to receive your daily summary",
+  "settingsDailySummaryRateLimitTitle": "Rate Limit",
+  "settingsDailySummaryChangeBlocked": "Cannot change the daily summary right now.",
+  "settingsDailySummaryConfirmTitle": "Confirm Time Change",
+  "settingsDailySummaryTimePassedTitle": "Time Has Passed",
+  "settingsDailySummaryProceedQuestion": "Proceed with the time change?",
+  "settingsDailySummarySendNowTitle": "Send now?",
+  "settingsDailySummarySendNowBody": "Would you like to send today's summary immediately instead of waiting until tomorrow?",
+  "settingsDailySummarySendNowLater": "No, wait",
+  "settingsDailySummarySendNowAction": "Yes, send now",
+  "settingsDailySummaryResultSuccess": "Success",
+  "settingsDailySummaryResultError": "Error",
+  "settingsSummaryPeriodLabel": "Summary Period",
+  "settingsSummaryPeriodLabelSubtitle": "Choose if summary includes late-night tasks",
+  "settingsDashboardMetricsTitle": "Dashboard Metrics",
+  "settingsDashboardMetricsSubtitle": "Recalculate dashboard metrics from today",
+  "settingsRefresh": "Refresh",
+  "settingsLoadingSubscriptionData": "Loading subscription data...",
+  "settingsLoadingSubscriptionDetails": "Loading subscription details...",
+  "settingsTrialEndingSoon": "Trial Ending Soon",
+  "settingsFreeTrialDays": "{days}-Day Free Trial",
+  "@settingsFreeTrialDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsTrialContinueUntil": "Your trial will continue until {date}, but you won't be charged.",
+  "@settingsTrialContinueUntil": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsTrialChargeOn": "You're on a {days}-day free trial. Your first charge will occur on {date} unless canceled.",
+  "@settingsTrialChargeOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsCancelSubscription": "Cancel Subscription",
+  "settingsManageBilling": "Manage Billing",
+  "settingsBillingPortal": "Billing Portal",
+  "settingsBillingPortalFailed": "Failed to open billing portal: {error}",
+  "@settingsBillingPortalFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsTrialAndBilling": "Trial & Billing",
+  "settingsSubscriptionManagement": "Subscription Management",
+  "settingsPlannedLocations": "Planned Locations:",
+  "settingsSubscribedLocations": "Subscribed Locations:",
+  "settingsLocationsInUse": "Locations in Use:",
+  "settingsMonthlyCost": "Monthly Cost:",
+  "settingsStatus": "Status:",
+  "settingsSubscriptionOverUsage": "You're using more locations than your subscription allows. Please upgrade to avoid service interruption.",
+  "settingsAddBilling": "Add Billing",
+  "settingsManageSubscription": "Manage Subscription",
+  "settingsBillingWebOnly": "To manage your subscription, please visit https://planwithhands.com and click \"Login\" on the top right. Subscriptions must be managed via the web portal.",
+  "settingsBillingPortalWebOnly": "To manage billing, please open this page in Safari or Chrome and visit the billing portal. Subscriptions must be managed via the web portal.",
+  "settingsTalkToSales": "Talk to Sales",
+  "settingsNoOrganizationFound": "No organization found. Please contact support.",
+  "settingsOrganizationInformation": "Organization Information",
+  "settingsOrganizationLabel": "Organization:",
+  "settingsBusinessTypeLabel": "Business Type:",
+  "settingsNotSet": "Not set",
+  "settingsActiveLocations": "Active Locations:",
+  "settingsNeedHelp": "Need Help?",
+  "settingsSupportContactBody": "For subscription management, billing questions, or technical support, please contact us:",
+  "settingsSupportEmailPrompt": "Please email us at support@planwithhands.com",
+  "settingsContactSalesBody": "For 5 or more locations, please contact our sales team for a customized plan.",
+  "settingsSubscriptionUpgraded": "Subscription upgraded!",
+  "settingsSubscriptionUpdated": "Subscription updated!",
+  "settingsSubscriptionUpdateFailed": "Failed to update: {error}",
+  "@settingsSubscriptionUpdateFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsSubscriptionChangeIncrease": "increase",
+  "settingsSubscriptionChangeDecrease": "decrease",
+  "settingsUpgradeSubscription": "Upgrade Subscription",
+  "settingsDowngradeSubscription": "Downgrade Subscription",
+  "settingsSubscriptionAboutToChange": "You're about to {change} your location subscription:",
+  "@settingsSubscriptionAboutToChange": {
+    "placeholders": {
+      "change": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsFrom": "From:",
+  "settingsTo": "To:",
+  "settingsLocationsCount": "{count} locations",
+  "@settingsLocationsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsMonthlyChange": "Monthly change:",
+  "settingsPerMonth": "/month",
+  "settingsBillingEffectiveNextCycle": "New billing amount takes effect on your next billing cycle.",
+  "settingsCurrent": "Current:",
+  "settingsInUse": "In use:",
+  "settingsCannotReduceBelow": "Cannot reduce below {currentUsage} (current usage). Delete locations first.",
+  "@settingsCannotReduceBelow": {
+    "placeholders": {
+      "currentUsage": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsNoChanges": "No Changes",
+  "settingsUpgrade": "Upgrade",
+  "settingsDowngrade": "Downgrade",
+  "settingsStatusActive": "ACTIVE",
+  "settingsStatusTrial": "TRIAL",
+  "settingsStatusPastDue": "PAST DUE",
+  "settingsStatusCanceled": "CANCELED",
+  "settingsStatusUnpaid": "UNPAID",
+  "settingsStatusPending": "PENDING",
+  "settingsAccountTitle": "Account",
+  "settingsAccountSubtitle": "Device sign-out and irreversible account actions.",
+  "settingsSignOut": "Sign out",
+  "settingsSignOutSubtitle": "This signs you out on this device and returns you to the login screen.",
+  "settingsSigningOut": "Signing out...",
+  "settingsSignOutFailed": "Failed to sign out: {error}",
+  "@settingsSignOutFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsDeleteAccount": "Delete account",
+  "settingsDeleteAccountWarningTitle": "Delete Account?",
+  "settingsDeleteAccountWarningBody": "This will permanently delete your account and all associated personal data. This action CANNOT be undone.",
+  "settingsDeleteAccountReinviteBody": "If you proceed and later want to use Hands again, you will need to receive a NEW INVITE from your administrator to re-sign up.",
+  "settingsDeleteAccountContinueQuestion": "Do you still want to continue?",
+  "settingsDeleteAccountConfirmAction": "Yes, Delete",
+  "settingsDeleteAccountBody": "This will permanently delete your account and all your data. This action cannot be undone.",
+  "settingsDeleteAccountPasswordPrompt": "Please enter your password to confirm:",
+  "settingsDeleteAccountPasswordHint": "Password",
+  "settingsDeletingAccount": "Deleting account...",
+  "settingsDeleteAccountSuccess": "Account deleted successfully",
+  "settingsDeleteAccountFailed": "Failed to delete account",
+  "settingsDeleteAccountWrongPassword": "Incorrect password. Please try again.",
+  "settingsDeleteAccountRelogin": "Please log out and log back in, then try again.",
+  "settingsDeleteAccountTooManyRequests": "Too many failed attempts. Please try again later.",
+  "settingsAddLocation": "Add location",
+  "settingsEdit": "Edit",
+  "settingsFirstName": "First name",
+  "settingsLastName": "Last name",
+  "settingsEditProfileTitle": "Edit profile",
+  "settingsEditProfileSubtitle": "Update your name and sign-in email.",
+  "settingsSaveChanges": "Save changes",
+  "settingsProfileSignInRequired": "Please sign in to edit profile",
+  "settingsProfileSavedVerifyEmail": "Profile saved. Verify new email.",
+  "settingsProfileUpdatedSuccess": "Profile updated successfully!",
+  "settingsProfileUpdateFailed": "Failed to update profile",
+  "settingsProfileErrorReloginToChangeEmail": "Log out/in again to change email",
+  "settingsProfileErrorEmailInUse": "Email already in use",
+  "settingsProfileErrorInvalidEmail": "Invalid email address",
+  "settingsFieldEnterFirstName": "Enter first name",
+  "settingsFieldEnterLastName": "Enter last name",
+  "settingsInvalidEmail": "Invalid email",
+  "settingsBusinessName": "Business name",
+  "settingsBusinessType": "Business type",
+  "commonRequired": "Required",
+  "commonHide": "Hide",
+  "helpSupportRequest": "{role} support request",
+  "@helpSupportRequest": {
+    "placeholders": {
+      "role": {
+        "type": "String"
+      }
+    }
+  },
+  "helpRolePageTitle": "{role} help",
+  "@helpRolePageTitle": {
+    "placeholders": {
+      "role": {
+        "type": "String"
+      }
+    }
+  },
+  "helpTroubleshootingTitle": "Troubleshooting",
+  "helpTroubleshootingSubtitle": "Fix blockers fast by starting with the symptom you are seeing right now.",
+  "helpTroubleshootingSearchHint": "Search a problem like missing shift or wrong location",
+  "helpTroubleshootingIntroTitle": "Troubleshooting works best when you start with the exact symptom.",
+  "helpTroubleshootingIntroBody": "Check the active location, current role, and screen context first. A lot of issues are actually scoping or setup problems.",
+  "helpTroubleshootingCommonProblems": "Common problems",
+  "helpTroubleshootingResults": "Results",
+  "helpTroubleshootingNoResults": "No troubleshooting guides matched that search. Try a simpler symptom or contact support.",
+  "helpNeedMoreHelpTitle": "Need more help?",
+  "helpNeedMoreHelpBody": "Send support the exact issue, location, and screen you were on. We will include the troubleshooting context automatically.",
+  "helpTopicScreenLabel": "Help topic",
+  "helpTopicMissingSubtitle": "That topic could not be found.",
+  "helpTopicMissingBody": "The guide you tried to open no longer exists or has not been added yet.",
+  "helpReturnToHelp": "Return to Help",
+  "helpMinutes": "{count} min",
+  "@helpMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "helpWhyThisMatters": "Why this matters",
+  "helpDoThisNow": "Do this now",
+  "helpWhatGoodLooksLike": "What good looks like",
+  "helpCommonMistakes": "Common mistakes",
+  "helpMoreRoleHelp": "More {role} help",
+  "@helpMoreRoleHelp": {
+    "placeholders": {
+      "role": {
+        "type": "String"
+      }
+    }
+  },
+  "helpRelatedHelp": "Related help",
+  "helpStartHerePageSubtitle": "A fast walkthrough of the essentials for your role so you can use the app without guesswork.",
+  "helpFollowTheseSteps": "Follow these steps",
+  "helpKeepGoing": "Keep going",
+  "helpRoleStaff": "Staff",
+  "helpRoleManager": "Manager",
+  "helpRoleAdmin": "Admin",
+  "helpRoleStaffShortDescription": "Daily work, shifts, tasks, and carryover",
+  "helpRoleManagerShortDescription": "Daily oversight, follow-up, and broadcasts",
+  "helpRoleAdminShortDescription": "Setup, workflows, team access, and operations",
+  "helpCategoryDailyWork": "Daily Work",
+  "helpCategoryDailyWorkDescription": "Get through your shift and finish tasks cleanly.",
+  "helpCategoryOversight": "Daily Oversight",
+  "helpCategoryOversightDescription": "Understand live service and respond to risks fast.",
+  "helpCategorySetup": "Operations Setup",
+  "helpCategorySetupDescription": "Configure the business in the right order.",
+  "helpCategoryCommunications": "Communications",
+  "helpCategoryCommunicationsDescription": "Keep the team aligned with inbox, broadcasts, and audiences.",
+  "helpCategoryDocuments": "Documents & Training",
+  "helpCategoryDocumentsDescription": "Use the Document Center for training, SOPs, and references.",
+  "helpCategoryAccount": "Account & Access",
+  "helpCategoryAccountDescription": "Manage sign-in, locations, access, and profile basics.",
+  "helpCategorySharedMode": "Shared Mode",
+  "helpCategorySharedModeDescription": "Use shared devices safely without losing control.",
+  "helpCategoryTroubleshooting": "Troubleshooting",
+  "helpCategoryTroubleshootingDescription": "Fix blockers fast when work, access, or messages are missing.",
+  "helpCategoryOperationsControl": "Operations Control",
+  "helpCategoryOperationsControlDescription": "Run day-to-day operations and keep setup healthy over time.",
+  "contactUsPrefillSubjectTopic": "Help with {topic}",
+  "@contactUsPrefillSubjectTopic": {
+    "placeholders": {
+      "topic": {
+        "type": "String"
+      }
+    }
+  },
+  "contactUsPrefillSubjectIssue": "Help with {issue}",
+  "@contactUsPrefillSubjectIssue": {
+    "placeholders": {
+      "issue": {
+        "type": "String"
+      }
+    }
+  },
+  "contactUsPrefillSubjectScreen": "Help on {screen}",
+  "@contactUsPrefillSubjectScreen": {
+    "placeholders": {
+      "screen": {
+        "type": "String"
+      }
+    }
+  },
+  "contactUsPrefillSubjectDefault": "Support request",
+  "contactUsPrefillPrompt": "Please describe what happened, what you expected, and any error you saw.",
+  "contactUsPrefillContextTitle": "Context",
+  "contactUsPrefillRole": "Role: {role}",
+  "@contactUsPrefillRole": {
+    "placeholders": {
+      "role": {
+        "type": "String"
+      }
+    }
+  },
+  "contactUsPrefillHelpTopic": "Help topic: {topic}",
+  "@contactUsPrefillHelpTopic": {
+    "placeholders": {
+      "topic": {
+        "type": "String"
+      }
+    }
+  },
+  "contactUsPrefillScreen": "Screen: {screen}",
+  "@contactUsPrefillScreen": {
+    "placeholders": {
+      "screen": {
+        "type": "String"
+      }
+    }
+  },
+  "contactUsPrefillLocation": "Location: {location}",
+  "@contactUsPrefillLocation": {
+    "placeholders": {
+      "location": {
+        "type": "String"
+      }
+    }
+  },
+  "contactUsPrefillIssue": "Issue: {issue}",
+  "@contactUsPrefillIssue": {
+    "placeholders": {
+      "issue": {
+        "type": "String"
+      }
+    }
+  },
+  "contactUsPrefillRoute": "Route: {route}",
+  "@contactUsPrefillRoute": {
+    "placeholders": {
+      "route": {
+        "type": "String"
+      }
+    }
+  },
+  "contactUsSendRequestTitle": "Send a request",
+  "contactUsSendRequestBody": "Keep it short and specific so we can help faster.",
+  "contactUsAutoContextBody": "This request already includes your help topic, current screen, and active location so support can respond faster.",
+  "contactUsSubjectLabel": "Subject",
+  "contactUsSubjectHint": "What do you need help with?",
+  "contactUsMessageLabel": "Message",
+  "contactUsMessageHint": "Describe the issue, what you expected, and what happened.",
+  "contactUsEmailRequired": "Email is required",
+  "contactUsValidEmailRequired": "Enter a valid email",
+  "contactUsSubjectRequired": "Subject is required",
+  "contactUsSubjectMinLength": "Subject must be at least 5 characters",
+  "contactUsMessageRequired": "Message is required",
+  "contactUsMessageMinLength": "Message must be at least 10 characters",
+  "contactUsSendRequestButton": "Send request",
+  "contactUsUrgentIssueNote": "For urgent issues, include the location, affected shift, and any error message you saw.",
+  "documentsTitle": "Document Center",
+  "documentsNoOrganization": "No organization found. Please contact support.",
+  "documentsUploaded": "Document uploaded",
+  "documentsUpdated": "Document updated",
+  "documentsDeleteTitle": "Delete Document",
+  "documentsDeleteBody": "Are you sure you want to delete this document? This action cannot be undone.",
+  "documentsDeletedSuccess": "Document deleted successfully",
+  "documentsDeleteError": "Error deleting document: {error}",
+  "@documentsDeleteError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "documentsAdminSubtitle": "Organize SOPs, training guides, and reference files for every location.",
+  "documentsStaffSubtitle": "Find the guides, policies, and reference materials you need for this shift.",
+  "documentsHelpSubtitle": "Use Document Center for SOPs, training, and reference files that support work without cluttering task flows.",
+  "documentsUpload": "Upload",
+  "documentsSearchHint": "Search by title, category, or file name",
+  "documentsCurrentScope": "Current scope",
+  "documentsAllLocations": "All Locations",
+  "documentsLocationsCount": "{count} locations",
+  "@documentsLocationsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "documentsErrorLoading": "Error loading documents: {error}",
+  "@documentsErrorLoading": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "documentsVisibleFiles": "Visible files",
+  "documentsCategories": "Categories",
+  "documentsScope": "Scope",
+  "documentsScopeAll": "All",
+  "documentsScopeLocal": "Local",
+  "documentsBuildLibraryTitle": "Build your document library",
+  "documentsNoDocumentsTitle": "No documents available yet",
+  "documentsBuildLibraryBody": "Upload SOPs, safety policies, equipment guides, and training files so your team has one clean source of truth.",
+  "documentsNoDocumentsBody": "Your manager or admin will upload training guides, SOPs, and reference documents here.",
+  "documentsUploadFirst": "Upload first document",
+  "documentsNoMatches": "No files matched \"{query}\" in the current scope.",
+  "@documentsNoMatches": {
+    "placeholders": {
+      "query": {
+        "type": "String"
+      }
+    }
+  },
+  "documentsNoLocationDocs": "No documents are available in this location yet.",
+  "documentsNoCategoryDocs": "No documents were found in {category}.",
+  "@documentsNoCategoryDocs": {
+    "placeholders": {
+      "category": {
+        "type": "String"
+      }
+    }
+  },
+  "documentsNothingToShow": "Nothing to show",
+  "documentsUntitled": "Untitled",
+  "documentsTypeVideo": "Video",
+  "documentsTypeImage": "Image",
+  "documentsTypeDoc": "Doc",
+  "documentsGlobal": "Global",
+  "documentsLocation": "Location",
+  "documentsEditTooltip": "Edit",
+  "documentsDeleteTooltip": "Delete",
+  "documentsAddedDate": "Added {date}",
+  "@documentsAddedDate": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "documentsOpenError": "Could not open document. Please check your internet connection.",
+  "documentsOpenErrorDetailed": "Error opening document: {error}",
+  "@documentsOpenErrorDetailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "documentsCategoryAll": "All",
+  "documentsCategorySafetyProcedures": "Safety Procedures",
+  "documentsCategoryCleaningProtocols": "Cleaning Protocols",
+  "documentsCategoryTrainingMaterials": "Training Materials",
+  "documentsCategoryOperatingProcedures": "Operating Procedures",
+  "documentsCategoryEmergencyProcedures": "Emergency Procedures",
+  "documentsCategoryEquipmentManuals": "Equipment Manuals",
+  "documentsCategoryPolicyDocuments": "Policy Documents",
+  "documentsCategoryOther": "Other",
+  "documentsViewerOpenExternalTooltip": "Open in external app",
+  "documentsViewerDownloadTooltip": "Download",
+  "documentsViewerLoading": "Loading document...",
+  "documentsViewerErrorTitle": "Error loading document",
+  "documentsViewerInvalidUrl": "Invalid document URL.",
+  "documentsViewerDownloadFailed": "Failed to download document.",
+  "documentsViewerTestBrowser": "Test URL in Browser",
+  "documentsViewerRetry": "Retry",
+  "documentsViewerNoPath": "No document path available",
+  "documentsViewerTrainingDocument": "Training Document",
+  "documentsViewerNativeBody": "This document will open in your device's native viewer for the best experience.",
+  "documentsViewerOpenDocument": "Open Document",
+  "documentsViewerNativeHelp": "Documents open in your device's built-in viewer for optimal performance and features.",
+  "documentsViewerPdfTitle": "PDF Document",
+  "documentsViewerOfficeTitle": "Office Document",
+  "documentsViewerWebBody": "Click below to view or download this document",
+  "documentsViewerViewDocument": "View Document",
+  "documentsViewerCopyLink": "Copy Link",
+  "documentsViewerTechnicalInfo": "Technical Information",
+  "documentsViewerDocumentUrl": "Document URL:",
+  "documentsViewerNewTabNote": "Note: Documents open in a new tab due to browser security policies.",
+  "documentsViewerImageFailed": "Failed to load image",
+  "documentsViewerPreviewUnavailable": "Preview not available",
+  "documentsViewerUnsupportedPreview": "This file type is not supported for preview",
+  "documentsViewerOpenExternal": "Open in External App",
+  "documentsViewerUrlCopied": "URL copied to clipboard",
+  "documentsViewerCopyFailed": "Failed to copy URL",
+  "documentsViewerVideoFailed": "Failed to load video",
+  "documentsViewerLoadingVideo": "Loading video...",
+  "documentsUploadSheetTitle": "Document",
+  "documentsUploadSheetLoadingSubtitle": "Loading organization context...",
+  "documentsUploadSheetMissingOrgSubtitle": "We could not determine your organization.",
+  "documentsUploadTitle": "Upload document",
+  "documentsEditTitle": "Edit document",
+  "documentsUploadSubtitle": "Add SOPs, policies, guides, and training files for the team.",
+  "documentsUpdateButton": "Update document",
+  "documentsInfoTip": "Upload PDFs, DOCX files, images, or videos up to 20 MB and place them in the right category.",
+  "documentsDetails": "Details",
+  "documentsDocumentTitleLabel": "Document title",
+  "documentsDocumentTitleHint": "Enter a clear, descriptive title",
+  "documentsDocumentTitleRequired": "Please enter a document title",
+  "documentsCategoryLabel": "Category",
+  "documentsCategoryRequired": "Please select a category",
+  "documentsReplaceFileOptional": "Replace file (optional)",
+  "documentsSelectFile": "Select file",
+  "documentsUnknownFile": "Unknown file",
+  "documentsChangeFile": "Change file",
+  "documentsTapToSelect": "Tap to select file",
+  "documentsSupportedFileTypes": "PDF, DOCX, images, or video",
+  "documentsPickFileError": "Error picking file: {error}",
+  "@documentsPickFileError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "documentsFillRequiredFields": "Please fill all required fields",
+  "documentsSelectFileRequired": "Please select a file",
+  "documentsMissingOrgId": "Organization ID is missing. Cannot upload document.",
+  "documentsUserNotAuthenticated": "User not authenticated. Please log in again.",
+  "documentsFileDataUnavailable": "File data is not available. Please select the file again.",
+  "documentsUpdatedSuccess": "Document updated successfully!",
+  "documentsUploadedSuccess": "Document uploaded successfully!",
+  "documentsUploadFailedPrefix": "Upload failed: ",
+  "documentsUploadFailedMissingData": "Missing required data. Please try selecting the file again.",
+  "documentsUploadFailedPermission": "Permission denied. Please check your account permissions.",
+  "documentsUploadFailedStorage": "Storage error. Please check your internet connection.",
+  "documentsDismissTip": "Dismiss",
+  "scheduleEditorTitle": "Schedule Editor",
+  "scheduleMyTitle": "My Schedule",
+  "scheduleOrganizationNotFound": "Organization not found",
+  "scheduleOrganizationLocationMissing": "Organization or location not set.",
+  "scheduleLocationLabel": "Location",
+  "schedulePickDateRange": "Pick a date range",
+  "scheduleSelectDateRange": "Select Date Range",
+  "scheduleNext7Days": "Next 7 Days",
+  "scheduleDaysWindow": "Days {start}-{end}",
+  "@scheduleDaysWindow": {
+    "placeholders": {
+      "start": {
+        "type": "int"
+      },
+      "end": {
+        "type": "int"
+      }
+    }
+  },
+  "scheduleSelectLocationAndDateRange": "Select a location and date range to view schedule",
+  "schedulePublishSchedule": "Publish Schedule",
+  "scheduleCreateTemplateFirst": "Please create shift template first from admin dashboard",
+  "schedulePublishAllSuccess": "All schedules published successfully!",
+  "schedulePublishError": "Error publishing schedules: {error}",
+  "@schedulePublishError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "scheduleDayPublished": "{date} schedule published!",
+  "@scheduleDayPublished": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "scheduleDayPublishError": "Error publishing schedule: {error}",
+  "@scheduleDayPublishError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "scheduleNoPublishedShifts": "No published shifts.",
+  "scheduleAssignedCount": "Assigned: {count}",
+  "@scheduleAssignedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "scheduleUsersLabel": "Users: {users}",
+  "@scheduleUsersLabel": {
+    "placeholders": {
+      "users": {
+        "type": "String"
+      }
+    }
+  },
+  "scheduleAssignedStatus": "Assigned",
+  "scheduleShiftsHeader": "Shifts",
+  "scheduleAssignedCell": "assigned",
+  "scheduleShiftTemplatesError": "Error loading shifts: {error}",
+  "@scheduleShiftTemplatesError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "scheduleNoShiftTemplates": "No shift templates found for this location.\nCreate shift templates from the Admin Dashboard first.",
+  "scheduleUnnamedShift": "Unnamed Shift",
+  "scheduleMessageTitle": "Your Schedule {start} to {end}",
+  "@scheduleMessageTitle": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
+  "scheduleMessageLine": "{date}: {shiftName} ({startTime} - {endTime})",
+  "@scheduleMessageLine": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "shiftName": {
+        "type": "String"
+      },
+      "startTime": {
+        "type": "String"
+      },
+      "endTime": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardSwitch": "Switch",
+  "dashboardLocationsCount": "{count} locations",
+  "@dashboardLocationsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardNoActiveShift": "No Active Shift",
+  "dashboardNothingAssignedTitle": "Nothing is assigned right now",
+  "dashboardNothingAssignedBody": "You are set to work at {locationName}. Pick up an available shift when you are ready.",
+  "@dashboardNothingAssignedBody": {
+    "placeholders": {
+      "locationName": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardSeeAvailableShifts": "See Available Shifts",
+  "dashboardNoVisibleShiftTitle": "No visible shift right now",
+  "dashboardNoVisibleShiftBody": "Your assigned shifts may have ended, or your next shift is not yet available to start.",
+  "dashboardMomentumBody": "Keep momentum moving when today's assigned work is in shape.",
+  "dashboardLoadingTasks": "Loading today's tasks...",
+  "dashboardNoTasksForShift": "No tasks are available for this shift yet.",
+  "dashboardEverythingCompleteShift": "Everything for this shift is complete.",
+  "dashboardTasksLeftShort": "{count} left",
+  "@dashboardTasksLeftShort": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardBlockedShort": "{count} blocked",
+  "@dashboardBlockedShort": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardNeedPhotosShort": "{count} need photos",
+  "@dashboardNeedPhotosShort": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardProgress": "Progress",
+  "dashboardWaitingForTasks": "Waiting for tasks",
+  "dashboardCompletedOfTotal": "{completed} of {total} done",
+  "@dashboardCompletedOfTotal": {
+    "placeholders": {
+      "completed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardRemaining": "Remaining",
+  "dashboardTasksLeftInShift": "Tasks left in this shift",
+  "dashboardAttention": "Attention",
+  "dashboardPhotos": "Photos",
+  "dashboardBlockedOrFlagged": "Blocked or flagged",
+  "dashboardNeedPhotoProof": "Need photo proof",
+  "dashboardReviewTodaysWork": "Review Today's Work",
+  "dashboardContinueWorking": "Continue Working",
+  "dashboardViewFullShift": "View Full Shift",
+  "dashboardNextUp": "Next Up",
+  "dashboardNoRemainingTasks": "No remaining tasks in this shift right now.",
+  "dashboardFastestPath": "The fastest path to finishing this shift.",
+  "dashboardNextUpHelpSubtitle": "Next Up shows the fastest path through the unfinished tasks in your current shift.",
+  "dashboardQueuedCount": "{count} queued",
+  "@dashboardQueuedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardNoTasksAvailableYet": "No tasks available yet",
+  "dashboardCaughtUp": "You're caught up on this shift",
+  "dashboardCheckChecklistSetup": "If this looks wrong, ask your manager to check this shift's checklist setup.",
+  "dashboardReviewCompletedOrPickShift": "Use the section below to review completed work or pick up another shift.",
+  "dashboardCurrentShift": "Current Shift",
+  "dashboardLeaveShift": "Leave shift",
+  "dashboardPendingTasksRemaining": "{count} remaining",
+  "@dashboardPendingTasksRemaining": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardListsCount": "{count} lists",
+  "@dashboardListsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardNoTasksAvailableForShift": "No tasks available for this shift",
+  "dashboardAskManagerVerifyChecklist": "If this seems wrong, ask your manager to verify today's checklist setup.",
+  "dashboardChecklistFallback": "Checklist",
+  "dashboardChecklistTasksLoading": "Tasks are loading for this checklist",
+  "dashboardChecklistCompletedOfTotal": "{completed} of {total} tasks complete",
+  "@dashboardChecklistCompletedOfTotal": {
+    "placeholders": {
+      "completed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardNeedPhotoChip": "{count} need photo",
+  "@dashboardNeedPhotoChip": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardEverythingHereComplete": "Everything here is complete",
+  "dashboardCompletedBelow": "Completed work is tucked below for quick review.",
+  "dashboardHideCompleted": "Hide completed ({count})",
+  "@dashboardHideCompleted": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardShowCompleted": "Show completed ({count})",
+  "@dashboardShowCompleted": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardNeedsAttention": "Needs attention: {reason}",
+  "@dashboardNeedsAttention": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardPhotoRequiredBeforeSignoff": "Photo required before sign-off",
+  "dashboardReadyToComplete": "Ready to complete",
+  "dashboardMustBeLoggedIn": "You must be logged in to complete tasks",
+  "dashboardPhotoRequiredTitle": "Photo required",
+  "dashboardPhotoRequiredBody": "This task requires a photo. Add a photo now, complete without a photo, or cancel.",
+  "dashboardCompleteWithoutPhoto": "Complete without photo",
+  "dashboardAddPhoto": "Add photo",
+  "dashboardAddNoteRequiredTitle": "Add note (required)",
+  "dashboardAddNoteRequiredBody": "Please add a brief note explaining why no photo was added.",
+  "dashboardEnterNote": "Enter note...",
+  "dashboardSave": "Save",
+  "dashboardTaskCompleted": "Task completed!",
+  "dashboardTaskUnchecked": "Task unchecked",
+  "dashboardTaskUpdateError": "Error updating task. Please try again.",
+  "dashboardCompleted": "Completed",
+  "dashboardCompletedBy": "Completed by {name}",
+  "@dashboardCompletedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardPhotoAdded": "Photo added",
+  "dashboardPhotoRequiredChip": "Photo required",
+  "dashboardNoteAdded": "Note added",
+  "dashboardBlocked": "Blocked",
+  "dashboardPhotoMenu": "Photo",
+  "dashboardNotesMenu": "Notes",
+  "dashboardCannotComplete": "Cannot Complete",
+  "dashboardMarkIncomplete": "Mark Incomplete",
+  "dashboardComplete": "Complete",
+  "dashboardViewPhoto": "View Photo",
+  "dashboardUpdateIssue": "Update Issue",
+  "dashboardCantDo": "Can't Do",
+  "dashboardEditNote": "Edit Note",
+  "dashboardAddNote": "Add Note",
+  "dashboardSwitchLocationTitle": "Switch Location",
+  "dashboardSwitchLocationBody": "Choose where you want to view and complete work.",
+  "dashboardUnnamedLocation": "Unnamed Location",
+  "dashboardCurrentlySelectedLocation": "Currently selected",
+  "dashboardSwitchLocationError": "Could not switch locations. Please try again.",
+  "dashboardMissedTaskNotCompletedYesterday": "Not completed yesterday",
+  "dashboardNoteChip": "Note",
+  "dashboardReasonChip": "Reason",
+  "dashboardClearNotes": "Clear Notes",
+  "dashboardClearReason": "Clear Reason",
+  "dashboardAlreadySignedUpForShift": "You are already signed up for {shiftName}.",
+  "@dashboardAlreadySignedUpForShift": {
+    "placeholders": {
+      "shiftName": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardJoinedShift": "Successfully joined {shiftName}!",
+  "@dashboardJoinedShift": {
+    "placeholders": {
+      "shiftName": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardJoinShiftError": "Error joining shift. Please try again.",
+  "dashboardMustBeLoggedInToLeaveShift": "You must be logged in to leave shifts",
+  "dashboardLeaveVolunteerShiftTitle": "Leave Volunteer Shift",
+  "dashboardLeaveVolunteerShiftBody": "Are you sure you want to leave the \"{shiftName}\" volunteer shift? This will remove you from future assignments for this shift.",
+  "@dashboardLeaveVolunteerShiftBody": {
+    "placeholders": {
+      "shiftName": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardLeaveShiftConfirm": "Leave Shift",
+  "dashboardLeftVolunteerShift": "Successfully left volunteer shift!",
+  "dashboardLeaveShiftError": "Error leaving shift. Please try again.",
+  "dashboardAvailableShiftsTitle": "Available shifts",
+  "dashboardAvailableShiftsSubtitle": "Select a shift to begin working at {locationName}",
+  "@dashboardAvailableShiftsSubtitle": {
+    "placeholders": {
+      "locationName": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardAvailableShiftsLoadError": "Error loading shifts",
+  "dashboardNoAvailableShiftsTitle": "No available shifts",
+  "dashboardNoAvailableShiftsBody": "There are no shifts available for you to join today.",
+  "dashboardNoAvailableShiftsTiming": "Shifts will become available to select 30 minutes before their start time.",
+  "dashboardJoin": "Join",
+  "dashboardTaskNotesTitle": "Task Notes",
+  "dashboardTaskLabel": "Task: {taskName}",
+  "@dashboardTaskLabel": {
+    "placeholders": {
+      "taskName": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardUnknownTask": "Unknown Task",
+  "dashboardTaskNotesPrompt": "Add notes or comments about this task:",
+  "dashboardNotesSaved": "Notes saved successfully!",
+  "dashboardNotesSaveError": "Error saving notes: {error}",
+  "@dashboardNotesSaveError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardNotesCleared": "Notes cleared",
+  "dashboardNotesClearError": "Failed to clear notes: {error}",
+  "@dashboardNotesClearError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardSaveNotes": "Save Notes",
+  "dashboardEnterNotesHint": "Enter your notes here...",
+  "dashboardSavingNotes": "Saving notes...",
+  "dashboardPhotoViewerResetZoom": "Reset Zoom",
+  "dashboardPhotoViewerLoadingImage": "Loading image...",
+  "dashboardPhotoViewerLoadError": "Failed to load image",
+  "dashboardPhotoViewerGestureHint": "Pinch to zoom • Drag to pan • Tap reset to fit screen",
+  "dashboardReasonEquipmentUnavailable": "Equipment not available",
+  "dashboardReasonSuppliesMissing": "Supplies missing",
+  "dashboardReasonNotEnoughTime": "Not enough time",
+  "dashboardReasonSafetyConcern": "Safety concern",
+  "dashboardReasonWaitingApproval": "Waiting for approval",
+  "dashboardReasonAreaBlocked": "Area blocked/inaccessible",
+  "dashboardReasonTechnicalIssue": "Technical issue",
+  "dashboardReasonStaffShortage": "Staff shortage",
+  "dashboardReasonEmergencyPriority": "Emergency priority task",
+  "dashboardReasonWeatherConditions": "Weather conditions",
+  "dashboardReasonOther": "Other (specify below)",
+  "dashboardReasonSpecifyText": "Please specify a reason in the text field",
+  "dashboardReasonSelectOrEnter": "Please select or enter a reason",
+  "dashboardReasonSaved": "Reason saved successfully!",
+  "dashboardReasonSaveError": "Error saving reason: {error}",
+  "@dashboardReasonSaveError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardTaskNotCompletedTitle": "Task Not Completed",
+  "dashboardSaveReason": "Save Reason",
+  "dashboardTaskNotCompletedPrompt": "Why was this task not completed?",
+  "dashboardEnterReasonHint": "Please specify the reason...",
+  "dashboardSavingReason": "Saving reason...",
+  "dashboardLoadingCarryover": "Loading carryover...",
+  "dashboardCurrentLocationLabel": "Current Location",
+  "dashboardWorkingLocationLabel": "Working Location",
+  "dashboardLocationHelpTitle": "Location help",
+  "dashboardLocationHelpSubtitle": "The active location controls which shifts, tasks, and documents you see on this page.",
+  "dashboardSharedModeTitle": "Shared Mode",
+  "dashboardSharedModeLocked": "Locked — select your name to continue",
+  "dashboardSharedModeActive": "Active: {userName}",
+  "@dashboardSharedModeActive": {
+    "placeholders": {
+      "userName": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardCarryoverClearTitle": "Carryover is clear",
+  "dashboardCarryoverClearBody": "No missed tasks from yesterday.",
+  "dashboardCarryoverTitle": "Carryover from Yesterday",
+  "dashboardCarryoverHelpTitle": "Carryover from Yesterday",
+  "dashboardCarryoverHelpSubtitle": "Carryover keeps unfinished work visible so it can be completed or blocked with context instead of disappearing.",
+  "dashboardTasksCompletedCount": "{completed} of {total} tasks completed",
+  "@dashboardTasksCompletedCount": {
+    "placeholders": {
+      "completed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardShiftTaskSummary": "{shiftCount} {shiftCount, plural, one {shift} other {shifts}} • {taskCount} {taskCount, plural, one {task} other {tasks}}",
+  "@dashboardShiftTaskSummary": {
+    "placeholders": {
+      "shiftCount": {
+        "type": "int"
+      },
+      "taskCount": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardUnknownShift": "Unknown Shift",
+  "dashboardShiftTimingScheduled": "Scheduled",
+  "dashboardShiftTimingCheckDetails": "Check timing details",
+  "dashboardShiftTimingStartsSoon": "Starts Soon",
+  "dashboardShiftTimingAvailableNow": "Available now",
+  "dashboardShiftTimingAvailableInMinutes": "Available in {minutes}m",
+  "@dashboardShiftTimingAvailableInMinutes": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardShiftTimingInProgress": "In Progress",
+  "dashboardShiftTimingHoursLeft": "{hours}h left",
+  "@dashboardShiftTimingHoursLeft": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardShiftTimingMinutesLeft": "{minutes}m left",
+  "@dashboardShiftTimingMinutesLeft": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardShiftTimingGracePeriod": "Grace Period",
+  "dashboardShiftTimingJustEnded": "Shift just ended",
+  "dashboardShiftTimingEndedMinutesAgo": "Ended {minutes}m ago",
+  "@dashboardShiftTimingEndedMinutesAgo": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardShiftTimingCheckCurrentWork": "Check current work",
+  "dashboardTourLocationTitle": "Start with the active location",
+  "dashboardTourLocationDescription": "Tasks, shifts, carryover, broadcasts, and documents all follow the selected location. Switch here before you start working.",
+  "dashboardTourShiftLiveTitle": "Check your shift summary first",
+  "dashboardTourShiftIdleTitle": "This is where your shift status appears",
+  "dashboardTourShiftLiveDescription": "Your shift hero shows what shift you are on, how much work is left, and whether anything is blocked or waiting for proof.",
+  "dashboardTourShiftIdleDescription": "If you have no live shift yet, this area tells you whether to wait, pick up another shift, or ask your manager to check setup.",
+  "dashboardTourNextUpTitle": "Use Next Up as your main work queue",
+  "dashboardTourNextUpDescription": "Next Up surfaces the fastest path through unfinished work so you do not have to scan every checklist manually.",
+  "dashboardTourTodaysWorkTitle": "Review full checklists in Today's Work",
+  "dashboardTourTodaysWorkDescription": "Use this section when you need the full checklist view for your shift, completed tasks, or deeper task context beyond the top queue.",
+  "commonAdd": "Add",
+  "managerDashboardActiveShifts": "Active shifts",
+  "managerDashboardActiveShiftLiveNowOne": "1 shift live now",
+  "managerDashboardActiveShiftLiveNowOther": "{count} shifts live now",
+  "@managerDashboardActiveShiftLiveNowOther": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "managerDashboardAtRisk": "At risk",
+  "managerDashboardNoShiftsSlipping": "No shifts slipping",
+  "managerDashboardNeedInterventionNow": "Need intervention now",
+  "managerDashboardOpenTasks": "Open tasks",
+  "managerDashboardNoTrackedTasksYet": "No tracked tasks yet",
+  "managerDashboardCompletedTracked": "{completed}/{total} complete",
+  "@managerDashboardCompletedTracked": {
+    "placeholders": {
+      "completed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "managerDashboardCarryover": "Carryover",
+  "managerDashboardYesterdayFinishedCleanly": "Yesterday finished cleanly",
+  "managerDashboardShiftsAffected": "{count} shifts affected",
+  "@managerDashboardShiftsAffected": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "managerDashboardTourSummaryTitle": "Start with the summary card",
+  "managerDashboardTourSummaryDescription": "This top card tells you whether service is on track, how many shifts are at risk, and what needs your attention right now.",
+  "managerDashboardTourIssuesTitle": "Use Today at Risk as your action queue",
+  "managerDashboardTourIssuesDescription": "Open these issues first when something slips. They help you prioritize missed work, live risks, and the next follow-up.",
+  "managerDashboardTourReadinessTitle": "Shift Readiness shows the live board",
+  "managerDashboardTourReadinessDescription": "Use this section to inspect open work, shift progress, and which runs are healthy versus drifting behind.",
+  "managerDashboardCurrentLocation": "Current location",
+  "managerDashboardLoading": "Loading dashboard",
+  "managerDashboardIssuesNeedAttention": "{count} issues need attention",
+  "@managerDashboardIssuesNeedAttention": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "managerDashboardTodayOnTrack": "Today is on track",
+  "managerDashboardLoadingSummary": "Pulling today's shifts, missed work, and recurring issue signals for {locationName}.",
+  "@managerDashboardLoadingSummary": {
+    "placeholders": {
+      "locationName": {
+        "type": "String"
+      }
+    }
+  },
+  "managerDashboardThisLocation": "this location",
+  "managerDashboardIssuesSummary": "{riskCount} shifts are currently at risk and {openTaskCount} open tasks still need manager attention.",
+  "@managerDashboardIssuesSummary": {
+    "placeholders": {
+      "riskCount": {
+        "type": "int"
+      },
+      "openTaskCount": {
+        "type": "int"
+      }
+    }
+  },
+  "managerDashboardNoLiveShiftsSummary": "No live shifts are currently off track. Use the dashboard below to check readiness and recurring issues.",
+  "managerDashboardRefreshNow": "Refresh now",
+  "managerDashboardReviewIssues": "Review Issues",
+  "managerDashboardViewShiftReadiness": "View Shift Readiness",
+  "managerDashboardHistoryReports": "History & Reports",
+  "managerDashboardTodayAtRisk": "Today at Risk",
+  "managerDashboardTodayAtRiskSubtitle": "Compact action queue for what needs attention first.",
+  "managerDashboardShiftReadiness": "Shift Readiness",
+  "managerDashboardShiftReadinessSubtitle": "Live board of progress, open work, and shift health.",
+  "managerDashboardNoScheduledShiftsYet": "No scheduled shifts yet",
+  "managerDashboardNoScheduledShiftsBody": "Create and run shifts to see readiness here.",
+  "managerDashboardRecurringIssues": "Recurring Issues",
+  "managerDashboardRecurringIssuesSubtitle": "Where misses and weak runs keep showing up.",
+  "managerDashboardRecurringFailures": "Recurring Failures",
+  "managerDashboardRecurringFailuresSubtitle": "Ranked by miss rate over the last 30 days.",
+  "managerDashboardNoRecurringFailuresYet": "No recurring failures yet.",
+  "managerDashboardAtRiskShifts": "At-Risk Shifts",
+  "managerDashboardAtRiskShiftsSubtitle": "Shifts with the weakest completion trends over the last 30 days.",
+  "managerDashboardNoAtRiskShifts": "No at-risk shifts found.",
+  "managerDashboardAllMissedTasksYesterday": "All Missed Tasks Yesterday",
+  "managerDashboardUnknownTask": "Unknown Task",
+  "managerDashboardUnknownShift": "Unknown Shift",
+  "managerDashboardDoneToday": "Done today",
+  "adminSetupTourWelcomeTitle": "Welcome back — we’ll show you what’s new",
+  "adminSetupTourWelcomeDescription": "Setup has been refreshed to make locations, team, shifts, and checklist templates easier to manage. This quick tour will show you the updated flow before you start editing.",
+  "adminSetupTourLocationTitle": "Keep setup scoped to one location",
+  "adminSetupTourLocationDescription": "Switch here when you want to focus on one restaurant. Shifts, team access, and checklist templates all become easier to manage when you narrow the location.",
+  "adminSetupTourAreasTitle": "Move through setup by area",
+  "adminSetupTourAreasDescription": "Use these quick setup areas to jump between Locations, Team, Shifts, and Checklist Library without losing your place.",
+  "adminSetupTourPanelTitle": "Work in one setup area at a time",
+  "adminSetupTourPanelDescription": "The main panel below is where you add, edit, and review the current setup area. Keep the selected location and setup area in sync as you configure operations.",
+  "adminSetupActiveLocation": "Active location",
+  "adminSetupSelectLocation": "Select location",
+  "adminSetupAreas": "Setup areas",
+  "adminViewLocations": "Locations",
+  "adminViewTeam": "Team",
+  "adminViewShifts": "Shifts",
+  "adminViewChecklistLibrary": "Checklist Library",
+  "adminViewEyebrowPlaces": "Places",
+  "adminViewEyebrowPeople": "People",
+  "adminViewEyebrowOperations": "Operations",
+  "adminViewEyebrowChecklistTemplates": "Checklist Templates",
+  "adminViewLocationsSubtitle": "Manage the places your team operates from and keep setup anchored to real locations.",
+  "adminViewTeamSubtitle": "Invite staff, assign access, and keep every role aligned to the right locations.",
+  "adminViewShiftsSubtitle": "Set when work happens and attach the right workflow to each shift.",
+  "adminViewChecklistLibrarySubtitle": "Keep reusable checklist templates for opening, closing, prep, and repeatable routines.",
+  "adminSetupHeroTitle": "Operations Setup",
+  "adminSetupAllLocations": "All locations",
+  "adminWorkflowNoneAttached": "No workflow attached yet",
+  "adminWorkflowOneAttached": "1 workflow attached",
+  "adminWorkflowManyAttached": "{count} workflows attached",
+  "@adminWorkflowManyAttached": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "adminWorkflowTitle": "{name} workflow",
+  "@adminWorkflowTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "adminNoOrganizationDataAvailable": "No organization data available",
+  "adminErrorLoadingUsers": "Error loading users: {error}",
+  "@adminErrorLoadingUsers": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "adminErrorLoadingLocations": "Error loading locations: {error}",
+  "@adminErrorLoadingLocations": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "adminNoTeamMembersFound": "No team members found",
+  "adminInviteTeamToGetStarted": "Invite your team to get started",
+  "adminUnnamedUser": "Unnamed User",
+  "adminDeleteUserTitle": "Delete User",
+  "adminDeleteUserBody": "Are you sure you want to delete this user? This action cannot be undone.",
+  "adminNoLocationsFound": "No locations found",
+  "adminAddLocationToGetStarted": "Add a location to get started",
+  "adminNoShiftsForSelectedLocation": "No shifts found for selected location",
+  "adminNoShiftsFound": "No shifts found",
+  "adminCreateShiftsAttachWorkflows": "Create shifts, then attach workflows to them",
+  "webAdminWorkflowLabel": "Workflow",
+  "webAdminWorkflowCreated": "Workflow created successfully",
+  "webAdminScheduleDaily": "Daily",
+  "webAdminDayMon": "Mon",
+  "webAdminDayTue": "Tue",
+  "webAdminDayWed": "Wed",
+  "webAdminDayThu": "Thu",
+  "webAdminDayFri": "Fri",
+  "webAdminDaySat": "Sat",
+  "webAdminDaySun": "Sun",
+  "webAdminSidebarSubtitle": "Configure places, people, shifts, and reusable workflows.",
+  "webAdminSetupWorkspace": "Setup workspace",
+  "webAdminScope": "Scope",
+  "webAdminAllActive": "All active",
+  "webAdminSearchHint": "Search {name}...",
+  "@webAdminSearchHint": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminAddItem": "Add {name}",
+  "@webAdminAddItem": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminSectionEyebrowShifts": "Operational setup",
+  "webAdminSectionEyebrowChecklists": "Checklist templates",
+  "webAdminSectionEyebrowUsers": "People & access",
+  "webAdminSectionEyebrowLocations": "Business footprint",
+  "webAdminSectionTitleShifts": "Build shifts around real service workflows",
+  "webAdminSectionTitleChecklists": "Maintain a clean workflow library",
+  "webAdminSectionTitleUsers": "Manage your team with less friction",
+  "webAdminSectionTitleLocations": "Keep every location ready to operate",
+  "webAdminSectionSubtitleShifts": "Define when work happens, who it belongs to, and which workflow template runs during that shift.",
+  "webAdminSectionSubtitleChecklists": "Create reusable checklist templates for opening, closing, prep, and recurring procedures across your operation.",
+  "webAdminSectionSubtitleUsers": "Invite managers and staff, assign their locations, and keep access aligned with the way the business runs.",
+  "webAdminSectionSubtitleLocations": "Set up the places your team operates from, and use them to organize shifts, staffing, and workflow coverage.",
+  "webAdminSectionTableSubtitleShifts": "Shift-centered setup with direct workflow visibility.",
+  "webAdminSectionTableSubtitleChecklists": "Checklist templates stay reusable here and get attached from shifts.",
+  "webAdminSectionTableSubtitleUsers": "People, roles, invite state, and location coverage.",
+  "webAdminSectionTableSubtitleLocations": "Your active places, addresses, and operating footprint.",
+  "webAdminTabShift": "Shift",
+  "webAdminTabTemplate": "Template",
+  "webAdminTabTeamMember": "Team Member",
+  "webAdminTabLocation": "Location",
+  "webAdminEmptyTitleShifts": "No Shifts Created Yet",
+  "webAdminEmptyDescriptionShifts": "Create your first shift to define when work happens, who works it, and which workflow should run. Shifts are the main place to set up operations.",
+  "webAdminEmptyActionShifts": "Create Your First Shift",
+  "webAdminEmptySupportLabelShifts": "Next step",
+  "webAdminEmptySupportValueShifts": "Attach workflow",
+  "webAdminEmptySecondaryLabelShifts": "Recommended",
+  "webAdminEmptySecondaryValueShifts": "Start with opening",
+  "webAdminEmptyTitleChecklists": "No Checklist Templates Yet",
+  "webAdminEmptyDescriptionChecklists": "Build reusable checklist templates for opening, closing, prep, and other repeatable work. Most owners will attach these from the Shifts screen.",
+  "webAdminEmptyActionChecklists": "Create Your First Template",
+  "webAdminEmptySupportLabelChecklists": "Best use",
+  "webAdminEmptySupportValueChecklists": "Reusable workflows",
+  "webAdminEmptySecondaryLabelChecklists": "Most common",
+  "webAdminEmptySecondaryValueChecklists": "Opening + closing",
+  "webAdminEmptyTitleUsers": "No Team Members Added Yet",
+  "webAdminEmptyDescriptionUsers": "Invite team members to join your organization. You can assign different roles and control which locations they can access.",
+  "webAdminEmptyActionUsers": "Add Your First Team Member",
+  "webAdminEmptySupportLabelUsers": "Most useful",
+  "webAdminEmptySupportValueUsers": "Invite managers first",
+  "webAdminEmptySecondaryLabelUsers": "Status",
+  "webAdminEmptySecondaryValueUsers": "Track invites here",
+  "webAdminEmptyTitleLocations": "No Locations Added Yet",
+  "webAdminEmptyDescriptionLocations": "Set up your business locations to organize shifts, assign staff, and track operations. Each location can have its own shifts, checklists, and team members.",
+  "webAdminEmptyActionLocations": "Add Your First Location",
+  "webAdminEmptySupportLabelLocations": "Foundation",
+  "webAdminEmptySupportValueLocations": "Build setup around places",
+  "webAdminEmptySecondaryLabelLocations": "After this",
+  "webAdminEmptySecondaryValueLocations": "Create shifts",
+  "webAdminEmptyFooter": "Keep setup light: create the location, add your team, then build shifts with attached workflows.",
+  "webAdminColumnShiftName": "Shift Name",
+  "webAdminColumnTime": "Time",
+  "webAdminColumnSchedule": "Schedule",
+  "webAdminColumnStatus": "Status",
+  "webAdminColumnActions": "Actions",
+  "webAdminColumnTemplateName": "Template Name",
+  "webAdminColumnDescription": "Description",
+  "webAdminColumnTasks": "Tasks",
+  "webAdminColumnUsedInShifts": "Used in Shifts",
+  "webAdminColumnLocationName": "Location Name",
+  "webAdminColumnAddress": "Address",
+  "webAdminStatusActive": "Active",
+  "webAdminStatusInactive": "Inactive",
+  "webAdminStatusArchived": "Archived",
+  "webAdminActionEdit": "Edit",
+  "webAdminActionDuplicate": "Duplicate",
+  "webAdminActionArchive": "Archive",
+  "webAdminActionRestore": "Restore",
+  "webAdminActionCreateWorkflow": "Create workflow",
+  "webAdminActionEditWorkflow": "Edit workflow",
+  "webAdminActionDeactivate": "Deactivate",
+  "webAdminActionActivate": "Activate",
+  "webAdminActionDeleteUser": "Delete user",
+  "webAdminNoDescription": "No description",
+  "webAdminTaskCount": "{count} tasks",
+  "@webAdminTaskCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "webAdminDeleteShiftTitle": "Delete shift?",
+  "webAdminDeleteShiftBody": "Are you sure you want to delete \"{name}\"? This action cannot be undone.",
+  "@webAdminDeleteShiftBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminShiftUpdated": "Shift updated successfully",
+  "webAdminShiftUpdateFailed": "Failed to update shift: {error}",
+  "@webAdminShiftUpdateFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminChecklistUpdateFailed": "Failed to update template",
+  "webAdminDeleteTemplateTitle": "Delete template?",
+  "webAdminDeleteTemplateBody": "Are you sure you want to delete \"{name}\"? This action cannot be undone.",
+  "@webAdminDeleteTemplateBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminTemplateDeleted": "Template deleted successfully",
+  "webAdminTemplateDeleteFailed": "Failed to delete template: {error}",
+  "@webAdminTemplateDeleteFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminCopyName": "{name} (Copy)",
+  "@webAdminCopyName": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminLocationDuplicated": "Location duplicated successfully",
+  "webAdminDuplicateFailed": "Failed to duplicate item",
+  "webAdminShiftCreated": "Shift created successfully",
+  "webAdminShiftSaved": "Shift updated successfully",
+  "webAdminShiftEditorOpenFailed": "Failed to open shift editor",
+  "webAdminShiftDuplicated": "Shift duplicated successfully",
+  "webAdminShiftDuplicateFailed": "Failed to duplicate shift: {error}",
+  "@webAdminShiftDuplicateFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminShiftArchived": "Shift archived successfully",
+  "webAdminShiftRestored": "Shift restored successfully",
+  "webAdminTemplateCreated": "Template created successfully",
+  "webAdminTemplateSaved": "Template updated successfully",
+  "webAdminTemplateSaveFailed": "Failed to save template: {error}",
+  "@webAdminTemplateSaveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminTemplateEditorOpenFailed": "Failed to open template editor",
+  "webAdminTemplateDuplicated": "Template duplicated successfully",
+  "webAdminTemplateDuplicateFailed": "Failed to duplicate template: {error}",
+  "@webAdminTemplateDuplicateFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminTemplateArchived": "Template archived successfully",
+  "webAdminTemplateRestored": "Template restored successfully",
+  "webAdminUserDeactivated": "User deactivated successfully",
+  "webAdminUserActivated": "User activated successfully",
+  "webAdminUserUpdateFailed": "Failed to update user: {error}",
+  "@webAdminUserUpdateFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminLocationCreated": "Location created successfully",
+  "webAdminLocationSaved": "Location updated successfully",
+  "webAdminLocationUpdateFailed": "Failed to update location: {error}",
+  "@webAdminLocationUpdateFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminLocationArchived": "Location archived successfully",
+  "webAdminLocationRestored": "Location restored successfully",
+  "webAdminDeleteLocationTitle": "Delete location?",
+  "webAdminDeleteLocationBody": "Are you sure you want to delete \"{name}\"? This action cannot be undone.",
+  "@webAdminDeleteLocationBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminLocationDeleted": "Location deleted successfully",
+  "webAdminLocationDeleteFailed": "Failed to delete location: {error}",
+  "@webAdminLocationDeleteFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminDeleteUserTitle": "Delete user?",
+  "webAdminDeleteUserBody": "Are you sure you want to delete \"{name}\"? This action cannot be undone.",
+  "@webAdminDeleteUserBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminUserDeleted": "User deleted successfully",
+  "webAdminUserDeleteFailed": "Failed to delete user: {error}",
+  "@webAdminUserDeleteFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminWorkflowSuggestion": "{name} workflow",
+  "@webAdminWorkflowSuggestion": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminStreamError": "Error: {error}",
+  "@webAdminStreamError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminUnnamedShift": "Unnamed Shift",
+  "webAdminUnnamedTemplate": "Unnamed Template",
+  "webAdminUnnamedLocation": "Unnamed Location",
+  "webAdminUnknownUser": "Unknown User",
+  "webAdminNoEmail": "No email",
+  "webAdminNoAddress": "No address",
+  "guidedTourStepCounter": "Step {current} of {total}",
+  "@guidedTourStepCounter": {
+    "placeholders": {
+      "current": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "guidedTourSkip": "Skip",
+  "guidedTourLearnMore": "Learn more",
+  "guidedTourBack": "Back",
+  "guidedTourNext": "Next",
+  "guidedTourDone": "Done",
+  "guidedTourLanguageFeatureTitle": "New: language support",
+  "guidedTourLanguageFeatureBody": "You can now switch between English, Spanish, and Portuguese anytime from Language in Settings.",
+  "releaseDialogUpdateTitle": "A major update is available",
+  "releaseDialogUpdateSubtitle": "Refresh or update to see the latest experience, language options, and guided walkthrough.",
+  "releaseDialogWhatsNewSubtitle": "A refreshed experience is live, including guided walkthrough updates and language support.",
+  "releaseDialogNotNow": "Not now",
+  "releaseDialogTakeGuidedTour": "Take guided tour",
+  "releaseDialogRefreshNow": "Refresh now",
+  "releaseDialogUpdateNow": "Update now",
+  "releaseDialogOkay": "Okay",
+  "releaseDialogMajorReleaseBadge": "Major release",
+  "releaseDialogNewExperienceBadge": "New experience",
+  "releaseDialogWhatChanged": "What changed",
+  "releaseDialogLanguageFeatureTitle": "New: language support",
+  "releaseDialogLanguageFeatureBody": "English, Spanish, and Portuguese are now available from Language in Settings.",
+  "commonContinue": "Continue",
+  "notificationsViewAction": "View",
+  "quickPdfViewerDocumentTitle": "Document",
+  "quickPdfViewerTrainingDocumentTitle": "Training Document",
+  "quickPdfViewerDescription": "This document will open in your device's native viewer for the best experience.",
+  "quickPdfViewerOpenDocument": "Open Document",
+  "quickPdfViewerCopyLink": "Copy Link",
+  "quickPdfViewerShare": "Share",
+  "quickPdfViewerHelpBody": "Documents open in your device's built-in viewer for optimal performance and feature support.",
+  "quickPdfViewerOpenFailed": "Could not open document. Please check your internet connection.",
+  "quickPdfViewerOpenError": "Error opening document: {error}",
+  "@quickPdfViewerOpenError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "quickPdfViewerCopied": "Document link copied to clipboard",
+  "quickPdfViewerShareFailed": "Could not share document",
+  "notificationSettingsTitle": "Notification Settings",
+  "notificationSettingsTestTooltip": "Test Notifications",
+  "notificationPermissionTitle": "Stay Updated with Hands",
+  "notificationPermissionBody": "Get notified about schedule changes, shift reminders, and important announcements from your team.",
+  "notificationSettingsQuickActions": "Quick Actions",
+  "notificationSettingsSubscribeTopics": "Subscribe to Topics",
+  "notificationSettingsSystemSettings": "System Settings",
+  "notificationSettingsTestTitle": "Notification Setup Test",
+  "notificationSettingsPermission": "Permission: {value}",
+  "@notificationSettingsPermission": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "notificationSettingsToken": "Token: {value}",
+  "@notificationSettingsToken": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "notificationSettingsStatus": "Status: {value}",
+  "@notificationSettingsStatus": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "notificationSettingsNone": "None",
+  "notificationSettingsReady": "✅ Ready",
+  "notificationSettingsNotReady": "❌ Not Ready",
+  "notificationOnboardingStayConnected": "Stay Connected",
+  "notificationOnboardingBody": "Get notified about:\n• Schedule updates\n• Shift reminders\n• Important announcements",
+  "notificationOnboardingEnableTitle": "Enable Notifications",
+  "notificationOnboardingEnableBody": "We'll only send notifications that are relevant to your work schedule and important updates.",
+  "notificationOnboardingSkip": "Skip for now",
+  "checklistSheetInfoLabel": "Info",
+  "checklistSheetNewChecklist": "New checklist",
+  "checklistSheetEditChecklist": "Edit checklist",
+  "checklistSheetSaveChecklist": "Save checklist",
+  "checklistSheetStepBasics": "Basics",
+  "checklistSheetStepTasks": "Tasks",
+  "checklistSheetStepAdvanced": "Advanced",
+  "checklistSheetNameRequired": "Checklist name is required.",
+  "checklistSheetAddOneTask": "Please add at least one task.",
+  "checklistSheetAllTasksNamed": "All tasks must have names.",
+  "checklistSheetInfoTipBasics": "Name this workflow template and add a short description.",
+  "checklistSheetBasicsIntro": "Enter the basic information for this template:",
+  "checklistSheetTemplateName": "Template name *",
+  "checklistSheetTemplateNameHint": "e.g., Opening Bar, Kitchen Close",
+  "checklistSheetDescriptionOptional": "Description (optional)",
+  "checklistSheetDescriptionHint": "Brief description of this checklist",
+  "checklistSheetNoShiftsAttach": "No shifts are available to attach right now.",
+  "checklistSheetNoShiftsFound": "No shifts found for this location. Please create shifts first.",
+  "checklistSheetShiftTip": "Select shifts where this checklist appears. You can leave this empty now and attach it later from the Shifts screen.",
+  "checklistSheetSelectShifts": "Select which shifts should use this checklist:",
+  "checklistSheetTasksTip": "Tap the camera to require a photo. If a photo is not uploaded by staff, admins are notified.",
+  "checklistSheetTasksIntro": "Add tasks to your checklist. Drag to reorder:",
+  "checklistSheetNoTasks": "No tasks added yet. Tap \"Add Task\" to get started.",
+  "checklistSheetAddTask": "Add Task",
+  "checklistSheetAdvancedTip": "Advanced settings are optional. Use them if you want to limit who can see this checklist or attach it to one or more shifts now.",
+  "checklistSheetVisibilityByJobType": "Visibility by job type",
+  "checklistSheetAssignToShifts": "Assign to shifts",
+  "checklistSheetSpanishTranslations": "Spanish translations",
+  "checklistSheetPortugueseTranslations": "Portuguese translations",
+  "checklistSheetSpanishTip": "Optional: add Spanish versions of this template and its task names. English stays as the fallback when a Spanish field is left blank.",
+  "checklistSheetTemplateNameSpanish": "Template name (Spanish)",
+  "checklistSheetTemplateNameSpanishHint": "e.g., Apertura del bar",
+  "checklistSheetDescriptionSpanish": "Description (Spanish)",
+  "checklistSheetDescriptionSpanishHint": "Brief description in Spanish",
+  "checklistSheetAddTasksForSpanish": "Add tasks first to include Spanish task labels.",
+  "checklistSheetSpanishTaskLabels": "Spanish task labels",
+  "checklistSheetTaskSpanish": "Task {index} (Spanish)",
+  "@checklistSheetTaskSpanish": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "checklistSheetSpanishTaskLabelHint": "Spanish task label",
+  "checklistSheetSpanishFor": "Spanish for: {name}",
+  "@checklistSheetSpanishFor": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "checklistSheetPortugueseTip": "Optional: add Portuguese versions of this template and its task names. English stays as the fallback when a Portuguese field is left blank.",
+  "checklistSheetTemplateNamePortuguese": "Template name (Portuguese)",
+  "checklistSheetTemplateNamePortugueseHint": "e.g., Abertura do bar",
+  "checklistSheetDescriptionPortuguese": "Description (Portuguese)",
+  "checklistSheetDescriptionPortugueseHint": "Brief description in Portuguese",
+  "checklistSheetAddTasksForPortuguese": "Add tasks first to include Portuguese task labels.",
+  "checklistSheetPortugueseTaskLabels": "Portuguese task labels",
+  "checklistSheetTaskPortuguese": "Task {index} (Portuguese)",
+  "@checklistSheetTaskPortuguese": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "checklistSheetPortugueseTaskLabelHint": "Portuguese task label",
+  "checklistSheetPortugueseFor": "Portuguese for: {name}",
+  "@checklistSheetPortugueseFor": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "checklistSheetTask": "Task {index}",
+  "@checklistSheetTask": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "checklistSheetTaskHint": "Enter task description",
+  "checklistSheetDeleteTask": "Delete task",
+  "checklistSheetPhotoRequired": "Photo required",
+  "checklistSheetNoPhotoRequired": "No photo required",
+  "checklistSheetTaskName": "Task name",
+  "checklistSheetPhoto": "Photo",
+  "checklistSheetLoadShiftsError": "Error loading shifts: {error}",
+  "@checklistSheetLoadShiftsError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "checklistSheetJobTypesTip": "Job types control who will see this checklist. Leave this empty to make it visible to everyone on the shift.",
+  "checklistSheetJobTypesIntro": "Optionally restrict this checklist to people with these job types. Leave empty to make it visible to all.",
+  "checklistSheetManage": "Manage",
+  "checklistSheetNoJobTypes": "No job types found yet. Use Manage to create your first one.",
+  "checklistSheetAddJobType": "Add job type",
+  "checklistSheetAddJobTypeHint": "e.g., Dishwasher",
+  "checklistSheetAdd": "Add",
+  "checklistSheetSaveFailed": "Failed to save checklist: {error}",
+  "@checklistSheetSaveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "shiftSheetLoadDataError": "Error loading data: {error}",
+  "@shiftSheetLoadDataError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "shiftSheetSavedSuccess": "Shift schedule updated successfully",
+  "shiftSheetSaveError": "Error saving schedule: {error}",
+  "@shiftSheetSaveError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "shiftSheetAddRequiredRole": "Add Required Role",
+  "shiftSheetAlreadyAdded": "Already added",
+  "shiftSheetAssignedCount": "{assigned} of {required} assigned",
+  "@shiftSheetAssignedCount": {
+    "placeholders": {
+      "assigned": {
+        "type": "int"
+      },
+      "required": {
+        "type": "int"
+      }
+    }
+  },
+  "shiftSheetRequiredRoles": "Required Roles",
+  "shiftSheetAddRole": "Add Role",
+  "shiftSheetNoRolesAssigned": "No roles assigned to this shift. Tap \"Add Role\" to add required positions.",
+  "shiftSheetAssignedUsers": "Assigned Users",
+  "shiftSheetNoUsersAssigned": "No users assigned yet.",
+  "shiftSheetAvailableUsers": "Available Users (Matching Roles)",
+  "shiftSheetOtherUsers": "Other Users (No Matching Role)",
+  "shiftSheetLoadUsersError": "Error loading users: {error}",
+  "@shiftSheetLoadUsersError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "shiftSheetNoOtherUsers": "No other users available",
+  "shiftSheetSaveSchedule": "Save Schedule",
+  "shiftSheetUnknownRole": "Unknown Role",
+  "shiftSheetRequiredCount": "Required: {count}",
+  "@shiftSheetRequiredCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "shiftSheetDecreaseCount": "Decrease count",
+  "shiftSheetIncreaseCount": "Increase count",
+  "shiftSheetRemoveRole": "Remove role",
+  "shiftSheetUnknownUserInitial": "U",
+  "shiftSheetCheckAssignmentsError": "Error checking assignments: {error}",
+  "@shiftSheetCheckAssignmentsError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "shiftSheetAlreadyAssignedAnotherShift": "Already assigned to another shift this day",
+  "notificationTopicsTitle": "Notification Types",
+  "notificationTopicsIntro": "Choose which updates you want to stay on top of:",
+  "notificationTopicsScheduleUpdates": "Schedule updates keep you informed when shifts change.",
+  "notificationTopicsShiftReminders": "Shift reminders prompt you before assigned work begins.",
+  "notificationTopicsGeneralAnnouncements": "General announcements share broader team and business updates.",
+  "notificationTopicsGotIt": "Got it",
+  "notificationTypesLearnMore": "Learn about notification types",
+  "notificationTypesTitle": "Notification types",
+  "notificationPushTitle": "Push notifications",
+  "notificationPushEnabled": "Push notifications are enabled on this device.",
+  "notificationPushTapToEnable": "Tap enable to turn on alerts for this device.",
+  "notificationEnable": "Enable",
+  "notificationTypeScheduleUpdates": "Schedule updates",
+  "notificationTypeScheduleUpdatesBody": "Get notified when your shifts are added, removed, or changed.",
+  "notificationTypeShiftReminders": "Shift reminders",
+  "notificationTypeShiftRemindersBody": "Receive reminders before upcoming shifts start.",
+  "notificationTypeGeneralAnnouncements": "General announcements",
+  "notificationTypeGeneralAnnouncementsBody": "Stay in the loop on team-wide updates and important notices.",
+  "notificationTypeEmail": "Email notifications",
+  "notificationTypeEmailBody": "Also receive the most important updates by email.",
+  "notificationDebugInfo": "Debug info",
+  "notificationFcmToken": "FCM token",
+  "notificationNoToken": "No token available yet",
+  "notificationTokenCopied": "Token copied",
+  "pushPermissionExplanationBody": "Turn on notifications so you receive shift reminders, schedule changes, and important team updates right away.",
+  "pushPermissionNotNow": "Not now",
+  "pushPermissionEnabledSuccess": "Notifications are enabled.",
+  "pushPermissionError": "We could not enable notifications. Please try again.",
+  "pushPermissionDisabledTitle": "Notifications are off",
+  "pushPermissionDisabledBody": "You can still use the app, but you may miss reminders and urgent updates until notifications are turned back on in your device settings.",
+  "pushPermissionMaybeLater": "Maybe later",
+  "pushPermissionOpenSettings": "Open settings",
+  "pushPermissionShortBody": "Get shift reminders, schedule changes, and team updates delivered to this device.",
+  "pushPermissionSettings": "Settings",
+  "pushPermissionRequestError": "We could not request notification permission. Please try again.",
+  "availabilitySavedSuccess": "Availability saved successfully.",
+  "availabilitySaveError": "Error saving availability: {error}",
+  "@availabilitySaveError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "availabilityTitle": "Availability",
+  "availabilityShiftAvailability": "Shift availability",
+  "availabilityShiftAvailabilityBody": "Set which shift blocks you are generally available to work each day.",
+  "availabilityEarliestStartTimes": "Earliest start times",
+  "availabilityEarliestStartBody": "Set the earliest time you can usually start for each day of the week.",
+  "availabilityDefaultTime": "9:00 AM",
+  "availabilityNotificationPreferences": "Notification preferences",
+  "availabilityScheduleUpdatesBody": "Stay updated when your published schedule changes.",
+  "availabilityShiftRemindersBody": "Receive reminders before your shifts begin.",
+  "availabilityEmailNotificationsBody": "Get key updates delivered to your email as well.",
+  "availabilityPushNotificationsBody": "Allow this device to receive instant alerts.",
+  "availabilitySavePreferences": "Save preferences",
+  "weekdayMonday": "Monday",
+  "weekdayTuesday": "Tuesday",
+  "weekdayWednesday": "Wednesday",
+  "weekdayThursday": "Thursday",
+  "weekdayFriday": "Friday",
+  "weekdaySaturday": "Saturday",
+  "weekdaySunday": "Sunday",
+  "shiftLabelMorning": "Morning",
+  "shiftLabelAfternoon": "Afternoon",
+  "shiftLabelEvening": "Evening",
+  "shiftLabelNight": "Night",
+  "upgradeLocationsTitle": "Add locations",
+  "upgradeLocationsQuantity": "How many locations do you want to add?",
+  "upgradeLocationsSummary": "Add {count} location(s) for {price} per month.",
+  "@upgradeLocationsSummary": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "upgradeLocationsFailed": "Could not update locations: {error}",
+  "@upgradeLocationsFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "upgradeLocationsAction": "Upgrade and pay"
+}

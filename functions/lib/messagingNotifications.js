@@ -62,6 +62,28 @@ async function acquireEventLock(eventId) {
 function getTTLDate() {
     return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 }
+function normalizeLanguageCode(rawValue) {
+    const normalized = String(rawValue || "").trim().toLowerCase().replace(/_/g, "-");
+    if (normalized.startsWith("es"))
+        return "es";
+    if (normalized.startsWith("pt"))
+        return "pt";
+    return "en";
+}
+function getLocalizedField(notif, field, preferredLanguageCode) {
+    const fallback = String(notif?.[field] || "");
+    const languageMap = notif?.[`${field}ByLanguage`];
+    if (languageMap && typeof languageMap === "object") {
+        const exact = languageMap[preferredLanguageCode];
+        if (typeof exact === "string" && exact.trim().length > 0)
+            return exact;
+        const baseCode = preferredLanguageCode.split("-")[0];
+        const baseValue = languageMap[baseCode];
+        if (typeof baseValue === "string" && baseValue.trim().length > 0)
+            return baseValue;
+    }
+    return fallback;
+}
 // Main function: Outbox trigger, fan-out to per-user inbox
 exports.onNotificationOutboxCreated = functions.firestore
     .database(FIRESTORE_DATABASE_ID)
@@ -166,6 +188,8 @@ exports.onNotificationOutboxCreated = functions.firestore
     // Get FCM tokens for all recipients for push notifications
     const tokenPromises = recipientUserIds.map(async (userId) => {
         try {
+            const userDoc = await db.collection("users").doc(userId).get();
+            const preferredLanguageCode = normalizeLanguageCode(userDoc.data()?.preferredLanguageCode);
             // First try user-specific subcollection (new format)
             const userTokenSnap = await db
                 .collection("users")
@@ -186,14 +210,19 @@ exports.onNotificationOutboxCreated = functions.firestore
                     .get();
                 tokens = legacyTokenSnap.docs.map((doc) => doc.data().fcmToken);
             }
-            return { userId, tokens: tokens.filter(Boolean) };
+            return {
+                userId,
+                preferredLanguageCode,
+                tokens: tokens.filter(Boolean),
+            };
         }
         catch (error) {
             console.error(`Error fetching tokens for user ${userId}:`, error);
-            return { userId, tokens: [] };
+            return { userId, preferredLanguageCode: "en", tokens: [] };
         }
     });
     const userTokens = await Promise.all(tokenPromises);
+    const userMeta = new Map(userTokens.map((entry) => [entry.userId, entry]));
     // Flatten and de-duplicate tokens to avoid duplicate sends
     const tokenSet = new Set();
     userTokens.forEach(({ tokens }) => {
@@ -203,14 +232,16 @@ exports.onNotificationOutboxCreated = functions.firestore
     const allTokens = Array.from(tokenSet);
     // Write inbox notifications
     for (const userId of recipientUserIds) {
+        const preferredLanguageCode = userMeta.get(userId)?.preferredLanguageCode || "en";
         const inboxRef = db.collection("userNotifications").doc(userId)
             .collection("notifications").doc();
         writer.set(inboxRef, {
             userId,
             orgId,
             type: notif.type || "general",
-            title: notif.title || "Notification",
-            message: notif.message || "",
+            title: getLocalizedField(notif, "title", preferredLanguageCode) ||
+                "Notification",
+            message: getLocalizedField(notif, "message", preferredLanguageCode) || "",
             readBy: [],
             archivedBy: [],
             createdAt: timestamp,
@@ -224,54 +255,68 @@ exports.onNotificationOutboxCreated = functions.firestore
     // Send push notifications if we have tokens
     if (allTokens.length > 0) {
         console.log(`🔔 [Outbox] Preparing to send push notifications to ${allTokens.length} unique tokens`);
-        // Build the base message (without tokens) to reuse per chunk
-        const baseMessage = {
-            notification: {
-                title: notif.title || "Hands Notification",
-                body: notif.message || "",
-            },
-            data: {
-                type: "general_notification",
-                orgId: orgId,
-                outboxId: notifId,
-            },
-            apns: {
-                payload: {
-                    aps: {
-                        sound: "default",
-                        badge: 1,
-                    },
-                },
-            },
-        };
+        const tokenGroups = new Map();
+        for (const entry of userTokens) {
+            const languageCode = entry.preferredLanguageCode || "en";
+            const existingTokens = tokenGroups.get(languageCode) || [];
+            for (const token of entry.tokens) {
+                if (!existingTokens.includes(token)) {
+                    existingTokens.push(token);
+                }
+            }
+            tokenGroups.set(languageCode, existingTokens);
+        }
         // FCM enforces a 500-token limit per multicast send. Chunk accordingly.
         const chunkSize = 500;
         let totalSuccess = 0;
         let totalFailure = 0;
-        for (let i = 0; i < allTokens.length; i += chunkSize) {
-            const chunk = allTokens.slice(i, i + chunkSize);
-            const fcmMessage = { ...baseMessage, tokens: chunk };
-            try {
-                // Use sendEachForMulticast to avoid deprecated legacy /batch endpoint.
-                const response = await admin.messaging().sendEachForMulticast(fcmMessage);
-                totalSuccess += response.successCount;
-                totalFailure += response.failureCount;
-                // Log up to first 3 errors in this chunk for diagnostics
-                const sampleErrors = response.responses
-                    .map((r, idx) => ({ idx, error: r.error }))
-                    .filter((x) => !!x.error)
-                    .slice(0, 3);
-                if (sampleErrors.length > 0) {
-                    console.warn(`⚠️ [Outbox] Chunk ${Math.floor(i / chunkSize) + 1}: sample errors:`, sampleErrors.map(e => ({ index: e.idx, code: e.error?.code, message: e.error?.message })));
+        for (const [languageCode, tokens] of tokenGroups.entries()) {
+            const baseMessage = {
+                notification: {
+                    title: getLocalizedField(notif, "title", languageCode) ||
+                        "Hands Notification",
+                    body: getLocalizedField(notif, "message", languageCode) || "",
+                },
+                data: {
+                    type: "general_notification",
+                    orgId: orgId,
+                    outboxId: notifId,
+                    languageCode,
+                },
+                apns: {
+                    payload: {
+                        aps: {
+                            sound: "default",
+                            badge: 1,
+                        },
+                    },
+                },
+            };
+            for (let i = 0; i < tokens.length; i += chunkSize) {
+                const chunk = tokens.slice(i, i + chunkSize);
+                const fcmMessage = { ...baseMessage, tokens: chunk };
+                try {
+                    // Use sendEachForMulticast to avoid deprecated legacy /batch endpoint.
+                    const response = await admin.messaging().sendEachForMulticast(fcmMessage);
+                    totalSuccess += response.successCount;
+                    totalFailure += response.failureCount;
+                    // Log up to first 3 errors in this chunk for diagnostics
+                    const sampleErrors = response.responses
+                        .map((r, idx) => ({ idx, error: r.error }))
+                        .filter((x) => !!x.error)
+                        .slice(0, 3);
+                    if (sampleErrors.length > 0) {
+                        console.warn(`⚠️ [Outbox] ${languageCode} chunk ${Math.floor(i / chunkSize) + 1}: sample errors:`, sampleErrors.map(e => ({ index: e.idx, code: e.error?.code, message: e.error?.message })));
+                    }
                 }
-            }
-            catch (error) {
-                totalFailure += chunk.length;
-                console.error(`❌ [Outbox] Error sending chunk ${Math.floor(i / chunkSize) + 1}:`, {
-                    message: error?.message,
-                    code: error?.code,
-                    stack: error?.stack,
-                });
+                catch (error) {
+                    totalFailure += chunk.length;
+                    console.error(`❌ [Outbox] Error sending ${languageCode} chunk ${Math.floor(i / chunkSize) + 1}:`, {
+                        message: error?.message,
+                        code: error?.code,
+                        stack: error?.stack,
+                    });
+                }
             }
         }
         console.log(`✅ [Outbox] Push notifications summary: ${totalSuccess} successful, ${totalFailure} failed`);

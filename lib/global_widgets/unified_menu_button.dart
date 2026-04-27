@@ -12,6 +12,8 @@ import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hands_app/features/shared_mode/shared_mode_controller.dart';
 import 'package:hands_app/features/shared_mode/shared_mode_state.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
+import 'package:hands_app/theme/theme.dart';
 
 class UnifiedMenuButton extends ConsumerStatefulWidget {
   final int? userRole;
@@ -325,25 +327,14 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setState) {
-            return AlertDialog(
-              title: const Text('Leave Shared Mode'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Enter the PIN of the person who enabled Shared Mode.'),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: pinController,
-                    keyboardType: TextInputType.number,
-                    obscureText: true,
-                    decoration: InputDecoration(labelText: 'Owner PIN', errorText: error),
-                  ),
-                ],
-              ),
+            return HandsDialog(
+              title: 'Leave Shared Mode',
+              subtitle: 'Enter the owner PIN for the person who enabled Shared Mode on this device.',
+              maxWidth: 460,
               actions: [
-                TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
-                FilledButton(
+                HandsSecondaryButton(text: 'Cancel', onPressed: () => Navigator.of(ctx).pop(false)),
+                HandsPrimaryButton(
+                  text: 'Leave',
                   onPressed: () async {
                     final pin = pinController.text.trim();
                     final ok = await ref.read(sharedModeControllerProvider.notifier).verifyOwnerPinToExit(pin: pin);
@@ -353,9 +344,40 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
                     }
                     if (ctx.mounted) Navigator.of(ctx).pop(true);
                   },
-                  child: const Text('Leave'),
                 ),
               ],
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Owner PIN', style: HandsModalTokens.labelStyle),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: pinController,
+                    keyboardType: TextInputType.number,
+                    obscureText: true,
+                    decoration: InputDecoration(
+                      hintText: 'Enter owner PIN',
+                      errorText: error,
+                      filled: true,
+                      fillColor: HandsModalTokens.surfaceMuted,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: HandsModalTokens.border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: HandsModalTokens.border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: HandsColors.handsOrange, width: 1.3),
+                      ),
+                    ),
+                    style: const TextStyle(color: HandsColors.white),
+                  ),
+                ],
+              ),
             );
           },
         );
@@ -377,32 +399,14 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setState) {
-            return AlertDialog(
-              title: const Text('Set Shared Mode PIN'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Choose a 4–10 digit PIN for switching users on shared devices.'),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: pinController,
-                    keyboardType: TextInputType.number,
-                    obscureText: true,
-                    decoration: const InputDecoration(labelText: 'PIN'),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: confirmController,
-                    keyboardType: TextInputType.number,
-                    obscureText: true,
-                    decoration: InputDecoration(labelText: 'Confirm PIN', errorText: error),
-                  ),
-                ],
-              ),
+            return HandsDialog(
+              title: 'Set Shared Mode PIN',
+              subtitle: 'Choose a 4 to 10 digit PIN for switching users on shared devices.',
+              maxWidth: 480,
               actions: [
-                TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
-                FilledButton(
+                HandsSecondaryButton(text: 'Cancel', onPressed: () => Navigator.of(ctx).pop()),
+                HandsPrimaryButton(
+                  text: 'Save PIN',
                   onPressed: () async {
                     final pin = pinController.text.trim();
                     final confirm = confirmController.text.trim();
@@ -417,9 +421,66 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
                       setState(() => error = 'Failed to set PIN');
                     }
                   },
-                  child: const Text('Save'),
                 ),
               ],
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('PIN', style: HandsModalTokens.labelStyle),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: pinController,
+                    keyboardType: TextInputType.number,
+                    obscureText: true,
+                    style: const TextStyle(color: HandsColors.white),
+                    decoration: InputDecoration(
+                      hintText: 'Enter PIN',
+                      filled: true,
+                      fillColor: HandsModalTokens.surfaceMuted,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: HandsModalTokens.border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: HandsModalTokens.border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: HandsColors.handsOrange, width: 1.3),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text('Confirm PIN', style: HandsModalTokens.labelStyle),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: confirmController,
+                    keyboardType: TextInputType.number,
+                    obscureText: true,
+                    decoration: InputDecoration(
+                      hintText: 'Re-enter PIN',
+                      errorText: error,
+                      filled: true,
+                      fillColor: HandsModalTokens.surfaceMuted,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: HandsModalTokens.border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: HandsModalTokens.border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: HandsColors.handsOrange, width: 1.3),
+                      ),
+                    ),
+                    style: const TextStyle(color: HandsColors.white),
+                  ),
+                ],
+              ),
             );
           },
         );
@@ -442,15 +503,18 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
     final shouldSet = await showDialog<bool>(
       context: context,
       builder: (ctx) {
-        return AlertDialog(
-          title: const Text('Set a Shared Mode PIN'),
-          content: const Text(
-            'You must set a Shared Mode PIN before enabling Shared Mode. This PIN is required to switch users and to leave Shared Mode on shared devices.',
-          ),
+        return HandsDialog(
+          title: 'Set a Shared Mode PIN',
+          subtitle: 'You need a PIN before Shared Mode can be enabled on this device.',
+          maxWidth: 460,
           actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Set PIN')),
+            HandsSecondaryButton(text: 'Cancel', onPressed: () => Navigator.of(ctx).pop(false)),
+            HandsPrimaryButton(text: 'Set PIN', onPressed: () => Navigator.of(ctx).pop(true)),
           ],
+          child: Text(
+            'This PIN is required to switch users and to leave Shared Mode on shared devices.',
+            style: HandsModalTokens.bodyStyle,
+          ),
         );
       },
     );
@@ -466,18 +530,16 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
   }
 
   Future<bool?> _confirmSignOutDevice(BuildContext context) async {
-    return showDialog<bool>(
+    return HandsDialog.show<bool>(
       context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text('Sign out device?'),
-          content: const Text('This will sign out of the device and return to the login screen.'),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Sign out')),
-          ],
-        );
-      },
+      title: 'Sign out device',
+      subtitle: 'This will sign out of the device and return to the login screen.',
+      maxWidth: 420,
+      child: const SizedBox.shrink(),
+      actions: [
+        HandsSecondaryButton(text: 'Cancel', onPressed: () => Navigator.of(context).pop(false)),
+        HandsPrimaryButton(text: 'Sign out', onPressed: () => Navigator.of(context).pop(true)),
+      ],
     );
   }
 
@@ -889,12 +951,12 @@ class _MenuOverlayState extends State<_MenuOverlay> {
         // Communications section
         items.add(_buildSectionDivider());
         items.add(_buildSectionHeader('Communications'));
-        items.add(_buildMenuItem('View messages', _MenuAction.viewMessages, Icons.message));
+        items.add(_buildMenuItem('Inbox', _MenuAction.viewMessages, Icons.inbox_outlined));
 
         // Admin-only features (role >= 2)
         if (widget.userRole >= 2) {
-          items.add(_buildMenuItem('Send notification', _MenuAction.sendNotification, Icons.send));
-          items.add(_buildMenuItem('Create notification group', _MenuAction.createGroup, Icons.group_add));
+          items.add(_buildMenuItem('New broadcast', _MenuAction.sendNotification, Icons.campaign_outlined));
+          items.add(_buildMenuItem('Manage audiences', _MenuAction.createGroup, Icons.groups_2_outlined));
         }
 
         // Support & Settings section
@@ -925,19 +987,19 @@ class _MenuOverlayState extends State<_MenuOverlay> {
           ),
         );
         items.add(_buildMenuItem('Settings', _MenuAction.settings, Icons.settings));
-        items.add(_buildMenuItem('How to use', _MenuAction.howToUse, Icons.help_center));
+        items.add(_buildMenuItem('Help', _MenuAction.howToUse, Icons.help_center));
         items.add(_buildMenuItem('Contact us', _MenuAction.contactUs, Icons.contact_support));
       }
     } else {
       // No location switcher needed, just show other sections
       // Communications section
       items.add(_buildSectionHeader('Communications'));
-      items.add(_buildMenuItem('View messages', _MenuAction.viewMessages, Icons.message));
+      items.add(_buildMenuItem('Inbox', _MenuAction.viewMessages, Icons.inbox_outlined));
 
       // Admin-only features (role >= 2)
       if (widget.userRole >= 2) {
-        items.add(_buildMenuItem('Send notification', _MenuAction.sendNotification, Icons.send));
-        items.add(_buildMenuItem('Create notification group', _MenuAction.createGroup, Icons.group_add));
+        items.add(_buildMenuItem('New broadcast', _MenuAction.sendNotification, Icons.campaign_outlined));
+        items.add(_buildMenuItem('Manage audiences', _MenuAction.createGroup, Icons.groups_2_outlined));
       }
 
       // Support & Settings section
@@ -968,7 +1030,7 @@ class _MenuOverlayState extends State<_MenuOverlay> {
         ),
       );
       items.add(_buildMenuItem('Settings', _MenuAction.settings, Icons.settings));
-      items.add(_buildMenuItem('How to use', _MenuAction.howToUse, Icons.help_center));
+      items.add(_buildMenuItem('Help', _MenuAction.howToUse, Icons.help_center));
       items.add(_buildMenuItem('Contact us', _MenuAction.contactUs, Icons.contact_support));
     }
 

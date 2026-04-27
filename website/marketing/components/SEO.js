@@ -42,11 +42,6 @@ export default function SEO({
   "width": 1024,
   "height": 1024
       }
-    },
-    "aggregateRating": {
-      "@type": "AggregateRating",
-      "ratingValue": "4.8",
-      "ratingCount": "127"
     }
   }
 

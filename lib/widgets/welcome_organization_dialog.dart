@@ -1,13 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:hands_app/config/feature_flags.dart';
 import 'package:hands_app/theme/theme.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class WelcomeOrganizationDialog extends StatelessWidget {
   final VoidCallback? onProceedToLocationSetup;
-
-  // Admin tutorial video URL
-  static const String _adminVideoUrl =
-      'https://firebasestorage.googleapis.com/v0/b/plan-with-hands.firebasestorage.app/o/HandsAdminDemo.mp4?alt=media&token=c7bc227b-590a-48ed-9631-bb1e440f6450';
 
   const WelcomeOrganizationDialog({super.key, this.onProceedToLocationSetup});
 
@@ -21,8 +17,12 @@ class WelcomeOrganizationDialog extends StatelessWidget {
           Icon(Icons.celebration, color: HandsColors.handsOrange, size: 28),
           const SizedBox(width: 12),
           Text(
-            'Welcome to Plan With Hands!',
-            style: TextStyle(color: HandsColors.white, fontSize: 20, fontWeight: FontWeight.bold),
+            'Welcome to Hands',
+            style: TextStyle(
+              color: HandsColors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ],
       ),
@@ -32,88 +32,40 @@ class WelcomeOrganizationDialog extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Congratulations on setting up your organization! Here are some important next steps:',
-              style: TextStyle(color: HandsColors.white70, fontSize: 16, height: 1.4),
+              'You\'re live on a $kTrialDays-day trial. Take these steps to get to first value quickly:',
+              style: TextStyle(
+                color: HandsColors.white70,
+                fontSize: 16,
+                height: 1.4,
+              ),
             ),
             const SizedBox(height: 20),
-
-            // Mobile App Section
             _buildSection(
-              icon: Icons.phone_android,
-              title: 'Download the Mobile App',
-              content: 'For on-the-go management, download our mobile app for daily operations and shift management.',
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const SizedBox(width: 32), // Align with section content
-                _buildAppStoreButton('App Store', 'https://apps.apple.com/app/plan-with-hands/id6738078321'),
-                const SizedBox(width: 12),
-                _buildAppStoreButton(
-                  'Google Play',
-                  'https://play.google.com/store/apps/details?id=com.handsapp.hands_app',
-                ),
-              ],
+              icon: Icons.location_on,
+              title: 'Add your first location',
+              content:
+                  'This unlocks the rest of setup and gives your team a place to work from.',
             ),
             const SizedBox(height: 20),
-
-            // Account Management Section
+            _buildSection(
+              icon: Icons.auto_fix_high,
+              title: 'Use the starter setup',
+              content:
+                  'We\'ll create a sample shift and checklist after your first location so you have something real to edit.',
+            ),
+            const SizedBox(height: 20),
+            _buildSection(
+              icon: Icons.group_add,
+              title: 'Invite one teammate',
+              content:
+                  'Once someone else joins, you can enable performance tracking and see live completion data.',
+            ),
+            const SizedBox(height: 20),
             _buildSection(
               icon: Icons.credit_card,
-              title: 'Account & Subscription Management',
+              title: 'Add billing when you\'re ready',
               content:
-                  'All billing, subscription changes, and account settings must be managed through this web portal.',
-            ),
-            const SizedBox(height: 20),
-
-            // Video Tutorial Section
-            _buildSection(
-              icon: Icons.play_circle_outline,
-              title: 'Watch Tutorial Video',
-              content:
-                  'New to Plan With Hands? Watch our quick video guide to learn how to set up your organization, create shifts, and manage your team.',
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const SizedBox(width: 32), // Align with section content
-                InkWell(
-                  onTap: () => _launchUrl(_adminVideoUrl),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(color: HandsColors.handsOrange, borderRadius: BorderRadius.circular(8)),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.play_arrow, color: HandsColors.white, size: 20),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Watch Now',
-                          style: TextStyle(color: HandsColors.white, fontSize: 14, fontWeight: FontWeight.w600),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-
-            // Help & Support Section
-            _buildSection(
-              icon: Icons.help_outline,
-              title: 'Need Help?',
-              content:
-                  'Access our FAQ and step-by-step guides by clicking the menu button (☰) in the top right corner and selecting "Help".',
-            ),
-            const SizedBox(height: 20),
-
-            // Get Started Section
-            _buildSection(
-              icon: Icons.rocket_launch,
-              title: 'Get Started',
-              content:
-                  'You can now start adding locations, creating shifts, and inviting team members. We\'ll guide you through setting up your first location next.',
+                  'You can start setup now and add your payment method later from Settings before the trial ends.',
             ),
           ],
         ),
@@ -127,15 +79,23 @@ class WelcomeOrganizationDialog extends StatelessWidget {
             }
           },
           child: Text(
-            'Proceed and Set Up First Location',
-            style: TextStyle(color: HandsColors.handsOrange, fontSize: 16, fontWeight: FontWeight.w600),
+            'Set Up First Location',
+            style: TextStyle(
+              color: HandsColors.handsOrange,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildSection({required IconData icon, required String title, required String content}) {
+  Widget _buildSection({
+    required IconData icon,
+    required String title,
+    required String content,
+  }) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -145,34 +105,27 @@ class WelcomeOrganizationDialog extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: TextStyle(color: HandsColors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+              Text(
+                title,
+                style: TextStyle(
+                  color: HandsColors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               const SizedBox(height: 4),
-              Text(content, style: TextStyle(color: HandsColors.white70, fontSize: 14, height: 1.3)),
+              Text(
+                content,
+                style: TextStyle(
+                  color: HandsColors.white70,
+                  fontSize: 14,
+                  height: 1.3,
+                ),
+              ),
             ],
           ),
         ),
       ],
     );
-  }
-
-  Widget _buildAppStoreButton(String label, String url) {
-    return InkWell(
-      onTap: () => _launchUrl(url),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          border: Border.all(color: HandsColors.handsOrange, width: 1),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(label, style: TextStyle(color: HandsColors.handsOrange, fontSize: 12, fontWeight: FontWeight.w500)),
-      ),
-    );
-  }
-
-  Future<void> _launchUrl(String url) async {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
   }
 }

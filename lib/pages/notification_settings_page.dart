@@ -4,6 +4,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:hands_app/services/push_notification_service.dart';
 import 'package:hands_app/widgets/push_notification_permission_widget.dart';
 import 'package:hands_app/widgets/notification_settings_widget.dart';
+import 'package:hands_app/l10n/l10n.dart';
 
 /// Example page showing how to integrate push notifications
 /// Add this to your settings page or onboarding flow
@@ -11,11 +12,14 @@ class NotificationSettingsPage extends ConsumerStatefulWidget {
   const NotificationSettingsPage({super.key});
 
   @override
-  ConsumerState<NotificationSettingsPage> createState() => _NotificationSettingsPageState();
+  ConsumerState<NotificationSettingsPage> createState() =>
+      _NotificationSettingsPageState();
 }
 
-class _NotificationSettingsPageState extends ConsumerState<NotificationSettingsPage> {
-  final PushNotificationService _notificationService = PushNotificationService();
+class _NotificationSettingsPageState
+    extends ConsumerState<NotificationSettingsPage> {
+  final PushNotificationService _notificationService =
+      PushNotificationService();
 
   @override
   void initState() {
@@ -26,7 +30,9 @@ class _NotificationSettingsPageState extends ConsumerState<NotificationSettingsP
   void _setupNotificationListeners() {
     // Listen for incoming messages while app is open
     _notificationService.onMessage.listen((message) {
-      debugPrint('Received message while app is open: ${message.notification?.title}');
+      debugPrint(
+        'Received message while app is open: ${message.notification?.title}',
+      );
 
       // Show in-app notification or update UI
       _showInAppNotification(message);
@@ -42,6 +48,7 @@ class _NotificationSettingsPageState extends ConsumerState<NotificationSettingsP
   }
 
   void _showInAppNotification(RemoteMessage message) {
+    final l10n = context.l10n;
     final notification = message.notification;
     if (notification != null && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -51,13 +58,16 @@ class _NotificationSettingsPageState extends ConsumerState<NotificationSettingsP
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (notification.title != null)
-                Text(notification.title!, style: const TextStyle(fontWeight: FontWeight.bold)),
+                Text(
+                  notification.title!,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
               if (notification.body != null) Text(notification.body!),
             ],
           ),
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
-            label: 'View',
+            label: l10n.notificationsViewAction,
             onPressed: () {
               // Navigate to relevant screen based on message data
               _handleNotificationTap(message);
@@ -114,9 +124,10 @@ class _NotificationSettingsPageState extends ConsumerState<NotificationSettingsP
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Notification Settings'),
+        title: Text(l10n.notificationSettingsTitle),
         actions: [
           IconButton(
             onPressed: () async {
@@ -124,7 +135,7 @@ class _NotificationSettingsPageState extends ConsumerState<NotificationSettingsP
               await _testNotificationSetup();
             },
             icon: const Icon(Icons.bug_report),
-            tooltip: 'Test Notifications',
+            tooltip: l10n.notificationSettingsTestTooltip,
           ),
         ],
       ),
@@ -134,10 +145,9 @@ class _NotificationSettingsPageState extends ConsumerState<NotificationSettingsP
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Permission request widget
-            const PushNotificationPermissionWidget(
-              title: 'Stay Updated with Hands',
-              message:
-                  'Get notified about schedule changes, shift reminders, and important announcements from your team.',
+            PushNotificationPermissionWidget(
+              title: l10n.notificationPermissionTitle,
+              message: l10n.notificationPermissionBody,
               autoRequest: false, // Don't auto-request, let user trigger it
             ),
 
@@ -169,8 +179,10 @@ class _NotificationSettingsPageState extends ConsumerState<NotificationSettingsP
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Quick Actions',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                      l10n.notificationSettingsQuickActions,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const SizedBox(height: 12),
 
@@ -180,15 +192,20 @@ class _NotificationSettingsPageState extends ConsumerState<NotificationSettingsP
                           child: OutlinedButton.icon(
                             onPressed: _subscribeToTopics,
                             icon: const Icon(Icons.topic),
-                            label: const Text('Subscribe to Topics'),
+                            label: Text(
+                              l10n.notificationSettingsSubscribeTopics,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: OutlinedButton.icon(
-                            onPressed: () => _notificationService.openAppSettings(),
+                            onPressed:
+                                () => _notificationService.openAppSettings(),
                             icon: const Icon(Icons.settings),
-                            label: const Text('System Settings'),
+                            label: Text(
+                              l10n.notificationSettingsSystemSettings,
+                            ),
                           ),
                         ),
                       ],
@@ -214,6 +231,7 @@ class _NotificationSettingsPageState extends ConsumerState<NotificationSettingsP
   }
 
   Future<void> _testNotificationSetup() async {
+    final l10n = context.l10n;
     final permissionStatus = await _notificationService.checkPermissionStatus();
     final token = _notificationService.currentToken;
 
@@ -221,19 +239,38 @@ class _NotificationSettingsPageState extends ConsumerState<NotificationSettingsP
       context: context,
       builder:
           (context) => AlertDialog(
-            title: const Text('Notification Setup Test'),
+            title: Text(l10n.notificationSettingsTestTitle),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Permission: ${permissionStatus.name}'),
+                Text(
+                  l10n.notificationSettingsPermission(permissionStatus.name),
+                ),
                 const SizedBox(height: 8),
-                Text('Token: ${token != null ? '${token.substring(0, 20)}...' : 'None'}'),
+                Text(
+                  l10n.notificationSettingsToken(
+                    token != null
+                        ? '${token.substring(0, 20)}...'
+                        : l10n.notificationSettingsNone,
+                  ),
+                ),
                 const SizedBox(height: 8),
-                Text('Status: ${permissionStatus.isGranted ? '✅ Ready' : '❌ Not Ready'}'),
+                Text(
+                  l10n.notificationSettingsStatus(
+                    permissionStatus.isGranted
+                        ? l10n.notificationSettingsReady
+                        : l10n.notificationSettingsNotReady,
+                  ),
+                ),
               ],
             ),
-            actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(l10n.commonOk),
+              ),
+            ],
           ),
     );
   }
@@ -247,24 +284,31 @@ class OnboardingNotificationStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.notifications_active, size: 80, color: Theme.of(context).colorScheme.primary),
+          Icon(
+            Icons.notifications_active,
+            size: 80,
+            color: Theme.of(context).colorScheme.primary,
+          ),
           const SizedBox(height: 24),
 
           Text(
-            'Stay Connected',
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
+            l10n.notificationOnboardingStayConnected,
+            style: Theme.of(
+              context,
+            ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ),
 
           const SizedBox(height: 16),
 
           Text(
-            'Get notified about:\n• Schedule updates\n• Shift reminders\n• Important announcements',
+            l10n.notificationOnboardingBody,
             style: Theme.of(context).textTheme.bodyLarge,
             textAlign: TextAlign.center,
           ),
@@ -272,15 +316,18 @@ class OnboardingNotificationStep extends StatelessWidget {
           const SizedBox(height: 32),
 
           PushNotificationPermissionWidget(
-            title: 'Enable Notifications',
-            message: 'We\'ll only send notifications that are relevant to your work schedule and important updates.',
+            title: l10n.notificationOnboardingEnableTitle,
+            message: l10n.notificationOnboardingEnableBody,
             onPermissionGranted: onComplete,
             onPermissionDenied: onComplete,
           ),
 
           const SizedBox(height: 16),
 
-          TextButton(onPressed: onComplete, child: const Text('Skip for now')),
+          TextButton(
+            onPressed: onComplete,
+            child: Text(l10n.notificationOnboardingSkip),
+          ),
         ],
       ),
     );

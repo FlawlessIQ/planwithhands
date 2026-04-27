@@ -56,6 +56,14 @@ const userModule = require("../user_functions");
 export const createUser = userModule.createUser as any;
 export const deleteUser = userModule.deleteUser as any;
 export const sendOrganizationSignupNotification = userModule.sendOrganizationSignupNotification as any;
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const inviteModule = require("../invite_functions");
+export const createInvite = inviteModule.createInvite as any;
+export const verifyInvite = inviteModule.verifyInvite as any;
+export const acceptInvite = inviteModule.acceptInvite as any;
+export const resendInvite = inviteModule.resendInvite as any;
+export const revokeInvite = inviteModule.revokeInvite as any;
+export const lookupInviteByEmail = inviteModule.lookupInviteByEmail as any;
 
 // Export other JS-based functions
 // eslint-disable-next-line @typescript-eslint/no-var-requires

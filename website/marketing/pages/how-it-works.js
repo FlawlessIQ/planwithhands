@@ -16,7 +16,7 @@ const admin = [
   },
   { 
     title: 'Invite your team', 
-    desc: 'Add managers and staff—invites prompt mobile app download and account setup.',
+    desc: 'Add managers and staff, then have them finish account setup from the invite email or a reset link.',
     icon: '👥',
     color: 'from-green-500 to-green-600'
   },
@@ -196,8 +196,7 @@ export default function HowItWorks() {
         structuredData={structuredData}
         keywords="how restaurant management software works, implementation guide, restaurant operations setup, digital checklist implementation, team management setup"
       />
-  return (
-    <div>
+      <div>
       {/* Hero Section */}
       <section className="relative py-24 overflow-hidden">
         {/* Background gradient */}
@@ -221,7 +220,7 @@ export default function HowItWorks() {
           
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <Link href="/pricing" className="group relative px-8 py-4 bg-gradient-to-r from-accent to-accent/80 text-primary font-bold text-lg rounded-xl shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105">
-              <span className="relative z-10">Start Free Trial</span>
+              <span className="relative z-10">Start 14-Day Trial</span>
               <div className="absolute inset-0 bg-gradient-to-r from-accent/80 to-accent rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
             </Link>
             <Link href="/features" className="px-8 py-4 bg-white/10 backdrop-blur-sm text-white font-semibold text-lg rounded-xl border border-white/20 hover:bg-white/20 transition-all duration-300">
@@ -279,7 +278,7 @@ export default function HowItWorks() {
           
           <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">
             <Link href="/pricing" className="group relative px-10 py-5 bg-gradient-to-r from-accent to-accent/90 text-primary font-bold text-xl rounded-xl shadow-2xl hover:shadow-accent/25 transition-all duration-300 transform hover:scale-105">
-              <span className="relative z-10">Start Free Trial</span>
+              <span className="relative z-10">Start 14-Day Trial</span>
               <div className="absolute inset-0 bg-white/20 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
             </Link>
             <Link href="/contact" className="px-10 py-5 bg-transparent text-white font-semibold text-xl rounded-xl border-2 border-white/30 hover:border-accent hover:bg-accent/10 transition-all duration-300">

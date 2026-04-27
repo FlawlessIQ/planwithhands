@@ -6,6 +6,7 @@ import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/ui/bottom_sheet_styles.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/widgets/hands_text_field.dart';
 
 class ShiftTemplateBottomSheet extends StatefulWidget {
@@ -27,7 +28,8 @@ class ShiftTemplateBottomSheet extends StatefulWidget {
   });
 
   @override
-  State<ShiftTemplateBottomSheet> createState() => _ShiftTemplateBottomSheetState();
+  State<ShiftTemplateBottomSheet> createState() =>
+      _ShiftTemplateBottomSheetState();
 }
 
 class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
@@ -42,7 +44,15 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
   final _endTimeController = TextEditingController();
   bool _repeatsDaily = false;
   final Set<String> _selectedDays = {};
-  final List<String> _weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  final List<String> _weekDays = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+  ];
 
   // Step 2: Locations (REMOVED)
   // Shift templates are now organization-wide and not tied to specific locations.
@@ -71,7 +81,9 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
     _repeatsDaily = shift.repeatsDaily;
     _selectedDays.addAll(shift.days);
     // selectedLocationIds = coerceToLocationIds(shift.locationIds); // REMOVED
-    selectedChecklistTemplateIds = List<String>.from(shift.checklistTemplateIds);
+    selectedChecklistTemplateIds = List<String>.from(
+      shift.checklistTemplateIds,
+    );
     staffingLevels = Map<String, int>.from(shift.staffingLevels);
   }
 
@@ -131,7 +143,9 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
             height: 220,
             decoration: BoxDecoration(
               color: HandsColors.primaryContainer,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(12),
+              ),
             ),
             child: CupertinoDatePicker(
               mode: CupertinoDatePickerMode.time,
@@ -158,9 +172,11 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
       case 0:
         if (!_formKey.currentState!.validate()) return false;
         if (!_repeatsDaily && _selectedDays.isEmpty) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Please select days or choose Repeats Daily')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please select days or choose Repeats Daily'),
+            ),
+          );
           return false;
         }
         return true;
@@ -181,7 +197,8 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
     final List<String> effectiveLocationIds =
         isEditing && widget.shiftData != null
             ? coerceToLocationIds(widget.shiftData!.locationIds)
-            : (widget.selectedLocationId != null && widget.selectedLocationId!.isNotEmpty
+            : (widget.selectedLocationId != null &&
+                    widget.selectedLocationId!.isNotEmpty
                 ? [widget.selectedLocationId!]
                 : <String>[]);
 
@@ -216,7 +233,10 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
     // Perform Firestore work in background to avoid timing/unmount issues
     () async {
       try {
-        final coll = FirestoreEnforcer.instance.collection('organizations').doc(orgId).collection('shifts');
+        final coll = FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(orgId)
+            .collection('shifts');
 
         if (isEdit && shiftId != null) {
           await coll.doc(shiftId).update(data);
@@ -234,9 +254,7 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
   @override
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
-    final width = mq.size.width;
     final isDialog = context.findAncestorWidgetOfExactType<Dialog>() != null;
-    final isWide = width >= 900; // threshold for horizontal stepper
 
     Widget header({bool showDivider = true, bool showHandle = false}) {
       return Column(
@@ -247,22 +265,23 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
               width: 40,
               height: 4,
               margin: const EdgeInsets.only(top: 6, bottom: 8),
-              decoration: BoxDecoration(color: HandsColors.white, borderRadius: BorderRadius.circular(2)),
+              decoration: BoxDecoration(
+                color: HandsColors.white,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
           Padding(
             padding: EdgeInsets.symmetric(
               horizontal: BottomSheetStyles.horizontalPadding,
-              vertical: isDialog ? 12 : 14,
+              vertical: isDialog ? 10 : 12,
             ),
             child: Row(
               children: [
                 Expanded(
                   child: Text(
-                    isEditing ? 'Edit shift template' : 'Create shift template',
-                    style: GoogleFonts.comfortaa(
-                      fontWeight: FontWeight.bold,
-                      fontSize: isDialog ? 18 : 19,
-                      color: HandsColors.white,
+                    isEditing ? 'Edit shift' : 'Create shift',
+                    style: HandsModalTokens.titleStyle.copyWith(
+                      fontSize: isDialog ? 22 : 23,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -270,7 +289,9 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
                 ),
                 IconButton(
                   onPressed: () {
-                    if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+                    if (Navigator.of(context).canPop()) {
+                      Navigator.of(context).pop();
+                    }
                   },
                   splashRadius: 20,
                   icon: const Icon(Icons.close),
@@ -285,74 +306,96 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
       );
     }
 
-    Widget buildStepper() {
-      return Stepper(
-        physics: const NeverScrollableScrollPhysics(),
-        type: isWide ? StepperType.horizontal : StepperType.vertical,
-        currentStep: _currentStep,
-        onStepTapped: (index) {
-          if (isEditing) {
-            setState(() => _currentStep = index);
-          } else if (index <= _currentStep) {
-            setState(() => _currentStep = index);
-          }
-        },
-        onStepContinue: _nextStep,
-        onStepCancel: _prevStep,
-        controlsBuilder: (context, details) {
+    Widget buildStepBody() {
+      switch (_currentStep) {
+        case 0:
           return Padding(
-            padding: EdgeInsets.symmetric(vertical: isDialog ? 8 : 12, horizontal: BottomSheetStyles.horizontalPadding),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+            padding: const EdgeInsets.symmetric(
+              horizontal: BottomSheetStyles.horizontalPadding,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                TextButton(
-                  onPressed: details.onStepCancel,
-                  style: BottomSheetStyles.secondaryTextButtonStyle(context),
-                  child: const Text('Back'),
+                const HandsModalInfoBanner(
+                  text:
+                      "Set start/end times and days. Uses the location's time zone. Shifts become available 30 minutes before start time and remain accessible for 1 hour after end time.",
                 ),
-                const SizedBox(width: 10),
-                ElevatedButton(
-                  onPressed: details.onStepContinue,
-                  style: BottomSheetStyles.primaryButtonStyle(),
-                  child: Text(_currentStep < 1 ? 'Next' : 'Save'),
-                ),
+                const SizedBox(height: 14),
+                Form(key: _formKey, child: _buildInfoStep()),
               ],
             ),
           );
-        },
-        steps: [
-          Step(
-            title: BottomSheetStyles.stepTitle('Info'),
-            isActive: _currentStep >= 0,
-            content: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const _InfoTip(
-                    text:
-                        "Set start/end times and days. Uses the location's time zone. Shifts become available 30 minutes before start time and remain accessible for 1 hour after end time.",
-                  ),
-                  Form(key: _formKey, child: _buildInfoStep()),
-                ],
-              ),
+        case 1:
+          return Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: BottomSheetStyles.horizontalPadding,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const HandsModalInfoBanner(
+                  text:
+                      'Attach the workflow templates that should run during this shift. You can create more from the Checklist Library.',
+                ),
+                const SizedBox(
+                  height: BottomSheetStyles.verticalSectionSpacing,
+                ),
+                _buildChecklistStep(),
+              ],
+            ),
+          );
+        default:
+          return const SizedBox.shrink();
+      }
+    }
+
+    Widget buildControls() {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(
+          BottomSheetStyles.horizontalPadding,
+          10,
+          BottomSheetStyles.horizontalPadding,
+          16,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            if (_currentStep > 0)
+              HandsSecondaryButton(text: 'Back', onPressed: _prevStep),
+            if (_currentStep > 0) const SizedBox(width: 10),
+            HandsPrimaryButton(
+              text: _currentStep < 1 ? 'Next' : 'Save shift',
+              onPressed: _nextStep,
+            ),
+          ],
+        ),
+      );
+    }
+
+    Widget buildStepperLayout({ScrollController? controller}) {
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
+            child: HandsCompactStepper(
+              steps: const ['Info', 'Workflow'],
+              currentStep: _currentStep,
+              onStepTap: (index) {
+                if (isEditing || index <= _currentStep) {
+                  setState(() => _currentStep = index);
+                }
+              },
             ),
           ),
-          Step(
-            title: BottomSheetStyles.stepTitle('Checklists'),
-            isActive: _currentStep >= 1,
-            content: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: BottomSheetStyles.horizontalPadding),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const _InfoTip(text: 'Pick the checklists for this shift. Create more in Checklists.'),
-                  const SizedBox(height: BottomSheetStyles.verticalSectionSpacing),
-                  _buildChecklistStep(),
-                ],
-              ),
+          Expanded(
+            child: SingleChildScrollView(
+              controller: controller,
+              padding: const EdgeInsets.only(top: 8, bottom: 12),
+              child: buildStepBody(),
             ),
           ),
+          const Divider(height: 1),
+          buildControls(),
         ],
       );
     }
@@ -360,15 +403,22 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
     // Dialog path: direct column (no draggable sheet) for zero top gap.
     if (isDialog) {
       return Material(
-        color: HandsColors.cardPrimary,
-        borderRadius: BorderRadius.circular(12),
-        child: Column(children: [header(showHandle: false), Expanded(child: buildStepper())]),
+        color: HandsModalTokens.surface,
+        borderRadius: BorderRadius.circular(HandsModalTokens.radius),
+        child: Column(
+          children: [
+            header(showHandle: false),
+            Expanded(child: buildStepperLayout()),
+          ],
+        ),
       );
     }
 
     // Mobile / non-dialog: use DraggableScrollableSheet inside bottom sheet context
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: DraggableScrollableSheet(
         expand: false,
         initialChildSize: 0.9,
@@ -377,21 +427,18 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
         builder: (context, scrollController) {
           return SafeArea(
             child: Material(
-              color: HandsColors.cardPrimary,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              color: HandsModalTokens.surface,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(HandsModalTokens.radius),
+              ),
               child: Scaffold(
                 resizeToAvoidBottomInset: false,
                 backgroundColor: Colors.transparent,
                 body: Column(
                   children: [
                     header(showHandle: true),
-                    // Wrap the stepper content in a scrollable view for mobile
                     Expanded(
-                      child: SingleChildScrollView(
-                        controller: scrollController,
-                        padding: const EdgeInsets.only(bottom: 24),
-                        child: buildStepper(),
-                      ),
+                      child: buildStepperLayout(controller: scrollController),
                     ),
                   ],
                 ),
@@ -410,7 +457,9 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
         HandsTextFormField(
           controller: _shiftNameController,
           decoration: BottomSheetStyles.inputDecoration(label: 'Shift name *'),
-          validator: (v) => v != null && v.trim().isNotEmpty ? null : 'Enter shift name',
+          validator:
+              (v) =>
+                  v != null && v.trim().isNotEmpty ? null : 'Enter shift name',
         ),
         const SizedBox(height: BottomSheetStyles.verticalSectionSpacing),
         Row(
@@ -418,20 +467,32 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
             Expanded(
               child: HandsTextFormField(
                 controller: _startTimeController,
-                decoration: BottomSheetStyles.inputDecoration(label: 'Start time *'),
+                decoration: BottomSheetStyles.inputDecoration(
+                  label: 'Start time *',
+                ),
                 readOnly: true,
                 onTap: () => _pickTime(_startTimeController),
-                validator: (v) => v != null && v.trim().isNotEmpty ? null : 'Enter start time',
+                validator:
+                    (v) =>
+                        v != null && v.trim().isNotEmpty
+                            ? null
+                            : 'Enter start time',
               ),
             ),
             const SizedBox(width: 16),
             Expanded(
               child: HandsTextFormField(
                 controller: _endTimeController,
-                decoration: BottomSheetStyles.inputDecoration(label: 'End time *'),
+                decoration: BottomSheetStyles.inputDecoration(
+                  label: 'End time *',
+                ),
                 readOnly: true,
                 onTap: () => _pickTime(_endTimeController),
-                validator: (v) => v != null && v.trim().isNotEmpty ? null : 'Enter end time',
+                validator:
+                    (v) =>
+                        v != null && v.trim().isNotEmpty
+                            ? null
+                            : 'Enter end time',
               ),
             ),
           ],
@@ -440,7 +501,10 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
         CheckboxListTile(
           title: Text(
             'Repeats daily',
-            style: GoogleFonts.comfortaa(color: HandsColors.white, fontWeight: FontWeight.w500),
+            style: GoogleFonts.comfortaa(
+              color: HandsColors.white,
+              fontWeight: FontWeight.w500,
+            ),
           ),
           value: _repeatsDaily,
           checkColor: HandsColors.white,
@@ -461,26 +525,44 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
               runSpacing: 4,
               children:
                   _weekDays.map((d) {
-                    final bool selected = _repeatsDaily || _selectedDays.contains(d);
-                    final bool greenFill = _repeatsDaily; // repeatsDaily uses sageGreen
+                    final bool selected =
+                        _repeatsDaily || _selectedDays.contains(d);
+                    final bool greenFill =
+                        _repeatsDaily; // repeatsDaily uses sageGreen
                     return ChoiceChip(
                       label: Text(
                         isNarrow ? d.substring(0, 3) : d,
                         style: GoogleFonts.comfortaa(
-                          color: selected ? (greenFill ? Colors.black : HandsColors.white) : HandsColors.white70,
+                          color:
+                              selected
+                                  ? (greenFill
+                                      ? Colors.black
+                                      : HandsColors.white)
+                                  : HandsColors.white70,
                           fontWeight: FontWeight.w500,
                           fontSize: isNarrow ? 12 : 14,
                         ),
                       ),
                       selected: selected,
-                      selectedColor: greenFill ? HandsColors.sageGreen : HandsColors.handsOrange,
+                      selectedColor:
+                          greenFill
+                              ? HandsColors.sageGreen
+                              : HandsColors.handsOrange,
                       backgroundColor: HandsColors.secondaryContainer,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       onSelected:
                           _repeatsDaily
                               ? null
                               : (s) {
-                                setState(() => s ? _selectedDays.add(d) : _selectedDays.remove(d));
+                                setState(
+                                  () =>
+                                      s
+                                          ? _selectedDays.add(d)
+                                          : _selectedDays.remove(d),
+                                );
                               },
                     );
                   }).toList(),
@@ -503,7 +585,10 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
 
     // Only show templates for the currently selected location
     if (widget.selectedLocationId != null) {
-      templatesQuery = templatesQuery.where('locationIds', arrayContains: widget.selectedLocationId);
+      templatesQuery = templatesQuery.where(
+        'locationIds',
+        arrayContains: widget.selectedLocationId,
+      );
     }
 
     return FutureBuilder<QuerySnapshot>(
@@ -517,12 +602,18 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
         }
         final snap = s.data;
         if (snap == null || snap.docs.isEmpty) {
-          return const Center(child: Text('No checklists available for the selected location'));
+          return const Center(
+            child: Text(
+              'No workflow templates available for the selected location',
+            ),
+          );
         }
         final docs = snap.docs;
         return ConstrainedBox(
           constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.4, // Limit height to 40% of screen
+            maxHeight:
+                MediaQuery.of(context).size.height *
+                0.4, // Limit height to 40% of screen
           ),
           child: ListView(
             shrinkWrap: true,
@@ -532,10 +623,23 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
                   final data = d.data() as Map<String, dynamic>;
                   final name = data['name'] ?? 'Unnamed';
                   final desc = data['description'] ?? '';
-                  final isSelected = selectedChecklistTemplateIds.contains(d.id);
+                  final isSelected = selectedChecklistTemplateIds.contains(
+                    d.id,
+                  );
                   return CheckboxListTile(
-                    title: Text(name, style: const TextStyle(color: HandsColors.white)),
-                    subtitle: desc.isNotEmpty ? Text(desc, style: const TextStyle(color: HandsColors.white70)) : null,
+                    title: Text(
+                      name,
+                      style: const TextStyle(color: HandsColors.white),
+                    ),
+                    subtitle:
+                        desc.isNotEmpty
+                            ? Text(
+                              desc,
+                              style: const TextStyle(
+                                color: HandsColors.white70,
+                              ),
+                            )
+                            : null,
                     value: isSelected,
                     checkColor: HandsColors.white,
                     activeColor: HandsColors.handsOrange,
@@ -587,7 +691,9 @@ class _InfoTipState extends State<_InfoTip> {
           Expanded(
             child: Text(
               widget.text,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
             ),
           ),
           IconButton(

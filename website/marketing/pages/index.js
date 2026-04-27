@@ -95,11 +95,6 @@ export default function Home() {
         "url": "https://planwithhands.com/images/favicon-192.png"
       }
     },
-    "aggregateRating": {
-      "@type": "AggregateRating",
-      "ratingValue": "4.8",
-      "ratingCount": "127"
-    },
     "featureList": [
       "Digital Checklists",
       "Team Messaging", 
@@ -113,7 +108,7 @@ export default function Home() {
     <>
       <SEO
         title="Plan With Hands - Restaurant Task & Team Management Software"
-        description="Transform restaurant operations with Hands - digital checklists, team messaging, training documents, and real-time insights. No hardware needed. Start your free trial today."
+        description="Transform restaurant operations with Hands - digital checklists, team messaging, training documents, and real-time insights. No hardware needed. Start a 14-day trial with no card required."
         canonical="https://planwithhands.com/"
         structuredData={structuredData}
         keywords="restaurant management software, digital checklists, restaurant operations, team communication, food service software, restaurant technology, operational excellence, task management"
@@ -126,7 +121,7 @@ export default function Home() {
         <div className="relative max-w-6xl mx-auto text-center">
           <div className="mb-6 sm:mb-8">
             <span className="inline-block px-3 sm:px-4 py-2 bg-accent/10 text-accent rounded-full text-xs sm:text-sm font-medium mb-4 sm:mb-6">
-              Trusted by restaurant operators
+              Built for restaurant operators
             </span>
           </div>
           <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold mb-4 sm:mb-6 leading-tight">
@@ -139,7 +134,7 @@ export default function Home() {
           </p>
           <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4 mb-8 sm:mb-12 px-4">
             <Link href="/pricing" className="px-6 sm:px-8 py-3 sm:py-4 bg-accent text-primary font-semibold rounded-2xl shadow-2xl hover:shadow-accent/25 transition-all duration-300 text-base sm:text-lg">
-              Start free trial
+              Start 14-day trial
             </Link>
             <button
               onClick={() => {
@@ -164,13 +159,13 @@ export default function Home() {
               <svg className="w-4 h-4 sm:w-5 sm:h-5 text-accent flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
               </svg>
-              <span className="whitespace-nowrap">Setup in minutes</span>
+              <span className="whitespace-nowrap">14-day trial</span>
             </div>
             <div className="flex items-center gap-2">
               <svg className="w-4 h-4 sm:w-5 sm:h-5 text-accent flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
               </svg>
-              <span className="whitespace-nowrap">Works on any device</span>
+              <span className="whitespace-nowrap">No card required</span>
             </div>
           </div>
         </div>
@@ -319,37 +314,28 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Social Proof */}
+      {/* Operations Outcomes */}
       <section className="py-16 sm:py-20 px-4 sm:px-6">
         <div className="max-w-6xl mx-auto text-center">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-8 sm:mb-12">Loved by operators like you</h2>
+          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-8 sm:mb-12">Built for the moments that break consistency</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
             {[
               {
-                quote: "Hands eliminated 90% of our missed opening tasks. Every location now opens the same way, every single day.",
-                name: "Sarah Chen",
-                title: "Regional Manager, 8 locations"
+                title: "Open stronger",
+                body: "Give every location the same opening, closing, and handoff standards."
               },
               {
-                quote: "We went from spending hours training to having new staff fully productive in their first week. Game changer.",
-                name: "Marcus Rodriguez", 
-                title: "Owner, Fast-casual chain"
+                title: "Train faster",
+                body: "Keep procedures, documents, and task expectations in one place for every shift."
               },
               {
-                quote: "Finally have eyes on what's happening across all our stores. Caught three major issues before customers did.",
-                name: "Jennifer Kim",
-                title: "Operations Director"
+                title: "See issues sooner",
+                body: "Spot missed tasks and uneven execution before they turn into guest-facing problems."
               }
-            ].map((testimonial, index) => (
+            ].map((item, index) => (
               <div key={index} className="bg-surface p-6 sm:p-8 rounded-2xl sm:rounded-3xl">
-                <div className="text-accent mb-3 sm:mb-4 text-lg sm:text-xl">
-                  {"★".repeat(5)}
-                </div>
-                <p className="text-white/90 italic mb-4 sm:mb-6 leading-relaxed text-sm sm:text-base">"{testimonial.quote}"</p>
-                <div>
-                  <p className="font-semibold text-white text-sm sm:text-base">{testimonial.name}</p>
-                  <p className="text-white/60 text-xs sm:text-sm">{testimonial.title}</p>
-                </div>
+                <p className="font-semibold text-white text-lg sm:text-xl mb-3">{item.title}</p>
+                <p className="text-white/75 leading-relaxed text-sm sm:text-base">{item.body}</p>
               </div>
             ))}
           </div>
@@ -361,19 +347,18 @@ export default function Home() {
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-4 sm:mb-6 leading-tight">Stop stressing about operations</h2>
           <p className="text-base sm:text-lg md:text-xl text-white/80 mb-8 sm:mb-10 max-w-2xl mx-auto leading-relaxed px-2">
-            Transform chaotic shifts into predictable success. Join hundreds of operators 
-            who've eliminated missed tasks and inconsistent standards for good.
+            Transform chaotic shifts into predictable success with one place for checklists, documents, and team communication.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center mb-6 sm:mb-8 px-4">
             <a href={signupUrl} className="px-6 sm:px-8 py-3 sm:py-4 bg-accent text-primary font-semibold rounded-xl sm:rounded-2xl shadow-2xl hover:shadow-accent/25 transition-all duration-300 text-base sm:text-lg min-h-[48px] flex items-center justify-center">
-              Start free trial
+              Start 14-day trial
             </a>
             <Link href="/contact" className="px-6 sm:px-8 py-3 sm:py-4 border-2 border-white/20 text-white rounded-xl sm:rounded-2xl hover:bg-white/10 transition-all duration-300 text-base sm:text-lg min-h-[48px] flex items-center justify-center">
               Book a demo
             </Link>
           </div>
           <p className="text-white/60 text-xs sm:text-sm px-2">
-            Free 14-day trial • Cancel anytime • No setup fees
+            14-day trial • No card required • Cancel anytime
           </p>
         </div>
       </section>

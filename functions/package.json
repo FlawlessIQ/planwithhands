@@ -7,6 +7,7 @@
     "test": "mocha -r ts-node/register test/**/*.test.ts --timeout 5000",
     "test:emulator": "firebase emulators:exec --only firestore \"npm test\"",
     "check:firestore": "node scripts/checkFirestore.js",
+    "audit:legacy-invites": "node scripts/auditLegacyInvites.js",
     "serve": "npm run build && firebase emulators:start --only functions",
     "serve:debug": "npm run build && firebase emulators:start --only functions --inspect-functions",
     "shell": "firebase functions:shell",

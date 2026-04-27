@@ -13,11 +13,13 @@ class DailySummaryTimeService {
     required String timezone,
   }) async {
     try {
-      final result = await _functions.httpsCallable('validateDailySummaryTimeChange').call({
-        'organizationId': organizationId,
-        'newTime': newTime,
-        'timezone': timezone,
-      });
+      final result = await _functions
+          .httpsCallable('validateDailySummaryTimeChange')
+          .call({
+            'organizationId': organizationId,
+            'newTime': newTime,
+            'timezone': timezone,
+          });
 
       final data = result.data as Map<String, dynamic>;
 
@@ -44,38 +46,36 @@ class DailySummaryTimeService {
 
   /// Updates the organization's daily summary time
   /// Should only be called after validation passes
-  static Future<bool> updateOrganizationTime({
+  static Future<void> updateOrganizationTime({
     required String organizationId,
     required int hour,
     required int minute,
     required bool enabled,
     required String summaryPeriod,
   }) async {
-    try {
-      await _functions.httpsCallable('updateOrganizationDailySummaryTime').call({
-        'organizationId': organizationId,
-        'hour': hour,
-        'minute': minute,
-        'enabled': enabled,
-        'summaryPeriod': summaryPeriod,
-      });
-
-      return true;
-    } catch (e) {
-      debugPrint('Error updating organization time: $e');
-      return false;
-    }
+    await _functions.httpsCallable('updateOrganizationDailySummaryTime').call({
+      'organizationId': organizationId,
+      'hour': hour,
+      'minute': minute,
+      'enabled': enabled,
+      'summaryPeriod': summaryPeriod,
+    });
   }
 
   /// Sends today's summary immediately
-  static Future<SendNowResult> sendSummaryNow({required String organizationId, String? summaryDate}) async {
+  static Future<SendNowResult> sendSummaryNow({
+    required String organizationId,
+    String? summaryDate,
+  }) async {
     try {
       // First try the new function
       try {
-        final result = await _functions.httpsCallable('sendTodaySummaryNow').call({
-          'organizationId': organizationId,
-          if (summaryDate != null) 'summaryDate': summaryDate,
-        });
+        final result = await _functions
+            .httpsCallable('sendTodaySummaryNow')
+            .call({
+              'organizationId': organizationId,
+              if (summaryDate != null) 'summaryDate': summaryDate,
+            });
 
         final data = result.data as Map<String, dynamic>;
 
@@ -86,18 +86,28 @@ class DailySummaryTimeService {
         );
       } catch (e) {
         // Fallback to existing triggerDailySummary function
-        debugPrint('sendTodaySummaryNow not available, using triggerDailySummary');
+        debugPrint(
+          'sendTodaySummaryNow not available, using triggerDailySummary',
+        );
 
         await _functions.httpsCallable('triggerDailySummary').call({
           'orgId': organizationId,
           if (summaryDate != null) 'targetDate': summaryDate,
         });
 
-        return SendNowResult(success: true, message: '✅ Daily summary has been sent successfully!', alreadySent: false);
+        return SendNowResult(
+          success: true,
+          message: '✅ Daily summary has been sent successfully!',
+          alreadySent: false,
+        );
       }
     } catch (e) {
       debugPrint('Error sending summary now: $e');
-      return SendNowResult(success: false, message: 'Failed to send summary: $e', alreadySent: false);
+      return SendNowResult(
+        success: false,
+        message: 'Failed to send summary: $e',
+        alreadySent: false,
+      );
     }
   }
 }
@@ -129,5 +139,9 @@ class SendNowResult {
   final String message;
   final bool alreadySent;
 
-  SendNowResult({required this.success, required this.message, required this.alreadySent});
+  SendNowResult({
+    required this.success,
+    required this.message,
+    required this.alreadySent,
+  });
 }

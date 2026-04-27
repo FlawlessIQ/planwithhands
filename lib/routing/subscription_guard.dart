@@ -9,6 +9,7 @@ import 'package:hands_app/billing/embedded_payment_page.dart';
 import 'package:hands_app/routing/routes.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/config/feature_flags.dart';
+import 'package:hands_app/services/subscription_access_service.dart';
 
 /// Subscription guard that ensures users have valid subscription before accessing app features
 ///
@@ -27,10 +28,14 @@ class SubscriptionGuard extends ConsumerWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, authSnap) {
-        logger.d('[SubscriptionGuard] Auth state: ${authSnap.connectionState}, user: ${authSnap.data?.uid}');
+        logger.d(
+          '[SubscriptionGuard] Auth state: ${authSnap.connectionState}, user: ${authSnap.data?.uid}',
+        );
 
         if (authSnap.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
 
         final user = authSnap.data;
@@ -41,24 +46,34 @@ class SubscriptionGuard extends ConsumerWidget {
 
         // Fetch user data to get organization ID
         return FutureBuilder<DocumentSnapshot>(
-          future: FirestoreEnforcer.instance.collection('users').doc(user.uid).get(),
+          future:
+              FirestoreEnforcer.instance
+                  .collection('users')
+                  .doc(user.uid)
+                  .get(),
           builder: (context, userSnap) {
             logger.d(
               '[SubscriptionGuard] User doc state: ${userSnap.connectionState}, exists: ${userSnap.data?.exists}',
             );
 
             if (userSnap.connectionState != ConnectionState.done) {
-              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
             }
 
             if (!userSnap.hasData || !(userSnap.data?.exists ?? false)) {
-              logger.w('[SubscriptionGuard] User document not found, redirecting to login');
+              logger.w(
+                '[SubscriptionGuard] User document not found, redirecting to login',
+              );
               return const LoginPage();
             }
 
             final userData = userSnap.data?.data() as Map<String, dynamic>?;
             if (userData == null) {
-              logger.w('[SubscriptionGuard] User data is null, redirecting to login');
+              logger.w(
+                '[SubscriptionGuard] User data is null, redirecting to login',
+              );
               return const LoginPage();
             }
 
@@ -66,53 +81,58 @@ class SubscriptionGuard extends ConsumerWidget {
             final userEmail = userData['email'] as String? ?? user.email ?? '';
 
             if (orgId == null) {
-              logger.w('[SubscriptionGuard] No organization ID found, redirecting to login');
+              logger.w(
+                '[SubscriptionGuard] No organization ID found, redirecting to login',
+              );
               return const LoginPage();
             }
 
-            logger.d('[SubscriptionGuard] User has orgId: $orgId, checking subscription...');
+            logger.d(
+              '[SubscriptionGuard] User has orgId: $orgId, checking subscription...',
+            );
 
             // Check subscription status
-            return FutureBuilder<DocumentSnapshot>(
-              future:
-                  FirestoreEnforcer.instance
-                      .collection('organizations')
-                      .doc(orgId)
-                      .collection('stripe')
-                      .doc('subscription')
-                      .get(),
-              builder: (context, subSnap) {
+            return FutureBuilder<List<DocumentSnapshot>>(
+              future: Future.wait([
+                FirestoreEnforcer.instance
+                    .collection('organizations')
+                    .doc(orgId)
+                    .get(),
+                FirestoreEnforcer.instance
+                    .collection('organizations')
+                    .doc(orgId)
+                    .collection('stripe')
+                    .doc('subscription')
+                    .get(),
+              ]),
+              builder: (context, accessSnap) {
                 logger.d(
-                  '[SubscriptionGuard] Subscription doc state: ${subSnap.connectionState}, exists: ${subSnap.data?.exists}',
+                  '[SubscriptionGuard] Access state: ${accessSnap.connectionState}',
                 );
 
-                if (subSnap.connectionState != ConnectionState.done) {
-                  return const Scaffold(body: Center(child: CircularProgressIndicator()));
+                if (accessSnap.connectionState != ConnectionState.done) {
+                  return const Scaffold(
+                    body: Center(child: CircularProgressIndicator()),
+                  );
                 }
 
-                // If subscription document doesn't exist, user needs to subscribe
-                if (!subSnap.hasData || !(subSnap.data?.exists ?? false)) {
-                  logger.w('[SubscriptionGuard] No subscription document found, redirecting to payment');
+                final organizationData =
+                    accessSnap.data?[0].data() as Map<String, dynamic>?;
+                final subscriptionData =
+                    accessSnap.data?[1].data() as Map<String, dynamic>?;
+                if (!SubscriptionAccessService.hasAccess(
+                  organizationData: organizationData,
+                  subscriptionData: subscriptionData,
+                )) {
+                  logger.w(
+                    '[SubscriptionGuard] No active billing or valid trial, redirecting to payment',
+                  );
                   return _buildPaymentRedirect(orgId: orgId, email: userEmail);
                 }
 
-                final subscriptionData = subSnap.data?.data() as Map<String, dynamic>?;
-                if (subscriptionData == null) {
-                  logger.w('[SubscriptionGuard] Subscription data is null, redirecting to payment');
-                  return _buildPaymentRedirect(orgId: orgId, email: userEmail);
-                }
-
-                final status = subscriptionData['status'] as String?;
-                logger.d('[SubscriptionGuard] Subscription status: $status');
-
-                // Check if subscription is active, trialing, or trial
-                final validStatuses = ['active', 'trialing', 'trial'];
-                if (status == null || !validStatuses.contains(status)) {
-                  logger.w('[SubscriptionGuard] Invalid subscription status: $status, redirecting to payment');
-                  return _buildPaymentRedirect(orgId: orgId, email: userEmail);
-                }
-
-                logger.d('[SubscriptionGuard] Subscription is valid, allowing access');
+                logger.d(
+                  '[SubscriptionGuard] Subscription is valid, allowing access',
+                );
                 // Subscription is valid, show the protected content
                 return child;
               },
@@ -127,26 +147,38 @@ class SubscriptionGuard extends ConsumerWidget {
   static Future<int> _getQuantityForPayment(String orgId) async {
     try {
       // First try to get the organization document to check for intended quantity
-      final orgDoc = await FirestoreEnforcer.instance.collection('organizations').doc(orgId).get();
+      final orgDoc =
+          await FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(orgId)
+              .get();
 
       if (orgDoc.exists) {
         final orgData = orgDoc.data();
         final intendedQuantity = orgData?['intendedLocationQuantity'] as int?;
 
         if (intendedQuantity != null && intendedQuantity > 0) {
-          logger.d('[SubscriptionGuard] Using intended location quantity: $intendedQuantity');
+          logger.d(
+            '[SubscriptionGuard] Using intended location quantity: $intendedQuantity',
+          );
           return intendedQuantity;
         }
       }
 
       // Fallback to counting existing locations for existing organizations
       final locationQuery =
-          await FirestoreEnforcer.instance.collection('organizations').doc(orgId).collection('locations').get();
+          await FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(orgId)
+              .collection('locations')
+              .get();
 
       final locationCount = locationQuery.size;
       final quantity = locationCount > 0 ? locationCount : 1;
 
-      logger.d('[SubscriptionGuard] No intended quantity found, using location count: $quantity');
+      logger.d(
+        '[SubscriptionGuard] No intended quantity found, using location count: $quantity',
+      );
       return quantity;
     } catch (e) {
       logger.e('[SubscriptionGuard] Error getting quantity for payment: $e');
@@ -159,7 +191,9 @@ class SubscriptionGuard extends ConsumerWidget {
       future: SubscriptionGuard._getQuantityForPayment(orgId),
       builder: (context, quantitySnap) {
         if (quantitySnap.connectionState != ConnectionState.done) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
 
         final quantity = quantitySnap.data ?? 1;
@@ -189,7 +223,9 @@ class SubscriptionGuardWithContext extends ConsumerWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, authSnap) {
         if (authSnap.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
 
         final user = authSnap.data;
@@ -200,15 +236,23 @@ class SubscriptionGuardWithContext extends ConsumerWidget {
               context.go(AppRoutes.loginPage.path);
             }
           });
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
 
         // Fetch user data to get organization ID
         return FutureBuilder<DocumentSnapshot>(
-          future: FirestoreEnforcer.instance.collection('users').doc(user.uid).get(),
+          future:
+              FirestoreEnforcer.instance
+                  .collection('users')
+                  .doc(user.uid)
+                  .get(),
           builder: (context, userSnap) {
             if (userSnap.connectionState != ConnectionState.done) {
-              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
             }
 
             if (!userSnap.hasData || !(userSnap.data?.exists ?? false)) {
@@ -217,7 +261,9 @@ class SubscriptionGuardWithContext extends ConsumerWidget {
                   context.go(AppRoutes.loginPage.path);
                 }
               });
-              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
             }
 
             final userData = userSnap.data?.data() as Map<String, dynamic>?;
@@ -227,7 +273,9 @@ class SubscriptionGuardWithContext extends ConsumerWidget {
                   context.go(AppRoutes.loginPage.path);
                 }
               });
-              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
             }
 
             final orgId = userData['organizationId'] as String?;
@@ -239,63 +287,53 @@ class SubscriptionGuardWithContext extends ConsumerWidget {
                   context.go(AppRoutes.loginPage.path);
                 }
               });
-              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
             }
 
             // Check subscription status
-            return FutureBuilder<DocumentSnapshot>(
-              future:
-                  FirestoreEnforcer.instance
-                      .collection('organizations')
-                      .doc(orgId)
-                      .collection('stripe')
-                      .doc('subscription')
-                      .get(),
-              builder: (context, subSnap) {
-                if (subSnap.connectionState != ConnectionState.done) {
-                  return const Scaffold(body: Center(child: CircularProgressIndicator()));
+            return FutureBuilder<List<DocumentSnapshot>>(
+              future: Future.wait([
+                FirestoreEnforcer.instance
+                    .collection('organizations')
+                    .doc(orgId)
+                    .get(),
+                FirestoreEnforcer.instance
+                    .collection('organizations')
+                    .doc(orgId)
+                    .collection('stripe')
+                    .doc('subscription')
+                    .get(),
+              ]),
+              builder: (context, accessSnap) {
+                if (accessSnap.connectionState != ConnectionState.done) {
+                  return const Scaffold(
+                    body: Center(child: CircularProgressIndicator()),
+                  );
                 }
 
-                // If subscription document doesn't exist, redirect to payment
-                if (!subSnap.hasData || !(subSnap.data?.exists ?? false)) {
+                final organizationData =
+                    accessSnap.data?[0].data() as Map<String, dynamic>?;
+                final subscriptionData =
+                    accessSnap.data?[1].data() as Map<String, dynamic>?;
+                if (!SubscriptionAccessService.hasAccess(
+                  organizationData: organizationData,
+                  subscriptionData: subscriptionData,
+                )) {
                   // Get appropriate quantity before redirecting
-                  SubscriptionGuard._getQuantityForPayment(orgId).then((quantity) {
+                  SubscriptionGuard._getQuantityForPayment(orgId).then((
+                    quantity,
+                  ) {
                     if (context.mounted) {
                       context.go(
                         '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=$quantity',
                       );
                     }
                   });
-                  return const Scaffold(body: Center(child: CircularProgressIndicator()));
-                }
-
-                final subscriptionData = subSnap.data?.data() as Map<String, dynamic>?;
-                if (subscriptionData == null) {
-                  // Get appropriate quantity before redirecting
-                  SubscriptionGuard._getQuantityForPayment(orgId).then((quantity) {
-                    if (context.mounted) {
-                      context.go(
-                        '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=$quantity',
-                      );
-                    }
-                  });
-                  return const Scaffold(body: Center(child: CircularProgressIndicator()));
-                }
-
-                final status = subscriptionData['status'] as String?;
-
-                // Check if subscription is active, trialing, or trial
-                final validStatuses = ['active', 'trialing', 'trial'];
-                if (status == null || !validStatuses.contains(status)) {
-                  // Get appropriate quantity before redirecting
-                  SubscriptionGuard._getQuantityForPayment(orgId).then((quantity) {
-                    if (context.mounted) {
-                      context.go(
-                        '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$userEmail&quantity=$quantity',
-                      );
-                    }
-                  });
-                  return const Scaffold(body: Center(child: CircularProgressIndicator()));
+                  return const Scaffold(
+                    body: Center(child: CircularProgressIndicator()),
+                  );
                 }
 
                 // Subscription is valid, show the protected content
@@ -317,7 +355,9 @@ class SubscriptionGuardWithAdminSetup extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return SubscriptionGuard(child: AuthGateForAdminSetup(initialTab: initialTab));
+    return SubscriptionGuard(
+      child: AuthGateForAdminSetup(initialTab: initialTab),
+    );
   }
 }
 

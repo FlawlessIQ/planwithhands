@@ -677,7 +677,7 @@ async function sendWelcomeEmail(session, orgId, subscription) {
     
     const msg = {
       to: customerEmail,
-      from: "noreply@em5998.planwithhands.com",
+      from: process.env.SENDGRID_FROM_EMAIL || "noreply@planwithhands.com",
       templateId: templateId,
       dynamicTemplateData: templateData,
     };

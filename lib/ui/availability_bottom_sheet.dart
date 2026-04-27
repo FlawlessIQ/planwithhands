@@ -3,13 +3,16 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/services/app_permission_service.dart';
+import 'package:hands_app/l10n/l10n.dart';
+import 'package:hands_app/l10n/generated/app_localizations.dart';
 import 'package:hands_app/widgets/permission_handler.dart';
 
 class AvailabilityBottomSheet extends StatefulWidget {
   const AvailabilityBottomSheet({super.key});
 
   @override
-  State<AvailabilityBottomSheet> createState() => _AvailabilityBottomSheetState();
+  State<AvailabilityBottomSheet> createState() =>
+      _AvailabilityBottomSheetState();
 }
 
 class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
@@ -25,7 +28,15 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
   bool isLoading = true;
   bool isSaving = false;
 
-  final List<String> weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  final List<String> weekdays = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+  ];
 
   final List<String> shifts = ['Morning', 'Afternoon', 'Evening', 'Night'];
 
@@ -40,24 +51,33 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
     if (user == null) return;
 
     try {
-      final userDoc = await FirestoreEnforcer.instance.collection('users').doc(user.uid).get();
+      final userDoc =
+          await FirestoreEnforcer.instance
+              .collection('users')
+              .doc(user.uid)
+              .get();
 
       if (userDoc.exists) {
         final userData = userDoc.data()!;
 
         // Initialize availability for all day-shift combinations
-        final userAvailability = Map<String, bool>.from(userData['availability'] ?? {});
+        final userAvailability = Map<String, bool>.from(
+          userData['availability'] ?? {},
+        );
         final newAvailability = <String, bool>{};
 
         for (final day in weekdays) {
           for (final shift in shifts) {
             final key = '${day}_$shift';
-            newAvailability[key] = userAvailability[key] ?? true; // Default to available
+            newAvailability[key] =
+                userAvailability[key] ?? true; // Default to available
           }
         }
 
         // Initialize earliest start times
-        final userEarliestStart = Map<String, dynamic>.from(userData['earliestStart'] ?? {});
+        final userEarliestStart = Map<String, dynamic>.from(
+          userData['earliestStart'] ?? {},
+        );
         final newEarliestStart = <String, TimeOfDay>{};
 
         for (final day in weekdays) {
@@ -72,12 +92,17 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
         }
 
         // Load notification settings
-        final userNotificationSettings = Map<String, dynamic>.from(userData['notificationSettings'] ?? {});
+        final userNotificationSettings = Map<String, dynamic>.from(
+          userData['notificationSettings'] ?? {},
+        );
         notificationSettings = {
-          'scheduleUpdates': userNotificationSettings['scheduleUpdates'] ?? true,
+          'scheduleUpdates':
+              userNotificationSettings['scheduleUpdates'] ?? true,
           'shiftReminders': userNotificationSettings['shiftReminders'] ?? true,
-          'emailNotifications': userNotificationSettings['emailNotifications'] ?? true,
-          'pushNotifications': userNotificationSettings['pushNotifications'] ?? true,
+          'emailNotifications':
+              userNotificationSettings['emailNotifications'] ?? true,
+          'pushNotifications':
+              userNotificationSettings['pushNotifications'] ?? true,
         };
 
         if (mounted) {
@@ -106,25 +131,35 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
       // Convert TimeOfDay to serializable format
       final serializedEarliestStart = <String, dynamic>{};
       earliestStart.forEach((day, time) {
-        serializedEarliestStart[day] = {'hour': time.hour, 'minute': time.minute};
+        serializedEarliestStart[day] = {
+          'hour': time.hour,
+          'minute': time.minute,
+        };
       });
 
-      await FirestoreEnforcer.instance.collection('users').doc(user.uid).update({
-        'availability': availability,
-        'earliestStart': serializedEarliestStart,
-        'notificationSettings': notificationSettings,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      await FirestoreEnforcer.instance
+          .collection('users')
+          .doc(user.uid)
+          .update({
+            'availability': availability,
+            'earliestStart': serializedEarliestStart,
+            'notificationSettings': notificationSettings,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
 
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Availability and preferences updated successfully')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.availabilitySavedSuccess)),
+        );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error updating preferences: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(context.l10n.availabilitySaveError(e.toString())),
+          ),
+        );
       }
     } finally {
       if (mounted) {
@@ -148,6 +183,7 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final theme = Theme.of(context);
 
     return Container(
@@ -165,10 +201,15 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Availability & Preferences',
-                  style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w600),
+                  l10n.availabilityTitle,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-                IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
               ],
             ),
           ),
@@ -185,12 +226,14 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
                         children: [
                           // Availability section
                           Text(
-                            'Shift Availability',
-                            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                            l10n.availabilityShiftAvailability,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Select which shifts you are available to work',
+                            l10n.availabilityShiftAvailabilityBody,
                             style: TextStyle(color: Colors.grey[600]),
                           ),
                           const SizedBox(height: 16),
@@ -208,17 +251,24 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
                                   padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
                                     color: Colors.grey.shade100,
-                                    borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+                                    borderRadius: const BorderRadius.vertical(
+                                      top: Radius.circular(8),
+                                    ),
                                   ),
                                   child: Row(
                                     children: [
-                                      const SizedBox(width: 80), // Space for day labels
+                                      const SizedBox(
+                                        width: 80,
+                                      ), // Space for day labels
                                       ...shifts.map(
                                         (shift) => Expanded(
                                           child: Text(
-                                            shift,
+                                            _localizeShiftName(l10n, shift),
                                             textAlign: TextAlign.center,
-                                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 12,
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -230,15 +280,22 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
                                   (day) => Container(
                                     padding: const EdgeInsets.all(8),
                                     decoration: BoxDecoration(
-                                      border: Border(top: BorderSide(color: Colors.grey.shade300)),
+                                      border: Border(
+                                        top: BorderSide(
+                                          color: Colors.grey.shade300,
+                                        ),
+                                      ),
                                     ),
                                     child: Row(
                                       children: [
                                         SizedBox(
                                           width: 80,
                                           child: Text(
-                                            day,
-                                            style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12),
+                                            _localizeWeekday(l10n, day),
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w500,
+                                              fontSize: 12,
+                                            ),
                                           ),
                                         ),
                                         ...shifts.map((shift) {
@@ -246,10 +303,12 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
                                           return Expanded(
                                             child: Center(
                                               child: Checkbox(
-                                                value: availability[key] ?? false,
+                                                value:
+                                                    availability[key] ?? false,
                                                 onChanged: (value) {
                                                   setState(() {
-                                                    availability[key] = value ?? false;
+                                                    availability[key] =
+                                                        value ?? false;
                                                   });
                                                 },
                                               ),
@@ -268,12 +327,14 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
 
                           // Earliest start times
                           Text(
-                            'Earliest Start Times',
-                            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                            l10n.availabilityEarliestStartTimes,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Set the earliest time you can start work each day',
+                            l10n.availabilityEarliestStartBody,
                             style: TextStyle(color: Colors.grey[600]),
                           ),
                           const SizedBox(height: 16),
@@ -282,11 +343,12 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
                             (day) => Container(
                               margin: const EdgeInsets.only(bottom: 8),
                               child: ListTile(
-                                title: Text(day),
+                                title: Text(_localizeWeekday(l10n, day)),
                                 trailing: TextButton(
                                   onPressed: () => _selectTime(day),
                                   child: Text(
-                                    earliestStart[day]?.format(context) ?? '9:00 AM',
+                                    earliestStart[day]?.format(context) ??
+                                        l10n.availabilityDefaultTime,
                                     style: TextStyle(color: theme.primaryColor),
                                   ),
                                 ),
@@ -302,8 +364,10 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
 
                           // Notification Settings
                           Text(
-                            'Notification Preferences',
-                            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                            l10n.availabilityNotificationPreferences,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                           const SizedBox(height: 8),
                           Card(
@@ -312,57 +376,83 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
                               child: Column(
                                 children: [
                                   SwitchListTile(
-                                    title: const Text('Schedule Updates'),
-                                    subtitle: const Text('Get notified when schedules are published'),
-                                    value: notificationSettings['scheduleUpdates'] ?? true,
+                                    title: Text(
+                                      l10n.notificationTypeScheduleUpdates,
+                                    ),
+                                    subtitle: Text(
+                                      l10n.availabilityScheduleUpdatesBody,
+                                    ),
+                                    value:
+                                        notificationSettings['scheduleUpdates'] ??
+                                        true,
                                     onChanged: (value) {
                                       setState(() {
-                                        notificationSettings['scheduleUpdates'] = value;
+                                        notificationSettings['scheduleUpdates'] =
+                                            value;
                                       });
                                     },
                                   ),
                                   SwitchListTile(
-                                    title: const Text('Shift Reminders'),
-                                    subtitle: const Text('Get reminded about upcoming shifts'),
-                                    value: notificationSettings['shiftReminders'] ?? true,
+                                    title: Text(
+                                      l10n.notificationTypeShiftReminders,
+                                    ),
+                                    subtitle: Text(
+                                      l10n.availabilityShiftRemindersBody,
+                                    ),
+                                    value:
+                                        notificationSettings['shiftReminders'] ??
+                                        true,
                                     onChanged: (value) {
                                       setState(() {
-                                        notificationSettings['shiftReminders'] = value;
+                                        notificationSettings['shiftReminders'] =
+                                            value;
                                       });
                                     },
                                   ),
                                   SwitchListTile(
-                                    title: const Text('Email Notifications'),
-                                    subtitle: const Text('Receive notifications via email'),
-                                    value: notificationSettings['emailNotifications'] ?? true,
+                                    title: Text(l10n.notificationTypeEmail),
+                                    subtitle: Text(
+                                      l10n.availabilityEmailNotificationsBody,
+                                    ),
+                                    value:
+                                        notificationSettings['emailNotifications'] ??
+                                        true,
                                     onChanged: (value) {
                                       setState(() {
-                                        notificationSettings['emailNotifications'] = value;
+                                        notificationSettings['emailNotifications'] =
+                                            value;
                                       });
                                     },
                                   ),
                                   SwitchListTile(
-                                    title: const Text('Push Notifications'),
-                                    subtitle: const Text('Receive push notifications on this device'),
-                                    value: notificationSettings['pushNotifications'] ?? true,
+                                    title: Text(l10n.notificationPushTitle),
+                                    subtitle: Text(
+                                      l10n.availabilityPushNotificationsBody,
+                                    ),
+                                    value:
+                                        notificationSettings['pushNotifications'] ??
+                                        true,
                                     onChanged: (value) async {
                                       if (value) {
                                         // Request permission when enabling push notifications
-                                        final hasPermission = await AppPermissionUtils.requestPermissionOnAction(
-                                          context,
-                                          AppPermission.notifications,
-                                          onGranted: () {
-                                            setState(() {
-                                              notificationSettings['pushNotifications'] = true;
-                                            });
-                                          },
-                                          onDenied: () {
-                                            // Keep the toggle off if permission denied
-                                            setState(() {
-                                              notificationSettings['pushNotifications'] = false;
-                                            });
-                                          },
-                                        );
+                                        final hasPermission =
+                                            await AppPermissionUtils.requestPermissionOnAction(
+                                              context,
+                                              AppPermission.notifications,
+                                              onGranted: () {
+                                                setState(() {
+                                                  notificationSettings['pushNotifications'] =
+                                                      true;
+                                                });
+                                              },
+                                              onDenied: () {
+                                                // Keep the toggle off if permission denied
+                                                setState(() {
+                                                  notificationSettings['pushNotifications'] =
+                                                      false;
+                                                });
+                                              },
+                                            );
 
                                         if (!hasPermission) {
                                           return; // Exit early if permission not granted
@@ -370,7 +460,8 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
                                       } else {
                                         // Allow disabling without permission check
                                         setState(() {
-                                          notificationSettings['pushNotifications'] = false;
+                                          notificationSettings['pushNotifications'] =
+                                              false;
                                         });
                                       }
                                     },
@@ -402,12 +493,17 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
                           width: 20,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
                           ),
                         )
-                        : const Text(
-                          'Save Preferences',
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                        : Text(
+                          l10n.availabilitySavePreferences,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
               ),
             ),
@@ -415,5 +511,41 @@ class _AvailabilityBottomSheetState extends State<AvailabilityBottomSheet> {
         ],
       ),
     );
+  }
+
+  String _localizeWeekday(AppLocalizations l10n, String day) {
+    switch (day) {
+      case 'Monday':
+        return l10n.weekdayMonday;
+      case 'Tuesday':
+        return l10n.weekdayTuesday;
+      case 'Wednesday':
+        return l10n.weekdayWednesday;
+      case 'Thursday':
+        return l10n.weekdayThursday;
+      case 'Friday':
+        return l10n.weekdayFriday;
+      case 'Saturday':
+        return l10n.weekdaySaturday;
+      case 'Sunday':
+        return l10n.weekdaySunday;
+      default:
+        return day;
+    }
+  }
+
+  String _localizeShiftName(AppLocalizations l10n, String shift) {
+    switch (shift) {
+      case 'Morning':
+        return l10n.shiftLabelMorning;
+      case 'Afternoon':
+        return l10n.shiftLabelAfternoon;
+      case 'Evening':
+        return l10n.shiftLabelEvening;
+      case 'Night':
+        return l10n.shiftLabelNight;
+      default:
+        return shift;
+    }
   }
 }

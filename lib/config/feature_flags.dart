@@ -1,8 +1,10 @@
 /// Global feature flags for Hands App vNEXT
 const bool enableScheduling = true;
+const bool enableStaffSpanish = true;
 
 /// Billing flags and constants
 const bool kPerLocationBilling = true;
+const int kTrialDays = 14;
 
 /// Pricing constants (legacy compatibility)
 /// Current model: flat $49.99 per location monthly, 10% off annual
@@ -24,8 +26,10 @@ const double kLocationPrice = 49.99;
 ///   --dart-define=STRIPE_PRICE_MONTHLY=price_XXXX \
 ///   --dart-define=STRIPE_PRICE_ANNUAL=price_YYYY
 // Live defaults as of 2025-09-17 (prod_SpVvLXHRcgZ0yg)
-const String kStripePriceMonthlyDefault = 'price_1RtqtYFzroJ5o7DAeT4jin9n'; // $49.99 monthly per location
-const String kStripePriceAnnualDefault = 'price_1RtqtYFzroJ5o7DAqjkZzsDk'; // $539.98 annual per location (10% off)
+const String kStripePriceMonthlyDefault =
+    'price_1RtqtYFzroJ5o7DAeT4jin9n'; // $49.99 monthly per location
+const String kStripePriceAnnualDefault =
+    'price_1RtqtYFzroJ5o7DAqjkZzsDk'; // $539.98 annual per location (10% off)
 const String kStripePriceMonthly = String.fromEnvironment(
   'STRIPE_PRICE_MONTHLY',
   defaultValue: kStripePriceMonthlyDefault,

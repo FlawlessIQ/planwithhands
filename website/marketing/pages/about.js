@@ -106,7 +106,7 @@ export default function About() {
       <section className="text-center py-12 sm:py-16 bg-primary text-white rounded-xl sm:rounded-2xl px-4 sm:px-6">
         <h2 className="text-2xl sm:text-3xl font-bold mb-3 sm:mb-4 leading-tight">Join us in reshaping operations</h2>
         <p className="mb-6 sm:mb-8 text-white/80 text-sm sm:text-base max-w-2xl mx-auto">Hands helps teams save time, reduce stress, and deliver better shifts.</p>
-        <a href="https://plan-with-hands.web.app/create_account" className="px-5 sm:px-6 py-3 bg-accent text-primary font-semibold rounded-xl shadow-lg hover:opacity-90 transition-colors duration-200 text-sm sm:text-base min-h-[44px] inline-flex items-center justify-center">Start free trial</a>
+        <a href="https://plan-with-hands.web.app/create_account" className="px-5 sm:px-6 py-3 bg-accent text-primary font-semibold rounded-xl shadow-lg hover:opacity-90 transition-colors duration-200 text-sm sm:text-base min-h-[44px] inline-flex items-center justify-center">Start 14-day trial</a>
       </section>
     </div>
     </>

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/services.dart';
+import 'package:hands_app/l10n/l10n.dart';
 
 /// Quick fix for PDF viewing on iOS - uses native system viewer
 class QuickPDFViewerPage extends StatelessWidget {
@@ -11,13 +12,18 @@ class QuickPDFViewerPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Scaffold(
       appBar: AppBar(
-        title: Text(title ?? 'Document'),
+        title: Text(title ?? l10n.quickPdfViewerDocumentTitle),
         backgroundColor: Colors.orange,
         foregroundColor: Colors.white,
         actions: [
-          IconButton(onPressed: () => _copyToClipboard(context), icon: const Icon(Icons.copy), tooltip: 'Copy Link'),
+          IconButton(
+            onPressed: () => _copyToClipboard(context),
+            icon: const Icon(Icons.copy),
+            tooltip: l10n.quickPdfViewerCopyLink,
+          ),
         ],
       ),
       body: Center(
@@ -29,23 +35,34 @@ class QuickPDFViewerPage extends StatelessWidget {
               // Document icon
               Container(
                 padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(color: Colors.red.shade100, borderRadius: BorderRadius.circular(50)),
-                child: Icon(Icons.picture_as_pdf, size: 80, color: Colors.red.shade600),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade100,
+                  borderRadius: BorderRadius.circular(50),
+                ),
+                child: Icon(
+                  Icons.picture_as_pdf,
+                  size: 80,
+                  color: Colors.red.shade600,
+                ),
               ),
               const SizedBox(height: 32),
 
               // Title
               Text(
-                title ?? 'Training Document',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                title ?? l10n.quickPdfViewerTrainingDocumentTitle,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
 
               // Description
               Text(
-                'This document will open in your device\'s native viewer for the best experience.',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
+                l10n.quickPdfViewerDescription,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 48),
@@ -56,12 +73,20 @@ class QuickPDFViewerPage extends StatelessWidget {
                 child: ElevatedButton.icon(
                   onPressed: () => _openNativeViewer(context),
                   icon: const Icon(Icons.open_in_new, size: 24),
-                  label: const Text('Open Document', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                  label: Text(
+                    l10n.quickPdfViewerOpenDocument,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.orange,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     elevation: 2,
                   ),
                 ),
@@ -76,10 +101,12 @@ class QuickPDFViewerPage extends StatelessWidget {
                     child: OutlinedButton.icon(
                       onPressed: () => _copyToClipboard(context),
                       icon: const Icon(Icons.copy, size: 20),
-                      label: const Text('Copy Link'),
+                      label: Text(l10n.quickPdfViewerCopyLink),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
                     ),
                   ),
@@ -88,10 +115,12 @@ class QuickPDFViewerPage extends StatelessWidget {
                     child: OutlinedButton.icon(
                       onPressed: () => _shareDocument(context),
                       icon: const Icon(Icons.share, size: 20),
-                      label: const Text('Share'),
+                      label: Text(l10n.quickPdfViewerShare),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
                     ),
                   ),
@@ -114,8 +143,11 @@ class QuickPDFViewerPage extends StatelessWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'Documents open in your device\'s built-in viewer for optimal performance and feature support.',
-                        style: TextStyle(color: Colors.blue.shade700, fontSize: 13),
+                        l10n.quickPdfViewerHelpBody,
+                        style: TextStyle(
+                          color: Colors.blue.shade700,
+                          fontSize: 13,
+                        ),
                       ),
                     ),
                   ],
@@ -129,17 +161,21 @@ class QuickPDFViewerPage extends StatelessWidget {
   }
 
   Future<void> _openNativeViewer(BuildContext context) async {
+    final l10n = context.l10n;
     try {
       final uri = Uri.parse(url);
 
       // Use the external application mode to open in system viewer
-      final success = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      final success = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
 
       if (!success) {
-        _showError(context, 'Could not open document. Please check your internet connection.');
+        _showError(context, l10n.quickPdfViewerOpenFailed);
       }
     } catch (e) {
-      _showError(context, 'Error opening document: ${e.toString()}');
+      _showError(context, l10n.quickPdfViewerOpenError(e.toString()));
     }
   }
 
@@ -148,7 +184,10 @@ class QuickPDFViewerPage extends StatelessWidget {
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Document link copied to clipboard'), duration: Duration(seconds: 2)),
+        SnackBar(
+          content: Text(context.l10n.quickPdfViewerCopied),
+          duration: const Duration(seconds: 2),
+        ),
       );
     }
   }
@@ -158,14 +197,18 @@ class QuickPDFViewerPage extends StatelessWidget {
       final uri = Uri.parse(url);
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (e) {
-      _showError(context, 'Could not share document');
+      _showError(context, context.l10n.quickPdfViewerShareFailed);
     }
   }
 
   void _showError(BuildContext context, String message) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message), backgroundColor: Colors.red, duration: const Duration(seconds: 4)),
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
       );
     }
   }

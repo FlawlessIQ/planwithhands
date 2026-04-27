@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:hands_app/l10n/l10n.dart';
 import 'package:hands_app/services/stripe_service.dart';
 import 'package:hands_app/services/pricing_service.dart';
 
@@ -22,8 +23,11 @@ class _UpgradeLocationSheetState extends State<UpgradeLocationSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final newQuantity = widget.currentQuantity + _delta;
-    final totalPrice = PricingService.calcMonthly(newQuantity) - PricingService.calcMonthly(widget.currentQuantity);
+    final totalPrice =
+        PricingService.calcMonthly(newQuantity) -
+        PricingService.calcMonthly(widget.currentQuantity);
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -35,21 +39,28 @@ class _UpgradeLocationSheetState extends State<UpgradeLocationSheet> {
               children: [
                 const Icon(Icons.add_business, size: 20),
                 const SizedBox(width: 8),
-                Text('Add Locations', style: Theme.of(context).textTheme.titleMedium),
+                Text(
+                  l10n.upgradeLocationsTitle,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
               ],
             ),
             const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Quantity'),
+                Text(l10n.upgradeLocationsQuantity),
                 Row(
                   children: [
                     IconButton(
-                      onPressed: _delta > 1 ? () => setState(() => _delta -= 1) : null,
+                      onPressed:
+                          _delta > 1 ? () => setState(() => _delta -= 1) : null,
                       icon: const Icon(Icons.remove_circle_outline),
                     ),
-                    Text('$_delta', style: const TextStyle(fontWeight: FontWeight.bold)),
+                    Text(
+                      '$_delta',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
                     IconButton(
                       onPressed: () => setState(() => _delta += 1),
                       icon: const Icon(Icons.add_circle_outline),
@@ -59,7 +70,12 @@ class _UpgradeLocationSheetState extends State<UpgradeLocationSheet> {
               ],
             ),
             const SizedBox(height: 8),
-            Text('Add $_delta more location${_delta == 1 ? '' : 's'} for \$${totalPrice.toStringAsFixed(2)}/mo'),
+            Text(
+              l10n.upgradeLocationsSummary(
+                _delta,
+                '\$${totalPrice.toStringAsFixed(2)}',
+              ),
+            ),
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
@@ -78,13 +94,18 @@ class _UpgradeLocationSheetState extends State<UpgradeLocationSheet> {
                     if (context.mounted) Navigator.of(context).pop(newQty);
                   } catch (e) {
                     if (context.mounted) {
-                      ScaffoldMessenger.of(
-                        context,
-                      ).showSnackBar(SnackBar(content: Text('Upgrade failed: $e'), backgroundColor: Colors.red));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            l10n.upgradeLocationsFailed(e.toString()),
+                          ),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
                     }
                   }
                 },
-                child: const Text('Upgrade & Pay'),
+                child: Text(l10n.upgradeLocationsAction),
               ),
             ),
             const SizedBox(height: 8),

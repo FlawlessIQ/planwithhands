@@ -16,6 +16,7 @@ import 'package:hands_app/data/models/task_data.dart';
 import 'package:hands_app/services/daily_background_service.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
+import 'package:hands_app/utils/localized_content.dart';
 
 class DailyChecklistService {
   static final Map<String, Stream<List<TaskData>>> _tasksStreamCache = {};
@@ -24,7 +25,8 @@ class DailyChecklistService {
   // Tracks which (org|date|location) combinations have attempted an on-demand carry-forward fallback
   static final Set<String> _carryForwardFallbackAttempts = <String>{};
   // Protect against rapid repeated generation attempts for the same (org|loc|shift|date)
-  static final Map<String, DateTime> _recentGenerationAttempts = <String, DateTime>{};
+  static final Map<String, DateTime> _recentGenerationAttempts =
+      <String, DateTime>{};
   static final Set<String> _generationInProgress = <String>{};
 
   /// Helper function to safely convert task data from either List or Map format
@@ -40,25 +42,33 @@ class DailyChecklistService {
           // Coerce dynamic map -> Map<String,dynamic>
           safe.add(Map<String, dynamic>.from(item.cast<String, dynamic>()));
         } else {
-          debugPrint('[DailyChecklistService] Skipping non-map task list element of type ${item.runtimeType}');
+          debugPrint(
+            '[DailyChecklistService] Skipping non-map task list element of type ${item.runtimeType}',
+          );
         }
       }
       return safe;
     } else if (tasksData is Map) {
       // Handle Map format - convert map values to list
-      final Map<String, dynamic> tasksMap = Map<String, dynamic>.from(tasksData.cast<String, dynamic>());
+      final Map<String, dynamic> tasksMap = Map<String, dynamic>.from(
+        tasksData.cast<String, dynamic>(),
+      );
       final List<Map<String, dynamic>> safe = [];
       for (final value in tasksMap.values) {
         if (value is Map) {
           safe.add(Map<String, dynamic>.from(value.cast<String, dynamic>()));
         } else {
-          debugPrint('[DailyChecklistService] Skipping non-map task map value of type ${value.runtimeType}');
+          debugPrint(
+            '[DailyChecklistService] Skipping non-map task map value of type ${value.runtimeType}',
+          );
         }
       }
       return safe;
     }
 
-    debugPrint('[DailyChecklistService] Unexpected tasks format: ${tasksData.runtimeType}');
+    debugPrint(
+      '[DailyChecklistService] Unexpected tasks format: ${tasksData.runtimeType}',
+    );
     return [];
   }
 
@@ -78,7 +88,11 @@ class DailyChecklistService {
   }
 
   /// Generate deterministic task ID for template tasks
-  String _generateTaskId({required String templateTaskId, required String checklistId, required String dateString}) {
+  String _generateTaskId({
+    required String templateTaskId,
+    required String checklistId,
+    required String dateString,
+  }) {
     final input = "$templateTaskId|$checklistId|$dateString";
     final bytes = utf8.encode(input);
     final digest = sha1.convert(bytes);
@@ -120,7 +134,9 @@ class DailyChecklistService {
           waitCount++;
         }
         if (_generationInProgress.contains(lockKey)) {
-          debugPrint('[DailyChecklistService] WARNING: Lock timeout for $checklistId, proceeding anyway');
+          debugPrint(
+            '[DailyChecklistService] WARNING: Lock timeout for $checklistId, proceeding anyway',
+          );
         }
       }
 
@@ -138,7 +154,9 @@ class DailyChecklistService {
         _generationInProgress.remove(lockKey);
       }
     } catch (e) {
-      debugPrint('[DailyChecklistService] Error in ensureDailyChecklistAndTasks: $e');
+      debugPrint(
+        '[DailyChecklistService] Error in ensureDailyChecklistAndTasks: $e',
+      );
       rethrow;
     }
   }
@@ -177,9 +195,10 @@ class DailyChecklistService {
       }
 
       final templateData = templateDoc.data()!;
-      final templateName = templateData['name'] as String?;
+      final templateName = (templateData['name'] as String?)?.trim();
       final isDeleted = templateData['deleted'] == true;
-      final isActive = templateData['active'] != false; // default to active if field missing
+      final isActive =
+          templateData['active'] != false; // default to active if field missing
 
       // CRITICAL FIX: Prevent creation of "Unknown Template" checklists
       if (templateName == null || templateName.trim().isEmpty) {
@@ -191,24 +210,42 @@ class DailyChecklistService {
 
       // CRITICAL FIX: Prevent creation of checklists from deleted or inactive templates
       if (isDeleted) {
-        debugPrint('[DailyChecklistService] BLOCKED: Template $templateId is deleted, skipping checklist creation');
+        debugPrint(
+          '[DailyChecklistService] BLOCKED: Template $templateId is deleted, skipping checklist creation',
+        );
         return;
       }
 
       if (!isActive) {
-        debugPrint('[DailyChecklistService] BLOCKED: Template $templateId is inactive, skipping checklist creation');
+        debugPrint(
+          '[DailyChecklistService] BLOCKED: Template $templateId is inactive, skipping checklist creation',
+        );
         return;
       }
       // Read template tasks only from canonical 'tasks' subcollection (no legacy arrays)
       List<Map<String, dynamic>> templateTasks = [];
       try {
-        final templateTasksSnap = await templateDoc.reference.collection('tasks').orderBy('order').get();
+        final templateTasksSnap =
+            await templateDoc.reference
+                .collection('tasks')
+                .orderBy('order')
+                .get();
         if (templateTasksSnap.docs.isNotEmpty) {
           templateTasks =
               templateTasksSnap.docs.map((d) {
                 final m = Map<String, dynamic>.from(d.data());
                 if (!m.containsKey('taskId')) m['taskId'] = d.id;
-                if (!m.containsKey('taskName')) m['taskName'] = m['name'] ?? m['title'] ?? m['description'];
+                if (!m.containsKey('taskName')) {
+                  m['taskName'] = localizedContent(
+                    m,
+                    fieldKeys: const [
+                      'taskName',
+                      'name',
+                      'title',
+                      'description',
+                    ],
+                  );
+                }
                 return m;
               }).toList();
           debugPrint(
@@ -216,14 +253,18 @@ class DailyChecklistService {
           );
         }
       } catch (e) {
-        debugPrint('[DailyChecklistService] Error reading template subcollection tasks for $templateId: $e');
+        debugPrint(
+          '[DailyChecklistService] Error reading template subcollection tasks for $templateId: $e',
+        );
       }
       // CRITICAL FIX: Use Firestore transaction for atomic checklist creation
       await _firestore.runTransaction((transaction) async {
         // Check if checklist exists within the transaction to avoid race conditions
         final existingDoc = await transaction.get(checklistRef);
         if (existingDoc.exists) {
-          debugPrint('[DailyChecklistService] RACE CONDITION AVOIDED: Checklist $checklistId already exists');
+          debugPrint(
+            '[DailyChecklistService] RACE CONDITION AVOIDED: Checklist $checklistId already exists',
+          );
           return; // Another user already created it
         }
 
@@ -236,6 +277,10 @@ class DailyChecklistService {
           'checklistTemplateId': templateId,
           'date': dateString,
           'templateName': templateName,
+          if (templateData['translations'] is Map)
+            'translations': Map<String, dynamic>.from(
+              templateData['translations'] as Map,
+            ),
           // CRITICAL FIX: Copy job types from template to checklist for filtering
           'jobTypes': templateData['jobTypes'] ?? templateData['jobType'],
           'createdAt': FieldValue.serverTimestamp(),
@@ -244,7 +289,9 @@ class DailyChecklistService {
 
         // Use regular transaction.set since FirestoreTTLHelper may not support transactions
         transaction.set(checklistRef, checklistData);
-        debugPrint('[DailyChecklistService] ✅ Checklist created atomically: $checklistId');
+        debugPrint(
+          '[DailyChecklistService] ✅ Checklist created atomically: $checklistId',
+        );
       });
 
       // Create tasks outside transaction to avoid size limits
@@ -258,7 +305,8 @@ class DailyChecklistService {
             final batch = _firestore.batch();
             for (int i = 0; i < templateTasks.length; i++) {
               final t = templateTasks[i];
-              final templateTaskId = (t['taskId'] ?? t['id'] ?? _uuid.v4()).toString();
+              final templateTaskId =
+                  (t['taskId'] ?? t['id'] ?? _uuid.v4()).toString();
               final taskId = _generateTaskId(
                 templateTaskId: templateTaskId,
                 checklistId: checklistId,
@@ -267,7 +315,11 @@ class DailyChecklistService {
               final taskRef = tasksColl.doc(taskId);
               final taskData = {
                 'taskId': taskId,
-                'taskName': t['taskName'] ?? t['title'] ?? t['name'] ?? t['description'] ?? 'Untitled Task',
+                'taskName': localizedContent(
+                  t,
+                  fieldKeys: const ['taskName', 'title', 'name', 'description'],
+                  fallback: 'Untitled Task',
+                ),
                 'createdAt': FieldValue.serverTimestamp(),
                 'dueDate': t['dueDate'],
                 'completed': false,
@@ -285,6 +337,10 @@ class DailyChecklistService {
                 'templateName': templateName,
                 'order': i,
                 'isCarryForwardEligible': t['isCarryForwardEligible'] == true,
+                if (t['translations'] is Map)
+                  'translations': Map<String, dynamic>.from(
+                    t['translations'] as Map,
+                  ),
               };
               FirestoreTTLHelper.batchSetWithTTL(batch, taskRef, taskData);
             }
@@ -295,11 +351,15 @@ class DailyChecklistService {
           }
         }
       } catch (e) {
-        debugPrint('[DailyChecklistService] Error ensuring checklist and tasks for $checklistId: $e');
+        debugPrint(
+          '[DailyChecklistService] Error ensuring checklist and tasks for $checklistId: $e',
+        );
         rethrow;
       }
     } catch (e) {
-      debugPrint('[DailyChecklistService] Error in ensureDailyChecklistAndTasks: $e');
+      debugPrint(
+        '[DailyChecklistService] Error in ensureDailyChecklistAndTasks: $e',
+      );
       rethrow;
     }
   }
@@ -323,7 +383,9 @@ class DailyChecklistService {
     try {
       final parentSnap = await checklistRef.get();
       if (!parentSnap.exists) {
-        debugPrint('[DailyChecklistService] reseed: Checklist not found: $checklistId');
+        debugPrint(
+          '[DailyChecklistService] reseed: Checklist not found: $checklistId',
+        );
         return;
       }
 
@@ -332,7 +394,9 @@ class DailyChecklistService {
       final dateStringDefault = p['date']?.toString() ?? '';
       final templateName = p['templateName']?.toString();
       if (templateId == null || templateId.isEmpty) {
-        debugPrint('[DailyChecklistService] reseed: Missing templateId on checklist=$checklistId');
+        debugPrint(
+          '[DailyChecklistService] reseed: Missing templateId on checklist=$checklistId',
+        );
         return;
       }
 
@@ -363,19 +427,24 @@ class DailyChecklistService {
               .doc(templateId)
               .get();
       if (!tmplDoc.exists) {
-        debugPrint('[DailyChecklistService] reseed: Template not found: $templateId');
+        debugPrint(
+          '[DailyChecklistService] reseed: Template not found: $templateId',
+        );
         return;
       }
 
       List<Map<String, dynamic>> templateTasks = [];
       try {
-        final subOrdered = await tmplDoc.reference.collection('tasks').orderBy('order').get();
+        final subOrdered =
+            await tmplDoc.reference.collection('tasks').orderBy('order').get();
         if (subOrdered.docs.isNotEmpty) {
           templateTasks =
               subOrdered.docs.map((d) {
                 final m = Map<String, dynamic>.from(d.data());
                 if (!m.containsKey('taskId')) m['taskId'] = d.id;
-                if (!m.containsKey('taskName')) m['taskName'] = m['name'] ?? m['title'] ?? m['description'];
+                if (!m.containsKey('taskName')) {
+                  m['taskName'] = m['name'] ?? m['title'] ?? m['description'];
+                }
                 return m;
               }).toList();
         }
@@ -387,14 +456,18 @@ class DailyChecklistService {
               sub.docs.map((d) {
                 final m = Map<String, dynamic>.from(d.data());
                 if (!m.containsKey('taskId')) m['taskId'] = d.id;
-                if (!m.containsKey('taskName')) m['taskName'] = m['name'] ?? m['title'] ?? m['description'];
+                if (!m.containsKey('taskName')) {
+                  m['taskName'] = m['name'] ?? m['title'] ?? m['description'];
+                }
                 return m;
               }).toList();
         }
       }
 
       if (templateTasks.isEmpty) {
-        debugPrint('[DailyChecklistService] reseed: Template has no tasks to seed for $templateId');
+        debugPrint(
+          '[DailyChecklistService] reseed: Template has no tasks to seed for $templateId',
+        );
         return;
       }
 
@@ -403,9 +476,12 @@ class DailyChecklistService {
       for (int i = 0; i < templateTasks.length; i++) {
         final t = templateTasks[i];
         if (t['isCarryForward'] == true) continue;
-        final name = (t['taskName'] ?? t['title'] ?? t['name'] ?? t['description'] ?? '').toString();
+        final name =
+            (t['taskName'] ?? t['title'] ?? t['name'] ?? t['description'] ?? '')
+                .toString();
         if (name.trim().isEmpty) continue;
-        final templateTaskId = (t['taskId'] ?? t['id'] ?? _uuid.v4()).toString();
+        final templateTaskId =
+            (t['taskId'] ?? t['id'] ?? _uuid.v4()).toString();
         final newId = _generateTaskId(
           templateTaskId: templateTaskId,
           checklistId: checklistId,
@@ -445,7 +521,9 @@ class DailyChecklistService {
         }, SetOptions(merge: true));
       } catch (_) {}
 
-      debugPrint('[DailyChecklistService] reseed: Seeded ${templateTasks.length} tasks into $checklistId');
+      debugPrint(
+        '[DailyChecklistService] reseed: Seeded ${templateTasks.length} tasks into $checklistId',
+      );
     } catch (e) {
       debugPrint('[DailyChecklistService] reseed error for $checklistId: $e');
       rethrow;
@@ -472,16 +550,24 @@ class DailyChecklistService {
           .doc(taskId);
       // Prefer storing richer completedBy metadata; only update existing docs
       try {
-        await taskRef.update({'completed': true, 'completedBy': userId, 'completedAt': FieldValue.serverTimestamp()});
+        await taskRef.update({
+          'completed': true,
+          'completedBy': userId,
+          'completedAt': FieldValue.serverTimestamp(),
+        });
       } on FirebaseException catch (fe) {
         if (fe.code == 'not-found') {
-          debugPrint('[DailyChecklistService] Skipping complete; task doc not found for $taskId');
+          debugPrint(
+            '[DailyChecklistService] Skipping complete; task doc not found for $taskId',
+          );
           return;
         }
         rethrow;
       }
 
-      debugPrint('[DailyChecklistService] Completed task $taskId by user $userId');
+      debugPrint(
+        '[DailyChecklistService] Completed task $taskId by user $userId',
+      );
     } catch (e) {
       debugPrint('[DailyChecklistService] Error completing task: $e');
       rethrow;
@@ -517,7 +603,9 @@ class DailyChecklistService {
         });
       } on FirebaseException catch (fe) {
         if (fe.code == 'not-found') {
-          debugPrint('[DailyChecklistService] Skipping uncomplete; task doc not found for $taskId');
+          debugPrint(
+            '[DailyChecklistService] Skipping uncomplete; task doc not found for $taskId',
+          );
           return;
         }
         rethrow;
@@ -551,22 +639,38 @@ class DailyChecklistService {
 
       // Do not create placeholder docs; only update existing tasks
       try {
-        await taskRef.update({'notes': notes, 'updatedAt': FieldValue.serverTimestamp()});
+        await taskRef.update({
+          'notes': notes,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
       } on FirebaseException catch (fe) {
         if (fe.code == 'not-found') {
           // Fallback: locate by taskId field in case document ID differs from stored taskId
           try {
             final tasksColl = taskRef.parent;
-            final qs = await tasksColl.where('taskId', isEqualTo: taskId).limit(1).get();
+            final qs =
+                await tasksColl
+                    .where('taskId', isEqualTo: taskId)
+                    .limit(1)
+                    .get();
             if (qs.docs.isNotEmpty) {
-              await qs.docs.first.reference.update({'notes': notes, 'updatedAt': FieldValue.serverTimestamp()});
-              debugPrint('[DailyChecklistService] Updated notes via fallback lookup for task $taskId');
+              await qs.docs.first.reference.update({
+                'notes': notes,
+                'updatedAt': FieldValue.serverTimestamp(),
+              });
+              debugPrint(
+                '[DailyChecklistService] Updated notes via fallback lookup for task $taskId',
+              );
               return;
             }
-            debugPrint('[DailyChecklistService] Notes update fallback failed; no task doc found for $taskId');
+            debugPrint(
+              '[DailyChecklistService] Notes update fallback failed; no task doc found for $taskId',
+            );
             return;
           } catch (fallbackErr) {
-            debugPrint('[DailyChecklistService] Notes update fallback error for $taskId: $fallbackErr');
+            debugPrint(
+              '[DailyChecklistService] Notes update fallback error for $taskId: $fallbackErr',
+            );
             return;
           }
         }
@@ -612,20 +716,30 @@ class DailyChecklistService {
           // Fallback: locate by taskId field in case document ID differs from stored taskId
           try {
             final tasksColl = taskRef.parent;
-            final qs = await tasksColl.where('taskId', isEqualTo: taskId).limit(1).get();
+            final qs =
+                await tasksColl
+                    .where('taskId', isEqualTo: taskId)
+                    .limit(1)
+                    .get();
             if (qs.docs.isNotEmpty) {
               await qs.docs.first.reference.update({
                 'proofImageUrl': proofImageUrl,
                 'photoUrl': proofImageUrl,
                 'updatedAt': FieldValue.serverTimestamp(),
               });
-              debugPrint('[DailyChecklistService] Updated photo via fallback lookup for task $taskId');
+              debugPrint(
+                '[DailyChecklistService] Updated photo via fallback lookup for task $taskId',
+              );
               return;
             }
-            debugPrint('[DailyChecklistService] Photo update fallback failed; no task doc found for $taskId');
+            debugPrint(
+              '[DailyChecklistService] Photo update fallback failed; no task doc found for $taskId',
+            );
             return;
           } catch (e) {
-            debugPrint('[DailyChecklistService] Photo update fallback error for $taskId: $e');
+            debugPrint(
+              '[DailyChecklistService] Photo update fallback error for $taskId: $e',
+            );
             return;
           }
         }
@@ -658,22 +772,31 @@ class DailyChecklistService {
           .doc(taskId);
 
       try {
-        await taskRef.update({'photoUrl': '', 'proofImageUrl': '', 'updatedAt': FieldValue.serverTimestamp()});
+        await taskRef.update({
+          'photoUrl': '',
+          'proofImageUrl': '',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
       } on FirebaseException catch (fe) {
         if (fe.code == 'not-found') {
           // Fallback: locate by taskId field
           final tasksColl = taskRef.parent;
-          final qs = await tasksColl.where('taskId', isEqualTo: taskId).limit(1).get();
+          final qs =
+              await tasksColl.where('taskId', isEqualTo: taskId).limit(1).get();
           if (qs.docs.isNotEmpty) {
             await qs.docs.first.reference.update({
               'photoUrl': '',
               'proofImageUrl': '',
               'updatedAt': FieldValue.serverTimestamp(),
             });
-            debugPrint('[DailyChecklistService] Cleared photo via fallback lookup for task $taskId');
+            debugPrint(
+              '[DailyChecklistService] Cleared photo via fallback lookup for task $taskId',
+            );
             return;
           }
-          debugPrint('[DailyChecklistService] Clear photo fallback failed; no task doc found for $taskId');
+          debugPrint(
+            '[DailyChecklistService] Clear photo fallback failed; no task doc found for $taskId',
+          );
           return;
         }
         rethrow;
@@ -722,7 +845,10 @@ class DailyChecklistService {
           rethrow;
         }
       } else {
-        final storageRef = FirebaseStorage.instance.ref().child('task_photos').child(fileName);
+        final storageRef = FirebaseStorage.instance
+            .ref()
+            .child('task_photos')
+            .child(fileName);
 
         // Upload: use putData so it works across native
         final bytes = await imageFile.readAsBytes();
@@ -747,7 +873,10 @@ class DailyChecklistService {
   }
 
   /// Update not completed reason for a task in subcollection
-  Future<void> updateTaskNotCompletedReason(dynamic task, String? reason) async {
+  Future<void> updateTaskNotCompletedReason(
+    dynamic task,
+    String? reason,
+  ) async {
     try {
       final taskRef = _firestore
           .collection('organizations')
@@ -767,15 +896,21 @@ class DailyChecklistService {
         });
       } on FirebaseException catch (fe) {
         if (fe.code == 'not-found') {
-          debugPrint('[DailyChecklistService] Skipping reason update; task doc not found for ${task.taskId}');
+          debugPrint(
+            '[DailyChecklistService] Skipping reason update; task doc not found for ${task.taskId}',
+          );
           return;
         }
         rethrow;
       }
 
-      debugPrint('[DailyChecklistService] Updated not completed reason for task ${task.taskId}');
+      debugPrint(
+        '[DailyChecklistService] Updated not completed reason for task ${task.taskId}',
+      );
     } catch (e) {
-      debugPrint('[DailyChecklistService] Error updating task not completed reason: $e');
+      debugPrint(
+        '[DailyChecklistService] Error updating task not completed reason: $e',
+      );
       rethrow;
     }
   }
@@ -811,9 +946,15 @@ class DailyChecklistService {
 
       if (completed) {
         updateData['completedAt'] = FieldValue.serverTimestamp();
-        if (completedByUserId != null) updateData['completedByUserId'] = completedByUserId;
-        if (completedByUserName != null) updateData['completedByUserName'] = completedByUserName;
-        if (completedByUserEmail != null) updateData['completedByUserEmail'] = completedByUserEmail;
+        if (completedByUserId != null) {
+          updateData['completedByUserId'] = completedByUserId;
+        }
+        if (completedByUserName != null) {
+          updateData['completedByUserName'] = completedByUserName;
+        }
+        if (completedByUserEmail != null) {
+          updateData['completedByUserEmail'] = completedByUserEmail;
+        }
       } else {
         updateData['completedAt'] = null;
         updateData['completedByUserId'] = null;
@@ -827,16 +968,24 @@ class DailyChecklistService {
       } on FirebaseException catch (fe) {
         if (fe.code == 'not-found') {
           // Surface not-found so callers (e.g., missed-task flow) can fallback to array update
-          debugPrint('[DailyChecklistService] Task doc not found for ${task.taskId}; throwing to trigger fallback.');
+          debugPrint(
+            '[DailyChecklistService] Task doc not found for ${task.taskId}; throwing to trigger fallback.',
+          );
           rethrow;
         }
         rethrow;
       }
 
-      debugPrint('[DailyChecklistService] Updated completion status for task ${task.taskId} to $completed');
+      debugPrint(
+        '[DailyChecklistService] Updated completion status for task ${task.taskId} to $completed',
+      );
 
       // After updating task, check if ALL tasks in checklist are complete and update checklist status
-      await _updateChecklistCompletionStatus(organizationId: orgId, locationId: locId, checklistId: listId);
+      await _updateChecklistCompletionStatus(
+        organizationId: orgId,
+        locationId: locId,
+        checklistId: listId,
+      );
     } catch (e) {
       debugPrint('[DailyChecklistService] Error updating task completion: $e');
       rethrow;
@@ -859,11 +1008,17 @@ class DailyChecklistService {
           .doc(checklistId);
 
       // Get all tasks (excluding carry-forward tasks, as they're not part of checklist completion)
-      final tasksSnapshot = await checklistRef.collection('tasks').where('isCarryForward', isEqualTo: false).get();
+      final tasksSnapshot =
+          await checklistRef
+              .collection('tasks')
+              .where('isCarryForward', isEqualTo: false)
+              .get();
 
       if (tasksSnapshot.docs.isEmpty) {
         // No regular tasks, checklist can't be complete
-        debugPrint('[DailyChecklistService] No regular tasks found for checklist $checklistId');
+        debugPrint(
+          '[DailyChecklistService] No regular tasks found for checklist $checklistId',
+        );
         return;
       }
 
@@ -878,11 +1033,18 @@ class DailyChecklistService {
       );
 
       // Update checklist document
-      await checklistRef.update({'isCompleted': allTasksCompleted, 'updatedAt': FieldValue.serverTimestamp()});
+      await checklistRef.update({
+        'isCompleted': allTasksCompleted,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
 
-      debugPrint('[DailyChecklistService] Updated checklist $checklistId isCompleted to $allTasksCompleted');
+      debugPrint(
+        '[DailyChecklistService] Updated checklist $checklistId isCompleted to $allTasksCompleted',
+      );
     } catch (e) {
-      debugPrint('[DailyChecklistService] Error updating checklist completion status: $e');
+      debugPrint(
+        '[DailyChecklistService] Error updating checklist completion status: $e',
+      );
       // Don't rethrow - this is a best-effort update
     }
   }
@@ -892,10 +1054,13 @@ class DailyChecklistService {
     required String organizationId,
     required String locationId,
     required String checklistId,
+    bool bypassCache = false,
   }) {
     final cacheKey = '$organizationId|$locationId|$checklistId';
-    final cached = _tasksStreamCache[cacheKey];
-    if (cached != null) return cached;
+    if (!bypassCache) {
+      final cached = _tasksStreamCache[cacheKey];
+      if (cached != null) return cached;
+    }
 
     final checklistRef = _firestore
         .collection('organizations')
@@ -910,7 +1075,8 @@ class DailyChecklistService {
     final tasksCollRef = checklistRef.collection('tasks');
 
     final controller = StreamController<List<TaskData>>.broadcast();
-    bool seedAttempted = false; // prevent repeated seeding within this subscription
+    bool seedAttempted =
+        false; // prevent repeated seeding within this subscription
 
     // Removed legacy array mapping helper; tasks stream exclusively from subcollections now
 
@@ -934,8 +1100,16 @@ class DailyChecklistService {
             final d = doc.data();
             final hasPhotoRequired = d.containsKey('photoRequired');
             final candidateName =
-                (d['taskName'] ?? d['title'] ?? d['description'] ?? d['name'] ?? '').toString().trim();
-            final nameMissing = candidateName.isEmpty || candidateName.toLowerCase() == 'unknown task';
+                (d['taskName'] ??
+                        d['title'] ??
+                        d['description'] ??
+                        d['name'] ??
+                        '')
+                    .toString()
+                    .trim();
+            final nameMissing =
+                candidateName.isEmpty ||
+                candidateName.toLowerCase() == 'unknown task';
             if (!hasPhotoRequired || nameMissing) {
               needTemplateFallback = true;
               break;
@@ -957,21 +1131,28 @@ class DailyChecklistService {
                             .doc(templateId)
                             .get();
                     if (tmplDoc.exists) {
-                      final sub = await tmplDoc.reference.collection('tasks').get();
+                      final sub =
+                          await tmplDoc.reference.collection('tasks').get();
                       if (sub.docs.isNotEmpty) {
                         templateTaskMap = <String, Map<String, dynamic>>{};
                         for (final tdoc in sub.docs) {
-                          templateTaskMap[tdoc.id] = Map<String, dynamic>.from(tdoc.data());
+                          templateTaskMap[tdoc.id] = Map<String, dynamic>.from(
+                            tdoc.data(),
+                          );
                         }
                       }
                     }
                   } catch (e) {
-                    debugPrint('[DailyChecklistService] Error loading template tasks for fallback: $e');
+                    debugPrint(
+                      '[DailyChecklistService] Error loading template tasks for fallback: $e',
+                    );
                   }
                 }
               }
             } catch (e) {
-              debugPrint('[DailyChecklistService] Error reading parent checklist for template fallback: $e');
+              debugPrint(
+                '[DailyChecklistService] Error reading parent checklist for template fallback: $e',
+              );
             }
           }
 
@@ -984,20 +1165,35 @@ class DailyChecklistService {
               continue;
             }
             String taskName =
-                (data['taskName'] ?? data['title'] ?? data['description'] ?? data['name'] ?? '').toString().trim();
+                localizedContent(
+                  data,
+                  fieldKeys: const ['taskName', 'title', 'description', 'name'],
+                ).trim();
             if (taskName.isEmpty || taskName.toLowerCase() == 'unknown task') {
               // Try to recover name from template if available
               final tmplTaskId = data['templateTaskId']?.toString();
-              if (tmplTaskId != null && templateTaskMap != null && templateTaskMap.containsKey(tmplTaskId)) {
+              if (tmplTaskId != null &&
+                  templateTaskMap != null &&
+                  templateTaskMap.containsKey(tmplTaskId)) {
                 final tmpl = templateTaskMap[tmplTaskId]!;
                 final fromTemplate =
-                    (tmpl['taskName'] ?? tmpl['title'] ?? tmpl['name'] ?? tmpl['description'] ?? '').toString().trim();
+                    localizedContent(
+                      tmpl,
+                      fieldKeys: const [
+                        'taskName',
+                        'title',
+                        'name',
+                        'description',
+                      ],
+                    ).trim();
                 if (fromTemplate.isNotEmpty) {
                   taskName = fromTemplate;
                 }
               }
               if (taskName.isEmpty) {
-                debugPrint('[DailyChecklistService] Skipping nameless task doc ${doc.id} in checklist=$checklistId');
+                debugPrint(
+                  '[DailyChecklistService] Skipping nameless task doc ${doc.id} in checklist=$checklistId',
+                );
                 continue;
               }
             }
@@ -1009,17 +1205,21 @@ class DailyChecklistService {
             } else {
               // Try templateTaskId, or derive from originalTaskId (format: <templateId>_<templateTaskId>) for carry-forward
               String? tmplTaskId = data['templateTaskId']?.toString();
-              if ((tmplTaskId == null || tmplTaskId.isEmpty) && (data['originalTaskId'] != null)) {
+              if ((tmplTaskId == null || tmplTaskId.isEmpty) &&
+                  (data['originalTaskId'] != null)) {
                 final parts = data['originalTaskId'].toString().split('_');
                 if (parts.length >= 2) {
-                  tmplTaskId = parts.sublist(1).join('_'); // preserve underscores in task id
+                  tmplTaskId = parts
+                      .sublist(1)
+                      .join('_'); // preserve underscores in task id
                 }
               }
               if (tmplTaskId != null &&
                   tmplTaskId.isNotEmpty &&
                   templateTaskMap != null &&
                   templateTaskMap.containsKey(tmplTaskId)) {
-                photoRequiredValue = templateTaskMap[tmplTaskId]!['photoRequired'] == true;
+                photoRequiredValue =
+                    templateTaskMap[tmplTaskId]!['photoRequired'] == true;
               } else {
                 photoRequiredValue = false;
               }
@@ -1029,8 +1229,11 @@ class DailyChecklistService {
               TaskData(
                 taskId: data['taskId'] ?? doc.id,
                 taskName: taskName,
-                createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-                dueDate: (data['dueDate'] as Timestamp?)?.toDate() ?? DateTime.now(),
+                createdAt:
+                    (data['createdAt'] as Timestamp?)?.toDate() ??
+                    DateTime.now(),
+                dueDate:
+                    (data['dueDate'] as Timestamp?)?.toDate() ?? DateTime.now(),
                 completed: data['completed'] ?? false,
                 photoRequired: photoRequiredValue,
                 completedBy: data['completedBy']?.toString(),
@@ -1056,16 +1259,22 @@ class DailyChecklistService {
                 locationId: locationId,
                 checklistId: checklistId,
                 shiftId: data['shiftId']?.toString(),
-                templateId: data['checklistTemplateId']?.toString() ?? data['templateId']?.toString(),
+                templateId:
+                    data['checklistTemplateId']?.toString() ??
+                    data['templateId']?.toString(),
                 dateString: data['dateString']?.toString(),
-                checklistName: data['templateName']?.toString() ?? data['checklistName']?.toString(),
+                checklistName:
+                    data['templateName']?.toString() ??
+                    data['checklistName']?.toString(),
                 order: data['order'] as int?,
               ),
             );
           }
           // If no normal tasks remain after filtering, consider backfilling from the template.
           // Important: Only seed when the subcollection is truly empty, not just filtered empty.
-          if (tasks.isEmpty && !seedAttempted && subcollectionSnapshot.docs.isEmpty) {
+          if (tasks.isEmpty &&
+              !seedAttempted &&
+              subcollectionSnapshot.docs.isEmpty) {
             seedAttempted = true;
             try {
               final parentSnap = await checklistRef.get();
@@ -1088,28 +1297,43 @@ class DailyChecklistService {
                     if (tmplDoc.exists) {
                       // Try ordered first, then unordered
                       try {
-                        final subOrdered = await tmplDoc.reference.collection('tasks').orderBy('order').get();
+                        final subOrdered =
+                            await tmplDoc.reference
+                                .collection('tasks')
+                                .orderBy('order')
+                                .get();
                         if (subOrdered.docs.isNotEmpty) {
                           templateTasks =
                               subOrdered.docs.map((d) {
                                 final m = Map<String, dynamic>.from(d.data());
-                                if (!m.containsKey('taskId')) m['taskId'] = d.id;
+                                if (!m.containsKey('taskId')) {
+                                  m['taskId'] = d.id;
+                                }
                                 if (!m.containsKey('taskName')) {
-                                  m['taskName'] = m['name'] ?? m['title'] ?? m['description'];
+                                  m['taskName'] =
+                                      m['name'] ??
+                                      m['title'] ??
+                                      m['description'];
                                 }
                                 return m;
                               }).toList();
                         }
                       } catch (_) {}
                       if (templateTasks.isEmpty) {
-                        final sub = await tmplDoc.reference.collection('tasks').get();
+                        final sub =
+                            await tmplDoc.reference.collection('tasks').get();
                         if (sub.docs.isNotEmpty) {
                           templateTasks =
                               sub.docs.map((d) {
                                 final m = Map<String, dynamic>.from(d.data());
-                                if (!m.containsKey('taskId')) m['taskId'] = d.id;
+                                if (!m.containsKey('taskId')) {
+                                  m['taskId'] = d.id;
+                                }
                                 if (!m.containsKey('taskName')) {
-                                  m['taskName'] = m['name'] ?? m['title'] ?? m['description'];
+                                  m['taskName'] =
+                                      m['name'] ??
+                                      m['title'] ??
+                                      m['description'];
                                 }
                                 return m;
                               }).toList();
@@ -1123,10 +1347,19 @@ class DailyChecklistService {
                     final seededNow = <TaskData>[];
                     for (int i = 0; i < templateTasks.length; i++) {
                       final t = templateTasks[i];
-                      if (t['isCarryForward'] == true) continue; // never seed CF here
-                      final name = (t['taskName'] ?? t['title'] ?? t['name'] ?? t['description'] ?? '').toString();
+                      if (t['isCarryForward'] == true) {
+                        continue; // never seed CF here
+                      }
+                      final name =
+                          (t['taskName'] ??
+                                  t['title'] ??
+                                  t['name'] ??
+                                  t['description'] ??
+                                  '')
+                              .toString();
                       if (name.trim().isEmpty) continue;
-                      final templateTaskId = (t['taskId'] ?? t['id'] ?? _uuid.v4()).toString();
+                      final templateTaskId =
+                          (t['taskId'] ?? t['id'] ?? _uuid.v4()).toString();
                       final newId = _generateTaskId(
                         templateTaskId: templateTaskId,
                         checklistId: checklistId,
@@ -1193,7 +1426,9 @@ class DailyChecklistService {
                         if (a.order != null && b.order != null) {
                           return a.order!.compareTo(b.order!);
                         }
-                        return (a.taskName.toLowerCase()).compareTo(b.taskName.toLowerCase());
+                        return (a.taskName.toLowerCase()).compareTo(
+                          b.taskName.toLowerCase(),
+                        );
                       });
                       controller.add(seededNow);
                       return; // avoid duplicate add below
@@ -1202,7 +1437,9 @@ class DailyChecklistService {
                 }
               }
             } catch (e) {
-              debugPrint('[DailyChecklistService] Error seeding tasks for $checklistId: $e');
+              debugPrint(
+                '[DailyChecklistService] Error seeding tasks for $checklistId: $e',
+              );
             }
           }
 
@@ -1220,7 +1457,9 @@ class DailyChecklistService {
             if (a.order != null && b.order != null) {
               return a.order!.compareTo(b.order!);
             }
-            return (a.taskName.toLowerCase()).compareTo(b.taskName.toLowerCase());
+            return (a.taskName.toLowerCase()).compareTo(
+              b.taskName.toLowerCase(),
+            );
           });
           // Removed legacy parent-array merge path: tasks now come only from subcollection
 
@@ -1251,28 +1490,35 @@ class DailyChecklistService {
                     // Read tasks from template's subcollection (ordered, then unordered)
                     List<Map<String, dynamic>> templateTasks = [];
                     try {
-                      final subOrdered = await tmplDoc.reference.collection('tasks').orderBy('order').get();
+                      final subOrdered =
+                          await tmplDoc.reference
+                              .collection('tasks')
+                              .orderBy('order')
+                              .get();
                       if (subOrdered.docs.isNotEmpty) {
                         templateTasks =
                             subOrdered.docs.map((d) {
                               final m = Map<String, dynamic>.from(d.data());
                               if (!m.containsKey('taskId')) m['taskId'] = d.id;
                               if (!m.containsKey('taskName')) {
-                                m['taskName'] = m['name'] ?? m['title'] ?? m['description'];
+                                m['taskName'] =
+                                    m['name'] ?? m['title'] ?? m['description'];
                               }
                               return m;
                             }).toList();
                       }
                     } catch (_) {}
                     if (templateTasks.isEmpty) {
-                      final sub = await tmplDoc.reference.collection('tasks').get();
+                      final sub =
+                          await tmplDoc.reference.collection('tasks').get();
                       if (sub.docs.isNotEmpty) {
                         templateTasks =
                             sub.docs.map((d) {
                               final m = Map<String, dynamic>.from(d.data());
                               if (!m.containsKey('taskId')) m['taskId'] = d.id;
                               if (!m.containsKey('taskName')) {
-                                m['taskName'] = m['name'] ?? m['title'] ?? m['description'];
+                                m['taskName'] =
+                                    m['name'] ?? m['title'] ?? m['description'];
                               }
                               return m;
                             }).toList();
@@ -1285,9 +1531,16 @@ class DailyChecklistService {
                       for (int i = 0; i < templateTasks.length; i++) {
                         final t = templateTasks[i];
                         if (t['isCarryForward'] == true) continue;
-                        final name = (t['taskName'] ?? t['title'] ?? t['name'] ?? t['description'] ?? '').toString();
+                        final name =
+                            (t['taskName'] ??
+                                    t['title'] ??
+                                    t['name'] ??
+                                    t['description'] ??
+                                    '')
+                                .toString();
                         if (name.trim().isEmpty) continue;
-                        final templateTaskId = (t['taskId'] ?? t['id'] ?? _uuid.v4()).toString();
+                        final templateTaskId =
+                            (t['taskId'] ?? t['id'] ?? _uuid.v4()).toString();
                         final newId = _generateTaskId(
                           templateTaskId: templateTaskId,
                           checklistId: checklistId,
@@ -1321,7 +1574,8 @@ class DailyChecklistService {
                             createdAt: DateTime.now(),
                             dueDate: DateTime.now(),
                             completed: false,
-                            photoRequired: (t['photoRequired'] ?? false) == true,
+                            photoRequired:
+                                (t['photoRequired'] ?? false) == true,
                             organizationId: organizationId,
                             locationId: locationId,
                             checklistId: checklistId,
@@ -1346,7 +1600,11 @@ class DailyChecklistService {
                         '[DailyChecklistService] Seeded ${templateTasks.length} template tasks into subcollection for checklist=$checklistId',
                       );
                       if (!controller.isClosed && seededNow.isNotEmpty) {
-                        seededNow.sort((a, b) => (a.taskName.toLowerCase()).compareTo(b.taskName.toLowerCase()));
+                        seededNow.sort(
+                          (a, b) => (a.taskName.toLowerCase()).compareTo(
+                            b.taskName.toLowerCase(),
+                          ),
+                        );
                         controller.add(seededNow);
                         return;
                       }
@@ -1363,7 +1621,9 @@ class DailyChecklistService {
                 controller.add([]);
               }
             } catch (e) {
-              debugPrint('[DailyChecklistService] Error seeding from template subcollection for $checklistId: $e');
+              debugPrint(
+                '[DailyChecklistService] Error seeding from template subcollection for $checklistId: $e',
+              );
               controller.add([]);
             }
           } else {
@@ -1372,18 +1632,24 @@ class DailyChecklistService {
         }
       },
       onError: (e) {
-        debugPrint('[DailyChecklistService] Error in tasks subcollection stream for $checklistId: $e');
+        debugPrint(
+          '[DailyChecklistService] Error in tasks subcollection stream for $checklistId: $e',
+        );
         if (!controller.isClosed) controller.addError(e);
       },
     );
 
     controller.onCancel = () {
       sub.cancel();
-      _tasksStreamCache.remove(cacheKey);
+      if (!bypassCache) {
+        _tasksStreamCache.remove(cacheKey);
+      }
     };
 
     final stream = controller.stream;
-    _tasksStreamCache[cacheKey] = stream;
+    if (!bypassCache) {
+      _tasksStreamCache[cacheKey] = stream;
+    }
     return stream;
   }
 
@@ -1407,14 +1673,23 @@ class DailyChecklistService {
       int completedTasks = 0;
 
       for (final checklistDoc in checklists.docs) {
-        final tasksSnapshot = await checklistDoc.reference.collection('tasks').get();
+        final tasksSnapshot =
+            await checklistDoc.reference.collection('tasks').get();
         totalTasks += tasksSnapshot.docs.length;
-        completedTasks += tasksSnapshot.docs.where((doc) => doc.data()['completed'] == true).length;
+        completedTasks +=
+            tasksSnapshot.docs
+                .where((doc) => doc.data()['completed'] == true)
+                .length;
       }
 
-      final completionPercentage = totalTasks > 0 ? (completedTasks / totalTasks * 100).round() : 0;
+      final completionPercentage =
+          totalTasks > 0 ? (completedTasks / totalTasks * 100).round() : 0;
 
-      return {'totalTasks': totalTasks, 'completedTasks': completedTasks, 'completionPercentage': completionPercentage};
+      return {
+        'totalTasks': totalTasks,
+        'completedTasks': completedTasks,
+        'completionPercentage': completionPercentage,
+      };
     } catch (e) {
       debugPrint('[DailyChecklistService] Error getting completion stats: $e');
       return {'totalTasks': 0, 'completedTasks': 0, 'completionPercentage': 0};
@@ -1436,14 +1711,21 @@ class DailyChecklistService {
   }) async {
     // CRITICAL FIX: Validate shift exists before generating checklists
     if (shiftId.isEmpty || shiftId == 'unknown') {
-      debugPrint('[DailyChecklistService] Skipping generation for invalid shift ID: $shiftId');
+      debugPrint(
+        '[DailyChecklistService] Skipping generation for invalid shift ID: $shiftId',
+      );
       return <DailyChecklist>[];
     }
 
     // CRITICAL FIX: Verify shift document still exists (not deleted)
     try {
       final shiftDoc =
-          await _firestore.collection('organizations').doc(organizationId).collection('shifts').doc(shiftId).get();
+          await _firestore
+              .collection('organizations')
+              .doc(organizationId)
+              .collection('shifts')
+              .doc(shiftId)
+              .get();
 
       if (!shiftDoc.exists) {
         debugPrint(
@@ -1454,19 +1736,30 @@ class DailyChecklistService {
 
       final shiftDocData = shiftDoc.data();
       if (shiftDocData == null) {
-        debugPrint('[DailyChecklistService] Skipping generation - shift $shiftId has no data');
+        debugPrint(
+          '[DailyChecklistService] Skipping generation - shift $shiftId has no data',
+        );
         return <DailyChecklist>[];
       }
 
       // CRITICAL FIX: Validate shift is scheduled for this day
       final repeatsDaily = shiftDocData['repeatsDaily'] == true;
-      final List<dynamic> daysDynamic = (shiftDocData['days'] is List) ? (shiftDocData['days'] as List) : [];
+      final List<dynamic> daysDynamic =
+          (shiftDocData['days'] is List) ? (shiftDocData['days'] as List) : [];
       final List<String> days = daysDynamic.map((e) => e.toString()).toList();
 
       if (!repeatsDaily && days.isNotEmpty) {
         // Check if today's day of week is in the shift's days
         final targetDate = DateTime.parse(date);
-        final dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+        final dayNames = [
+          'Monday',
+          'Tuesday',
+          'Wednesday',
+          'Thursday',
+          'Friday',
+          'Saturday',
+          'Sunday',
+        ];
         final todayDayName = dayNames[targetDate.weekday - 1];
 
         if (!days.contains(todayDayName)) {
@@ -1486,7 +1779,9 @@ class DailyChecklistService {
 
     // If a generation for this key is already running, bail out early to avoid re-entrancy
     if (_generationInProgress.contains(key)) {
-      debugPrint('[DailyChecklistService] Skipping generation because one is already in progress for $key');
+      debugPrint(
+        '[DailyChecklistService] Skipping generation because one is already in progress for $key',
+      );
       // Return any existing checklists for the caller to use
       try {
         final snap =
@@ -1499,7 +1794,9 @@ class DailyChecklistService {
                 .where('shiftId', isEqualTo: shiftId)
                 .where('date', isEqualTo: date)
                 .get();
-        return snap.docs.map((d) => DailyChecklist.fromMap(d.data(), d.id)).toList();
+        return snap.docs
+            .map((d) => DailyChecklist.fromMap(d.data(), d.id))
+            .toList();
       } catch (e) {
         debugPrint(
           '[DailyChecklistService] Error returning existing checklists while another generation is running: $e',
@@ -1526,9 +1823,13 @@ class DailyChecklistService {
                 .where('shiftId', isEqualTo: shiftId)
                 .where('date', isEqualTo: date)
                 .get();
-        return snap.docs.map((d) => DailyChecklist.fromMap(d.data(), d.id)).toList();
+        return snap.docs
+            .map((d) => DailyChecklist.fromMap(d.data(), d.id))
+            .toList();
       } catch (e) {
-        debugPrint('[DailyChecklistService] Error returning existing checklists during cooldown: $e');
+        debugPrint(
+          '[DailyChecklistService] Error returning existing checklists during cooldown: $e',
+        );
         return <DailyChecklist>[];
       }
     }
@@ -1537,18 +1838,24 @@ class DailyChecklistService {
     _recentGenerationAttempts[key] = now;
     _generationInProgress.add(key);
 
-    debugPrint('[DailyChecklistService] Starting generation (subcollection-only)…');
+    debugPrint(
+      '[DailyChecklistService] Starting generation (subcollection-only)…',
+    );
     debugPrint(
       '[DailyChecklistService] Params: orgId=$organizationId, locationId=$locationId, shiftId=$shiftId, date=$date',
     );
-    debugPrint('[DailyChecklistService] ShiftData.checklistTemplateIds: ${shiftData.checklistTemplateIds}');
+    debugPrint(
+      '[DailyChecklistService] ShiftData.checklistTemplateIds: ${shiftData.checklistTemplateIds}',
+    );
 
     final List<DailyChecklist> createdChecklists = [];
 
     for (final templateId in shiftData.checklistTemplateIds) {
       // CRITICAL FIX: Skip invalid template IDs to prevent Unknown Template checklists
       if (templateId.isEmpty || templateId == 'unknown') {
-        debugPrint('[DailyChecklistService] Skip invalid template ID: $templateId');
+        debugPrint(
+          '[DailyChecklistService] Skip invalid template ID: $templateId',
+        );
         continue;
       }
 
@@ -1563,40 +1870,55 @@ class DailyChecklistService {
                 .get();
 
         if (!tmplSnap.exists) {
-          debugPrint('[DailyChecklistService] Skip template $templateId: template doc missing');
+          debugPrint(
+            '[DailyChecklistService] Skip template $templateId: template doc missing',
+          );
           continue;
         }
 
         final tdata = tmplSnap.data() as Map<String, dynamic>;
-        final List<dynamic> tLocsDyn = (tdata['locationIds'] is List) ? (tdata['locationIds'] as List) : const [];
-        final Set<String> templateLocationIds = tLocsDyn.map((e) => e.toString()).toSet();
+        final List<dynamic> tLocsDyn =
+            (tdata['locationIds'] is List)
+                ? (tdata['locationIds'] as List)
+                : const [];
+        final Set<String> templateLocationIds =
+            tLocsDyn.map((e) => e.toString()).toSet();
 
         // CRITICAL FIX: Skip deleted or inactive templates
         if (tdata['deleted'] == true) {
-          debugPrint('[DailyChecklistService] Skip template $templateId: template is deleted');
+          debugPrint(
+            '[DailyChecklistService] Skip template $templateId: template is deleted',
+          );
           continue;
         }
 
         if (tdata['active'] == false) {
-          debugPrint('[DailyChecklistService] Skip template $templateId: template is inactive');
+          debugPrint(
+            '[DailyChecklistService] Skip template $templateId: template is inactive',
+          );
           continue;
         }
 
         // CRITICAL FIX: Skip templates with no name (prevents Unknown Template checklists)
         final templateName = tdata['name'] as String?;
         if (templateName == null || templateName.trim().isEmpty) {
-          debugPrint('[DailyChecklistService] Skip template $templateId: template has no name');
+          debugPrint(
+            '[DailyChecklistService] Skip template $templateId: template has no name',
+          );
           continue;
         }
 
-        if (templateLocationIds.isNotEmpty && !templateLocationIds.contains(locationId)) {
+        if (templateLocationIds.isNotEmpty &&
+            !templateLocationIds.contains(locationId)) {
           debugPrint(
             '[DailyChecklistService] MISMATCH: Template $templateId does not belong to location $locationId. Skipping.',
           );
           continue;
         }
       } catch (e) {
-        debugPrint('[DailyChecklistService] Warning: could not validate template $templateId location: $e');
+        debugPrint(
+          '[DailyChecklistService] Warning: could not validate template $templateId location: $e',
+        );
       }
       // Ensure the doc exists and seed tasks in subcollection from template's tasks
       await ensureDailyChecklistAndTasks(
@@ -1677,7 +1999,9 @@ class DailyChecklistService {
             .where('date', isEqualTo: date)
             .get();
 
-    return querySnapshot.docs.map((doc) => DailyChecklist.fromMap(doc.data(), doc.id)).toList();
+    return querySnapshot.docs
+        .map((doc) => DailyChecklist.fromMap(doc.data(), doc.id))
+        .toList();
   }
 
   /// Update a daily checklist task
@@ -1701,13 +2025,16 @@ class DailyChecklistService {
       if (!checklistDoc.exists) return;
 
       final checklistData = checklistDoc.data()!;
-      final tasks = List<Map<String, dynamic>>.from(checklistData['tasks'] ?? []);
+      final tasks = List<Map<String, dynamic>>.from(
+        checklistData['tasks'] ?? [],
+      );
 
       // Find and update the task using both 'id' and 'taskId' fields
       for (int i = 0; i < tasks.length; i++) {
         if (tasks[i]['id'] == taskId || tasks[i]['taskId'] == taskId) {
           tasks[i] = {...tasks[i], ...updates};
-          if (updates.containsKey('completed') && updates['completed'] == true) {
+          if (updates.containsKey('completed') &&
+              updates['completed'] == true) {
             tasks[i]['completedAt'] = Timestamp.now();
           }
           break;
@@ -1750,7 +2077,9 @@ class DailyChecklistService {
       if (!checklistDoc.exists) return;
 
       final checklistData = checklistDoc.data()!;
-      final tasks = List<Map<String, dynamic>>.from(checklistData['tasks'] ?? []);
+      final tasks = List<Map<String, dynamic>>.from(
+        checklistData['tasks'] ?? [],
+      );
 
       // Find and update the task
       bool taskFound = false;
@@ -1789,7 +2118,13 @@ class DailyChecklistService {
       if (!taskFound) return;
 
       // Calculate completion metrics for Manager Dashboard
-      final completedTasks = tasks.where((task) => task['completed'] == true || task['isCompleted'] == true).length;
+      final completedTasks =
+          tasks
+              .where(
+                (task) =>
+                    task['completed'] == true || task['isCompleted'] == true,
+              )
+              .length;
       final totalTasks = tasks.length;
       final allCompleted = completedTasks == totalTasks;
 
@@ -1856,7 +2191,9 @@ class DailyChecklistService {
       if (!checklistDoc.exists) return;
 
       final checklistData = checklistDoc.data()!;
-      final tasks = List<Map<String, dynamic>>.from(checklistData['tasks'] ?? []);
+      final tasks = List<Map<String, dynamic>>.from(
+        checklistData['tasks'] ?? [],
+      );
 
       // Find and update the task
       for (int i = 0; i < tasks.length; i++) {
@@ -1866,7 +2203,10 @@ class DailyChecklistService {
         }
       }
 
-      transaction.update(checklistRef, {'tasks': tasks, 'updatedAt': Timestamp.now()});
+      transaction.update(checklistRef, {
+        'tasks': tasks,
+        'updatedAt': Timestamp.now(),
+      });
     });
   }
 
@@ -1877,7 +2217,11 @@ class DailyChecklistService {
 
     // Get all locations first
     final locationsQuery =
-        await _firestore.collection('organizations').doc(organizationId).collection('locations').get();
+        await _firestore
+            .collection('organizations')
+            .doc(organizationId)
+            .collection('locations')
+            .get();
 
     final batch = _firestore.batch();
 
@@ -1936,7 +2280,11 @@ class DailyChecklistService {
       } else {
         // Query all locations
         final locationsQuery =
-            await _firestore.collection('organizations').doc(organizationId).collection('locations').get();
+            await _firestore
+                .collection('organizations')
+                .doc(organizationId)
+                .collection('locations')
+                .get();
 
         int totalChecklists = 0;
         int completedChecklists = 0;
@@ -1977,7 +2325,10 @@ class DailyChecklistService {
           'completedChecklists': completedChecklists,
           'totalTasks': totalTasks,
           'completedTasks': completedTasks,
-          'completionPercentage': totalChecklists > 0 ? (completedChecklists / totalChecklists * 100).round() : 0,
+          'completionPercentage':
+              totalChecklists > 0
+                  ? (completedChecklists / totalChecklists * 100).round()
+                  : 0,
         };
       }
     } catch (e) {
@@ -2016,7 +2367,10 @@ class DailyChecklistService {
       'completedChecklists': completedChecklists,
       'totalTasks': totalTasks,
       'completedTasks': completedTasks,
-      'completionPercentage': totalChecklists > 0 ? (completedChecklists / totalChecklists * 100).round() : 0,
+      'completionPercentage':
+          totalChecklists > 0
+              ? (completedChecklists / totalChecklists * 100).round()
+              : 0,
     };
   }
 
@@ -2048,7 +2402,9 @@ class DailyChecklistService {
         );
       });
     } catch (e) {
-      debugPrint('[DailyChecklistService] Error triggering daily summary check: $e');
+      debugPrint(
+        '[DailyChecklistService] Error triggering daily summary check: $e',
+      );
       // Don't throw - this is a background operation
     }
   }
@@ -2080,20 +2436,33 @@ class DailyChecklistService {
       final globalKey = 'allgen|$organizationId|$date';
       // Prevent overlapping global generation across code paths
       if (_generationInProgress.contains(globalKey)) {
-        debugPrint('[DailyChecklistService] Global generation already in progress for $globalKey');
+        debugPrint(
+          '[DailyChecklistService] Global generation already in progress for $globalKey',
+        );
         return allCreatedChecklists;
       }
       _generationInProgress.add(globalKey);
-      debugPrint('Starting daily checklist generation for org $organizationId on $date');
+      debugPrint(
+        'Starting daily checklist generation for org $organizationId on $date',
+      );
 
       // Get all locations in the organization
       final locationsQuery =
-          await _firestore.collection('organizations').doc(organizationId).collection('locations').get();
+          await _firestore
+              .collection('organizations')
+              .doc(organizationId)
+              .collection('locations')
+              .get();
 
       debugPrint('Found ${locationsQuery.docs.length} locations');
 
       // Get all shifts in the organization (shifts are at org level, not per location)
-      final shiftsQuery = await _firestore.collection('organizations').doc(organizationId).collection('shifts').get();
+      final shiftsQuery =
+          await _firestore
+              .collection('organizations')
+              .doc(organizationId)
+              .collection('shifts')
+              .get();
 
       debugPrint('Found ${shiftsQuery.docs.length} shifts in organization');
 
@@ -2118,7 +2487,9 @@ class DailyChecklistService {
           try {
             shiftData = ShiftData.fromJson(raw);
           } catch (e) {
-            debugPrint('[DailyChecklistService] Failed to parse shift doc $shiftId: $e');
+            debugPrint(
+              '[DailyChecklistService] Failed to parse shift doc $shiftId: $e',
+            );
             debugPrint('[DailyChecklistService] Raw shift data: $raw');
             // Skip this shift to avoid aborting generation
             continue;
@@ -2127,7 +2498,9 @@ class DailyChecklistService {
           // Check if this shift applies to this location (handle legacy single-id or list)
           final shiftLocationIds = coerceToLocationIds(shiftData.locationIds);
           if (!shiftLocationIds.contains(locationId)) {
-            debugPrint('Shift $shiftId does not apply to location $locationId, skipping');
+            debugPrint(
+              'Shift $shiftId does not apply to location $locationId, skipping',
+            );
             continue;
           }
 
@@ -2145,11 +2518,15 @@ class DailyChecklistService {
           );
 
           allCreatedChecklists.addAll(checklists);
-          debugPrint('Generated ${checklists.length} checklists for shift $shiftId at location $locationId');
+          debugPrint(
+            'Generated ${checklists.length} checklists for shift $shiftId at location $locationId',
+          );
         }
       }
 
-      debugPrint('Total daily checklists generated: ${allCreatedChecklists.length}');
+      debugPrint(
+        'Total daily checklists generated: ${allCreatedChecklists.length}',
+      );
 
       // After generating normal checklists, carry forward missed tasks from yesterday
       if (allCreatedChecklists.isNotEmpty) {
@@ -2157,10 +2534,15 @@ class DailyChecklistService {
           final cfKey = 'cf|$organizationId|$date';
           if (!_generationInProgress.contains(cfKey)) {
             _generationInProgress.add(cfKey);
-            await carryForwardMissedTasks(organizationId: organizationId, targetDate: DateTime.parse(date));
+            await carryForwardMissedTasks(
+              organizationId: organizationId,
+              targetDate: DateTime.parse(date),
+            );
             _generationInProgress.remove(cfKey);
           } else {
-            debugPrint('[DailyChecklistService] carryForward already in progress for $cfKey');
+            debugPrint(
+              '[DailyChecklistService] carryForward already in progress for $cfKey',
+            );
           }
         } catch (e) {
           debugPrint('Error during carry-forward process: $e');
@@ -2187,19 +2569,27 @@ class DailyChecklistService {
     try {
       debugPrint('Ensuring daily checklists for date: $dateString');
       // Always generate checklists for today (idempotent)
-      await generateAllDailyChecklistsForDate(organizationId: organizationId, date: dateString);
+      await generateAllDailyChecklistsForDate(
+        organizationId: organizationId,
+        date: dateString,
+      );
       debugPrint('Daily checklist generation completed for $dateString');
       // One-time safety: dedupe today's tasks per org to fix any prior duplicates
       final dedupeKey = 'dedupe|$organizationId|$dateString';
       if (!_generationInProgress.contains(dedupeKey)) {
         _generationInProgress.add(dedupeKey);
         try {
-          final removed = await dedupeTodayForOrg(organizationId: organizationId, dateString: dateString);
+          final removed = await dedupeTodayForOrg(
+            organizationId: organizationId,
+            dateString: dateString,
+          );
           debugPrint(
             '[DailyChecklistService] Dedupe removed $removed duplicate tasks for $organizationId on $dateString',
           );
         } catch (e) {
-          debugPrint('[DailyChecklistService] Dedupe error for $organizationId on $dateString: $e');
+          debugPrint(
+            '[DailyChecklistService] Dedupe error for $organizationId on $dateString: $e',
+          );
         } finally {
           _generationInProgress.remove(dedupeKey);
         }
@@ -2211,10 +2601,18 @@ class DailyChecklistService {
 
   /// Dedupe today's tasks for a single organization by scanning all locations and checklists on the date.
   /// Returns total number of deleted duplicate docs.
-  Future<int> dedupeTodayForOrg({required String organizationId, required String dateString}) async {
+  Future<int> dedupeTodayForOrg({
+    required String organizationId,
+    required String dateString,
+  }) async {
     int totalDeleted = 0;
     try {
-      final locs = await _firestore.collection('organizations').doc(organizationId).collection('locations').get();
+      final locs =
+          await _firestore
+              .collection('organizations')
+              .doc(organizationId)
+              .collection('locations')
+              .get();
       for (final loc in locs.docs) {
         final locationId = loc.id;
         final dls =
@@ -2276,7 +2674,11 @@ class DailyChecklistService {
           String tmpl = (data['templateTaskId']?.toString() ?? '').trim();
           if (tmpl.isEmpty) {
             final name =
-                (data['taskName'] ?? data['name'] ?? data['title'] ?? data['description'] ?? '')
+                (data['taskName'] ??
+                        data['name'] ??
+                        data['title'] ??
+                        data['description'] ??
+                        '')
                     .toString()
                     .trim()
                     .toLowerCase();
@@ -2298,7 +2700,9 @@ class DailyChecklistService {
               (data['createdAt'] is Timestamp)
                   ? (data['createdAt'] as Timestamp).toDate()
                   : DateTime.fromMillisecondsSinceEpoch(0);
-          final replace = curTs.isBefore(prevTs) || (curTs.isAtSameMomentAs(prevTs) && doc.id.compareTo(prev.id) < 0);
+          final replace =
+              curTs.isBefore(prevTs) ||
+              (curTs.isAtSameMomentAs(prevTs) && doc.id.compareTo(prev.id) < 0);
           if (replace) {
             toDelete.add(prev);
             keep[key] = doc;
@@ -2339,7 +2743,9 @@ class DailyChecklistService {
         }, SetOptions(merge: true));
       } catch (_) {}
     } catch (e) {
-      debugPrint('[DailyChecklistService] _dedupeChecklistTasks error for $checklistId: $e');
+      debugPrint(
+        '[DailyChecklistService] _dedupeChecklistTasks error for $checklistId: $e',
+      );
     }
     return deleted;
   }
@@ -2348,7 +2754,10 @@ class DailyChecklistService {
   /// New behavior: write carry-forward items as normal task docs into today's
   /// tasks/ subcollection with isCarryForward=true. We no longer write CF
   /// tasks into the parent 'tasks' array for today.
-  Future<void> carryForwardMissedTasks({required String organizationId, required DateTime targetDate}) async {
+  Future<void> carryForwardMissedTasks({
+    required String organizationId,
+    required DateTime targetDate,
+  }) async {
     final yesterday = targetDate.subtract(const Duration(days: 1));
     final yString = _formatDate(yesterday);
     final todayStr = _formatDate(targetDate);
@@ -2358,7 +2767,11 @@ class DailyChecklistService {
         '[DailyChecklistService] carryForward: START org=$organizationId targetDate=$todayStr (yesterday=$yString)',
       );
       final locationsQuery =
-          await _firestore.collection('organizations').doc(organizationId).collection('locations').get();
+          await _firestore
+              .collection('organizations')
+              .doc(organizationId)
+              .collection('locations')
+              .get();
 
       for (final locDoc in locationsQuery.docs) {
         final locationId = locDoc.id;
@@ -2381,16 +2794,25 @@ class DailyChecklistService {
           final shiftId = data['shiftId'] as String?;
 
           if (shiftId == null || shiftId.isEmpty) {
-            debugPrint('[DailyChecklistService] carryForward: Skipping checklist ${doc.id} due to missing shiftId.');
+            debugPrint(
+              '[DailyChecklistService] carryForward: Skipping checklist ${doc.id} due to missing shiftId.',
+            );
             continue;
           }
 
           // ==> FIX: Verify shift exists and was scheduled for yesterday
           final shiftDoc =
-              await _firestore.collection('organizations').doc(organizationId).collection('shifts').doc(shiftId).get();
+              await _firestore
+                  .collection('organizations')
+                  .doc(organizationId)
+                  .collection('shifts')
+                  .doc(shiftId)
+                  .get();
 
           if (!shiftDoc.exists) {
-            debugPrint('[DailyChecklistService] carryForward: Shift $shiftId not found (deleted), skipping.');
+            debugPrint(
+              '[DailyChecklistService] carryForward: Shift $shiftId not found (deleted), skipping.',
+            );
             continue;
           }
 
@@ -2402,16 +2824,31 @@ class DailyChecklistService {
             scheduledYesterday = true;
           }
           if (!scheduledYesterday && (shiftData['activeDays'] is List)) {
-            final active = (shiftData['activeDays'] as List).map((e) => e?.toString()).whereType<String>().toList();
+            final active =
+                (shiftData['activeDays'] as List)
+                    .map((e) => e?.toString())
+                    .whereType<String>()
+                    .toList();
             if (active.any((a) => int.tryParse(a) == weekday)) {
               scheduledYesterday = true;
             }
           }
           if (!scheduledYesterday && (shiftData['days'] is List)) {
             final todayName =
-                ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][weekday - 1];
+                [
+                  'Monday',
+                  'Tuesday',
+                  'Wednesday',
+                  'Thursday',
+                  'Friday',
+                  'Saturday',
+                  'Sunday',
+                ][weekday - 1];
             final daysList =
-                (shiftData['days'] as List).map((d) => d?.toString().toLowerCase()).whereType<String>().toList();
+                (shiftData['days'] as List)
+                    .map((d) => d?.toString().toLowerCase())
+                    .whereType<String>()
+                    .toList();
             if (daysList.contains(todayName.toLowerCase())) {
               scheduledYesterday = true;
             }
@@ -2434,19 +2871,31 @@ class DailyChecklistService {
                 final tmap = Map<String, dynamic>.from(td.data());
                 if (!tmap.containsKey('taskId')) tmap['taskId'] = td.id;
                 if (!tmap.containsKey('taskName')) {
-                  tmap['taskName'] = tmap['name'] ?? tmap['title'] ?? tmap['description'];
+                  tmap['taskName'] =
+                      tmap['name'] ?? tmap['title'] ?? tmap['description'];
                 }
                 final exists = tasksList.any((existing) {
-                  final existingId = (existing['taskId'] ?? existing['id'])?.toString();
+                  final existingId =
+                      (existing['taskId'] ?? existing['id'])?.toString();
                   final candidateId = tmap['taskId']?.toString();
-                  if (existingId != null && existingId.isNotEmpty && candidateId != null && candidateId.isNotEmpty) {
+                  if (existingId != null &&
+                      existingId.isNotEmpty &&
+                      candidateId != null &&
+                      candidateId.isNotEmpty) {
                     if (existingId == candidateId) return true;
                   }
                   final existingName =
-                      (existing['taskName'] ?? existing['description'] ?? existing['title'] ?? existing['name'])
+                      (existing['taskName'] ??
+                              existing['description'] ??
+                              existing['title'] ??
+                              existing['name'])
                           ?.toString();
                   final candidateName =
-                      (tmap['taskName'] ?? tmap['description'] ?? tmap['title'] ?? tmap['name'])?.toString();
+                      (tmap['taskName'] ??
+                              tmap['description'] ??
+                              tmap['title'] ??
+                              tmap['name'])
+                          ?.toString();
                   if (existingName != null &&
                       existingName.isNotEmpty &&
                       candidateName != null &&
@@ -2476,8 +2925,10 @@ class DailyChecklistService {
           for (final originalTaskMap in tasksList) {
             final taskMap = Map<String, dynamic>.from(originalTaskMap);
             final bool isCompleted =
-                (taskMap['completed'] as bool?) == true || (taskMap['isCompleted'] as bool?) == true;
-            final bool carryForwardAttempted = (taskMap['carryForwardAttempted'] as bool?) == true;
+                (taskMap['completed'] as bool?) == true ||
+                (taskMap['isCompleted'] as bool?) == true;
+            final bool carryForwardAttempted =
+                (taskMap['carryForwardAttempted'] as bool?) == true;
 
             if (!isCompleted && !carryForwardAttempted) {
               anyChanges = true;
@@ -2489,13 +2940,18 @@ class DailyChecklistService {
                       : (taskMap['id']?.toString() ?? _uuid.v4()));
 
               final originalName =
-                  (taskMap['taskName'] ?? taskMap['description'] ?? taskMap['title'] ?? taskMap['name'] ?? '')
+                  (taskMap['taskName'] ??
+                          taskMap['description'] ??
+                          taskMap['title'] ??
+                          taskMap['name'] ??
+                          '')
                       .toString()
                       .trim();
 
               carryForwardTasks.add({
                 'originalTaskId': originalTaskId,
-                'taskName': originalName.isNotEmpty ? originalName : 'Unknown Task',
+                'taskName':
+                    originalName.isNotEmpty ? originalName : 'Unknown Task',
               });
             }
 
@@ -2503,11 +2959,16 @@ class DailyChecklistService {
           }
 
           if (anyChanges && carryForwardTasks.isNotEmpty) {
-            await doc.reference.update({'tasks': updatedTasks, 'updatedAt': Timestamp.now()});
+            await doc.reference.update({
+              'tasks': updatedTasks,
+              'updatedAt': Timestamp.now(),
+            });
 
             // CRITICAL FIX: Only carry forward tasks if we have a valid template ID
             final originalTemplateId = (data['checklistTemplateId'] as String?);
-            if (originalTemplateId == null || originalTemplateId.isEmpty || originalTemplateId == 'unknown') {
+            if (originalTemplateId == null ||
+                originalTemplateId.isEmpty ||
+                originalTemplateId == 'unknown') {
               debugPrint(
                 '[DailyChecklistService] carryForward: Skipping checklist ${doc.id} due to missing/invalid template ID',
               );
@@ -2548,20 +3009,34 @@ class DailyChecklistService {
             final batch = _firestore.batch();
 
             // Avoid re-inserting CF tasks when a same-name task already exists today
-            String norm(String? s) => (s ?? '').trim().toLowerCase().replaceAll(RegExp('\\s+'), ' ');
+            String norm(String? s) =>
+                (s ?? '').trim().toLowerCase().replaceAll(RegExp('\\s+'), ' ');
             final existingTodaySnap = await tasksColl.get();
             final Set<String> todayNameKeys = {};
             for (final d in existingTodaySnap.docs) {
               try {
                 final m = d.data();
-                final name = (m['taskName'] ?? m['name'] ?? m['title'] ?? m['description'] ?? '').toString();
+                final name =
+                    (m['taskName'] ??
+                            m['name'] ??
+                            m['title'] ??
+                            m['description'] ??
+                            '')
+                        .toString();
                 if (name.isNotEmpty) todayNameKeys.add(norm(name));
               } catch (_) {}
             }
             int i = 0;
             for (final cf in carryForwardTasks) {
               final originalTaskId = cf['originalTaskId'] as String;
-              final digest = sha1.convert(utf8.encode('cf|${doc.id}|$originalTaskId|$todayChecklistId')).toString();
+              final digest =
+                  sha1
+                      .convert(
+                        utf8.encode(
+                          'cf|${doc.id}|$originalTaskId|$todayChecklistId',
+                        ),
+                      )
+                      .toString();
               final cfId = digest.substring(0, 16);
               final ref = tasksColl.doc(cfId);
               // Skip if already exists
@@ -2599,8 +3074,10 @@ class DailyChecklistService {
                 'checklistId': todayChecklistId,
                 'dailyChecklistId': todayChecklistId,
                 'checklistTemplateId': originalTemplateId,
-                'checklistName': (data['templateName'] as String?) ?? 'Checklist',
-                'templateName': (data['templateName'] as String?) ?? 'Checklist',
+                'checklistName':
+                    (data['templateName'] as String?) ?? 'Checklist',
+                'templateName':
+                    (data['templateName'] as String?) ?? 'Checklist',
                 'dateString': todayStr,
                 'order': 100000 + i,
               };
@@ -2621,7 +3098,9 @@ class DailyChecklistService {
           }
         }
       }
-      debugPrint('[DailyChecklistService] carryForward: COMPLETE org=$organizationId targetDate=$todayStr');
+      debugPrint(
+        '[DailyChecklistService] carryForward: COMPLETE org=$organizationId targetDate=$todayStr',
+      );
     } catch (e) {
       debugPrint('[DailyChecklistService] carryForwardMissedTasks error: $e');
     }
@@ -2636,9 +3115,13 @@ class DailyChecklistService {
     int? userRole,
     List<String>? userJobTypes,
   }) async {
-    debugPrint('[MissedTasks][NX] ENTER org=$organizationId date=${_formatDate(targetDate)} loc=$locationId');
+    debugPrint(
+      '[MissedTasks][NX] ENTER org=$organizationId date=${_formatDate(targetDate)} loc=$locationId',
+    );
     final dateStr = _formatDate(targetDate);
-    final yesterdayStr = _formatDate(targetDate.subtract(const Duration(days: 1)));
+    final yesterdayStr = _formatDate(
+      targetDate.subtract(const Duration(days: 1)),
+    );
 
     // Primary (simpler) query: fetch ALL carry-forward tasks for today; filter originalDate in memory
     Query q = _firestore
@@ -2651,7 +3134,9 @@ class DailyChecklistService {
     List<Map<String, dynamic>> collected = [];
     bool permissionDenied = false;
     try {
-      debugPrint('[MissedTasks][NX] Querying CF tasks (no originalDate filter)');
+      debugPrint(
+        '[MissedTasks][NX] Querying CF tasks (no originalDate filter)',
+      );
       final snap = await q.get();
       debugPrint('[MissedTasks][NX] Raw CF docs today=${snap.docs.length}');
       for (final d in snap.docs) {
@@ -2667,15 +3152,22 @@ class DailyChecklistService {
           else if (od != null)
             match = od.toString() == yesterdayStr;
           if (!match) continue;
-          collected.add({'ref': d.reference, ...Map<String, dynamic>.from(data)});
+          collected.add({
+            'ref': d.reference,
+            ...Map<String, dynamic>.from(data),
+          });
         } catch (e) {
           debugPrint('[MissedTasks][NX] Skip doc while parsing: ${d.id} -> $e');
         }
       }
-      debugPrint('[MissedTasks][NX] After filter originalDate==yesterday collected=${collected.length}');
+      debugPrint(
+        '[MissedTasks][NX] After filter originalDate==yesterday collected=${collected.length}',
+      );
     } catch (e) {
       permissionDenied = e.toString().contains('permission-denied');
-      debugPrint('[MissedTasks][NX] Primary query error: $e (permissionDenied=$permissionDenied)');
+      debugPrint(
+        '[MissedTasks][NX] Primary query error: $e (permissionDenied=$permissionDenied)',
+      );
     }
 
     // If nothing collected, attempt one-time carryForward then re-query
@@ -2683,9 +3175,14 @@ class DailyChecklistService {
       final fallbackKey = 'nx|$organizationId|$dateStr|${locationId ?? 'all'}';
       if (!_carryForwardFallbackAttempts.contains(fallbackKey)) {
         _carryForwardFallbackAttempts.add(fallbackKey);
-        debugPrint('[MissedTasks][NX] Empty result -> invoking carryForwardMissedTasks fallback');
+        debugPrint(
+          '[MissedTasks][NX] Empty result -> invoking carryForwardMissedTasks fallback',
+        );
         try {
-          await carryForwardMissedTasks(organizationId: organizationId, targetDate: targetDate);
+          await carryForwardMissedTasks(
+            organizationId: organizationId,
+            targetDate: targetDate,
+          );
           final retry = await q.get();
           for (final d in retry.docs) {
             try {
@@ -2699,10 +3196,15 @@ class DailyChecklistService {
               else if (od != null)
                 match = od.toString() == yesterdayStr;
               if (!match) continue;
-              collected.add({'ref': d.reference, ...Map<String, dynamic>.from(data)});
+              collected.add({
+                'ref': d.reference,
+                ...Map<String, dynamic>.from(data),
+              });
             } catch (_) {}
           }
-          debugPrint('[MissedTasks][NX] Post-carryForward collected=${collected.length}');
+          debugPrint(
+            '[MissedTasks][NX] Post-carryForward collected=${collected.length}',
+          );
         } catch (e) {
           debugPrint('[MissedTasks][NX] carryForward fallback error: $e');
         }
@@ -2725,10 +3227,17 @@ class DailyChecklistService {
                   .get();
           for (final cl in dlSnap.docs) {
             try {
-              final tasksSnap = await cl.reference.collection('tasks').where('isCarryForward', isEqualTo: true).get();
+              final tasksSnap =
+                  await cl.reference
+                      .collection('tasks')
+                      .where('isCarryForward', isEqualTo: true)
+                      .get();
               for (final t in tasksSnap.docs) {
                 final data = t.data();
-                if (data['organizationId'] != organizationId || data['dateString'] != dateStr) continue;
+                if (data['organizationId'] != organizationId ||
+                    data['dateString'] != dateStr) {
+                  continue;
+                }
                 final od = data['originalDate'];
                 bool match = false;
                 if (od is String) {
@@ -2738,11 +3247,16 @@ class DailyChecklistService {
                 else if (od != null)
                   match = od.toString() == yesterdayStr;
                 if (match) {
-                  collected.add({'ref': t.reference, ...Map<String, dynamic>.from(data)});
+                  collected.add({
+                    'ref': t.reference,
+                    ...Map<String, dynamic>.from(data),
+                  });
                 }
               }
             } catch (e) {
-              debugPrint('[MissedTasks][NX] enumerate checklist ${cl.id} error: $e');
+              debugPrint(
+                '[MissedTasks][NX] enumerate checklist ${cl.id} error: $e',
+              );
             }
           }
         }
@@ -2750,19 +3264,28 @@ class DailyChecklistService {
         if (locationId != null) {
           await enumerateLocation(locationId);
         } else {
-          final locs = await _firestore.collection('organizations').doc(organizationId).collection('locations').get();
+          final locs =
+              await _firestore
+                  .collection('organizations')
+                  .doc(organizationId)
+                  .collection('locations')
+                  .get();
           for (final l in locs.docs) {
             await enumerateLocation(l.id);
           }
         }
-        debugPrint('[MissedTasks][NX] Manual enumeration total collected=${collected.length}');
+        debugPrint(
+          '[MissedTasks][NX] Manual enumeration total collected=${collected.length}',
+        );
       } catch (e) {
         debugPrint('[MissedTasks][NX] Manual enumeration failed: $e');
       }
     }
 
     if (collected.isEmpty) {
-      debugPrint('[MissedTasks][NX] FINAL RESULT: 0 CF task docs for yesterday');
+      debugPrint(
+        '[MissedTasks][NX] FINAL RESULT: 0 CF task docs for yesterday',
+      );
       // Final fallback: for managers/admins, surface read-only yesterday misses directly
       try {
         final isStaff = (userRole == 0);
@@ -2773,43 +3296,62 @@ class DailyChecklistService {
             locationId: locationId,
           );
           if (sections.isNotEmpty) {
-            debugPrint('[MissedTasks][NX] Using direct-yesterday fallback sections: ${sections.length}');
+            debugPrint(
+              '[MissedTasks][NX] Using direct-yesterday fallback sections: ${sections.length}',
+            );
             return sections;
           }
         }
       } catch (e) {
-        debugPrint('[MissedTasks][NX] direct-yesterday fallback failed (non-fatal): $e');
+        debugPrint(
+          '[MissedTasks][NX] direct-yesterday fallback failed (non-fatal): $e',
+        );
       }
       return [];
     }
     // Apply checklist-level jobTypes filtering for staff users (userRole == 0)
     try {
       final isStaff = (userRole == 0);
-      final effectiveUserJobTypes = (userJobTypes ?? const <String>[]).where((e) => e.trim().isNotEmpty).toList();
+      final effectiveUserJobTypes =
+          (userJobTypes ?? const <String>[])
+              .where((e) => e.trim().isNotEmpty)
+              .toList();
       if (isStaff && effectiveUserJobTypes.isEmpty) {
         // Staff with no job types should see nothing
-        debugPrint('[MissedTasks][NX] Staff has no jobTypes; filtering out all missed tasks.');
+        debugPrint(
+          '[MissedTasks][NX] Staff has no jobTypes; filtering out all missed tasks.',
+        );
         collected = [];
       }
       if (isStaff && effectiveUserJobTypes.isNotEmpty) {
-        final Set<String> userSet = effectiveUserJobTypes.map((e) => e.toLowerCase().trim()).toSet();
+        final Set<String> userSet =
+            effectiveUserJobTypes.map((e) => e.toLowerCase().trim()).toSet();
         // Build unique maps to read jobTypes from today's and original checklists
-        final Map<String, String> checklistLocation = {}; // today checklistId -> locationId
-        final Map<String, String> originalChecklistLocation = {}; // originalChecklistId -> locationId
+        final Map<String, String> checklistLocation =
+            {}; // today checklistId -> locationId
+        final Map<String, String> originalChecklistLocation =
+            {}; // originalChecklistId -> locationId
         for (final m in collected) {
           final clId = m['checklistId']?.toString();
           final locId = m['locationId']?.toString();
-          if (clId != null && clId.isNotEmpty && locId != null && locId.isNotEmpty) {
+          if (clId != null &&
+              clId.isNotEmpty &&
+              locId != null &&
+              locId.isNotEmpty) {
             checklistLocation.putIfAbsent(clId, () => locId);
           }
           final oclId = m['originalChecklistId']?.toString();
-          if (oclId != null && oclId.isNotEmpty && locId != null && locId.isNotEmpty) {
+          if (oclId != null &&
+              oclId.isNotEmpty &&
+              locId != null &&
+              locId.isNotEmpty) {
             originalChecklistLocation.putIfAbsent(oclId, () => locId);
           }
         }
 
         final Map<String, List<String>> checklistJobTypes = {}; // today
-        final Map<String, List<String>> originalChecklistJobTypes = {}; // yesterday/original
+        final Map<String, List<String>> originalChecklistJobTypes =
+            {}; // yesterday/original
         final Set<String> fetchedChecklistIds = {};
         final List<Future<void>> reads = [];
         checklistLocation.forEach((clId, locId) {
@@ -2825,7 +3367,9 @@ class DailyChecklistService {
                 try {
                   if (doc.exists) {
                     final data = doc.data()!;
-                    final jts = coerceToJobTypes(data['jobTypes'] ?? data['jobType']);
+                    final jts = coerceToJobTypes(
+                      data['jobTypes'] ?? data['jobType'],
+                    );
                     checklistJobTypes[clId] = jts;
                   }
                   fetchedChecklistIds.add(clId);
@@ -2848,7 +3392,9 @@ class DailyChecklistService {
                 try {
                   if (doc.exists) {
                     final data = doc.data()!;
-                    final jts = coerceToJobTypes(data['jobTypes'] ?? data['jobType']);
+                    final jts = coerceToJobTypes(
+                      data['jobTypes'] ?? data['jobType'],
+                    );
                     originalChecklistJobTypes[clId] = jts;
                   }
                 } catch (_) {}
@@ -2859,8 +3405,12 @@ class DailyChecklistService {
         await Future.wait(reads);
 
         bool allowForChecklist(String? clId) {
-          if (clId == null || clId.isEmpty) return false; // staff: unknown checklist not allowed
-          if (!fetchedChecklistIds.contains(clId)) return false; // staff: if we couldn't read checklist, exclude
+          if (clId == null || clId.isEmpty) {
+            return false; // staff: unknown checklist not allowed
+          }
+          if (!fetchedChecklistIds.contains(clId)) {
+            return false; // staff: if we couldn't read checklist, exclude
+          }
           // Prefer today's checklist jobTypes; if empty, try original checklist jobTypes
           List<String> jts = checklistJobTypes[clId] ?? const <String>[];
           if (jts.isEmpty) {
@@ -2891,11 +3441,15 @@ class DailyChecklistService {
           final clId = m['checklistId']?.toString();
           bool allowed;
           List<String> jts = const <String>[];
-          if (clId != null && clId.isNotEmpty && fetchedChecklistIds.contains(clId)) {
+          if (clId != null &&
+              clId.isNotEmpty &&
+              fetchedChecklistIds.contains(clId)) {
             jts = checklistJobTypes[clId] ?? const <String>[];
             if (jts.isEmpty) {
               final origId = m['originalChecklistId']?.toString();
-              if (origId != null) jts = originalChecklistJobTypes[origId] ?? const <String>[];
+              if (origId != null) {
+                jts = originalChecklistJobTypes[origId] ?? const <String>[];
+              }
             }
           }
           allowed = allowForChecklist(clId);
@@ -2933,7 +3487,9 @@ class DailyChecklistService {
   }) async {
     final yesterday = today.subtract(const Duration(days: 1));
     final yesterdayStr = _formatDate(yesterday);
-    debugPrint('[MissedYesterday][direct] ENTER org=$organizationId yesterday=$yesterdayStr loc=$locationId');
+    debugPrint(
+      '[MissedYesterday][direct] ENTER org=$organizationId yesterday=$yesterdayStr loc=$locationId',
+    );
     final stopwatch = Stopwatch()..start();
 
     final List<Map<String, dynamic>> rawTasks = [];
@@ -2962,7 +3518,10 @@ class DailyChecklistService {
           try {
             final sub = await cl.reference.collection('tasks').get();
             if (sub.docs.isNotEmpty) {
-              tasks = sub.docs.map((d) => Map<String, dynamic>.from(d.data())).toList();
+              tasks =
+                  sub.docs
+                      .map((d) => Map<String, dynamic>.from(d.data()))
+                      .toList();
             }
           } catch (_) {}
           if (tasks.isEmpty) {
@@ -2971,8 +3530,11 @@ class DailyChecklistService {
           }
           for (final t in tasks) {
             try {
-              final completed = (t['completed'] == true) || (t['isCompleted'] == true);
-              if (completed) continue; // Only interested in tasks STILL missed yesterday
+              final completed =
+                  (t['completed'] == true) || (t['isCompleted'] == true);
+              if (completed) {
+                continue; // Only interested in tasks STILL missed yesterday
+              }
 
               // CRITICAL: Exclude carry-forward tasks - we only want tasks that originated on yesterday
               final isCarryForward = (t['isCarryForward'] == true);
@@ -2983,8 +3545,16 @@ class DailyChecklistService {
               if (dateStr != null && dateStr != yesterdayStr) continue;
 
               // Build normalized key
-              final taskName = (t['taskName'] ?? t['name'] ?? t['title'] ?? t['description'] ?? '').toString().trim();
-              final normalizedName = taskName.isEmpty ? '(unnamed task)' : taskName;
+              final taskName =
+                  (t['taskName'] ??
+                          t['name'] ??
+                          t['title'] ??
+                          t['description'] ??
+                          '')
+                      .toString()
+                      .trim();
+              final normalizedName =
+                  taskName.isEmpty ? '(unnamed task)' : taskName;
               final key = '${cl.id}|$shiftId|$normalizedName';
               if (seenTaskKeys.contains(key)) continue;
               seenTaskKeys.add(key);
@@ -3013,7 +3583,12 @@ class DailyChecklistService {
       if (locationId != null) {
         await processLocation(locationId);
       } else {
-        final locs = await _firestore.collection('organizations').doc(organizationId).collection('locations').get();
+        final locs =
+            await _firestore
+                .collection('organizations')
+                .doc(organizationId)
+                .collection('locations')
+                .get();
         for (final l in locs.docs) {
           await processLocation(l.id);
         }
@@ -3084,27 +3659,48 @@ class DailyChecklistService {
       q = q.where('locationId', isEqualTo: locationId);
     }
     return q.snapshots().asyncMap((qs) async {
-      final items = qs.docs.map((d) => {'ref': d.reference, ...d.data() as Map<String, dynamic>}).toList();
+      final items =
+          qs.docs
+              .map(
+                (d) => {
+                  'ref': d.reference,
+                  ...d.data() as Map<String, dynamic>,
+                },
+              )
+              .toList();
       return await _groupMissedTasksFromTaskDocs(items);
     });
   }
 
-  Future<List<MissedTasksSection>> _groupMissedTasksFromTaskDocs(List<Map<String, dynamic>> taskDocs) async {
+  Future<List<MissedTasksSection>> _groupMissedTasksFromTaskDocs(
+    List<Map<String, dynamic>> taskDocs,
+  ) async {
     final Map<String, MissedTasksSection> sections = {};
     for (final m in taskDocs) {
       try {
         // Normalize ids from dynamic maps to concrete String types
-        final String orgId = (m['organizationId'] as String?) ?? (m['organization']?.toString() ?? '');
+        final String orgId =
+            (m['organizationId'] as String?) ??
+            (m['organization']?.toString() ?? '');
         final locationId = m['locationId']?.toString();
         final checklistId = m['checklistId']?.toString();
-        final checklistName = m['templateName']?.toString() ?? m['checklistName']?.toString() ?? 'Checklist';
+        final checklistName = localizedContent(
+          m,
+          fieldKeys: const ['templateName', 'checklistName', 'name'],
+          fallback: 'Checklist',
+        );
         final shiftId = m['shiftId']?.toString();
         final dateStr = m['dateString']?.toString();
+        final taskName = localizedContent(
+          m,
+          fieldKeys: const ['taskName', 'description', 'title', 'name'],
+          fallback: 'Unknown Task',
+        );
 
         // Build TaskData
         final task = TaskData(
           taskId: m['taskId']?.toString() ?? 'unknown',
-          taskName: m['taskName']?.toString() ?? 'Unknown Task',
+          taskName: taskName,
           createdAt: _parseDateTime(m['createdAt']) ?? DateTime.now(),
           dueDate: _parseDateTime(m['carriedIntoDate']) ?? DateTime.now(),
           completed: (m['completed'] == true),
@@ -3143,7 +3739,9 @@ class DailyChecklistService {
           ),
         );
         // Append task to the section's task list
-        sections[sectionKey] = sections[sectionKey]!.copyWith(tasks: [...sections[sectionKey]!.tasks, task]);
+        sections[sectionKey] = sections[sectionKey]!.copyWith(
+          tasks: [...sections[sectionKey]!.tasks, task],
+        );
       } catch (e) {
         debugPrint('[MissedTasks] Error building section from task doc: $e');
       }
@@ -3160,7 +3758,9 @@ class DailyChecklistService {
         final name = await _getShiftName(sec.organizationId, sid);
         shiftNameCache[sid] = name;
       }
-      sections[key] = sec.copyWith(shiftName: shiftNameCache[sid] ?? 'Unknown Shift');
+      sections[key] = sec.copyWith(
+        shiftName: shiftNameCache[sid] ?? 'Unknown Shift',
+      );
     }
 
     return sections.values.toList();
@@ -3186,8 +3786,11 @@ class DailyChecklistService {
     try {
       // Helper: query checklists for a location between cutoff..yesterday (inclusive),
       // trying string date first; if empty, retry with Timestamp range.
-      Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> queryLocationChecklists(String locId) async {
-        debugPrint('[DailyChecklistService] _queryLocationChecklists called with locId=$locId');
+      Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+      queryLocationChecklists(String locId) async {
+        debugPrint(
+          '[DailyChecklistService] _queryLocationChecklists called with locId=$locId',
+        );
         final base = _firestore
             .collection('organizations')
             .doc(organizationId)
@@ -3205,28 +3808,46 @@ class DailyChecklistService {
           if (snapStr.docs.isNotEmpty) return snapStr.docs;
         } catch (e) {
           // proceed to TS fallback
-          debugPrint('[DailyChecklistService] String date query failed for loc=$locId, will try Timestamp: $e');
+          debugPrint(
+            '[DailyChecklistService] String date query failed for loc=$locId, will try Timestamp: $e',
+          );
         }
 
         // Timestamp fallback: [cutoff, yesterday end-of-day)
-        final startTs = Timestamp.fromDate(DateTime(cutoff.year, cutoff.month, cutoff.day));
+        final startTs = Timestamp.fromDate(
+          DateTime(cutoff.year, cutoff.month, cutoff.day),
+        );
         final endExclusive = Timestamp.fromDate(
-          DateTime(yesterday.year, yesterday.month, yesterday.day).add(const Duration(days: 1)),
+          DateTime(
+            yesterday.year,
+            yesterday.month,
+            yesterday.day,
+          ).add(const Duration(days: 1)),
         );
         try {
           final snapTs =
-              await base.where('date', isGreaterThanOrEqualTo: startTs).where('date', isLessThan: endExclusive).get();
+              await base
+                  .where('date', isGreaterThanOrEqualTo: startTs)
+                  .where('date', isLessThan: endExclusive)
+                  .get();
           return snapTs.docs;
         } catch (e) {
-          debugPrint('[DailyChecklistService] Timestamp date query failed for loc=$locId: $e');
+          debugPrint(
+            '[DailyChecklistService] Timestamp date query failed for loc=$locId: $e',
+          );
           return const <QueryDocumentSnapshot<Map<String, dynamic>>>[];
         }
       }
 
-      // Helper to aggregate missed and total occurrences with shift tracking
+      String normalizeLabel(String value) =>
+          value.trim().toLowerCase().replaceAll(RegExp('\\s+'), ' ');
+
+      // Helper to aggregate missed and total occurrences with shift/checklist tracking
       Map<String, Map<String, dynamic>> taskStats = {};
       if (locationId != null) {
-        debugPrint('[DailyChecklistService] BRANCH: Querying specific location: $locationId');
+        debugPrint(
+          '[DailyChecklistService] BRANCH: Querying specific location: $locationId',
+        );
         // Query specific location - only look at past dates (not today), with date-type fallback
         final snaps = await queryLocationChecklists(locationId);
         debugPrint(
@@ -3247,7 +3868,9 @@ class DailyChecklistService {
                   tasksList.addAll(subTasks);
                 }
               } catch (e) {
-                debugPrint('[DailyChecklistService] Error reading tasks subcollection for ${doc.id}: $e');
+                debugPrint(
+                  '[DailyChecklistService] Error reading tasks subcollection for ${doc.id}: $e',
+                );
               }
 
               return {'doc': doc, 'data': data, 'tasksList': tasksList};
@@ -3256,9 +3879,12 @@ class DailyChecklistService {
         final allChecklistsWithTasks = await Future.wait(tasksFutures);
 
         for (final checklistData in allChecklistsWithTasks) {
-          final doc = checklistData['doc'] as QueryDocumentSnapshot<Map<String, dynamic>>;
+          final doc =
+              checklistData['doc']
+                  as QueryDocumentSnapshot<Map<String, dynamic>>;
           final data = checklistData['data'] as Map<String, dynamic>;
-          final tasksList = checklistData['tasksList'] as List<Map<String, dynamic>>;
+          final tasksList =
+              checklistData['tasksList'] as List<Map<String, dynamic>>;
 
           final docDate = data['date'] as String?;
           final shiftId = data['shiftId'] as String?;
@@ -3274,7 +3900,12 @@ class DailyChecklistService {
             try {
               final t = Map<String, dynamic>.from(raw.cast<String, dynamic>());
               var key =
-                  (t['taskId'] ?? t['id'] ?? t['templateTaskId'] ?? t['taskName'] ?? t['name'] ?? t['description'])
+                  (t['taskId'] ??
+                          t['id'] ??
+                          t['templateTaskId'] ??
+                          t['taskName'] ??
+                          t['name'] ??
+                          t['description'])
                       ?.toString() ??
                   '';
               key = key.trim();
@@ -3286,74 +3917,123 @@ class DailyChecklistService {
               seenKeys.add(key);
               finalTasks.add(t);
             } catch (e) {
-              debugPrint('[DailyChecklistService] Skipping invalid task element while deduping: $e');
+              debugPrint(
+                '[DailyChecklistService] Skipping invalid task element while deduping: $e',
+              );
             }
           }
-          debugPrint('[DailyChecklistService] Processing ${finalTasks.length} unique tasks for checklist ${doc.id}');
+          debugPrint(
+            '[DailyChecklistService] Processing ${finalTasks.length} unique tasks for checklist ${doc.id}',
+          );
 
           for (final taskData in finalTasks) {
             try {
-              final completed = taskData['completed'] as bool? ?? taskData['isCompleted'] as bool? ?? false;
-              final isCarryForward = taskData['isCarryForward'] as bool? ?? false;
-              final taskName =
-                  taskData['description'] as String? ??
-                  taskData['title'] as String? ??
-                  taskData['name'] as String? ??
-                  taskData['taskName'] as String? ??
-                  'Unknown Task';
+              final completed =
+                  taskData['completed'] as bool? ??
+                  taskData['isCompleted'] as bool? ??
+                  false;
+              final isCarryForward =
+                  taskData['isCarryForward'] as bool? ?? false;
+              final taskName = localizedContent(
+                taskData,
+                fieldKeys: const ['description', 'title', 'name', 'taskName'],
+                fallback: 'Unknown Task',
+              );
+              final checklistName = localizedContent(
+                {
+                  ...Map<String, dynamic>.from(data),
+                  ...Map<String, dynamic>.from(taskData),
+                },
+                fieldKeys: const ['checklistName', 'templateName', 'name'],
+                fallback: 'Checklist',
+              );
 
               // Get shift information
-              final shiftId = taskData['shiftId'] as String? ?? data['shiftId'] as String? ?? '';
-              final shiftName = taskData['shiftName'] as String? ?? data['shiftName'] as String? ?? '';
+              final shiftId =
+                  taskData['shiftId'] as String? ??
+                  data['shiftId'] as String? ??
+                  '';
+              final shiftName =
+                  taskData['shiftName'] as String? ??
+                  data['shiftName'] as String? ??
+                  '';
+              final groupKey =
+                  '${normalizeLabel(taskName)}|${normalizeLabel(checklistName)}|${shiftId.trim()}';
 
               // Count total occurrences and track shifts
-              taskStats[taskName] ??= {
+              taskStats[groupKey] ??= {
+                'taskName':
+                    taskName.trim().isEmpty ? 'Unknown Task' : taskName.trim(),
+                'checklistName':
+                    checklistName.trim().isEmpty
+                        ? 'Checklist'
+                        : checklistName.trim(),
                 'missedCount': 0,
                 'totalOccurrences': 0,
                 'shifts': <String>{}, // Set of shift IDs
                 'shiftNames': <String>{}, // Set of shift names
               };
-              taskStats[taskName]!['totalOccurrences'] = (taskStats[taskName]!['totalOccurrences'] ?? 0) + 1;
+              taskStats[groupKey]!['totalOccurrences'] =
+                  (taskStats[groupKey]!['totalOccurrences'] ?? 0) + 1;
 
               // Add shift information
               if (shiftId.isNotEmpty) {
-                (taskStats[taskName]!['shifts'] as Set<String>).add(shiftId);
+                (taskStats[groupKey]!['shifts'] as Set<String>).add(shiftId);
               }
               if (shiftName.isNotEmpty) {
-                (taskStats[taskName]!['shiftNames'] as Set<String>).add(shiftName);
+                (taskStats[groupKey]!['shiftNames'] as Set<String>).add(
+                  shiftName,
+                );
               }
 
               // Count missed (exclude carry-forward items)
               if (!completed && !isCarryForward) {
-                taskStats[taskName]!['missedCount'] = (taskStats[taskName]!['missedCount'] ?? 0) + 1;
+                taskStats[groupKey]!['missedCount'] =
+                    (taskStats[groupKey]!['missedCount'] ?? 0) + 1;
                 debugPrint(
-                  '[DailyChecklistService] Found missed task: "$taskName" on $docDate in shift: $shiftName (missedCount now: ${taskStats[taskName]!['missedCount']})',
+                  '[DailyChecklistService] Found missed task: "$taskName" on $docDate in shift: $shiftName (missedCount now: ${taskStats[groupKey]!['missedCount']})',
                 );
               }
             } catch (e) {
-              debugPrint('[DailyChecklistService] Error processing task in getFrequentlyMissedTasks: $e');
+              debugPrint(
+                '[DailyChecklistService] Error processing task in getFrequentlyMissedTasks: $e',
+              );
               debugPrint('[DailyChecklistService] Task data: $taskData');
             }
           }
         }
       } else {
-        debugPrint('[DailyChecklistService] BRANCH: Querying ALL locations (locationId is null)');
+        debugPrint(
+          '[DailyChecklistService] BRANCH: Querying ALL locations (locationId is null)',
+        );
         // Query all locations - aggregate across locations, exclude today
         final locationsSnap =
-            await _firestore.collection('organizations').doc(organizationId).collection('locations').get();
-        debugPrint('[DailyChecklistService] Found ${locationsSnap.docs.length} total locations to query');
+            await _firestore
+                .collection('organizations')
+                .doc(organizationId)
+                .collection('locations')
+                .get();
+        debugPrint(
+          '[DailyChecklistService] Found ${locationsSnap.docs.length} total locations to query',
+        );
 
         // OPTIMIZATION: Query all locations in parallel instead of sequentially
         final locationChecklistFutures =
             locationsSnap.docs.map((locationDoc) async {
-              debugPrint('[DailyChecklistService] Processing location: ${locationDoc.id}');
+              debugPrint(
+                '[DailyChecklistService] Processing location: ${locationDoc.id}',
+              );
               return await queryLocationChecklists(locationDoc.id);
             }).toList();
 
-        final allLocationChecklists = await Future.wait(locationChecklistFutures);
+        final allLocationChecklists = await Future.wait(
+          locationChecklistFutures,
+        );
         final allDocs = allLocationChecklists.expand((snaps) => snaps).toList();
 
-        debugPrint('[DailyChecklistService] Retrieved ${allDocs.length} total checklists across all locations');
+        debugPrint(
+          '[DailyChecklistService] Retrieved ${allDocs.length} total checklists across all locations',
+        );
 
         // OPTIMIZATION: Batch-read all tasks subcollections in parallel
         final tasksFutures =
@@ -3365,11 +4045,16 @@ class DailyChecklistService {
               try {
                 final subSnap = await doc.reference.collection('tasks').get();
                 if (subSnap.docs.isNotEmpty) {
-                  final subTasks = subSnap.docs.map((d) => Map<String, dynamic>.from(d.data())).toList();
+                  final subTasks =
+                      subSnap.docs
+                          .map((d) => Map<String, dynamic>.from(d.data()))
+                          .toList();
                   tasksList.addAll(subTasks);
                 }
               } catch (e) {
-                debugPrint('[DailyChecklistService] Error reading tasks subcollection for ${doc.id}: $e');
+                debugPrint(
+                  '[DailyChecklistService] Error reading tasks subcollection for ${doc.id}: $e',
+                );
               }
 
               return {'doc': doc, 'data': data, 'tasksList': tasksList};
@@ -3379,7 +4064,8 @@ class DailyChecklistService {
 
         for (final checklistData in allChecklistsWithTasks) {
           final data = checklistData['data'] as Map<String, dynamic>;
-          final tasksList = checklistData['tasksList'] as List<Map<String, dynamic>>;
+          final tasksList =
+              checklistData['tasksList'] as List<Map<String, dynamic>>;
 
           // Deduplicate tasks that may appear both in parent 'tasks' field and in the 'tasks' subcollection.
           final seenKeys = <String>{};
@@ -3388,7 +4074,12 @@ class DailyChecklistService {
             try {
               final t = Map<String, dynamic>.from(raw.cast<String, dynamic>());
               var key =
-                  (t['taskId'] ?? t['id'] ?? t['templateTaskId'] ?? t['taskName'] ?? t['name'] ?? t['description'])
+                  (t['taskId'] ??
+                          t['id'] ??
+                          t['templateTaskId'] ??
+                          t['taskName'] ??
+                          t['name'] ??
+                          t['description'])
                       ?.toString() ??
                   '';
               key = key.trim();
@@ -3400,50 +4091,86 @@ class DailyChecklistService {
               seenKeys.add(key);
               finalTasks.add(t);
             } catch (e) {
-              debugPrint('[DailyChecklistService] Skipping invalid task element while deduping: $e');
+              debugPrint(
+                '[DailyChecklistService] Skipping invalid task element while deduping: $e',
+              );
             }
           }
 
           for (final taskData in finalTasks) {
             try {
-              final completed = taskData['completed'] as bool? ?? taskData['isCompleted'] as bool? ?? false;
-              final isCarryForward = taskData['isCarryForward'] as bool? ?? false;
+              final completed =
+                  taskData['completed'] as bool? ??
+                  taskData['isCompleted'] as bool? ??
+                  false;
+              final isCarryForward =
+                  taskData['isCarryForward'] as bool? ?? false;
               var taskName =
-                  taskData['description'] as String? ??
-                  taskData['title'] as String? ??
-                  taskData['name'] as String? ??
-                  taskData['taskName'] as String? ??
-                  '';
-              taskName = taskName.toString().trim();
+                  localizedContent(
+                    taskData,
+                    fieldKeys: const [
+                      'description',
+                      'title',
+                      'name',
+                      'taskName',
+                    ],
+                  ).trim();
               if (taskName.isEmpty) taskName = 'Unknown Task';
+              final checklistName = localizedContent(
+                {
+                  ...Map<String, dynamic>.from(data),
+                  ...Map<String, dynamic>.from(taskData),
+                },
+                fieldKeys: const ['checklistName', 'templateName', 'name'],
+                fallback: 'Checklist',
+              );
 
               // Get shift information
-              final shiftId = taskData['shiftId'] as String? ?? data['shiftId'] as String? ?? '';
-              final shiftName = taskData['shiftName'] as String? ?? data['shiftName'] as String? ?? '';
+              final shiftId =
+                  taskData['shiftId'] as String? ??
+                  data['shiftId'] as String? ??
+                  '';
+              final shiftName =
+                  taskData['shiftName'] as String? ??
+                  data['shiftName'] as String? ??
+                  '';
+              final groupKey =
+                  '${normalizeLabel(taskName)}|${normalizeLabel(checklistName)}|${shiftId.trim()}';
 
               // Count total occurrences and track shifts
-              taskStats[taskName] ??= {
+              taskStats[groupKey] ??= {
+                'taskName': taskName,
+                'checklistName':
+                    checklistName.trim().isEmpty
+                        ? 'Checklist'
+                        : checklistName.trim(),
                 'missedCount': 0,
                 'totalOccurrences': 0,
                 'shifts': <String>{}, // Set of shift IDs
                 'shiftNames': <String>{}, // Set of shift names
               };
-              taskStats[taskName]!['totalOccurrences'] = (taskStats[taskName]!['totalOccurrences'] ?? 0) + 1;
+              taskStats[groupKey]!['totalOccurrences'] =
+                  (taskStats[groupKey]!['totalOccurrences'] ?? 0) + 1;
 
               // Add shift information
               if (shiftId.isNotEmpty) {
-                (taskStats[taskName]!['shifts'] as Set<String>).add(shiftId);
+                (taskStats[groupKey]!['shifts'] as Set<String>).add(shiftId);
               }
               if (shiftName.isNotEmpty) {
-                (taskStats[taskName]!['shiftNames'] as Set<String>).add(shiftName);
+                (taskStats[groupKey]!['shiftNames'] as Set<String>).add(
+                  shiftName,
+                );
               }
 
               // Count missed
               if (!completed && !isCarryForward) {
-                taskStats[taskName]!['missedCount'] = (taskStats[taskName]!['missedCount'] ?? 0) + 1;
+                taskStats[groupKey]!['missedCount'] =
+                    (taskStats[groupKey]!['missedCount'] ?? 0) + 1;
               }
             } catch (e) {
-              debugPrint('[DailyChecklistService] Error processing task in getFrequentlyMissedTasks: $e');
+              debugPrint(
+                '[DailyChecklistService] Error processing task in getFrequentlyMissedTasks: $e',
+              );
               debugPrint('[DailyChecklistService] Task data: $taskData');
             }
           }
@@ -3460,7 +4187,8 @@ class DailyChecklistService {
 
         // Track shift IDs that need resolution (have ID but no name)
         for (final shiftId in shiftIds) {
-          if (shiftId.isNotEmpty && !shiftNames.any((name) => name.isNotEmpty)) {
+          if (shiftId.isNotEmpty &&
+              !shiftNames.any((name) => name.isNotEmpty)) {
             shiftIdsToResolve.add(shiftId);
           }
         }
@@ -3469,7 +4197,9 @@ class DailyChecklistService {
       // Batch-fetch all shift names in parallel
       final Map<String, String> shiftIdToNameMap = {};
       if (shiftIdsToResolve.isNotEmpty) {
-        debugPrint('[DailyChecklistService] Batch-resolving ${shiftIdsToResolve.length} shift names');
+        debugPrint(
+          '[DailyChecklistService] Batch-resolving ${shiftIdsToResolve.length} shift names',
+        );
         final shiftNameFutures =
             shiftIdsToResolve.map((shiftId) async {
               try {
@@ -3478,7 +4208,9 @@ class DailyChecklistService {
                   return MapEntry(shiftId, shiftName);
                 }
               } catch (e) {
-                debugPrint('[DailyChecklistService] Failed to resolve shift name for shiftId $shiftId: $e');
+                debugPrint(
+                  '[DailyChecklistService] Failed to resolve shift name for shiftId $shiftId: $e',
+                );
               }
               return null;
             }).toList();
@@ -3493,7 +4225,7 @@ class DailyChecklistService {
 
       // Apply resolved shift names to task stats
       for (final entry in taskStats.entries) {
-        final taskName = entry.key;
+        final taskName = (entry.value['taskName'] ?? 'Unknown Task').toString();
         final stats = entry.value;
         final shiftIds = stats['shifts'] as Set<String>;
         final shiftNames = stats['shiftNames'] as Set<String>;
@@ -3504,7 +4236,9 @@ class DailyChecklistService {
           }
         }
 
-        debugPrint('[DailyChecklistService] Task "$taskName" appears in shifts: ${shiftNames.join(', ')}');
+        debugPrint(
+          '[DailyChecklistService] Task "$taskName" appears in shifts: ${shiftNames.join(', ')}',
+        );
       }
 
       // Convert to sorted list
@@ -3512,23 +4246,50 @@ class DailyChecklistService {
           taskStats.entries
               .map(
                 (e) => {
-                  'taskName': e.key,
+                  'taskName': e.value['taskName'] ?? 'Unknown Task',
+                  'checklistName': e.value['checklistName'] ?? 'Checklist',
                   'count': e.value['missedCount'] ?? 0,
                   'totalOccurrences': e.value['totalOccurrences'] ?? 0,
+                  'failureRate':
+                      (e.value['totalOccurrences'] ?? 0) == 0
+                          ? 0.0
+                          : (e.value['missedCount'] ?? 0) /
+                              (e.value['totalOccurrences'] ?? 1),
                   'shiftNames': (e.value['shiftNames'] as Set<String>).toList(),
                   'shifts': (e.value['shifts'] as Set<String>).toList(),
                 },
               )
+              .where((item) => (item['totalOccurrences'] as int) > 0)
               .toList()
-            ..sort((a, b) => (b['count'] as int).compareTo(a['count'] as int));
-      debugPrint('[DailyChecklistService] Returning ${sorted.length} frequently missed tasks (limited to $limit)');
+            ..sort((a, b) {
+              final rateCompare = (b['failureRate'] as double).compareTo(
+                a['failureRate'] as double,
+              );
+              if (rateCompare != 0) return rateCompare;
+              final countCompare = (b['count'] as int).compareTo(
+                a['count'] as int,
+              );
+              if (countCompare != 0) return countCompare;
+              return (b['totalOccurrences'] as int).compareTo(
+                a['totalOccurrences'] as int,
+              );
+            });
+      debugPrint(
+        '[DailyChecklistService] Returning ${sorted.length} frequently missed tasks (limited to $limit)',
+      );
       for (final task in sorted.take(limit)) {
-        debugPrint('[DailyChecklistService] Task: ${task['taskName']}, Shifts: ${task['shiftNames']}');
+        debugPrint(
+          '[DailyChecklistService] Task: ${task['taskName']}, Shifts: ${task['shiftNames']}',
+        );
       }
-      debugPrint('[DailyChecklistService] === FINAL RESULT FOR LOCATION $locationId ===');
+      debugPrint(
+        '[DailyChecklistService] === FINAL RESULT FOR LOCATION $locationId ===',
+      );
       return sorted.take(limit).toList();
     } catch (e, st) {
-      debugPrint('[DailyChecklistService] getFrequentlyMissedTasks error: $e\n$st');
+      debugPrint(
+        '[DailyChecklistService] getFrequentlyMissedTasks error: $e\n$st',
+      );
       return [];
     }
   }
@@ -3559,7 +4320,10 @@ class DailyChecklistService {
         var snaps = await coll.where('date', isEqualTo: dateStr).get();
         // Fallback to timestamp match if no results
         if (snaps.docs.isEmpty) {
-          snaps = await coll.where('date', isEqualTo: Timestamp.fromDate(date)).get();
+          snaps =
+              await coll
+                  .where('date', isEqualTo: Timestamp.fromDate(date))
+                  .get();
         }
 
         for (final doc in snaps.docs) {
@@ -3576,8 +4340,14 @@ class DailyChecklistService {
             final seen = <String>{};
             for (final taskItem in tasksList) {
               try {
-                final t = taskItem is Map<String, dynamic> ? Map<String, dynamic>.from(taskItem) : <String, dynamic>{};
-                final completed = t['completed'] as bool? ?? t['isCompleted'] as bool? ?? false;
+                final t =
+                    taskItem is Map<String, dynamic>
+                        ? Map<String, dynamic>.from(taskItem)
+                        : <String, dynamic>{};
+                final completed =
+                    t['completed'] as bool? ??
+                    t['isCompleted'] as bool? ??
+                    false;
                 final isCarryForward = t['isCarryForward'] as bool? ?? false;
 
                 var name =
@@ -3590,7 +4360,10 @@ class DailyChecklistService {
                 if (name.isEmpty) name = 'Unknown Task';
 
                 // Build a dedup key
-                var key = (t['taskId'] ?? t['id'] ?? t['templateTaskId'] ?? name).toString().trim();
+                var key =
+                    (t['taskId'] ?? t['id'] ?? t['templateTaskId'] ?? name)
+                        .toString()
+                        .trim();
                 if (key.isEmpty) {
                   // Use hashCode instead of jsonEncode to avoid Timestamp serialization errors
                   key = 'task_${t.hashCode}';
@@ -3602,7 +4375,9 @@ class DailyChecklistService {
                   taskCounts[name] = (taskCounts[name] ?? 0) + 1;
                 }
               } catch (e) {
-                debugPrint('[DailyChecklistService] Error processing task item: $e');
+                debugPrint(
+                  '[DailyChecklistService] Error processing task item: $e',
+                );
                 debugPrint('[DailyChecklistService] Task item: $taskItem');
               }
             }
@@ -3623,7 +4398,11 @@ class DailyChecklistService {
       } else {
         // Query all locations
         final locationsSnap =
-            await _firestore.collection('organizations').doc(organizationId).collection('locations').get();
+            await _firestore
+                .collection('organizations')
+                .doc(organizationId)
+                .collection('locations')
+                .get();
 
         for (final locationDoc in locationsSnap.docs) {
           final query = _firestore
@@ -3649,11 +4428,18 @@ class DailyChecklistService {
               for (final taskItem in tasksList) {
                 try {
                   // Safely cast to Map
-                  final taskData = taskItem is Map<String, dynamic> ? taskItem : <String, dynamic>{};
+                  final taskData =
+                      taskItem is Map<String, dynamic>
+                          ? taskItem
+                          : <String, dynamic>{};
 
                   // Check if task is completed using various possible field names
-                  final completed = taskData['completed'] as bool? ?? taskData['isCompleted'] as bool? ?? false;
-                  final isCarryForward = taskData['isCarryForward'] as bool? ?? false;
+                  final completed =
+                      taskData['completed'] as bool? ??
+                      taskData['isCompleted'] as bool? ??
+                      false;
+                  final isCarryForward =
+                      taskData['isCarryForward'] as bool? ?? false;
 
                   if (!completed && isCarryForward) {
                     // Get task name from various possible field names
@@ -3667,7 +4453,9 @@ class DailyChecklistService {
                     taskCounts[taskName] = (taskCounts[taskName] ?? 0) + 1;
                   }
                 } catch (e) {
-                  debugPrint('[DailyChecklistService] Error processing task item: $e');
+                  debugPrint(
+                    '[DailyChecklistService] Error processing task item: $e',
+                  );
                   debugPrint('[DailyChecklistService] Task item: $taskItem');
                 }
               }
@@ -3690,7 +4478,9 @@ class DailyChecklistService {
 
       return missedTasks;
     } catch (e, st) {
-      debugPrint('[DailyChecklistService] getMissedTasksForDate error: $e\n$st');
+      debugPrint(
+        '[DailyChecklistService] getMissedTasksForDate error: $e\n$st',
+      );
       return [];
     }
   }
@@ -3731,10 +4521,14 @@ class DailyChecklistService {
 
           for (final taskData in tasksList) {
             try {
-              final isCarryForward = taskData['isCarryForward'] as bool? ?? false;
+              final isCarryForward =
+                  taskData['isCarryForward'] as bool? ?? false;
               if (!isCarryForward) continue;
 
-              final completed = taskData['completed'] as bool? ?? taskData['isCompleted'] as bool? ?? false;
+              final completed =
+                  taskData['completed'] as bool? ??
+                  taskData['isCompleted'] as bool? ??
+                  false;
               final taskName =
                   taskData['taskName'] as String? ??
                   taskData['description'] as String? ??
@@ -3764,7 +4558,9 @@ class DailyChecklistService {
                 group['incomplete'] = (group['incomplete'] as int) + 1;
               }
             } catch (e) {
-              debugPrint('[DailyChecklistService] Error processing task in getCarryForwardStatusForDate: $e');
+              debugPrint(
+                '[DailyChecklistService] Error processing task in getCarryForwardStatusForDate: $e',
+              );
               debugPrint('[DailyChecklistService] Task data: $taskData');
             }
           }
@@ -3775,7 +4571,11 @@ class DailyChecklistService {
         await processLocation(locationId);
       } else {
         final locationsSnap =
-            await _firestore.collection('organizations').doc(organizationId).collection('locations').get();
+            await _firestore
+                .collection('organizations')
+                .doc(organizationId)
+                .collection('locations')
+                .get();
         for (final locationDoc in locationsSnap.docs) {
           await processLocation(locationDoc.id);
         }
@@ -3783,7 +4583,9 @@ class DailyChecklistService {
 
       return byGroup.values.toList();
     } catch (e, st) {
-      debugPrint('[DailyChecklistService] getCarryForwardStatusForDate error: $e\n$st');
+      debugPrint(
+        '[DailyChecklistService] getCarryForwardStatusForDate error: $e\n$st',
+      );
       return [];
     }
   }
@@ -3828,7 +4630,11 @@ class DailyChecklistService {
           final List<Map<String, dynamic>> tasksList = [];
           tasksList.addAll(_extractTasksList(data));
           try {
-            final subSnap = await doc.reference.collection('tasks').where('isCarryForward', isEqualTo: true).get();
+            final subSnap =
+                await doc.reference
+                    .collection('tasks')
+                    .where('isCarryForward', isEqualTo: true)
+                    .get();
             for (final t in subSnap.docs) {
               try {
                 final m = Map<String, dynamic>.from(t.data());
@@ -3836,7 +4642,9 @@ class DailyChecklistService {
               } catch (_) {}
             }
           } catch (e) {
-            debugPrint('[DailyChecklistService] CF fallback subcollection read error for ${doc.id}: $e');
+            debugPrint(
+              '[DailyChecklistService] CF fallback subcollection read error for ${doc.id}: $e',
+            );
           }
           if (tasksList.isEmpty) continue;
           for (final task in tasksList) {
@@ -3845,12 +4653,21 @@ class DailyChecklistService {
               if (!isCF) continue;
               final carriedIntoDate = task['carriedIntoDate'];
               final originalDate = task['originalDate'];
-              final completed = task['completed'] == true || task['isCompleted'] == true;
-              if (carriedIntoDate != todayStr) continue; // ensure it's from today batch
-              if (originalDate != yesterdayStr) continue; // ensure it originated yesterday
+              final completed =
+                  task['completed'] == true || task['isCompleted'] == true;
+              if (carriedIntoDate != todayStr) {
+                continue; // ensure it's from today batch
+              }
+              if (originalDate != yesterdayStr) {
+                continue; // ensure it originated yesterday
+              }
 
               final taskName =
-                  task['taskName'] ?? task['title'] ?? task['description'] ?? task['name'] ?? 'Unknown Task';
+                  task['taskName'] ??
+                  task['title'] ??
+                  task['description'] ??
+                  task['name'] ??
+                  'Unknown Task';
               final key = '$locId|$shiftId|$taskName';
               final group = grouped.putIfAbsent(
                 key,
@@ -3860,7 +4677,8 @@ class DailyChecklistService {
                   'shiftName': shiftName,
                   'locationId': locId,
                   'count': 0, // total instances carried forward from yesterday
-                  'completedToday': 0, // how many of those have since been completed today
+                  'completedToday':
+                      0, // how many of those have since been completed today
                 },
               );
               group['count'] = (group['count'] as int) + 1;
@@ -3879,7 +4697,12 @@ class DailyChecklistService {
       if (locationId != null) {
         await processLocation(locationId);
       } else {
-        final locs = await _firestore.collection('organizations').doc(organizationId).collection('locations').get();
+        final locs =
+            await _firestore
+                .collection('organizations')
+                .doc(organizationId)
+                .collection('locations')
+                .get();
         for (final l in locs.docs) {
           await processLocation(l.id);
         }
@@ -3894,7 +4717,9 @@ class DailyChecklistService {
           }).toList();
       return results;
     } catch (e, st) {
-      debugPrint('[DailyChecklistService] getYesterdayMissedFromTodayCarryForward error: $e\n$st');
+      debugPrint(
+        '[DailyChecklistService] getYesterdayMissedFromTodayCarryForward error: $e\n$st',
+      );
       return [];
     }
   }
@@ -3915,10 +4740,16 @@ class DailyChecklistService {
       final List<Map<String, dynamic>> liveShifts = [];
 
       // Get all shifts for the organization
-      Query shiftsQuery = _firestore.collection('organizations').doc(organizationId).collection('shifts');
+      Query shiftsQuery = _firestore
+          .collection('organizations')
+          .doc(organizationId)
+          .collection('shifts');
 
       if (locationId != null) {
-        shiftsQuery = shiftsQuery.where('locationIds', arrayContains: locationId);
+        shiftsQuery = shiftsQuery.where(
+          'locationIds',
+          arrayContains: locationId,
+        );
       }
 
       final shiftsSnap = await shiftsQuery.get();
@@ -3958,22 +4789,31 @@ class DailyChecklistService {
 
             // Combine tasks from both document array and subcollection
             final List<Map<String, dynamic>> tasksList = [];
-            tasksList.addAll(List<Map<String, dynamic>>.from(checklistData['tasks'] ?? []));
+            tasksList.addAll(
+              List<Map<String, dynamic>>.from(checklistData['tasks'] ?? []),
+            );
             try {
-              final subSnap = await checklistDoc.reference.collection('tasks').get();
+              final subSnap =
+                  await checklistDoc.reference.collection('tasks').get();
               if (subSnap.docs.isNotEmpty) {
                 final subTasks = subSnap.docs.map((d) => d.data()).toList();
                 tasksList.addAll(subTasks);
               }
             } catch (e) {
-              debugPrint('[DailyChecklistService] Error reading tasks subcollection for ${checklistDoc.id}: $e');
+              debugPrint(
+                '[DailyChecklistService] Error reading tasks subcollection for ${checklistDoc.id}: $e',
+              );
             }
 
             for (final taskData in tasksList) {
               try {
                 // Safely extract task fields without using TaskData.fromJson
-                final completed = taskData['completed'] as bool? ?? taskData['isCompleted'] as bool? ?? false;
-                final isCarryForward = taskData['isCarryForward'] as bool? ?? false;
+                final completed =
+                    taskData['completed'] as bool? ??
+                    taskData['isCompleted'] as bool? ??
+                    false;
+                final isCarryForward =
+                    taskData['isCarryForward'] as bool? ?? false;
 
                 totalTasks++;
                 if (completed) {
@@ -3983,7 +4823,9 @@ class DailyChecklistService {
                   carriedCountToday++;
                 }
               } catch (e) {
-                debugPrint('[DailyChecklistService] Error processing task in getLiveShiftPerformance: $e');
+                debugPrint(
+                  '[DailyChecklistService] Error processing task in getLiveShiftPerformance: $e',
+                );
                 totalTasks++; // Still count the task even if there's an error
               }
             }
@@ -3991,7 +4833,11 @@ class DailyChecklistService {
         } else {
           // Query all locations for this shift
           final locationsSnap =
-              await _firestore.collection('organizations').doc(organizationId).collection('locations').get();
+              await _firestore
+                  .collection('organizations')
+                  .doc(organizationId)
+                  .collection('locations')
+                  .get();
 
           for (final locationDoc in locationsSnap.docs) {
             final checklistsQuery = _firestore
@@ -4010,22 +4856,31 @@ class DailyChecklistService {
 
               // Combine tasks from both document array and subcollection
               final List<Map<String, dynamic>> tasksList = [];
-              tasksList.addAll(List<Map<String, dynamic>>.from(checklistData['tasks'] ?? []));
+              tasksList.addAll(
+                List<Map<String, dynamic>>.from(checklistData['tasks'] ?? []),
+              );
               try {
-                final subSnap = await checklistDoc.reference.collection('tasks').get();
+                final subSnap =
+                    await checklistDoc.reference.collection('tasks').get();
                 if (subSnap.docs.isNotEmpty) {
                   final subTasks = subSnap.docs.map((d) => d.data()).toList();
                   tasksList.addAll(subTasks);
                 }
               } catch (e) {
-                debugPrint('[DailyChecklistService] Error reading tasks subcollection for ${checklistDoc.id}: $e');
+                debugPrint(
+                  '[DailyChecklistService] Error reading tasks subcollection for ${checklistDoc.id}: $e',
+                );
               }
 
               for (final taskData in tasksList) {
                 try {
                   // Safely extract task fields without using TaskData.fromJson
-                  final completed = taskData['completed'] as bool? ?? taskData['isCompleted'] as bool? ?? false;
-                  final isCarryForward = taskData['isCarryForward'] as bool? ?? false;
+                  final completed =
+                      taskData['completed'] as bool? ??
+                      taskData['isCompleted'] as bool? ??
+                      false;
+                  final isCarryForward =
+                      taskData['isCarryForward'] as bool? ?? false;
 
                   totalTasks++;
                   if (completed) {
@@ -4035,7 +4890,9 @@ class DailyChecklistService {
                     carriedCountToday++;
                   }
                 } catch (e) {
-                  debugPrint('[DailyChecklistService] Error processing task in getLiveShiftPerformance: $e');
+                  debugPrint(
+                    '[DailyChecklistService] Error processing task in getLiveShiftPerformance: $e',
+                  );
                   totalTasks++; // Still count the task even if there's an error
                 }
               }
@@ -4043,7 +4900,8 @@ class DailyChecklistService {
           }
         }
 
-        final completionPct = totalTasks > 0 ? completedTasks / totalTasks : 0.0;
+        final completionPct =
+            totalTasks > 0 ? completedTasks / totalTasks : 0.0;
 
         liveShifts.add({
           'shiftId': shiftId,
@@ -4061,7 +4919,9 @@ class DailyChecklistService {
 
       return liveShifts;
     } catch (e, st) {
-      debugPrint('[DailyChecklistService] getLiveShiftPerformance error: $e\n$st');
+      debugPrint(
+        '[DailyChecklistService] getLiveShiftPerformance error: $e\n$st',
+      );
       return [];
     }
   }
@@ -4072,14 +4932,21 @@ class DailyChecklistService {
 
     try {
       final shiftDoc =
-          await _firestore.collection('organizations').doc(organizationId).collection('shifts').doc(shiftId).get();
+          await _firestore
+              .collection('organizations')
+              .doc(organizationId)
+              .collection('shifts')
+              .doc(shiftId)
+              .get();
 
       if (shiftDoc.exists) {
         final data = shiftDoc.data()!;
         return data['shiftName'] as String? ?? 'Unknown Shift';
       }
     } catch (e) {
-      debugPrint('[DailyChecklistService] Error getting shift name for $shiftId: $e');
+      debugPrint(
+        '[DailyChecklistService] Error getting shift name for $shiftId: $e',
+      );
     }
 
     return 'Unknown Shift';
@@ -4099,11 +4966,15 @@ class DailyChecklistService {
 
     // Don't count today's incomplete tasks as "missed" - they're still in progress
     if (dateStr == todayStr) {
-      debugPrint('[DailyChecklistService] countMissedTasksForDate: skipping today (tasks in progress)');
+      debugPrint(
+        '[DailyChecklistService] countMissedTasksForDate: skipping today (tasks in progress)',
+      );
       return 0;
     }
 
-    debugPrint('[DailyChecklistService] countMissedTasksForDate: date=$dateStr, loc=$locationId');
+    debugPrint(
+      '[DailyChecklistService] countMissedTasksForDate: date=$dateStr, loc=$locationId',
+    );
 
     try {
       int totalMissed = 0;
@@ -4126,7 +4997,9 @@ class DailyChecklistService {
             docs = snap.docs;
           }
         } catch (e) {
-          debugPrint('[DailyChecklistService] String date match failed for $locId: $e');
+          debugPrint(
+            '[DailyChecklistService] String date match failed for $locId: $e',
+          );
         }
 
         // Timestamp fallback if empty
@@ -4135,13 +5008,20 @@ class DailyChecklistService {
             // FIX: Use UTC to ensure consistent date boundaries regardless of server/client timezones
             final utcDate = DateTime.utc(date.year, date.month, date.day);
             final dayStart = Timestamp.fromDate(utcDate);
-            final dayEnd = Timestamp.fromDate(utcDate.add(const Duration(days: 1)));
+            final dayEnd = Timestamp.fromDate(
+              utcDate.add(const Duration(days: 1)),
+            );
 
             final snap =
-                await base.where('date', isGreaterThanOrEqualTo: dayStart).where('date', isLessThan: dayEnd).get();
+                await base
+                    .where('date', isGreaterThanOrEqualTo: dayStart)
+                    .where('date', isLessThan: dayEnd)
+                    .get();
             docs = snap.docs;
           } catch (e) {
-            debugPrint('[DailyChecklistService] Timestamp date match failed for $locId: $e');
+            debugPrint(
+              '[DailyChecklistService] Timestamp date match failed for $locId: $e',
+            );
           }
         }
 
@@ -4161,11 +5041,19 @@ class DailyChecklistService {
           // Dedupe tasks
           final seen = <String>{};
           for (final t in tasksList) {
-            final key = (t['taskId'] ?? t['id'] ?? t['taskName'] ?? t['description'] ?? '').toString().trim();
+            final key =
+                (t['taskId'] ??
+                        t['id'] ??
+                        t['taskName'] ??
+                        t['description'] ??
+                        '')
+                    .toString()
+                    .trim();
             if (key.isEmpty || seen.contains(key)) continue;
             seen.add(key);
 
-            final completed = (t['completed'] == true) || (t['isCompleted'] == true);
+            final completed =
+                (t['completed'] == true) || (t['isCompleted'] == true);
             final isCarryForward = (t['isCarryForward'] == true);
             // Count tasks that are incomplete and NOT carry-forward (we want original misses)
             if (!completed && !isCarryForward) {
@@ -4180,16 +5068,25 @@ class DailyChecklistService {
         totalMissed = await countForLocation(locationId);
       } else {
         // Aggregate across all locations
-        final locs = await _firestore.collection('organizations').doc(organizationId).collection('locations').get();
+        final locs =
+            await _firestore
+                .collection('organizations')
+                .doc(organizationId)
+                .collection('locations')
+                .get();
         final futures = locs.docs.map((l) => countForLocation(l.id));
         final results = await Future.wait(futures);
         totalMissed = results.fold(0, (sum, val) => sum + val);
       }
 
-      debugPrint('[DailyChecklistService] countMissedTasksForDate result: $totalMissed for $dateStr');
+      debugPrint(
+        '[DailyChecklistService] countMissedTasksForDate result: $totalMissed for $dateStr',
+      );
       return totalMissed;
     } catch (e, st) {
-      debugPrint('[DailyChecklistService] countMissedTasksForDate error: $e\n$st');
+      debugPrint(
+        '[DailyChecklistService] countMissedTasksForDate error: $e\n$st',
+      );
       return 0;
     }
   }

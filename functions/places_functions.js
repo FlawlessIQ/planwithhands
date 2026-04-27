@@ -154,7 +154,7 @@ exports.placesAutocompleteHttp = functions
           try {
             const emailData = {
               to: 'conor@planwithhands.com', // Switch to main domain email
-              from: 'noreply@em5998.planwithhands.com', // Using verified SendGrid domain like user functions
+              from: process.env.SENDGRID_FROM_EMAIL || 'noreply@planwithhands.com',
               subject: `Help Request: ${subject}`,
               html: `<h3>New Help Request</h3><p><strong>From:</strong> ${email}</p><p><strong>Subject:</strong> ${subject}</p><p><strong>Message:</strong></p><p>${message.replace(/\n/g, '<br>')}</p><p><strong>Request ID:</strong> ${helpRequestRef.id}</p><p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>`,
             };

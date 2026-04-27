@@ -161,20 +161,22 @@ class RecipeData {
       ),
       Recipe(
         id: 'send_notification',
-        title: 'Send a targeted notification',
+        title: 'Send a targeted broadcast',
         role: AppRole.manager,
         category: 'daily',
         icon: Icons.campaign_outlined,
         duration: '2 min',
         isFeatured: true,
         steps: [
-          'Menu → Send Notification.',
-          'Pick Everyone, Group, or Location.',
-          'Add short Title + clear Message (≤ 240 chars) → Send.',
+          'Open Communications → Broadcasts.',
+          'Pick everyone, a saved audience, or a location.',
+          'Add a short headline and a clear message, then send.',
           'Confirm delivery and check read receipts.',
         ],
-        troubleshoot: ['Push notifications off? Users still see messages in-app.'],
-        ctaLabel: 'Compose Notification',
+        troubleshoot: [
+          'Push notifications off? Users still see messages in-app.',
+        ],
+        ctaLabel: 'New Broadcast',
       ),
       Recipe(
         id: 'schedule_management',
@@ -196,17 +198,17 @@ class RecipeData {
       ),
       Recipe(
         id: 'manage_groups',
-        title: 'Create & manage groups',
+        title: 'Create & manage audiences',
         role: AppRole.manager,
         category: 'setup',
         icon: Icons.group_outlined,
         duration: '5 min',
         steps: [
-          'Menu → Groups → Create.',
+          'Open Communications → Audiences.',
           'Name clearly (e.g., "Bar – Weeknights").',
-          'Add team members to groups.',
-          'Use groups when sending notifications.',
-          'Update group membership as needed.',
+          'Add the right team members to each audience.',
+          'Use saved audiences when sending broadcasts.',
+          'Update audience membership as needed.',
         ],
       ),
       Recipe(
@@ -275,7 +277,9 @@ class RecipeData {
           'Attach the checklist to Shift Templates to schedule it.',
           'Test with a pilot group before full rollout.',
         ],
-        troubleshoot: ['Staff giving "reason" instead of photo? Check if tasks are clear.'],
+        troubleshoot: [
+          'Staff giving "reason" instead of photo? Check if tasks are clear.',
+        ],
         ctaLabel: 'Open Admin Dashboard',
       ),
       Recipe(
@@ -337,12 +341,12 @@ class RecipeData {
         duration: '5 min',
         steps: [
           'Send org-wide announcements and updates.',
-          'Target specific roles or locations as needed.',
+          'Target specific audiences or locations as needed.',
           'Review Missed/Bypassed photo tasks for coaching.',
           'Coordinate with managers on compliance issues.',
           'Document important communications for records.',
         ],
-        ctaLabel: 'Compose Notification',
+        ctaLabel: 'New Broadcast',
       ),
       Recipe(
         id: 'backup_management',
@@ -414,9 +418,9 @@ class RecipeData {
   static String getOverviewText(AppRole role) {
     switch (role) {
       case AppRole.staff:
-        return 'Staff: view today\'s shifts, complete checklists with photos/reasons, read notifications, access Training.';
+        return 'Staff: view today\'s shifts, complete checklists with photos/reasons, read the inbox, and access Training.';
       case AppRole.manager:
-        return 'Managers: track shift progress, send notifications, manage groups, upload training docs.';
+        return 'Managers: track shift progress, send broadcasts, manage audiences, and upload training docs.';
       case AppRole.admin:
         return 'Admins: full system access, manage locations, create checklists and shift templates, invite users.';
     }

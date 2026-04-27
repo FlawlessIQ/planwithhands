@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hands_app/l10n/l10n.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/widgets/professional_message_dialog.dart';
 import 'package:hands_app/theme/theme.dart';
@@ -13,11 +14,21 @@ import 'package:intl/intl.dart';
 
 class NotificationListSheet extends ConsumerStatefulWidget {
   final void Function(String title, String details)? onMessageTap;
+  final bool showHeader;
+  final bool embedded;
+  final String? title;
 
-  const NotificationListSheet({super.key, this.onMessageTap});
+  const NotificationListSheet({
+    super.key,
+    this.onMessageTap,
+    this.showHeader = true,
+    this.embedded = false,
+    this.title,
+  });
 
   @override
-  ConsumerState<NotificationListSheet> createState() => _NotificationListSheetState();
+  ConsumerState<NotificationListSheet> createState() =>
+      _NotificationListSheetState();
 }
 
 class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
@@ -45,7 +56,11 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
       return;
     }
     _userId = user.uid;
-    final userDoc = await FirestoreEnforcer.instance.collection('users').doc(user.uid).get();
+    final userDoc =
+        await FirestoreEnforcer.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
     _orgId = userDoc.data()?['organizationId'] as String?;
     if (_orgId == null) {
       setState(() => _isLoading = false);
@@ -223,6 +238,7 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
 
   Future<void> _deleteNotification(String id) async {
     if (_userId == null) return;
+    final l10n = context.l10n;
 
     // Show confirmation dialog
     final confirmed = await showDialog<bool>(
@@ -231,21 +247,33 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
           (context) => AlertDialog(
             backgroundColor: HandsColors.cardPrimary,
             title: Text(
-              'Delete Message',
-              style: GoogleFonts.comfortaa(color: HandsColors.white, fontWeight: FontWeight.bold),
+              l10n.notificationsDeleteTitle,
+              style: GoogleFonts.comfortaa(
+                color: HandsColors.white,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             content: Text(
-              'Are you sure you want to permanently delete this message? This action cannot be undone.',
+              l10n.notificationsDeleteBody,
               style: GoogleFonts.comfortaa(color: HandsColors.white70),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(false),
-                child: Text('Cancel', style: GoogleFonts.comfortaa(color: HandsColors.white70)),
+                child: Text(
+                  l10n.commonCancel,
+                  style: GoogleFonts.comfortaa(color: HandsColors.white70),
+                ),
               ),
               TextButton(
                 onPressed: () => Navigator.of(context).pop(true),
-                child: Text('Delete', style: GoogleFonts.comfortaa(color: Colors.red, fontWeight: FontWeight.bold)),
+                child: Text(
+                  l10n.commonDelete,
+                  style: GoogleFonts.comfortaa(
+                    color: Colors.red,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ],
           ),
@@ -263,7 +291,10 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Message deleted successfully', style: GoogleFonts.comfortaa(color: Colors.white)),
+              content: Text(
+                l10n.notificationsDeleteSuccess,
+                style: GoogleFonts.comfortaa(color: Colors.white),
+              ),
               backgroundColor: HandsColors.primary,
             ),
           );
@@ -276,7 +307,10 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Failed to delete message: $e', style: GoogleFonts.comfortaa(color: Colors.white)),
+              content: Text(
+                l10n.notificationsDeleteFailed(e.toString()),
+                style: GoogleFonts.comfortaa(color: Colors.white),
+              ),
               backgroundColor: Colors.red,
             ),
           );
@@ -298,7 +332,8 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
     try {
       // Optimistically update local state
       final idx = _notifications.indexWhere((n) => n['id'] == id);
-      if (idx != -1 && !(_notifications[idx]['readBy'] as List<String>).contains(_userId)) {
+      if (idx != -1 &&
+          !(_notifications[idx]['readBy'] as List<String>).contains(_userId)) {
         setState(() {
           (_notifications[idx]['readBy'] as List<String>).add(_userId!);
         });
@@ -335,6 +370,7 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
   }
 
   String _formatTimestamp(dynamic timestamp) {
+    final l10n = context.l10n;
     if (timestamp == null) return '';
 
     DateTime dateTime;
@@ -350,16 +386,17 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
     final today = DateTime(now.year, now.month, now.day);
     final messageDate = DateTime(dateTime.year, dateTime.month, dateTime.day);
 
-    final timeFormat = DateFormat('h:mm a');
-    final dateFormat = DateFormat('MMM d');
-    final fullDateFormat = DateFormat('MMM d, yyyy');
+    final locale = Localizations.localeOf(context).toLanguageTag();
+    final timeFormat = DateFormat('h:mm a', locale);
+    final dateFormat = DateFormat('MMM d', locale);
+    final fullDateFormat = DateFormat('MMM d, yyyy', locale);
 
     if (messageDate == today) {
       // Today - show just time
       return timeFormat.format(dateTime);
     } else if (messageDate == today.subtract(const Duration(days: 1))) {
       // Yesterday
-      return 'Yesterday ${timeFormat.format(dateTime)}';
+      return l10n.notificationsYesterdayAt(timeFormat.format(dateTime));
     } else if (dateTime.year == now.year) {
       // This year - show month, day and time
       return '${dateFormat.format(dateTime)} ${timeFormat.format(dateTime)}';
@@ -371,228 +408,313 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: HandsDecorations.primaryBoxDecoration,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
+    final l10n = context.l10n;
+    final localizedTitle = widget.title ?? l10n.notificationsInbox;
+    final filterLabels = <String, String>{
+      'Unread': l10n.notificationsUnread,
+      'Read': l10n.notificationsRead,
+      'Archived': l10n.notificationsArchived,
+    };
+    final content = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header
+        if (widget.showHeader)
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'MESSAGES',
-                style: GoogleFonts.comfortaa(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: HandsColors.white,
-                  letterSpacing: 1.5,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    localizedTitle,
+                    style: GoogleFonts.inter(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700,
+                      color: HandsColors.white,
+                      letterSpacing: -0.4,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    l10n.notificationsHeaderSubtitle,
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: HandsColors.white70,
+                    ),
+                  ),
+                ],
+              ),
+              if (!widget.embedded)
+                IconButton(
+                  icon: const Icon(Icons.close, color: HandsColors.white),
+                  onPressed: () => Navigator.of(context).pop(),
                 ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.close, color: HandsColors.white),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
             ],
           ),
-          // View filter chips
-          Wrap(
-            spacing: 8,
-            children:
-                ['Unread', 'Read', 'Archived']
-                    .map(
-                      (f) => ChoiceChip(
-                        label: Text(f),
-                        selected: _viewFilter == f,
-                        onSelected: (_) => _onViewFilterChanged(f),
-                        backgroundColor: HandsColors.secondaryContainer,
-                        selectedColor: HandsColors.handsOrange,
-                        labelStyle: GoogleFonts.comfortaa(
-                          color: _viewFilter == f ? HandsColors.white : HandsColors.white70,
-                          fontWeight: FontWeight.w500,
-                        ),
+        if (widget.showHeader) const SizedBox(height: 12),
+        // View filter chips
+        Wrap(
+          spacing: 8,
+          children:
+              ['Unread', 'Read', 'Archived']
+                  .map(
+                    (f) => ChoiceChip(
+                      label: Text(filterLabels[f] ?? f),
+                      selected: _viewFilter == f,
+                      onSelected: (_) => _onViewFilterChanged(f),
+                      backgroundColor: HandsColors.secondaryContainer,
+                      selectedColor: HandsColors.handsOrange,
+                      labelStyle: GoogleFonts.comfortaa(
+                        color:
+                            _viewFilter == f
+                                ? HandsColors.white
+                                : HandsColors.white70,
+                        fontWeight: FontWeight.w500,
                       ),
-                    )
-                    .toList(),
-          ),
-          Divider(color: HandsColors.white12, thickness: 1),
+                    ),
+                  )
+                  .toList(),
+        ),
+        Divider(color: HandsColors.white12, thickness: 1, height: 24),
 
-          // Body
-          if (_isLoading)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 32),
-              child: Center(
-                child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(HandsColors.handsOrange)),
-              ),
-            )
-          else if (_notifications.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Center(
-                child: Text(
-                  'No messages',
-                  style: GoogleFonts.comfortaa(fontStyle: FontStyle.italic, color: HandsColors.white70),
+        // Body
+        if (_isLoading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 32),
+            child: Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  HandsColors.handsOrange,
                 ),
               ),
-            )
-          else
-            Flexible(
-              child: Column(
-                children: [
-                  Expanded(
-                    child: ListView.builder(
-                      shrinkWrap: false,
-                      itemCount: _notifications.length,
-                      itemBuilder: (context, i) {
-                        final n = _notifications[i];
-                        final isRead = (n['readBy'] as List<String>).contains(_userId);
-                        final isArchived = (n['archivedBy'] as List<String>).contains(_userId);
-                        final title = n['title'] as String? ?? 'New Message';
-                        final details = n['message'] as String? ?? 'No content';
-                        final timestamp = _formatTimestamp(n['createdAt']);
+            ),
+          )
+        else if (_notifications.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: Text(
+                l10n.notificationsNoMessagesIn(
+                  (filterLabels[_viewFilter] ?? _viewFilter).toLowerCase(),
+                ),
+                style: GoogleFonts.comfortaa(
+                  fontStyle: FontStyle.italic,
+                  color: HandsColors.white70,
+                ),
+              ),
+            ),
+          )
+        else
+          Flexible(
+            child: Column(
+              children: [
+                Expanded(
+                  child: ListView.builder(
+                    shrinkWrap: false,
+                    itemCount: _notifications.length,
+                    itemBuilder: (context, i) {
+                      final n = _notifications[i];
+                      final isRead = (n['readBy'] as List<String>).contains(
+                        _userId,
+                      );
+                      final isArchived = (n['archivedBy'] as List<String>)
+                          .contains(_userId);
+                      final title =
+                          n['title'] as String? ?? l10n.notificationsNewMessage;
+                      final details =
+                          n['message'] as String? ??
+                          l10n.notificationsNoContent;
+                      final timestamp = _formatTimestamp(n['createdAt']);
 
-                        return Container(
-                          margin: const EdgeInsets.symmetric(vertical: 6),
-                          decoration: HandsDecorations.tertiaryBoxDecoration,
-                          child: InkWell(
-                            onTap: () {
-                              if (widget.onMessageTap != null) {
-                                widget.onMessageTap!(title, details);
-                              }
-                              if (!isRead) {
-                                _markNotificationAsRead(n['id']);
-                              }
-                            },
-                            borderRadius: BorderRadius.circular(8),
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Row(
-                                children: [
-                                  // Leading icon
-                                  Icon(
-                                    isRead ? Icons.mark_email_read_outlined : Icons.mark_email_unread,
-                                    color: isRead ? HandsColors.white70 : HandsColors.handsOrange,
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 12),
-                                  // Content
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        // Title row
+                      return Container(
+                        margin: const EdgeInsets.symmetric(vertical: 6),
+                        decoration: HandsDecorations.tertiaryBoxDecoration,
+                        child: InkWell(
+                          onTap: () {
+                            if (widget.onMessageTap != null) {
+                              widget.onMessageTap!(title, details);
+                            }
+                            if (!isRead) {
+                              _markNotificationAsRead(n['id']);
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(8),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
+                              children: [
+                                // Leading icon
+                                Icon(
+                                  isRead
+                                      ? Icons.mark_email_read_outlined
+                                      : Icons.mark_email_unread,
+                                  color:
+                                      isRead
+                                          ? HandsColors.white70
+                                          : HandsColors.handsOrange,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 12),
+                                // Content
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      // Title row
+                                      Text(
+                                        title,
+                                        style: GoogleFonts.comfortaa(
+                                          fontWeight:
+                                              isRead
+                                                  ? FontWeight.w500
+                                                  : FontWeight.bold,
+                                          color: HandsColors.white,
+                                          fontSize: 15,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      // Timestamp row
+                                      if (timestamp.isNotEmpty)
                                         Text(
-                                          title,
+                                          timestamp,
                                           style: GoogleFonts.comfortaa(
-                                            fontWeight: isRead ? FontWeight.w500 : FontWeight.bold,
-                                            color: HandsColors.white,
-                                            fontSize: 15,
+                                            fontSize: 11,
+                                            color: HandsColors.white70,
+                                            fontWeight: FontWeight.w300,
                                           ),
                                         ),
-                                        const SizedBox(height: 4),
-                                        // Timestamp row
-                                        if (timestamp.isNotEmpty)
-                                          Text(
-                                            timestamp,
-                                            style: GoogleFonts.comfortaa(
-                                              fontSize: 11,
-                                              color: HandsColors.white70,
-                                              fontWeight: FontWeight.w300,
-                                            ),
+                                      const SizedBox(height: 6),
+                                      // Message content
+                                      Text(
+                                        details,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: GoogleFonts.comfortaa(
+                                          color: HandsColors.white70,
+                                          fontSize: 13,
+                                          height: 1.3,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                // Trailing menu
+                                PopupMenuButton<String>(
+                                  iconColor: HandsColors.white70,
+                                  color: HandsColors.secondaryContainer,
+                                  onSelected: (value) {
+                                    if (value == 'archive') {
+                                      _archiveNotification(n['id']);
+                                    } else if (value == 'unarchive') {
+                                      _unarchiveNotification(n['id']);
+                                    } else if (value == 'delete') {
+                                      _deleteNotification(n['id']);
+                                    }
+                                  },
+                                  itemBuilder:
+                                      (context) => [
+                                        PopupMenuItem(
+                                          value:
+                                              isArchived
+                                                  ? 'unarchive'
+                                                  : 'archive',
+                                          child: Row(
+                                            children: [
+                                              Icon(
+                                                isArchived
+                                                    ? Icons.unarchive
+                                                    : Icons.archive,
+                                                color: HandsColors.white,
+                                                size: 16,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                isArchived
+                                                    ? l10n.commonUnarchive
+                                                    : l10n.commonArchive,
+                                                style: GoogleFonts.comfortaa(
+                                                  color: HandsColors.white,
+                                                ),
+                                              ),
+                                            ],
                                           ),
-                                        const SizedBox(height: 6),
-                                        // Message content
-                                        Text(
-                                          details,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: GoogleFonts.comfortaa(
-                                            color: HandsColors.white70,
-                                            fontSize: 13,
-                                            height: 1.3,
+                                        ),
+                                        PopupMenuItem(
+                                          value: 'delete',
+                                          child: Row(
+                                            children: [
+                                              const Icon(
+                                                Icons.delete,
+                                                color: Colors.red,
+                                                size: 16,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                l10n.commonDelete,
+                                                style: GoogleFonts.comfortaa(
+                                                  color: Colors.red,
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
                                       ],
-                                    ),
-                                  ),
-                                  // Trailing menu
-                                  PopupMenuButton<String>(
-                                    iconColor: HandsColors.white70,
-                                    color: HandsColors.secondaryContainer,
-                                    onSelected: (value) {
-                                      if (value == 'archive') {
-                                        _archiveNotification(n['id']);
-                                      } else if (value == 'unarchive') {
-                                        _unarchiveNotification(n['id']);
-                                      } else if (value == 'delete') {
-                                        _deleteNotification(n['id']);
-                                      }
-                                    },
-                                    itemBuilder:
-                                        (context) => [
-                                          PopupMenuItem(
-                                            value: isArchived ? 'unarchive' : 'archive',
-                                            child: Row(
-                                              children: [
-                                                Icon(
-                                                  isArchived ? Icons.unarchive : Icons.archive,
-                                                  color: HandsColors.white,
-                                                  size: 16,
-                                                ),
-                                                const SizedBox(width: 8),
-                                                Text(
-                                                  isArchived ? 'Unarchive' : 'Archive',
-                                                  style: GoogleFonts.comfortaa(color: HandsColors.white),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          PopupMenuItem(
-                                            value: 'delete',
-                                            child: Row(
-                                              children: [
-                                                const Icon(Icons.delete, color: Colors.red, size: 16),
-                                                const SizedBox(width: 8),
-                                                Text('Delete', style: GoogleFonts.comfortaa(color: Colors.red)),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                  ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
                           ),
-                        );
-                      },
-                    ),
+                        ),
+                      );
+                    },
                   ),
-                  // Load More button
-                  if (_hasMoreData && !_isLoading)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child:
-                          _isLoadingMore
-                              ? const CircularProgressIndicator(
-                                valueColor: AlwaysStoppedAnimation<Color>(HandsColors.handsOrange),
-                              )
-                              : ElevatedButton(
-                                onPressed: () => _loadNotifications(isLoadMore: true),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: HandsColors.handsOrange,
-                                  foregroundColor: HandsColors.white,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                ),
-                                child: Text('Load More', style: GoogleFonts.comfortaa(fontWeight: FontWeight.w500)),
+                ),
+                // Load More button
+                if (_hasMoreData && !_isLoading)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child:
+                        _isLoadingMore
+                            ? const CircularProgressIndicator(
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                HandsColors.handsOrange,
                               ),
-                    ),
-                ],
-              ),
+                            )
+                            : ElevatedButton(
+                              onPressed:
+                                  () => _loadNotifications(isLoadMore: true),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: HandsColors.handsOrange,
+                                foregroundColor: HandsColors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              child: Text(
+                                l10n.notificationsLoadMore,
+                                style: GoogleFonts.comfortaa(
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                  ),
+              ],
             ),
-        ],
-      ),
+          ),
+      ],
+    );
+
+    if (widget.embedded) {
+      return Padding(padding: const EdgeInsets.all(18), child: content);
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: HandsDecorations.primaryBoxDecoration,
+      child: content,
     );
   }
 }
@@ -607,11 +729,11 @@ class NotificationsPage extends ConsumerWidget {
       backgroundColor: Colors.black,
       appBar: AppBar(
         title: Text(
-          'MESSAGES',
-          style: GoogleFonts.comfortaa(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 1.2,
+          context.l10n.notificationsInbox,
+          style: GoogleFonts.inter(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.2,
             color: HandsColors.white,
           ),
         ),

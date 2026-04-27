@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -6,8 +5,39 @@ import 'package:file_picker/file_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/state/user_state.dart';
+import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/widgets/hands_text_field.dart';
+import 'package:hands_app/l10n/l10n.dart';
+
+String localizedUploadDocumentCategoryLabel(
+  BuildContext context,
+  String category,
+) {
+  switch (category) {
+    case 'Safety Procedures':
+      return context.l10n.documentsCategorySafetyProcedures;
+    case 'Cleaning Protocols':
+      return context.l10n.documentsCategoryCleaningProtocols;
+    case 'Training Materials':
+      return context.l10n.documentsCategoryTrainingMaterials;
+    case 'Operating Procedures':
+      return context.l10n.documentsCategoryOperatingProcedures;
+    case 'Emergency Procedures':
+      return context.l10n.documentsCategoryEmergencyProcedures;
+    case 'Equipment Manuals':
+      return context.l10n.documentsCategoryEquipmentManuals;
+    case 'Policy Documents':
+      return context.l10n.documentsCategoryPolicyDocuments;
+    case 'Other':
+      return context.l10n.documentsCategoryOther;
+    default:
+      return category;
+  }
+}
 
 class UploadDocumentBottomSheet extends HookConsumerWidget {
   final Map<String, dynamic>? documentData;
@@ -25,19 +55,20 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final titleController = useTextEditingController(text: documentData?['title'] ?? '');
+    final l10n = context.l10n;
+    final titleController = useTextEditingController(
+      text: documentData?['title'] ?? '',
+    );
     final selectedCategory = useState<String?>(documentData?['category']);
     final selectedFile = useState<PlatformFile?>(null);
     final isUploading = useState(false);
     final formKey = useMemoized(() => GlobalKey<FormState>());
     final organizationId = useState<String?>(null);
-    final isLoadingOrgId = useState<bool>(true);
+    final isLoadingOrgId = useState(true);
 
     final userState = ref.watch(userStateProvider);
-    final theme = Theme.of(context);
     final isEditMode = documentData != null && documentId != null;
 
-    // Fallback mechanism to get organizationId directly from Firebase Auth/Firestore
     useEffect(() {
       Future<void> loadOrganizationId() async {
         try {
@@ -46,18 +77,19 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
             isLoadingOrgId.value = false;
             return;
           }
+
           final currentUser = FirebaseAuth.instance.currentUser;
-          debugPrint('Current user: ${FirebaseAuth.instance.currentUser}');
           if (currentUser != null) {
-            final userDoc = await FirestoreEnforcer.instance.collection('users').doc(currentUser.uid).get();
+            final userDoc =
+                await FirestoreEnforcer.instance
+                    .collection('users')
+                    .doc(currentUser.uid)
+                    .get();
             if (userDoc.exists) {
               final userData = userDoc.data() as Map<String, dynamic>;
-              final orgId = userData['organizationId'] as String?;
-              organizationId.value = orgId;
+              organizationId.value = userData['organizationId'] as String?;
             }
           }
-        } catch (e) {
-          // ignore
         } finally {
           isLoadingOrgId.value = false;
         }
@@ -67,7 +99,7 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
       return null;
     }, [userState.userData?.organizationId]);
 
-    final categories = [
+    final categories = const [
       'Safety Procedures',
       'Cleaning Protocols',
       'Training Materials',
@@ -78,34 +110,41 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
       'Other',
     ];
 
-    // Show loading while we're determining the organizationId
-    if (isLoadingOrgId.value) {
-      return Padding(
-        padding: MediaQuery.of(context).viewInsets,
-        child: Container(
-          height: MediaQuery.of(context).size.height * 0.8,
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: theme.canvasColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: const Center(child: CircularProgressIndicator()),
+    InputDecoration fieldDecoration({
+      required String label,
+      String? hint,
+      Widget? prefixIcon,
+    }) {
+      return InputDecoration(
+        labelText: label,
+        hintText: hint,
+        prefixIcon: prefixIcon,
+        labelStyle: HandsModalTokens.labelStyle,
+        hintStyle: GoogleFonts.inter(
+          color: HandsModalTokens.textSubtle,
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
         ),
-      );
-    }
-
-    // Show error if no organizationId is available
-    if (organizationId.value == null) {
-      return Padding(
-        padding: MediaQuery.of(context).viewInsets,
-        child: Container(
-          height: MediaQuery.of(context).size.height * 0.8,
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: theme.canvasColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        filled: true,
+        fillColor: HandsModalTokens.surfaceMuted,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(HandsModalTokens.controlRadius),
+          borderSide: const BorderSide(color: HandsModalTokens.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(HandsModalTokens.controlRadius),
+          borderSide: const BorderSide(color: HandsModalTokens.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(HandsModalTokens.controlRadius),
+          borderSide: const BorderSide(
+            color: HandsModalTokens.accent,
+            width: 1.2,
           ),
-          child: const Center(child: Text('No organization found. Please contact support.')),
         ),
       );
     }
@@ -114,58 +153,61 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
       try {
         final result = await FilePicker.platform.pickFiles(
           type: FileType.custom,
-          allowedExtensions: ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'mp4', 'mov'],
+          allowedExtensions: [
+            'pdf',
+            'doc',
+            'docx',
+            'jpg',
+            'jpeg',
+            'png',
+            'mp4',
+            'mov',
+          ],
           allowMultiple: false,
-          withData: true, // ensure bytes are available for web uploads
+          withData: true,
         );
         if (result != null && result.files.isNotEmpty) {
-          final f = result.files.first;
-          debugPrint(
-            '[UploadDoc] Picked file name=${f.name} size=${f.size} hasBytes=${f.bytes != null} ext=${f.extension}',
-          );
-          selectedFile.value = f;
+          selectedFile.value = result.files.first;
         }
       } catch (e) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error picking file: $e')));
-        }
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.documentsPickFileError(e.toString()))),
+        );
       }
     }
 
     Future<void> uploadDocument() async {
-      // Check if we're already uploading
-      if (isUploading.value) {
-        return;
-      }
+      if (isUploading.value) return;
 
-      // Safely check form validation
       final currentState = formKey.currentState;
       if (currentState == null || !currentState.validate()) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all required fields')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.documentsFillRequiredFields)),
+        );
         return;
       }
 
-      // Check if we have a file for new uploads
       if (!isEditMode && selectedFile.value == null) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select a file')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.documentsSelectFileRequired)),
+        );
         return;
       }
 
-      // Check organization ID
       final orgId = organizationId.value;
       if (orgId == null || orgId.isEmpty) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('Organization ID is missing. Cannot upload document.')));
+        ).showSnackBar(SnackBar(content: Text(l10n.documentsMissingOrgId)));
         return;
       }
 
-      // Check if user is authenticated
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser == null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('User not authenticated. Please log in again.')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.documentsUserNotAuthenticated)),
+        );
         return;
       }
 
@@ -176,75 +218,53 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
         String fileType = documentData?['fileType'] ?? 'document';
         int? fileSize = documentData?['fileSize'];
 
-        final selectedFileValue = selectedFile.value;
-        if (selectedFileValue != null) {
-          final file = selectedFileValue;
-
-          // Check if file bytes are available
+        final file = selectedFile.value;
+        if (file != null) {
           final fileBytes = file.bytes;
           if (fileBytes == null) {
-            debugPrint('[UploadDoc][ERROR] File bytes are null; did FilePicker return a path-only file?');
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('File data is not available. Please try selecting the file again.')),
+              SnackBar(content: Text(l10n.documentsFileDataUnavailable)),
             );
             return;
           }
 
-          fileName = '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
-          final storageRef = FirebaseStorage.instance.ref().child('documents/$fileName');
-          UploadTask uploadTask;
-          // Determine content-type for better handling in Storage and browsers
+          final storedName =
+              '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
+          final storageRef = FirebaseStorage.instance.ref().child(
+            'documents/$storedName',
+          );
+
           final ext = file.extension?.toLowerCase() ?? '';
-          String? contentType;
-          switch (ext) {
-            case 'jpg':
-            case 'jpeg':
-              contentType = 'image/jpeg';
-              break;
-            case 'png':
-              contentType = 'image/png';
-              break;
-            case 'pdf':
-              contentType = 'application/pdf';
-              break;
-            case 'doc':
-              contentType = 'application/msword';
-              break;
-            case 'docx':
-              contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-              break;
-            case 'mp4':
-              contentType = 'video/mp4';
-              break;
-            case 'mov':
-              contentType = 'video/quicktime';
-              break;
-            default:
-              contentType = 'application/octet-stream';
-          }
+          final contentType = switch (ext) {
+            'jpg' || 'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'pdf' => 'application/pdf',
+            'doc' => 'application/msword',
+            'docx' =>
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'mp4' => 'video/mp4',
+            'mov' => 'video/quicktime',
+            _ => 'application/octet-stream',
+          };
 
           final metadata = SettableMetadata(contentType: contentType);
-          if (kIsWeb) {
-            uploadTask = storageRef.putData(fileBytes, metadata);
-          } else {
-            // For mobile, we'd need dart:io which isn't available on web compilation
-            // For now, we'll assume this is primarily used on web
-            uploadTask = storageRef.putData(fileBytes, metadata);
-          }
+          final uploadTask = storageRef.putData(fileBytes, metadata);
           final snapshot = await uploadTask;
           downloadUrl = await snapshot.ref.getDownloadURL();
-          final fileExtension = file.extension?.toLowerCase() ?? '';
-          if (['jpg', 'jpeg', 'png'].contains(fileExtension)) {
+
+          if (['jpg', 'jpeg', 'png'].contains(ext)) {
             fileType = 'image';
-          } else if (['mp4', 'mov'].contains(fileExtension)) {
+          } else if (['mp4', 'mov'].contains(ext)) {
             fileType = 'video';
-          } else if (['pdf', 'doc', 'docx'].contains(fileExtension)) {
+          } else {
             fileType = 'document';
           }
+
           fileSize = file.size;
           fileName = file.name;
         }
-        final docData = {
+
+        final docPayload = <String, dynamic>{
           'title': titleController.text.trim(),
           'category': selectedCategory.value,
           'fileUrl': downloadUrl,
@@ -255,60 +275,64 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
           'locationId': locationId,
           'updatedAt': FieldValue.serverTimestamp(),
         };
+
         if (isEditMode) {
           await FirestoreEnforcer.instance
               .collection('organizations')
               .doc(orgId)
               .collection('training_documents')
               .doc(documentId)
-              .update(docData);
+              .update(docPayload);
         } else {
-          docData['uploadedBy'] = userState.userData?.userId ?? FirebaseAuth.instance.currentUser?.uid ?? 'unknown';
-          docData['createdAt'] = FieldValue.serverTimestamp();
+          docPayload['uploadedBy'] =
+              userState.userData?.userId ??
+              FirebaseAuth.instance.currentUser?.uid ??
+              'unknown';
+          docPayload['createdAt'] = FieldValue.serverTimestamp();
           await FirestoreEnforcer.instance
               .collection('organizations')
               .doc(orgId)
               .collection('training_documents')
-              .add(docData);
+              .add(docPayload);
         }
-        if (context.mounted) {
-          // Delegate closing the sheet and showing any messages to the caller
-          // to avoid triggering a Navigator pop while the widget tree is finalizing.
-          onDocumentUploaded?.call();
-          // If no callback was provided, fall back to closing ourselves.
-          if (onDocumentUploaded == null) {
-            Navigator.pop(context);
-            // Optionally show a basic confirmation
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(isEditMode ? 'Document updated successfully!' : 'Document uploaded successfully!'),
+
+        if (!context.mounted) return;
+        onDocumentUploaded?.call();
+        if (onDocumentUploaded == null) {
+          Navigator.of(context).pop();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                isEditMode
+                    ? l10n.documentsUpdatedSuccess
+                    : l10n.documentsUploadedSuccess,
               ),
-            );
-          }
+            ),
+          );
         }
       } catch (e, stack) {
-        // Log error and stack trace for debugging
         debugPrint('Upload failed: $e');
-        debugPrint('Error type: ${e.runtimeType}');
         debugPrintStack(stackTrace: stack);
 
-        // Provide more specific error messages
-        String errorMessage = 'Upload failed: ';
+        String errorMessage = l10n.documentsUploadFailedPrefix;
         if (e.toString().contains('null check operator')) {
-          errorMessage += 'Missing required data. Please try selecting the file again.';
+          errorMessage += l10n.documentsUploadFailedMissingData;
         } else if (e.toString().contains('permission')) {
-          errorMessage += 'Permission denied. Please check your account permissions.';
+          errorMessage += l10n.documentsUploadFailedPermission;
         } else if (e.toString().contains('storage')) {
-          errorMessage += 'Storage error. Please check your internet connection.';
+          errorMessage += l10n.documentsUploadFailedStorage;
         } else {
           errorMessage += e.toString();
         }
 
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(errorMessage), backgroundColor: Colors.red, duration: const Duration(seconds: 5)),
-          );
-        }
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
       } finally {
         isUploading.value = false;
       }
@@ -333,270 +357,297 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
       }
     }
 
-    return Padding(
-      padding: MediaQuery.of(context).viewInsets,
-      child: Container(
-        height: MediaQuery.of(context).size.height * 0.8,
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: theme.canvasColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+    if (isLoadingOrgId.value) {
+      return HandsBottomSheet(
+        title: l10n.documentsUploadSheetTitle,
+        subtitle: l10n.documentsUploadSheetLoadingSubtitle,
+        child: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (organizationId.value == null) {
+      return HandsBottomSheet(
+        title: l10n.documentsUploadSheetTitle,
+        subtitle: l10n.documentsUploadSheetMissingOrgSubtitle,
+        child: Center(child: Text(l10n.documentsNoOrganization)),
+      );
+    }
+
+    return HandsBottomSheet(
+      title: isEditMode ? l10n.documentsEditTitle : l10n.documentsUploadTitle,
+      subtitle: l10n.documentsUploadSubtitle,
+      initialChildSize: 0.84,
+      minChildSize: 0.46,
+      maxChildSize: 0.96,
+      actions: [
+        HandsSecondaryButton(
+          text: l10n.commonCancel,
+          onPressed:
+              isUploading.value ? null : () => Navigator.of(context).pop(),
         ),
-        child: Form(
-          key: formKey,
+        HandsPrimaryButton(
+          text:
+              isEditMode
+                  ? l10n.documentsUpdateButton
+                  : l10n.documentsUploadTitle,
+          icon: isEditMode ? Icons.save_outlined : Icons.cloud_upload_outlined,
+          isLoading: isUploading.value,
+          onPressed: isUploading.value ? null : uploadDocument,
+        ),
+      ],
+      child: Form(
+        key: formKey,
+        child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    isEditMode ? 'Edit Document' : 'Upload Document',
-                    style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w600),
-                  ),
-                  IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
-                ],
+              _InfoTip(text: l10n.documentsInfoTip),
+              HandsModalSection(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      l10n.documentsDetails,
+                      style: HandsModalTokens.sectionTitleStyle,
+                    ),
+                    const SizedBox(height: 12),
+                    HandsTextFormField(
+                      controller: titleController,
+                      decoration: fieldDecoration(
+                        label: l10n.documentsDocumentTitleLabel,
+                        hint: l10n.documentsDocumentTitleHint,
+                        prefixIcon: const Icon(
+                          Icons.title_outlined,
+                          size: 18,
+                          color: HandsColors.white70,
+                        ),
+                      ),
+                      style: GoogleFonts.inter(
+                        color: HandsColors.white,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      validator: (value) {
+                        if (value?.trim().isEmpty ?? true) {
+                          return l10n.documentsDocumentTitleRequired;
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedCategory.value,
+                      decoration: fieldDecoration(
+                        label: l10n.documentsCategoryLabel,
+                        prefixIcon: const Icon(
+                          Icons.category_outlined,
+                          size: 18,
+                          color: HandsColors.white70,
+                        ),
+                      ),
+                      items:
+                          categories
+                              .map(
+                                (category) => DropdownMenuItem(
+                                  value: category,
+                                  child: Text(
+                                    localizedUploadDocumentCategoryLabel(
+                                      context,
+                                      category,
+                                    ),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                      style: GoogleFonts.inter(
+                        color: HandsColors.white,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      dropdownColor: HandsModalTokens.surfaceElevated,
+                      onChanged: (value) => selectedCategory.value = value,
+                      validator:
+                          (value) =>
+                              value == null
+                                  ? l10n.documentsCategoryRequired
+                                  : null,
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 24),
-
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const _InfoTip(
-                        text: 'Upload training/ops docs. PDF, images, DOCX (max 20 MB). Choose a category.',
-                      ),
-                      // Document Title
-                      TextFormField(
-                        controller: titleController,
-                        decoration: InputDecoration(
-                          labelText: 'Document Title',
-                          hintText: 'Enter a descriptive title',
-                          border: const OutlineInputBorder(),
-                          prefixIcon: const Icon(Icons.title),
-                        ),
-                        textCapitalization: TextCapitalization.words,
-                        validator: (value) {
-                          if (value?.trim().isEmpty ?? true) {
-                            return 'Please enter a document title';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 20),
-
-                      // Category Dropdown
-                      DropdownButtonFormField<String>(
-                        initialValue: selectedCategory.value,
-                        decoration: InputDecoration(
-                          labelText: 'Category',
-                          border: const OutlineInputBorder(),
-                          prefixIcon: const Icon(Icons.category),
-                        ),
-                        items:
-                            categories.map((category) {
-                              return DropdownMenuItem(value: category, child: Text(category));
-                            }).toList(),
-                        onChanged: (value) => selectedCategory.value = value,
-                        validator: (value) {
-                          if (value == null) {
-                            return 'Please select a category';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 20),
-
-                      // File Picker Section
+              const SizedBox(height: 16),
+              HandsModalSection(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isEditMode
+                          ? l10n.documentsReplaceFileOptional
+                          : l10n.documentsSelectFile,
+                      style: HandsModalTokens.sectionTitleStyle,
+                    ),
+                    const SizedBox(height: 12),
+                    if (isEditMode && selectedFile.value == null) ...[
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          border: Border.all(color: theme.dividerColor),
-                          borderRadius: BorderRadius.circular(8),
+                          color: Colors.blue.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.blue.withValues(alpha: 0.3),
+                          ),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        child: Row(
                           children: [
                             Text(
-                              isEditMode ? 'Change File (Optional)' : 'Select File',
-                              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w500),
+                              getFileIcon(
+                                documentData?['fileName']?.split('.').last,
+                              ),
+                              style: const TextStyle(fontSize: 24),
                             ),
-                            const SizedBox(height: 12),
-
-                            // Show existing file info for edit mode
-                            if (isEditMode && selectedFile.value == null) ...[
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: Colors.blue.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Text(
-                                      getFileIcon(documentData?['fileName']?.split('.').last),
-                                      style: const TextStyle(fontSize: 24),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    documentData?['fileName'] ??
+                                        l10n.documentsUnknownFile,
+                                    style: GoogleFonts.inter(
+                                      color: HandsColors.white,
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.w600,
                                     ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            documentData?['fileName'] ?? 'Unknown file',
-                                            style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          if (documentData?['fileSize'] != null)
-                                            Text(
-                                              '${(documentData!['fileSize'] / 1024 / 1024).toStringAsFixed(2)} MB',
-                                              style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey.shade600),
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              TextButton.icon(
-                                onPressed: pickFile,
-                                icon: const Icon(Icons.swap_horiz),
-                                label: const Text('Change File'),
-                              ),
-                            ] else if (selectedFile.value == null) ...[
-                              InkWell(
-                                onTap: pickFile,
-                                child: Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.symmetric(vertical: 32),
-                                  decoration: BoxDecoration(
-                                    color: theme.primaryColor.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: theme.primaryColor.withValues(alpha: 0.3),
-                                      style: BorderStyle.solid,
-                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                  child: Column(
-                                    children: [
-                                      Icon(Icons.cloud_upload_outlined, size: 48, color: theme.primaryColor),
-                                      const SizedBox(height: 12),
-                                      Text(
-                                        'Tap to select file',
-                                        style: theme.textTheme.bodyLarge?.copyWith(
-                                          color: theme.primaryColor,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'PDF, DOC, Images, Videos',
-                                        style: theme.textTheme.bodySmall?.copyWith(
-                                          color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ] else ...[
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: Colors.green.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
-                                ),
-                                child: Row(
-                                  children: [
+                                  if (documentData?['fileSize'] != null)
                                     Text(
-                                      getFileIcon(selectedFile.value!.extension),
-                                      style: const TextStyle(fontSize: 24),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            selectedFile.value!.name,
-                                            style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          Text(
-                                            '${(selectedFile.value!.size / 1024 / 1024).toStringAsFixed(2)} MB',
-                                            style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey.shade600),
-                                          ),
-                                        ],
+                                      '${(documentData!['fileSize'] / 1024 / 1024).toStringAsFixed(2)} MB',
+                                      style: GoogleFonts.inter(
+                                        color: HandsColors.white70,
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w500,
                                       ),
                                     ),
-                                    IconButton(
-                                      icon: const Icon(Icons.close, color: Colors.red),
-                                      onPressed: () => selectedFile.value = null,
-                                    ),
-                                  ],
-                                ),
+                                ],
                               ),
-                              const SizedBox(height: 12),
-                              TextButton.icon(
-                                onPressed: pickFile,
-                                icon: const Icon(Icons.swap_horiz),
-                                label: const Text('Change File'),
-                              ),
-                            ],
+                            ),
                           ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // Action Buttons
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: isUploading.value ? null : () => Navigator.pop(context),
-                      child: const Text('Cancel'),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    flex: 2,
-                    child: ElevatedButton(
-                      onPressed: isUploading.value ? null : uploadDocument,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: theme.primaryColor,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      const SizedBox(height: 12),
+                      TextButton.icon(
+                        onPressed: pickFile,
+                        icon: const Icon(Icons.swap_horiz),
+                        label: Text(l10n.documentsChangeFile),
                       ),
-                      child:
-                          isUploading.value
-                              ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                ),
-                              )
-                              : Text(
-                                isEditMode ? 'Update Document' : 'Upload Document',
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                    ] else if (selectedFile.value == null) ...[
+                      InkWell(
+                        onTap: pickFile,
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 32),
+                          decoration: BoxDecoration(
+                            color: HandsColors.handsOrange.withValues(
+                              alpha: 0.1,
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: HandsColors.handsOrange.withValues(
+                                alpha: 0.28,
                               ),
-                    ),
-                  ),
-                ],
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              const Icon(
+                                Icons.cloud_upload_outlined,
+                                size: 42,
+                                color: HandsColors.handsOrange,
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                l10n.documentsTapToSelect,
+                                style: GoogleFonts.inter(
+                                  color: HandsColors.handsOrange,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                l10n.documentsSupportedFileTypes,
+                                style: GoogleFonts.inter(
+                                  color: HandsColors.white70,
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ] else ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.green.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Text(
+                              getFileIcon(selectedFile.value!.extension),
+                              style: const TextStyle(fontSize: 24),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    selectedFile.value!.name,
+                                    style: GoogleFonts.inter(
+                                      color: HandsColors.white,
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(
+                                    '${(selectedFile.value!.size / 1024 / 1024).toStringAsFixed(2)} MB',
+                                    style: GoogleFonts.inter(
+                                      color: HandsColors.white70,
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => selectedFile.value = null,
+                              icon: const Icon(Icons.close, color: Colors.red),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextButton.icon(
+                        onPressed: pickFile,
+                        icon: const Icon(Icons.swap_horiz),
+                        label: Text(l10n.documentsChangeFile),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ],
           ),
@@ -608,6 +659,7 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
 
 class _InfoTip extends StatefulWidget {
   final String text;
+
   const _InfoTip({required this.text});
 
   @override
@@ -625,7 +677,7 @@ class _InfoTipState extends State<_InfoTip> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withOpacity(0.5),
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
@@ -636,7 +688,9 @@ class _InfoTipState extends State<_InfoTip> {
           Expanded(
             child: Text(
               widget.text,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
             ),
           ),
           IconButton(
@@ -645,7 +699,7 @@ class _InfoTipState extends State<_InfoTip> {
             visualDensity: VisualDensity.compact,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-            tooltip: 'Dismiss',
+            tooltip: context.l10n.documentsDismissTip,
           ),
         ],
       ),

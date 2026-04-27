@@ -4,7 +4,8 @@ import 'package:hands_app/utils/firestore_ttl_helper.dart';
 
 class NotificationRepository {
   final FirebaseFirestore firestore;
-  NotificationRepository({FirebaseFirestore? firestore}) : firestore = firestore ?? FirestoreEnforcer.instance;
+  NotificationRepository({FirebaseFirestore? firestore})
+    : firestore = firestore ?? FirestoreEnforcer.instance;
 
   // Fetch notifications for a user
   Stream<List<Map<String, dynamic>>> notificationsForUser(String userId) {
@@ -13,7 +14,12 @@ class NotificationRepository {
         .where('recipientId', isEqualTo: userId)
         .orderBy('timestamp', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs.map((doc) => {...doc.data(), 'id': doc.id}).toList());
+        .map(
+          (snapshot) =>
+              snapshot.docs
+                  .map((doc) => {...doc.data(), 'id': doc.id})
+                  .toList(),
+        );
   }
 
   // Send a notification
@@ -23,6 +29,8 @@ class NotificationRepository {
     required String title,
     required String body,
     String? groupId,
+    Map<String, String>? titleByLanguage,
+    Map<String, String>? messageByLanguage,
   }) async {
     final notificationData = {
       'recipientId': recipientId,
@@ -30,10 +38,17 @@ class NotificationRepository {
       'message': body,
       'createdAt': FieldValue.serverTimestamp(),
       'readBy': [],
+      if (titleByLanguage != null && titleByLanguage.isNotEmpty)
+        'titleByLanguage': titleByLanguage,
+      if (messageByLanguage != null && messageByLanguage.isNotEmpty)
+        'messageByLanguage': messageByLanguage,
       if (groupId != null) 'groupId': groupId,
     };
 
-    final collectionRef = firestore.collection('organizations').doc(orgId).collection('notifications');
+    final collectionRef = firestore
+        .collection('organizations')
+        .doc(orgId)
+        .collection('notifications');
 
     // Use TTL helper to automatically add expiresAt
     await FirestoreTTLHelper.addWithTTL(collectionRef, notificationData);
@@ -41,6 +56,8 @@ class NotificationRepository {
 
   // Mark notification as read
   Future<void> markAsRead(String notificationId) async {
-    await firestore.collection('notifications').doc(notificationId).update({'read': true});
+    await firestore.collection('notifications').doc(notificationId).update({
+      'read': true,
+    });
   }
 }

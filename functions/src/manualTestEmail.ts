@@ -62,7 +62,7 @@ export const manualTestEmail = functions.https.onRequest(async (req, res) => {
 
     const msg = {
       to: email,
-      from: process.env.SENDGRID_FROM_EMAIL || 'noreply@em5998.planwithhands.com',
+      from: process.env.SENDGRID_FROM_EMAIL || 'noreply@planwithhands.com',
       templateId,
       dynamicTemplateData: templateData,
       categories: ['manual_test_email']

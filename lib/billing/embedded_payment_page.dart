@@ -9,6 +9,7 @@ import 'dart:async';
 // ⬇️ UPDATE this import path if needed
 import 'package:hands_app/services/stripe_service.dart';
 import 'package:hands_app/services/pricing_service.dart';
+import 'package:hands_app/config/feature_flags.dart';
 import 'package:hands_app/widgets/hands_text_field.dart';
 
 class EmbeddedPaymentPage extends StatefulWidget {
@@ -33,7 +34,8 @@ class EmbeddedPaymentPage extends StatefulWidget {
   State<EmbeddedPaymentPage> createState() => _EmbeddedPaymentPageState();
 }
 
-class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerProviderStateMixin {
+class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage>
+    with TickerProviderStateMixin {
   final _nameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _promoCtrl = TextEditingController();
@@ -66,7 +68,8 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
 
-  bool get _hasAnnual => widget.priceIdAnnual != null && widget.priceIdAnnual!.isNotEmpty;
+  bool get _hasAnnual =>
+      widget.priceIdAnnual != null && widget.priceIdAnnual!.isNotEmpty;
   bool get _formComplete =>
       _nameCtrl.text.trim().isNotEmpty &&
       _emailCtrl.text.trim().isNotEmpty &&
@@ -77,7 +80,9 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
   void _popSuccess({String? message}) {
     if (!mounted) return;
     if (message != null && message.isNotEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
 
     print('_popSuccess called with message: $message');
@@ -101,7 +106,9 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
 
       try {
         context.go('/admin_dashboard?setup=true');
-        print('Navigation to admin_dashboard with setup=true attempted successfully');
+        print(
+          'Navigation to admin_dashboard with setup=true attempted successfully',
+        );
       } catch (e) {
         print('Admin dashboard navigation failed: $e');
         // Fallback to user dashboard
@@ -123,17 +130,24 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
     _isAnnual = widget.startWithAnnual && _hasAnnual;
 
     // Initialize animations
-    _fadeController = AnimationController(duration: const Duration(milliseconds: 300), vsync: this);
-    _slideController = AnimationController(duration: const Duration(milliseconds: 400), vsync: this);
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _slideController = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: this,
+    );
 
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _fadeController, curve: Curves.easeInOut));
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _fadeController, curve: Curves.easeInOut),
+    );
     _slideAnimation = Tween<Offset>(
       begin: const Offset(0, 0.1),
       end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _slideController, curve: Curves.easeOutCubic));
+    ).animate(
+      CurvedAnimation(parent: _slideController, curve: Curves.easeOutCubic),
+    );
 
     // Start animations
     _fadeController.forward();
@@ -175,7 +189,9 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
                     await StripeService.openBillingPortal(widget.orgId);
                   } catch (e) {
                     if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not open portal: $e')));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Could not open portal: $e')),
+                    );
                   }
                 },
                 child: const Text('Open Billing Portal'),
@@ -205,7 +221,10 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
                           ? Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Expanded(flex: 3, child: _buildPaymentCard(isNarrow: isNarrow)),
+                              Expanded(
+                                flex: 3,
+                                child: _buildPaymentCard(isNarrow: isNarrow),
+                              ),
                               const SizedBox(width: 32),
                               Expanded(flex: 2, child: _buildSummary()),
                             ],
@@ -239,22 +258,38 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: const LinearGradient(colors: [Color(0xFFF05A2C), Color(0xFFFF7A50)]), // App's orange theme
+              gradient: const LinearGradient(
+                colors: [Color(0xFFF05A2C), Color(0xFFFF7A50)],
+              ), // App's orange theme
               boxShadow: [
-                BoxShadow(color: const Color(0xFFF05A2C).withValues(alpha: 0.4), blurRadius: 20, spreadRadius: 2),
+                BoxShadow(
+                  color: const Color(0xFFF05A2C).withValues(alpha: 0.4),
+                  blurRadius: 20,
+                  spreadRadius: 2,
+                ),
               ],
             ),
-            child: const Icon(Icons.lock_rounded, color: Colors.white, size: 32),
+            child: const Icon(
+              Icons.lock_rounded,
+              color: Colors.white,
+              size: 32,
+            ),
           ),
           const SizedBox(height: 16),
 
           // Title with gradient text
           ShaderMask(
             shaderCallback:
-                (bounds) => const LinearGradient(colors: [Colors.white, Color(0xFFB0B0B0)]).createShader(bounds),
+                (bounds) => const LinearGradient(
+                  colors: [Colors.white, Color(0xFFB0B0B0)],
+                ).createShader(bounds),
             child: const Text(
               'Secure Checkout',
-              style: TextStyle(fontSize: 32, fontWeight: FontWeight.w700, color: Colors.white),
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
             ),
           ),
           const SizedBox(height: 8),
@@ -262,7 +297,10 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
           // Subtitle
           Text(
             'Your payment information is encrypted and secure',
-            style: TextStyle(fontSize: 16, color: Colors.white.withValues(alpha: 0.7)),
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.white.withValues(alpha: 0.7),
+            ),
           ),
         ],
       ),
@@ -317,7 +355,10 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
                 const SizedBox(height: 24),
 
                 // Billing Cycle
-                if (_hasAnnual) ...[_buildBillingSection(isNarrow: isNarrow), const SizedBox(height: 24)],
+                if (_hasAnnual) ...[
+                  _buildBillingSection(isNarrow: isNarrow),
+                  const SizedBox(height: 24),
+                ],
 
                 // Error display
                 if (_error != null) _buildErrorSection(),
@@ -339,7 +380,9 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
   Widget _buildSummary() {
     final isAnnual = _isAnnual && _hasAnnual;
     final basePrice =
-        isAnnual ? PricingService.calcAnnual(widget.quantity) : PricingService.calcMonthly(widget.quantity);
+        isAnnual
+            ? PricingService.calcAnnual(widget.quantity)
+            : PricingService.calcMonthly(widget.quantity);
     final period = isAnnual ? 'year' : 'month';
     final discount = _validPromo != null ? _calculateDiscount(basePrice) : 0.0;
     final finalPrice = basePrice - discount;
@@ -396,7 +439,12 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
   }
 
   // Helper methods for enhanced UI
-  Widget _enhancedField(String label, TextEditingController controller, IconData icon, {Function(String)? onChanged}) {
+  Widget _enhancedField(
+    String label,
+    TextEditingController controller,
+    IconData icon, {
+    Function(String)? onChanged,
+  }) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white, // Clean white background
@@ -413,7 +461,10 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
           prefixIcon: Icon(icon, color: Colors.grey.shade600),
           filled: true,
           fillColor: Colors.white,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
           contentPadding: const EdgeInsets.all(16),
         ),
       ),
@@ -476,7 +527,8 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
           child: _enhancedPillButton(
             label: 'Annual',
             subtitle: 'Pay annually',
-            price: '\$${PricingService.calcAnnual(widget.quantity).toStringAsFixed(2)} per year',
+            price:
+                '\$${PricingService.calcAnnual(widget.quantity).toStringAsFixed(2)} per year',
             trailingChip: '10% OFF',
             selected: _isAnnual,
             onTap: () => setState(() => _isAnnual = true),
@@ -501,16 +553,23 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
         decoration: BoxDecoration(
           gradient:
               selected
-                  ? const LinearGradient(colors: [Color(0xFFF05A2C), Color(0xFFFF7A50)])
+                  ? const LinearGradient(
+                    colors: [Color(0xFFF05A2C), Color(0xFFFF7A50)],
+                  )
                   : null, // App's orange theme
           color: !selected ? Colors.grey.shade100 : null,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: selected ? Colors.transparent : Colors.grey.shade300, width: 2),
+          border: Border.all(
+            color: selected ? Colors.transparent : Colors.grey.shade300,
+            width: 2,
+          ),
           boxShadow:
               selected
                   ? [
                     BoxShadow(
-                      color: const Color(0xFFF05A2C).withValues(alpha: 0.3), // App's orange theme
+                      color: const Color(
+                        0xFFF05A2C,
+                      ).withValues(alpha: 0.3), // App's orange theme
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -533,9 +592,15 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
                 ),
                 if (trailingChip != null)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
-                      color: selected ? Colors.white.withValues(alpha: 0.2) : Colors.orange,
+                      color:
+                          selected
+                              ? Colors.white.withValues(alpha: 0.2)
+                              : Colors.orange,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
@@ -555,7 +620,10 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
                 subtitle,
                 style: TextStyle(
                   fontSize: 14,
-                  color: selected ? Colors.white.withValues(alpha: 0.8) : Colors.grey.shade600,
+                  color:
+                      selected
+                          ? Colors.white.withValues(alpha: 0.8)
+                          : Colors.grey.shade600,
                 ),
               ),
             ],
@@ -625,7 +693,14 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
   }
 
   Widget _sectionHeader(String title) {
-    return Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.black87));
+    return Text(
+      title,
+      style: const TextStyle(
+        fontSize: 20,
+        fontWeight: FontWeight.w700,
+        color: Colors.black87,
+      ),
+    );
   }
 
   // Missing helper methods that need to be added
@@ -644,7 +719,11 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
           Expanded(
             child: Text(
               'SSL Encrypted • PCI Compliant • Secure Payment',
-              style: TextStyle(color: Colors.green.shade700, fontSize: 12, fontWeight: FontWeight.w500),
+              style: TextStyle(
+                color: Colors.green.shade700,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],
@@ -656,14 +735,33 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Contact Information', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.black87)),
+        Text(
+          'Contact Information',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
+          ),
+        ),
         const SizedBox(height: 12),
         if (!isNarrow)
           Row(
             children: [
-              Expanded(child: _enhancedField('Full Name', _nameCtrl, Icons.person_outline)),
+              Expanded(
+                child: _enhancedField(
+                  'Full Name',
+                  _nameCtrl,
+                  Icons.person_outline,
+                ),
+              ),
               const SizedBox(width: 16),
-              Expanded(child: _enhancedField('Email Address', _emailCtrl, Icons.email_outlined)),
+              Expanded(
+                child: _enhancedField(
+                  'Email Address',
+                  _emailCtrl,
+                  Icons.email_outlined,
+                ),
+              ),
             ],
           )
         else ...[
@@ -679,7 +777,14 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Card Information', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.black87)),
+        Text(
+          'Card Information',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
+          ),
+        ),
         const SizedBox(height: 12),
         _enhancedCardField(isNarrow: isNarrow),
       ],
@@ -692,7 +797,11 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
       children: [
         Text(
           'Promo Code (Optional)',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.black87),
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
+          ),
         ),
         const SizedBox(height: 12),
         if (!isNarrow)
@@ -714,8 +823,14 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor:
-                            _promoLoading ? Colors.grey.shade300 : (_validPromo != null ? Colors.green : Colors.blue),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            _promoLoading
+                                ? Colors.grey.shade300
+                                : (_validPromo != null
+                                    ? Colors.green
+                                    : Colors.blue),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                         minimumSize: const Size(100, 56),
                       ),
                       onPressed: _promoLoading ? null : _applyPromo,
@@ -724,7 +839,10 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
                               ? const SizedBox(
                                 width: 18,
                                 height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
                               )
                               : Text(
                                 _validPromo != null ? 'Applied' : 'Apply',
@@ -736,7 +854,9 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
                       ElevatedButton(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.red,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                           minimumSize: const Size(56, 56),
                         ),
                         onPressed: () {
@@ -753,7 +873,12 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
             ],
           )
         else ...[
-          _enhancedField('Enter promo code', _promoCtrl, Icons.local_offer_outlined, onChanged: _onPromoChanged),
+          _enhancedField(
+            'Enter promo code',
+            _promoCtrl,
+            Icons.local_offer_outlined,
+            onChanged: _onPromoChanged,
+          ),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -761,8 +886,14 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor:
-                        _promoLoading ? Colors.grey.shade300 : (_validPromo != null ? Colors.green : Colors.blue),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        _promoLoading
+                            ? Colors.grey.shade300
+                            : (_validPromo != null
+                                ? Colors.green
+                                : Colors.blue),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     minimumSize: const Size.fromHeight(48),
                   ),
                   onPressed: _promoLoading ? null : _applyPromo,
@@ -771,7 +902,10 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
                           ? const SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
                           : Text(
                             _validPromo != null ? 'Applied' : 'Apply',
@@ -787,7 +921,9 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                     onPressed: () {
                       setState(() {
@@ -804,7 +940,10 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
         ],
         if (_promoError != null) ...[
           const SizedBox(height: 8),
-          Text(_promoError!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+          Text(
+            _promoError!,
+            style: const TextStyle(color: Colors.red, fontSize: 12),
+          ),
         ],
         if (_validPromo != null) ...[
           const SizedBox(height: 8),
@@ -834,7 +973,14 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Billing Cycle', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.black87)),
+        Text(
+          'Billing Cycle',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
+          ),
+        ),
         const SizedBox(height: 12),
         if (!isNarrow)
           _enhancedBillingToggle()
@@ -852,7 +998,8 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
               _enhancedPillButton(
                 label: 'Annual',
                 subtitle: 'Pay annually',
-                price: '\$${PricingService.calcAnnual(widget.quantity).toStringAsFixed(2)} per year',
+                price:
+                    '\$${PricingService.calcAnnual(widget.quantity).toStringAsFixed(2)} per year',
                 trailingChip: '10% OFF',
                 selected: _isAnnual,
                 onTap: () => setState(() => _isAnnual = true),
@@ -877,7 +1024,12 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
         children: [
           const Icon(Icons.error_outline, color: Colors.red, size: 20),
           const SizedBox(width: 12),
-          Expanded(child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 14))),
+          Expanded(
+            child: Text(
+              _error!,
+              style: const TextStyle(color: Colors.red, fontSize: 14),
+            ),
+          ),
         ],
       ),
     );
@@ -890,7 +1042,9 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
       decoration: BoxDecoration(
         gradient:
             _formComplete && !_busy
-                ? const LinearGradient(colors: [Color(0xFFF05A2C), Color(0xFFFF7A50)])
+                ? const LinearGradient(
+                  colors: [Color(0xFFF05A2C), Color(0xFFFF7A50)],
+                )
                 : null, // App's orange theme
         color: !(_formComplete && !_busy) ? Colors.grey.shade400 : null,
         borderRadius: BorderRadius.circular(16),
@@ -898,7 +1052,9 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
             _formComplete && !_busy
                 ? [
                   BoxShadow(
-                    color: const Color(0xFFF05A2C).withValues(alpha: 0.4), // App's orange theme
+                    color: const Color(
+                      0xFFF05A2C,
+                    ).withValues(alpha: 0.4), // App's orange theme
                     blurRadius: 15,
                     offset: const Offset(0, 4),
                   ),
@@ -916,7 +1072,10 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
                     ? const SizedBox(
                       height: 24,
                       width: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
                     )
                     : Row(
                       mainAxisSize: MainAxisSize.min,
@@ -925,7 +1084,11 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
                         SizedBox(width: 8),
                         Text(
                           'Complete Payment',
-                          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ],
                     ),
@@ -950,24 +1113,39 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
             children: [
               Text(
                 'Powered by',
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 14, fontWeight: FontWeight.w500),
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFF635BFF), // Stripe brand color
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: const Text(
                   'stripe',
-                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: 0.5),
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5,
+                  ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          Text('Secure payments processed by Stripe', style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+          Text(
+            'Secure payments processed by Stripe',
+            style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+          ),
         ],
       ),
     );
@@ -1006,12 +1184,18 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
   Widget _buildProductRow() {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(
+        color: Colors.blue.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: Colors.blue, borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(
+              color: Colors.blue,
+              borderRadius: BorderRadius.circular(8),
+            ),
             child: const Icon(Icons.restaurant, color: Colors.white, size: 20),
           ),
           const SizedBox(width: 12),
@@ -1021,7 +1205,11 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
               children: [
                 const Text(
                   'Plan with Hands',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.black87),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
                 ),
                 Text(
                   '${widget.quantity} Location${widget.quantity > 1 ? 's' : ''}',
@@ -1035,7 +1223,12 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
     );
   }
 
-  Widget _buildPricingRows(double basePrice, double discount, double finalPrice, String period) {
+  Widget _buildPricingRows(
+    double basePrice,
+    double discount,
+    double finalPrice,
+    String period,
+  ) {
     return Column(
       children: [
         const SizedBox(height: 16),
@@ -1067,7 +1260,10 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
                 'Discount (${_validPromo!['name'] ?? 'Promo'})',
                 style: const TextStyle(fontSize: 14, color: Colors.green),
               ),
-              Text('-\$${discount.toStringAsFixed(2)}', style: const TextStyle(fontSize: 14, color: Colors.green)),
+              Text(
+                '-\$${discount.toStringAsFixed(2)}',
+                style: const TextStyle(fontSize: 14, color: Colors.green),
+              ),
             ],
           ),
         ],
@@ -1080,10 +1276,21 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text('Total', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.black87)),
+            const Text(
+              'Total',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: Colors.black87,
+              ),
+            ),
             Text(
               '\$${finalPrice.toStringAsFixed(2)}/$period',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.black87),
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: Colors.black87,
+              ),
             ),
           ],
         ),
@@ -1092,10 +1299,17 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Renews at', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+              Text(
+                'Renews at',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
               Text(
                 '\$${basePrice.toStringAsFixed(2)}/$period',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade600,
+                  fontStyle: FontStyle.italic,
+                ),
               ),
             ],
           ),
@@ -1109,7 +1323,9 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
       margin: const EdgeInsets.only(top: 24),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF059669)]),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF10B981), Color(0xFF059669)],
+        ),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -1119,12 +1335,16 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
+              children: [
                 Text(
-                  '14-Day Free Trial',
-                  style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                  '$kTrialDays-Day Free Trial',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-                Text(
+                const Text(
                   'You won\'t be charged until your trial ends.',
                   style: TextStyle(color: Colors.white, fontSize: 12),
                 ),
@@ -1141,12 +1361,20 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [_securityBadge('🔒', 'SSL'), _securityBadge('🛡️', 'PCI'), _securityBadge('✓', 'Secure')],
+          children: [
+            _securityBadge('🔒', 'SSL'),
+            _securityBadge('🛡️', 'PCI'),
+            _securityBadge('✓', 'Secure'),
+          ],
         ),
         const SizedBox(height: 16),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: [_paymentMethodIcon('💳'), _paymentMethodIcon('🏦'), _paymentMethodIcon('📱')],
+          children: [
+            _paymentMethodIcon('💳'),
+            _paymentMethodIcon('🏦'),
+            _paymentMethodIcon('📱'),
+          ],
         ),
       ],
     );
@@ -1164,7 +1392,14 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
         children: [
           Text(icon, style: const TextStyle(fontSize: 16)),
           const SizedBox(height: 4),
-          Text(text, style: TextStyle(fontSize: 10, color: Colors.green.shade700, fontWeight: FontWeight.w500)),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 10,
+              color: Colors.green.shade700,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
         ],
       ),
     );
@@ -1174,7 +1409,10 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 4),
       padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(6)),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(6),
+      ),
       child: Text(icon, style: const TextStyle(fontSize: 16)),
     );
   }
@@ -1187,8 +1425,14 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
     });
 
     try {
-      final priceId = (_isAnnual && _hasAnnual) ? widget.priceIdAnnual! : widget.priceIdMonthly;
-      final String? couponId = (_validPromo?['valid'] == true) ? (_validPromo?['id'] as String?) : null;
+      final priceId =
+          (_isAnnual && _hasAnnual)
+              ? widget.priceIdAnnual!
+              : widget.priceIdMonthly;
+      final String? couponId =
+          (_validPromo?['valid'] == true)
+              ? (_validPromo?['id'] as String?)
+              : null;
 
       // Use the existing CardField flow
       final sub = await StripeService.createSubscriptionElements(
@@ -1196,8 +1440,7 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
         priceId: priceId,
         quantity: widget.quantity,
         email: widget.email,
-        // Ensure a 14-day free trial is applied
-        trialDays: 14,
+        trialDays: kTrialDays,
         couponId: couponId,
       );
 
@@ -1208,14 +1451,18 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
       if (clientSecret != null && clientSecret.isNotEmpty) {
         await Stripe.instance.confirmPayment(
           paymentIntentClientSecret: clientSecret,
-          data: const PaymentMethodParams.card(paymentMethodData: PaymentMethodData()),
+          data: const PaymentMethodParams.card(
+            paymentMethodData: PaymentMethodData(),
+          ),
         );
       }
       // If there's no payment required but we have a SetupIntent, confirm it to save the payment method
       else if (setupClientSecret != null && setupClientSecret.isNotEmpty) {
         await Stripe.instance.confirmSetupIntent(
           paymentIntentClientSecret: setupClientSecret,
-          params: const PaymentMethodParams.card(paymentMethodData: PaymentMethodData()),
+          params: const PaymentMethodParams.card(
+            paymentMethodData: PaymentMethodData(),
+          ),
         );
       }
 
@@ -1243,7 +1490,10 @@ class _EmbeddedPaymentPageState extends State<EmbeddedPaymentPage> with TickerPr
 // Card number input formatter
 class CardNumberInputFormatter extends TextInputFormatter {
   @override
-  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
     var text = newValue.text;
 
     if (newValue.selection.baseOffset == 0) {
@@ -1255,21 +1505,28 @@ class CardNumberInputFormatter extends TextInputFormatter {
       if (text[i] != ' ') {
         buffer.write(text[i]);
         var nonZeroIndex = buffer.length;
-        if (nonZeroIndex % 4 == 0 && nonZeroIndex != text.replaceAll(' ', '').length) {
+        if (nonZeroIndex % 4 == 0 &&
+            nonZeroIndex != text.replaceAll(' ', '').length) {
           buffer.write(' '); // Add space after every 4 digits
         }
       }
     }
 
     var string = buffer.toString();
-    return newValue.copyWith(text: string, selection: TextSelection.collapsed(offset: string.length));
+    return newValue.copyWith(
+      text: string,
+      selection: TextSelection.collapsed(offset: string.length),
+    );
   }
 }
 
 // Expiry date input formatter
 class ExpiryDateInputFormatter extends TextInputFormatter {
   @override
-  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
     var text = newValue.text;
 
     if (newValue.selection.baseOffset == 0) {
@@ -1281,13 +1538,18 @@ class ExpiryDateInputFormatter extends TextInputFormatter {
       if (text[i] != '/') {
         buffer.write(text[i]);
         var nonZeroIndex = buffer.length;
-        if (nonZeroIndex % 2 == 0 && nonZeroIndex != text.replaceAll('/', '').length && nonZeroIndex < 4) {
+        if (nonZeroIndex % 2 == 0 &&
+            nonZeroIndex != text.replaceAll('/', '').length &&
+            nonZeroIndex < 4) {
           buffer.write('/');
         }
       }
     }
 
     var string = buffer.toString();
-    return newValue.copyWith(text: string, selection: TextSelection.collapsed(offset: string.length));
+    return newValue.copyWith(
+      text: string,
+      selection: TextSelection.collapsed(offset: string.length),
+    );
   }
 }

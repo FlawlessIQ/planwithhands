@@ -7,7 +7,11 @@ class CondensedSetupWidget extends StatefulWidget {
   final String organizationId;
   final VoidCallback onMetricsEnabled;
 
-  const CondensedSetupWidget({super.key, required this.organizationId, required this.onMetricsEnabled});
+  const CondensedSetupWidget({
+    super.key,
+    required this.organizationId,
+    required this.onMetricsEnabled,
+  });
 
   @override
   State<CondensedSetupWidget> createState() => _CondensedSetupWidgetState();
@@ -22,6 +26,7 @@ class _CondensedSetupWidgetState extends State<CondensedSetupWidget> {
     'hasTeamMembers': false,
   };
   bool _isLoading = true;
+  bool _canEnableMetrics = false;
 
   @override
   void initState() {
@@ -38,9 +43,11 @@ class _CondensedSetupWidgetState extends State<CondensedSetupWidget> {
         _setupStatus = {
           'hasLocations': (requirements['locations']?['met'] as bool?) ?? false,
           'hasShifts': (requirements['shifts']?['met'] as bool?) ?? false,
-          'hasChecklists': (requirements['checklists']?['met'] as bool?) ?? false,
+          'hasChecklists':
+              (requirements['checklists']?['met'] as bool?) ?? false,
           'hasTeamMembers': (requirements['users']?['met'] as bool?) ?? false,
         };
+        _canEnableMetrics = status['allRequirementsMet'] as bool? ?? false;
         _isLoading = false;
       });
     }
@@ -75,7 +82,11 @@ class _CondensedSetupWidgetState extends State<CondensedSetupWidget> {
                       children: [
                         Row(
                           children: [
-                            const Icon(Icons.rocket_launch, color: HandsColors.handsOrange, size: 32),
+                            const Icon(
+                              Icons.rocket_launch,
+                              color: HandsColors.handsOrange,
+                              size: 32,
+                            ),
                             const SizedBox(width: 16),
                             Text(
                               'Complete Your Setup',
@@ -89,8 +100,11 @@ class _CondensedSetupWidgetState extends State<CondensedSetupWidget> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Finish setting up your organization to start tracking metrics.',
-                          style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white70),
+                          'Finish these setup steps so your dashboard has real data to track.',
+                          style: GoogleFonts.comfortaa(
+                            fontSize: 14,
+                            color: HandsColors.white70,
+                          ),
                         ),
                         const SizedBox(height: 24),
                         Row(
@@ -118,7 +132,9 @@ class _CondensedSetupWidgetState extends State<CondensedSetupWidget> {
                         LinearProgressIndicator(
                           value: _progress,
                           backgroundColor: HandsColors.white12,
-                          valueColor: const AlwaysStoppedAnimation<Color>(HandsColors.handsOrange),
+                          valueColor: const AlwaysStoppedAnimation<Color>(
+                            HandsColors.handsOrange,
+                          ),
                           minHeight: 6,
                         ),
                         const SizedBox(height: 24),
@@ -155,19 +171,51 @@ class _CondensedSetupWidgetState extends State<CondensedSetupWidget> {
                           subtitle: 'Invite at least one staff member',
                           isDone: _setupStatus['hasTeamMembers'] ?? false,
                         ),
+                        if (!_canEnableMetrics) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            'Complete every item above before turning on performance tracking.',
+                            style: GoogleFonts.comfortaa(
+                              fontSize: 12,
+                              color: HandsColors.white70,
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 24),
                         ElevatedButton(
-                          onPressed: () async {
-                            await _setupService.enableMetricsTracking(widget.organizationId);
-                            widget.onMetricsEnabled();
-                          },
+                          onPressed:
+                              _canEnableMetrics
+                                  ? () async {
+                                    final enabled = await _setupService
+                                        .enableMetricsTracking(
+                                          widget.organizationId,
+                                        );
+                                    if (enabled) {
+                                      widget.onMetricsEnabled();
+                                    } else if (mounted) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'Finish setup before enabling performance tracking.',
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                  : null,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: HandsColors.handsOrange,
                             minimumSize: const Size(double.infinity, 50),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                           child: Text(
-                            'Ready to Track Performance',
+                            _canEnableMetrics
+                                ? 'Turn On Performance Tracking'
+                                : 'Complete Setup to Continue',
                             style: GoogleFonts.comfortaa(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -193,7 +241,10 @@ class _CondensedSetupWidgetState extends State<CondensedSetupWidget> {
       padding: const EdgeInsets.only(bottom: 16.0),
       child: Row(
         children: [
-          Icon(icon, color: isDone ? HandsColors.sageGreen : HandsColors.white70),
+          Icon(
+            icon,
+            color: isDone ? HandsColors.sageGreen : HandsColors.white70,
+          ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
@@ -205,10 +256,19 @@ class _CondensedSetupWidgetState extends State<CondensedSetupWidget> {
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                     color: isDone ? HandsColors.white : HandsColors.white70,
-                    decoration: isDone ? TextDecoration.lineThrough : TextDecoration.none,
+                    decoration:
+                        isDone
+                            ? TextDecoration.lineThrough
+                            : TextDecoration.none,
                   ),
                 ),
-                Text(subtitle, style: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white70)),
+                Text(
+                  subtitle,
+                  style: GoogleFonts.comfortaa(
+                    fontSize: 12,
+                    color: HandsColors.white70,
+                  ),
+                ),
               ],
             ),
           ),

@@ -7,6 +7,51 @@ function getSendGridApiKey() {
   return process.env.SENDGRID_API_KEY || process.env.SENDGRID_KEY;
 }
 
+function normalizePreferredLanguageCode(value) {
+  const normalized = String(value || '').trim().toLowerCase().replace(/_/g, '-');
+  if (normalized.startsWith('es')) return 'es';
+  if (normalized.startsWith('pt')) return 'pt';
+  return 'en';
+}
+
+function getHelpCopy(preferredLanguageCode) {
+  const languageCode = normalizePreferredLanguageCode(preferredLanguageCode);
+  if (languageCode === 'es') {
+    return {
+      missingFields: 'Faltan campos obligatorios: correo electrónico, asunto o mensaje',
+      invalidEmail: 'Formato de correo electrónico inválido',
+      messageTooShort: 'El mensaje debe tener al menos 10 caracteres',
+      success:
+        '¡Solicitud enviada con éxito! Te responderemos dentro de 24 horas.',
+      failed:
+        'No se pudo enviar la solicitud de ayuda. Inténtalo de nuevo.',
+      methodNotAllowed: 'Método no permitido',
+    };
+  }
+  if (languageCode === 'pt') {
+    return {
+      missingFields: 'Faltam campos obrigatórios: e-mail, assunto ou mensagem',
+      invalidEmail: 'Formato de e-mail inválido',
+      messageTooShort: 'A mensagem deve ter pelo menos 10 caracteres',
+      success:
+        'Solicitação enviada com sucesso! Responderemos em até 24 horas.',
+      failed:
+        'Não foi possível enviar a solicitação de ajuda. Tente novamente.',
+      methodNotAllowed: 'Método não permitido',
+    };
+  }
+
+  return {
+    missingFields: 'Missing required fields: email, subject, or message',
+    invalidEmail: 'Invalid email format',
+    messageTooShort: 'Message must be at least 10 characters long',
+    success:
+      "Help request submitted successfully. We'll get back to you within 24 hours.",
+    failed: 'Failed to submit help request. Please try again.',
+    methodNotAllowed: 'Method not allowed',
+  };
+}
+
 // Initialize SendGrid with API key from env (Firebase CLI dotenv support)
 const sendgridApiKey = getSendGridApiKey();
 if (sendgridApiKey) {
@@ -31,39 +76,44 @@ exports.sendHelpRequest = functions.https.onRequest(async (req, res) => {
     return res.status(204).send('');
   }
 
+  const preferredLanguageCode = normalizePreferredLanguageCode(
+    req.body?.preferredLanguageCode,
+  );
+  const copy = getHelpCopy(preferredLanguageCode);
+
   if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Method not allowed' });
+    res.status(405).json({ error: copy.methodNotAllowed });
     return;
   }
 
-  const {email, subject, message} = req.body;
+  const {email, subject, message, userId, userRole, organizationId} = req.body;
 
   // Validate input
   if (!email || !subject || !message) {
-    res.status(400).json({ error: "Missing required fields: email, subject, or message" });
+    res.status(400).json({ error: copy.missingFields });
     return;
   }
 
   // Validate email format
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email)) {
-    res.status(400).json({ error: "Invalid email format" });
+    res.status(400).json({ error: copy.invalidEmail });
     return;
   }
 
   // Validate message length
   if (message.trim().length < 10) {
-    res.status(400).json({ error: "Message must be at least 10 characters long" });
+    res.status(400).json({ error: copy.messageTooShort });
     return;
   }
 
   try {
     // Get user info - simplified for HTTP function
     let userInfo = {
-      userId: "anonymous",
+      userId: userId || "anonymous",
       userEmail: email,
-      userRole: "unknown",
-      organizationId: "unknown",
+      userRole: userRole ?? "unknown",
+      organizationId: organizationId || "unknown",
     };
 
     // Store help request in Firestore
@@ -75,6 +125,7 @@ exports.sendHelpRequest = functions.https.onRequest(async (req, res) => {
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
       status: "new",
       source: "app_help_form",
+      preferredLanguageCode,
     };
 
     const helpRequestRef = await db.collection("help_requests").add(helpRequestData);
@@ -85,7 +136,7 @@ exports.sendHelpRequest = functions.https.onRequest(async (req, res) => {
       try {
         const supportEmail = {
           to: 'conor@planwithhands.com',
-          from: 'noreply@em5998.planwithhands.com',
+          from: process.env.SENDGRID_FROM_EMAIL || 'noreply@planwithhands.com',
           subject: `Help Request: ${subject}`,
           html: `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -122,11 +173,11 @@ exports.sendHelpRequest = functions.https.onRequest(async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Help request submitted successfully. We'll get back to you within 24 hours.",
+      message: copy.success,
       requestId: helpRequestRef.id,
     });
   } catch (error) {
     logger.error("Error processing help request:", error);
-    res.status(500).json({ error: "Failed to submit help request. Please try again." });
+    res.status(500).json({ error: copy.failed });
   }
 });

@@ -64,14 +64,14 @@ export default function Pricing() {
     <>
       <SEO
         title="Pricing - Plan With Hands | Restaurant Management Software"
-        description="Simple, transparent pricing for restaurant management software. $49.99/month per location. Save 10% with annual billing. Free 14-day trial."
+        description="Simple, transparent pricing for restaurant management software. $49.99/month per location. Save 10% with annual billing. Start with a 14-day trial and no card required."
         canonical="https://planwithhands.com/pricing/"
         structuredData={structuredData}
         keywords="restaurant management software pricing, restaurant operations cost, digital checklist software price, restaurant technology pricing, food service software cost"
       />
       <div className="container mx-auto py-12 sm:py-16 md:py-20 text-center max-w-4xl px-4 sm:px-6">
       <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3 sm:mb-4 leading-tight">Simple, transparent pricing</h1>
-      <p className="text-white/80 mb-6 sm:mb-8 text-sm sm:text-base">Pay per location. Save 10% with annual billing.</p>
+      <p className="text-white/80 mb-6 sm:mb-8 text-sm sm:text-base">Pay per location. Save 10% with annual billing. Start setup before adding a card.</p>
 
       <div className="bg-surface text-white rounded-xl sm:rounded-2xl shadow-xl p-6 sm:p-8 md:p-10 max-w-xl mx-auto">
   <h2 className="text-xl sm:text-2xl font-semibold mb-1">Hands Plan</h2>
@@ -93,7 +93,7 @@ export default function Pricing() {
   <div className="text-3xl sm:text-4xl font-bold mb-1">${price.toFixed(2)}</div>
   <div className="text-xs sm:text-sm text-white/60 mb-6">{suffix} for {locations} {locations>1?'locations':'location'}</div>
 
-        <button className="bg-accent text-primary px-6 py-3 rounded-xl font-semibold w-full hover:opacity-90 transition-colors duration-200 min-h-[48px] text-sm sm:text-base" onClick={() => window.location.href = 'https://plan-with-hands.web.app/create_account'}>Start free trial</button>
+        <button className="bg-accent text-primary px-6 py-3 rounded-xl font-semibold w-full hover:opacity-90 transition-colors duration-200 min-h-[48px] text-sm sm:text-base" onClick={() => window.location.href = 'https://plan-with-hands.web.app/create_account'}>Start 14-day trial</button>
 
         <ul className="text-left text-white/90 mt-6 space-y-2 list-disc list-inside text-sm sm:text-base">
           <li>Daily checklists with photos & notes</li>
@@ -114,7 +114,7 @@ export default function Pricing() {
           </details>
           <details className="bg-surface text-white rounded-xl p-4 sm:p-5">
             <summary className="font-semibold text-sm sm:text-base cursor-pointer">Is there a free trial?</summary>
-            <p className="mt-2 text-sm sm:text-base text-white/90">Yes! Get started free and see if Hands works for your team before paying.</p>
+            <p className="mt-2 text-sm sm:text-base text-white/90">Yes. Every account starts with a 14-day trial, and you can begin setup before adding a payment method.</p>
           </details>
           <details className="bg-surface text-white rounded-xl p-4 sm:p-5">
             <summary className="font-semibold text-sm sm:text-base cursor-pointer">Can I add or remove locations any time?</summary>

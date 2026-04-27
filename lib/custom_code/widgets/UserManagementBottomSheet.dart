@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:cloud_functions/cloud_functions.dart';
-import 'package:uuid/uuid.dart';
 import 'package:hands_app/core/providers/crashlytics_provider.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
-import 'package:hands_app/utils/firestore_ttl_helper.dart';
 import 'package:hands_app/utils/jobtype_helper.dart';
 import 'package:hands_app/core/logging/logger.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
+import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/widgets/hands_text_field.dart';
+import 'package:hands_app/services/invite_service.dart';
 
 /// Dialog for managing job types with full CRUD functionality.
 class JobTypeManagementDialog extends StatefulWidget {
@@ -19,7 +21,8 @@ class JobTypeManagementDialog extends StatefulWidget {
   const JobTypeManagementDialog({super.key, required this.onJobTypesUpdated});
 
   @override
-  State<JobTypeManagementDialog> createState() => _JobTypeManagementDialogState();
+  State<JobTypeManagementDialog> createState() =>
+      _JobTypeManagementDialogState();
 }
 
 class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
@@ -47,7 +50,11 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
     try {
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser != null) {
-        final currentUserDoc = await FirestoreEnforcer.instance.collection('users').doc(currentUser.uid).get();
+        final currentUserDoc =
+            await FirestoreEnforcer.instance
+                .collection('users')
+                .doc(currentUser.uid)
+                .get();
         _organizationId = currentUserDoc.data()?['organizationId'];
       }
 
@@ -99,11 +106,15 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
     }
 
     try {
-      await FirestoreEnforcer.instance.collection('organizations').doc(_organizationId!).collection('jobTypes').add({
-        'name': name,
-        'createdAt': FieldValue.serverTimestamp(),
-        'organizationId': _organizationId!,
-      });
+      await FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(_organizationId!)
+          .collection('jobTypes')
+          .add({
+            'name': name,
+            'createdAt': FieldValue.serverTimestamp(),
+            'organizationId': _organizationId!,
+          });
 
       _newJobTypeController.clear();
       _showSnackBar('Job type added successfully');
@@ -124,11 +135,17 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
             title: const Text('Edit Job Type'),
             content: HandsTextFormField(
               controller: _editJobTypeController,
-              decoration: const InputDecoration(labelText: 'Job Type Name', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'Job Type Name',
+                border: OutlineInputBorder(),
+              ),
               autofocus: true,
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
               ElevatedButton(
                 onPressed: () {
                   final newName = _editJobTypeController.text.trim();
@@ -144,7 +161,11 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
 
     if (result != null && result != currentName) {
       // Check for duplicates
-      if (_jobTypes.any((jt) => jt['id'] != jobTypeId && jt['name'].toLowerCase() == result.toLowerCase())) {
+      if (_jobTypes.any(
+        (jt) =>
+            jt['id'] != jobTypeId &&
+            jt['name'].toLowerCase() == result.toLowerCase(),
+      )) {
         _showSnackBar('This job type already exists', isError: true);
         return;
       }
@@ -155,7 +176,10 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
             .doc(_organizationId!)
             .collection('jobTypes')
             .doc(jobTypeId)
-            .update({'name': result, 'updatedAt': FieldValue.serverTimestamp()});
+            .update({
+              'name': result,
+              'updatedAt': FieldValue.serverTimestamp(),
+            });
 
         _showSnackBar('Job type updated successfully');
         await _loadJobTypes();
@@ -176,10 +200,16 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
               'Are you sure you want to delete "$jobTypeName"?\n\nThis action cannot be undone and may affect existing staff assigned to this role.',
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context, true),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
                 child: const Text('Delete'),
               ),
             ],
@@ -205,136 +235,149 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
   }
 
   void _showSnackBar(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message), backgroundColor: isError ? Colors.red : Colors.green));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : Colors.green,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      child: Container(
-        width: 500,
-        height: 600,
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return HandsDialog(
+      title: 'Manage job types',
+      subtitle:
+          'Create, rename, and clean up the role tags used across workflows.',
+      maxWidth: 620,
+      height: 620,
+      actions: [
+        HandsPrimaryButton(
+          text: 'Done',
+          onPressed: () {
+            widget.onJobTypesUpdated();
+            Navigator.of(context).pop();
+          },
+        ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          HandsModalSection(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Manage Job Types', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () {
-                    widget.onJobTypesUpdated();
-                    Navigator.of(context).pop();
-                  },
+                Text(
+                  'Add new job type',
+                  style: HandsModalTokens.sectionTitleStyle,
                 ),
-              ],
-            ),
-            const SizedBox(height: 20),
-
-            // Add new job type section
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(height: 10),
+                Row(
                   children: [
-                    const Text('Add New Job Type', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: HandsTextFormField(
-                            controller: _newJobTypeController,
-                            decoration: const InputDecoration(
-                              labelText: 'Job Type Name',
-                              border: OutlineInputBorder(),
-                              hintText: 'e.g., Sous Chef, Barista, etc.',
-                            ),
-                            onFieldSubmitted: (_) => _addJobType(),
-                          ),
+                    Expanded(
+                      child: HandsTextFormField(
+                        controller: _newJobTypeController,
+                        decoration: const InputDecoration(
+                          labelText: 'Job type name',
+                          hintText: 'Sous Chef, Barista, Server',
                         ),
-                        const SizedBox(width: 12),
-                        ElevatedButton.icon(
-                          onPressed: _addJobType,
-                          icon: const Icon(Icons.add),
-                          label: const Text('Add'),
-                        ),
-                      ],
+                        onFieldSubmitted: (_) => _addJobType(),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    HandsPrimaryButton(
+                      text: 'Add',
+                      icon: Icons.add_rounded,
+                      onPressed: _addJobType,
                     ),
                   ],
                 ),
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Existing job types list
-            const Text('Existing Job Types', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-
-            // Job types list
-            Expanded(
-              child:
-                  _isLoading
-                      ? const Center(child: CircularProgressIndicator())
-                      : _jobTypes.isEmpty
-                      ? const Center(
-                        child: Text(
-                          'No job types found.\nAdd your first job type above.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      )
-                      : ListView.builder(
-                        itemCount: _jobTypes.length,
-                        itemBuilder: (context, index) {
-                          final jobType = _jobTypes[index];
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            child: ListTile(
-                              leading: const Icon(Icons.work_outline),
-                              title: Text(jobType['name'], style: const TextStyle(fontWeight: FontWeight.w500)),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.edit, color: Colors.blue),
-                                    tooltip: 'Edit',
-                                    onPressed: () => _editJobType(jobType['id'], jobType['name']),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.delete, color: Colors.red),
-                                    tooltip: 'Delete',
-                                    onPressed: () => _deleteJobType(jobType['id'], jobType['name']),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-            ),
-
-            // Footer buttons
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                ElevatedButton(
-                  onPressed: () {
-                    widget.onJobTypesUpdated();
-                    Navigator.of(context).pop();
-                  },
-                  child: const Text('Done'),
-                ),
               ],
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 18),
+          Text('Existing job types', style: HandsModalTokens.sectionTitleStyle),
+          const SizedBox(height: 10),
+          Expanded(
+            child:
+                _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _jobTypes.isEmpty
+                    ? Center(
+                      child: Text(
+                        'No job types yet. Add your first one above.',
+                        textAlign: TextAlign.center,
+                        style: HandsModalTokens.bodyStyle,
+                      ),
+                    )
+                    : ListView.separated(
+                      itemCount: _jobTypes.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final jobType = _jobTypes[index];
+                        return HandsModalSection(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: HandsModalTokens.surfaceMuted,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Icon(
+                                  Icons.work_outline_rounded,
+                                  size: 16,
+                                  color: HandsModalTokens.textMuted,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  jobType['name'],
+                                  style: HandsModalTokens.bodyStyle.copyWith(
+                                    color: HandsColors.white,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.edit_outlined,
+                                  color: HandsColors.handsOrange,
+                                  size: 18,
+                                ),
+                                tooltip: 'Edit',
+                                onPressed:
+                                    () => _editJobType(
+                                      jobType['id'],
+                                      jobType['name'],
+                                    ),
+                              ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.delete_outline_rounded,
+                                  color: HandsModalTokens.danger,
+                                  size: 18,
+                                ),
+                                tooltip: 'Delete',
+                                onPressed:
+                                    () => _deleteJobType(
+                                      jobType['id'],
+                                      jobType['name'],
+                                    ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+          ),
+        ],
       ),
     );
   }
@@ -349,25 +392,43 @@ class UserManagementBottomSheet extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final formKey = useMemoized(() => GlobalKey<FormState>());
-    final firstNameController = useTextEditingController(text: userData?['firstName'] ?? '');
-    final lastNameController = useTextEditingController(text: userData?['lastName'] ?? '');
+    final firstNameController = useTextEditingController(
+      text: userData?['firstName'] ?? '',
+    );
+    final lastNameController = useTextEditingController(
+      text: userData?['lastName'] ?? '',
+    );
     final emailController = useTextEditingController(
-      text: userData?['emailAddress'] ?? userData?['userEmail'] ?? userData?['email'] ?? '',
+      text:
+          userData?['emailAddress'] ??
+          userData?['userEmail'] ??
+          userData?['email'] ??
+          '',
     );
 
     // Selected user role
-    final selectedAccessLevel = useState<int>(userData?['userRole'] as int? ?? 0);
+    final selectedAccessLevel = useState<int>(
+      userData?['userRole'] as int? ?? 0,
+    );
 
     // Available roles
     final availableRoles = useState<List<String>>([]);
 
     // Extract job types using canonical helper
     final selectedRoles = useState<Set<String>>(
-      Set<String>.from(coerceToJobTypes(userData?['jobTypes'] ?? userData?['jobType'])),
+      Set<String>.from(
+        coerceToJobTypes(userData?['jobTypes'] ?? userData?['jobType']),
+      ),
     );
 
     // Available locations
     final availableLocations = useState<List<Map<String, dynamic>>>([]);
+    final selectedInviteLanguage = useState<String>(
+      _normalizeInviteLanguageCode(
+            userData?['preferredLanguageCode']?.toString(),
+          ) ??
+          'en',
+    );
 
     // Extract location data safely
     String? extractLocationId(dynamic locationData) {
@@ -377,12 +438,17 @@ class UserManagementBottomSheet extends HookConsumerWidget {
         logger.w('Warning: Location data is a Map: $locationData');
         return locationData['id'] as String?;
       }
-      logger.w('Warning: Unexpected location data type: ${locationData.runtimeType}, value: $locationData');
+      logger.w(
+        'Warning: Unexpected location data type: ${locationData.runtimeType}, value: $locationData',
+      );
       return null;
     }
 
     // For managers (role 1), allow multiple locations
-    Set<String> extractLocationIds(dynamic locationIdsData, dynamic fallbackLocationId) {
+    Set<String> extractLocationIds(
+      dynamic locationIdsData,
+      dynamic fallbackLocationId,
+    ) {
       Set<String> result = <String>{};
 
       // Try to extract from locationIds array first
@@ -402,12 +468,16 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     }
 
     // Initialize selectedLocationIds with existing data
-    Set<String> initialLocationIds = extractLocationIds(userData?['locationIds'], userData?['locationId']);
+    Set<String> initialLocationIds = extractLocationIds(
+      userData?['locationIds'],
+      userData?['locationId'],
+    );
 
     // For employees (role 0), if no locationIds but we have a single locationId, add it
     if (initialLocationIds.isEmpty) {
       final singleLocationId =
-          extractLocationId(userData?['locationId']) ?? extractLocationId(userData?['primaryLocationId']);
+          extractLocationId(userData?['locationId']) ??
+          extractLocationId(userData?['primaryLocationId']);
       if (singleLocationId != null) {
         initialLocationIds.add(singleLocationId);
       }
@@ -430,7 +500,10 @@ class UserManagementBottomSheet extends HookConsumerWidget {
 
       if (selectedAccessLevel.value == 1 || selectedAccessLevel.value == 2) {
         // Managers (role 1) and Admins (role 2) should be assigned to ALL locations
-        final allLocationIds = availableLocations.value.map((location) => location['id'] as String).toSet();
+        final allLocationIds =
+            availableLocations.value
+                .map((location) => location['id'] as String)
+                .toSet();
         selectedLocationIds.value = allLocationIds;
       } else if (availableLocations.value.length == 1) {
         // Employees (role 0) with only one location available - auto-assign
@@ -443,7 +516,9 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     final theme = Theme.of(context);
 
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
@@ -463,9 +538,14 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                   children: [
                     Text(
                       isEditMode ? 'Edit Staff' : 'Add New Staff',
-                      style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w600),
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                    IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 24),
@@ -514,12 +594,15 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                     prefixIcon: Icon(Icons.email_outlined),
                   ),
                   keyboardType: TextInputType.emailAddress,
-                  enabled: !isEditMode, // Don't allow email changes in edit mode
+                  enabled:
+                      !isEditMode, // Don't allow email changes in edit mode
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
                       return 'Please enter email address';
                     }
-                    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                    if (!RegExp(
+                      r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                    ).hasMatch(value)) {
                       return 'Please enter a valid email address';
                     }
                     return null;
@@ -538,12 +621,47 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                   items:
                       List.generate(3, (i) => i).map((level) {
                         final labels = ['Employee', 'Manager', 'Admin'];
-                        return DropdownMenuItem<int>(value: level, child: Text(labels[level]));
+                        return DropdownMenuItem<int>(
+                          value: level,
+                          child: Text(labels[level]),
+                        );
                       }).toList(),
                   onChanged: (value) => selectedAccessLevel.value = value ?? 0,
                   onSaved: (value) {},
                 ),
                 const SizedBox(height: 12),
+
+                if (!isEditMode) ...[
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedInviteLanguage.value,
+                    decoration: const InputDecoration(
+                      labelText: 'Worker Language',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.language),
+                      helperText:
+                          'Used for the invite email and the worker’s initial app language.',
+                    ),
+                    items: const [
+                      DropdownMenuItem<String>(
+                        value: 'en',
+                        child: Text('English'),
+                      ),
+                      DropdownMenuItem<String>(
+                        value: 'es',
+                        child: Text('Spanish'),
+                      ),
+                      DropdownMenuItem<String>(
+                        value: 'pt',
+                        child: Text('Portuguese (Brazil)'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      selectedInviteLanguage.value =
+                          _normalizeInviteLanguageCode(value) ?? 'en';
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                ],
 
                 // Role Description Panel
                 Container(
@@ -551,14 +669,20 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                   decoration: BoxDecoration(
                     color: theme.primaryColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: theme.primaryColor.withOpacity(0.3)),
+                    border: Border.all(
+                      color: theme.primaryColor.withOpacity(0.3),
+                    ),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
-                          Icon(Icons.info_outline, color: theme.primaryColor, size: 18),
+                          Icon(
+                            Icons.info_outline,
+                            color: theme.primaryColor,
+                            size: 18,
+                          ),
                           const SizedBox(width: 8),
                           Text(
                             'Role Permissions',
@@ -573,7 +697,9 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                       Text(
                         _getRoleDescription(selectedAccessLevel.value),
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.textTheme.bodyMedium?.color?.withOpacity(0.8),
+                          color: theme.textTheme.bodyMedium?.color?.withOpacity(
+                            0.8,
+                          ),
                           height: 1.4,
                         ),
                       ),
@@ -589,11 +715,21 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Job Types', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                      Text(
+                        'Job Types',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       TextButton.icon(
-                        onPressed: () => _showJobTypeManagement(context, availableRoles),
+                        onPressed:
+                            () =>
+                                _showJobTypeManagement(context, availableRoles),
                         icon: const Icon(Icons.settings, size: 16),
-                        label: const Text('Manage', style: TextStyle(fontSize: 12)),
+                        label: const Text(
+                          'Manage',
+                          style: TextStyle(fontSize: 12),
+                        ),
                         style: TextButton.styleFrom(
                           foregroundColor: theme.primaryColor,
                           padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -605,7 +741,9 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                   Text(
                     'Staff will only see checklists which align with these job types',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.textTheme.bodyMedium?.color?.withOpacity(0.8),
+                      color: theme.textTheme.bodyMedium?.color?.withOpacity(
+                        0.8,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -620,12 +758,16 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                       runSpacing: 8,
                       children:
                           availableRoles.value.map((type) {
-                            final isSelected = selectedRoles.value.contains(type);
+                            final isSelected = selectedRoles.value.contains(
+                              type,
+                            );
                             return FilterChip(
                               label: Text(type),
                               selected: isSelected,
                               onSelected: (sel) {
-                                final set = Set<String>.from(selectedRoles.value);
+                                final set = Set<String>.from(
+                                  selectedRoles.value,
+                                );
                                 sel ? set.add(type) : set.remove(type);
                                 selectedRoles.value = set;
                               },
@@ -640,21 +782,28 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                 // Location selection (show only if more than one location available)
                 if (availableLocations.value.length > 1) ...[
                   // For admins (role 2) and managers (role 1), show auto-assignment message
-                  if (selectedAccessLevel.value == 1 || selectedAccessLevel.value == 2) ...[
+                  if (selectedAccessLevel.value == 1 ||
+                      selectedAccessLevel.value == 2) ...[
                     const SizedBox(height: 16),
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         color: theme.primaryColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: theme.primaryColor.withOpacity(0.3)),
+                        border: Border.all(
+                          color: theme.primaryColor.withOpacity(0.3),
+                        ),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
                             children: [
-                              Icon(Icons.location_on, color: theme.primaryColor, size: 18),
+                              Icon(
+                                Icons.location_on,
+                                color: theme.primaryColor,
+                                size: 18,
+                              ),
                               const SizedBox(width: 8),
                               Text(
                                 'Location Access',
@@ -675,7 +824,9 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                           const SizedBox(height: 12),
                           Text(
                             'Assigned locations:',
-                            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                           const SizedBox(height: 4),
                           ...availableLocations.value.map(
@@ -683,7 +834,11 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                               padding: const EdgeInsets.only(left: 16, top: 2),
                               child: Row(
                                 children: [
-                                  Icon(Icons.check_circle, color: theme.primaryColor, size: 16),
+                                  Icon(
+                                    Icons.check_circle,
+                                    color: theme.primaryColor,
+                                    size: 16,
+                                  ),
                                   const SizedBox(width: 8),
                                   Text(loc['name'] ?? 'Unnamed Location'),
                                 ],
@@ -699,7 +854,9 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                     const SizedBox(height: 16),
                     Text(
                       'Locations (Select one or more)',
-                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Container(
@@ -711,12 +868,15 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                       child: Column(
                         children:
                             availableLocations.value.map((loc) {
-                              final isSelected = selectedLocationIds.value.contains(loc['id']);
+                              final isSelected = selectedLocationIds.value
+                                  .contains(loc['id']);
                               return CheckboxListTile(
                                 value: isSelected,
                                 title: Text(loc['name'] ?? 'Unnamed Location'),
                                 onChanged: (checked) {
-                                  final set = Set<String>.from(selectedLocationIds.value);
+                                  final set = Set<String>.from(
+                                    selectedLocationIds.value,
+                                  );
                                   if (checked == true) {
                                     set.add(loc['id']);
                                   } else {
@@ -753,7 +913,13 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                       Expanded(
                         child: OutlinedButton.icon(
                           onPressed:
-                              isLoading.value ? null : () => _resetPassword(context, emailController.text, isLoading),
+                              isLoading.value
+                                  ? null
+                                  : () => _resetPassword(
+                                    context,
+                                    emailController.text,
+                                    isLoading,
+                                  ),
                           icon: const Icon(Icons.lock_reset),
                           label: const Text('Reset Password'),
                         ),
@@ -769,7 +935,10 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: isLoading.value ? null : () => Navigator.pop(context),
+                        onPressed:
+                            isLoading.value
+                                ? null
+                                : () => Navigator.pop(context),
                         child: const Text('Cancel'),
                       ),
                     ),
@@ -783,20 +952,28 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                                 : () async {
                                   try {
                                     // Determine final locations, auto-assign if single option
-                                    String? locId; // No longer used for employees
-                                    Set<String>? locIds = selectedLocationIds.value;
+                                    String?
+                                    locId; // No longer used for employees
+                                    Set<String>? locIds =
+                                        selectedLocationIds.value;
 
                                     // For employees (role 0), use selectedLocationIds
                                     if (selectedAccessLevel.value == 0 &&
                                         locIds.isEmpty &&
                                         availableLocations.value.length == 1) {
-                                      locIds = {availableLocations.value.first['id'] as String};
+                                      locIds = {
+                                        availableLocations.value.first['id']
+                                            as String,
+                                      };
                                     }
                                     // For managers (role 1), also use selectedLocationIds
                                     if (selectedAccessLevel.value == 1 &&
                                         locIds.isEmpty &&
                                         availableLocations.value.length == 1) {
-                                      locIds = {availableLocations.value.first['id'] as String};
+                                      locIds = {
+                                        availableLocations.value.first['id']
+                                            as String,
+                                      };
                                     }
                                     await _saveUser(
                                       context,
@@ -812,9 +989,13 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                                       locId,
                                       locIds,
                                       ref,
+                                      selectedInviteLanguage.value,
                                     );
                                   } on FirebaseFunctionsException catch (e) {
-                                    logger.e('createUser failed [${e.code}]: ${e.message}', e);
+                                    logger.e(
+                                      'createInvite failed [${e.code}]: ${e.message}',
+                                      e,
+                                    );
                                     if (context.mounted) {
                                       _showSnackBar(
                                         context,
@@ -825,7 +1006,11 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                                   } catch (e, st) {
                                     logger.e('Unexpected error: $e\n$st', e);
                                     if (context.mounted) {
-                                      _showSnackBar(context, 'Unexpected error: ${e.toString()}', isError: true);
+                                      _showSnackBar(
+                                        context,
+                                        'Unexpected error: ${e.toString()}',
+                                        isError: true,
+                                      );
                                     }
                                   }
                                 },
@@ -840,12 +1025,19 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                                   width: 20,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
                                   ),
                                 )
                                 : Text(
-                                  isEditMode ? 'Update Staff' : 'Create Staff & Send Invite',
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                                  isEditMode
+                                      ? 'Update Staff'
+                                      : 'Create Staff Account',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                       ),
                     ),
@@ -879,20 +1071,33 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     await _loadAvailableLocations(availableLocations);
   }
 
-  Future<void> _loadAvailableRoles(ValueNotifier<List<String>> availableRoles) async {
+  Future<void> _loadAvailableRoles(
+    ValueNotifier<List<String>> availableRoles,
+  ) async {
     try {
       // Get current user's organization ID
       final currentUser = FirebaseAuth.instance.currentUser;
       String? organizationId;
 
       if (currentUser != null) {
-        final currentUserDoc = await FirestoreEnforcer.instance.collection('users').doc(currentUser.uid).get();
+        final currentUserDoc =
+            await FirestoreEnforcer.instance
+                .collection('users')
+                .doc(currentUser.uid)
+                .get();
         organizationId = currentUserDoc.data()?['organizationId'];
       }
 
       if (organizationId == null || organizationId.isEmpty) {
         // Fallback to default job types if no organization
-        availableRoles.value = ['Bartender', 'Server', 'Kitchen Staff', 'Dishwasher', 'Host/Hostess', 'Manager'];
+        availableRoles.value = [
+          'Bartender',
+          'Server',
+          'Kitchen Staff',
+          'Dishwasher',
+          'Host/Hostess',
+          'Manager',
+        ];
         return;
       }
 
@@ -916,7 +1121,14 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       if (jobTypes.isEmpty) {
         await _createDefaultJobTypes(organizationId);
         // Reload after creating defaults
-        final defaultJobTypes = ['Bartender', 'Server', 'Kitchen Staff', 'Dishwasher', 'Host/Hostess', 'Manager'];
+        final defaultJobTypes = [
+          'Bartender',
+          'Server',
+          'Kitchen Staff',
+          'Dishwasher',
+          'Host/Hostess',
+          'Manager',
+        ];
         availableRoles.value = defaultJobTypes;
       } else {
         availableRoles.value = jobTypes;
@@ -924,32 +1136,60 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     } catch (e) {
       logger.e('Error loading job types: $e', e);
       // Fallback to default job types
-      availableRoles.value = ['Bartender', 'Server', 'Kitchen Staff', 'Dishwasher', 'Host/Hostess', 'Manager'];
+      availableRoles.value = [
+        'Bartender',
+        'Server',
+        'Kitchen Staff',
+        'Dishwasher',
+        'Host/Hostess',
+        'Manager',
+      ];
     }
   }
 
   Future<void> _createDefaultJobTypes(String organizationId) async {
-    final defaultJobTypes = ['Bartender', 'Server', 'Kitchen Staff', 'Dishwasher', 'Host/Hostess', 'Manager'];
+    final defaultJobTypes = [
+      'Bartender',
+      'Server',
+      'Kitchen Staff',
+      'Dishwasher',
+      'Host/Hostess',
+      'Manager',
+    ];
     final batch = FirestoreEnforcer.instance.batch();
 
     for (final jobType in defaultJobTypes) {
       final docRef =
-          FirestoreEnforcer.instance.collection('organizations').doc(organizationId).collection('jobTypes').doc();
+          FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(organizationId)
+              .collection('jobTypes')
+              .doc();
 
-      batch.set(docRef, {'name': jobType, 'createdAt': FieldValue.serverTimestamp(), 'organizationId': organizationId});
+      batch.set(docRef, {
+        'name': jobType,
+        'createdAt': FieldValue.serverTimestamp(),
+        'organizationId': organizationId,
+      });
     }
 
     await batch.commit();
   }
 
-  Future<void> _loadAvailableLocations(ValueNotifier<List<Map<String, dynamic>>> availableLocations) async {
+  Future<void> _loadAvailableLocations(
+    ValueNotifier<List<Map<String, dynamic>>> availableLocations,
+  ) async {
     try {
       // Get current user's organization ID
       final currentUser = FirebaseAuth.instance.currentUser;
       String? organizationId;
 
       if (currentUser != null) {
-        final currentUserDoc = await FirestoreEnforcer.instance.collection('users').doc(currentUser.uid).get();
+        final currentUserDoc =
+            await FirestoreEnforcer.instance
+                .collection('users')
+                .doc(currentUser.uid)
+                .get();
         organizationId = currentUserDoc.data()?['organizationId'];
       }
 
@@ -969,7 +1209,10 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       final locations =
           locationsSnapshot.docs.map((doc) {
             final data = doc.data();
-            return {'id': doc.id, 'name': data['locationName'] ?? 'Unnamed Location'};
+            return {
+              'id': doc.id,
+              'name': data['locationName'] ?? 'Unnamed Location',
+            };
           }).toList();
       availableLocations.value = locations;
     } catch (e) {
@@ -992,6 +1235,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     String? locationId, // for general user
     Set<String>? locationIds, // for manager
     WidgetRef ref, // Add ref parameter for provider access
+    String preferredLanguageCode,
   ) async {
     if (!formKey.currentState!.validate()) {
       return;
@@ -999,13 +1243,21 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     // Enforce job type requirement only for employees (userRole 0)
     // Managers (userRole 1) and Admins (userRole 2) have access to all shifts
     if (accessLevel == 0 && roles.isEmpty) {
-      _showSnackBar(context, 'Please select at least one job type for this employee.', isError: true);
+      _showSnackBar(
+        context,
+        'Please select at least one job type for this employee.',
+        isError: true,
+      );
       return;
     }
     // Only enforce location selection for employees (userRole 0)
     // Admins (userRole 2) and Managers (userRole 1) are automatically assigned to all locations
     if (accessLevel == 0 && (locationIds == null || locationIds.isEmpty)) {
-      _showSnackBar(context, 'An employee must be assigned to at least one location.', isError: true);
+      _showSnackBar(
+        context,
+        'An employee must be assigned to at least one location.',
+        isError: true,
+      );
       return;
     }
 
@@ -1014,7 +1266,11 @@ class UserManagementBottomSheet extends HookConsumerWidget {
       final organizationId = await _getOrganizationId();
       if (organizationId == null || organizationId.isEmpty) {
         if (context.mounted) {
-          _showSnackBar(context, 'Organization ID is missing. Please check your admin account.', isError: true);
+          _showSnackBar(
+            context,
+            'Organization ID is missing. Please check your admin account.',
+            isError: true,
+          );
         }
         isLoading.value = false;
         return;
@@ -1045,7 +1301,7 @@ class UserManagementBottomSheet extends HookConsumerWidget {
           locationId,
           locationIds,
           organizationId,
-          ref,
+          preferredLanguageCode,
         );
       }
     } catch (e, s) {
@@ -1072,9 +1328,16 @@ class UserManagementBottomSheet extends HookConsumerWidget {
           context: context,
           builder:
               (ctx) => AlertDialog(
-                title: Text(isEditMode ? 'Error Updating Staff' : 'Error Creating Staff'),
+                title: Text(
+                  isEditMode ? 'Error Updating Staff' : 'Error Creating Staff',
+                ),
                 content: Text(errorMsg),
-                actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('OK'))],
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('OK'),
+                  ),
+                ],
               ),
         );
       }
@@ -1125,9 +1388,11 @@ class UserManagementBottomSheet extends HookConsumerWidget {
                 .get();
 
         if (locationsSnapshot.docs.isNotEmpty) {
-          final allLocationIds = locationsSnapshot.docs.map((doc) => doc.id).toList();
+          final allLocationIds =
+              locationsSnapshot.docs.map((doc) => doc.id).toList();
           updateData['locationIds'] = allLocationIds;
-          updateData['locationId'] = allLocationIds.first; // Set first location as primary
+          updateData['locationId'] =
+              allLocationIds.first; // Set first location as primary
           updateData['assignedLocationRefs'] =
               allLocationIds
                   .map(
@@ -1179,7 +1444,10 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     }
 
     // Update user document in Firestore
-    await FirestoreEnforcer.instance.collection('users').doc(userId).update(updateData);
+    await FirestoreEnforcer.instance
+        .collection('users')
+        .doc(userId)
+        .update(updateData);
 
     if (context.mounted) {
       _showSnackBar(context, 'Staff updated successfully');
@@ -1197,135 +1465,96 @@ class UserManagementBottomSheet extends HookConsumerWidget {
     String? locationId,
     Set<String>? locationIds,
     String organizationId,
-    WidgetRef ref,
+    String preferredLanguageCode,
   ) async {
-    final tempPw = const Uuid().v4().substring(0, 8);
-    final orgName = await _getOrganizationName();
-    final adminEmail = FirebaseAuth.instance.currentUser?.email ?? '';
-    final templateId = 'd-2132096e57f4469681694bf926fefd95';
-
-    // Generate secure onboarding token
-    final inviteToken = const Uuid().v4();
-    final inviteUrl =
-        'https://plan-with-hands.web.app/welcome?email=$userEmail&orgId=$organizationId&inviteId=$inviteToken';
-
-    logger.d('[USER_MANAGEMENT] Generated invite URL: $inviteUrl');
-
-    // Store invite in Firestore using TTL helper
-    Map<String, dynamic> inviteData = {
-      'email': userEmail,
-      'organizationId': organizationId,
-      'createdAt': FieldValue.serverTimestamp(),
-      'used': false,
-      'firstName': firstName,
-      'lastName': lastName,
-      'userRole': accessLevel,
-      'locationId': locationId,
-      'locationIds': locationIds?.toList(),
-      'orgName': orgName,
-      'adminEmail': adminEmail,
-    };
-
-    // Also include assignedLocationRefs for compatibility
-    if (locationIds != null && locationIds.isNotEmpty) {
-      inviteData['assignedLocationRefs'] =
-          locationIds
-              .map(
-                (id) => FirestoreEnforcer.instance
-                    .collection('organizations')
-                    .doc(organizationId)
-                    .collection('locations')
-                    .doc(id),
-              )
-              .toList();
-    } else {
-      inviteData['assignedLocationRefs'] = [];
-    }
-
-    // Handle job types based on user role
-    if (accessLevel == 0) {
-      // Employee - requires job types
-      inviteData['jobTypes'] = roles.toList();
-      inviteData['jobType'] = (roles.isNotEmpty ? roles.toList().first : null);
-    } else {
-      // Manager (1) and Admin (2) - have access to all shifts, set to empty/null
-      inviteData['jobTypes'] = [];
-      inviteData['jobType'] = null;
-    }
-
-    final inviteRef = FirestoreEnforcer.instance.collection('invites').doc(inviteToken);
-    await FirestoreTTLHelper.setWithTTL(inviteRef, inviteData);
-
-    final functions = FirebaseFunctions.instanceFor(region: 'us-central1');
-    final createUser = functions.httpsCallable('createUser');
-
     // Canonicalize locationIds for clearer logging
-    final logLocIds = locationIds != null ? locationIds.toList() : (locationId != null ? [locationId] : <String>[]);
+    final logLocIds =
+        locationIds != null
+            ? locationIds.toList()
+            : (locationId != null ? [locationId] : <String>[]);
 
     // Prepare job types based on user role
     List<String> finalJobTypes = [];
-    String? finalJobType;
 
     if (accessLevel == 0) {
       // Employee - use selected job types
       finalJobTypes = roles.toList();
-      finalJobType = (roles.isNotEmpty ? roles.toList().first : null);
     } else {
       // Manager (1) and Admin (2) - have access to all shifts, set to empty/null
       finalJobTypes = [];
-      finalJobType = null;
     }
 
     logger.d(
-      'Calling createUser with payload: ${{'email': userEmail, 'firstName': firstName, 'lastName': lastName, 'userRole': accessLevel, 'jobTypes': finalJobTypes, 'organizationId': organizationId, 'locationId': logLocIds.isNotEmpty ? logLocIds.first : null, 'locationIds': logLocIds, 'assignedLocationRefs': locationIds?.map((id) => 'organizations/$organizationId/locations/$id').toList() ?? [], 'orgName': orgName, 'adminEmail': adminEmail, 'inviteUrl': inviteUrl, 'templateId': templateId}}',
+      'Calling createInvite with payload: ${{'email': userEmail, 'firstName': firstName, 'lastName': lastName, 'userRole': accessLevel, 'jobTypes': finalJobTypes, 'organizationId': organizationId, 'locationId': logLocIds.isNotEmpty ? logLocIds.first : null, 'locationIds': logLocIds}}',
     );
 
-    final result = await createUser.call({
-      'email': userEmail,
-      'password': tempPw,
-      'firstName': firstName,
-      'lastName': lastName,
-      'userRole': accessLevel,
-      'jobTypes': finalJobTypes,
-      'jobType': finalJobType,
-      'organizationId': organizationId,
-      'locationId': locationId,
-      'locationIds': locationIds?.toList(),
-      'assignedLocationRefs':
-          locationIds != null ? locationIds.map((id) => 'organizations/$organizationId/locations/$id').toList() : [],
-      'orgName': orgName,
-      'adminEmail': adminEmail,
-      'inviteUrl': inviteUrl,
-      'templateId': templateId,
-    });
+    final result = await InviteService.createInvite(
+      email: userEmail,
+      firstName: firstName,
+      lastName: lastName,
+      userRole: accessLevel,
+      organizationId: organizationId,
+      locationIds: logLocIds,
+      jobTypes: finalJobTypes,
+      preferredLanguageCode:
+          _normalizeInviteLanguageCode(preferredLanguageCode) ?? 'en',
+    );
 
-    logger.d('createUser result: ${result.data}');
+    logger.d('createInvite result: $result');
 
-    if (result.data != null && result.data['success'] == true) {
-      final emailSent = result.data['emailSent'] == true;
-      final emailError = result.data['emailError']?.toString();
+    if (result['success'] == true) {
+      final emailSent = result['emailSent'] == true;
+      final emailError = result['emailError']?.toString();
+      final inviteUrl = result['inviteUrl']?.toString();
 
       if (context.mounted) {
         _showSnackBar(
           context,
           emailSent
-              ? 'Staff created. An invite email was sent to $userEmail'
-              : 'Staff created, but the invite email was not sent${emailError != null && emailError.isNotEmpty ? ': $emailError' : '.'}',
+              ? 'Invite sent to $userEmail.'
+              : 'Invite created for $userEmail. Copy and share the invite link manually${emailError != null && emailError.isNotEmpty ? ': $emailError' : '.'}',
           isError: !emailSent,
         );
+        if (!emailSent &&
+            inviteUrl != null &&
+            inviteUrl.isNotEmpty &&
+            context.mounted) {
+          await Clipboard.setData(ClipboardData(text: inviteUrl));
+          _showSnackBar(
+            context,
+            'Invite link copied. Share it manually if the email did not arrive.',
+          );
+        }
         Navigator.pop(context, true);
       }
     } else {
       if (context.mounted) {
-        _showSnackBar(context, 'Staff creation failed. Please try again.', isError: true);
+        _showSnackBar(
+          context,
+          'Invite creation failed. Please try again.',
+          isError: true,
+        );
       }
     }
   }
+
+  static String? _normalizeInviteLanguageCode(String? rawValue) {
+    if (rawValue == null || rawValue.trim().isEmpty) return null;
+    final normalizedValue = rawValue.trim().replaceAll('_', '-').toLowerCase();
+    if (normalizedValue.startsWith('pt')) return 'pt';
+    if (normalizedValue.startsWith('es')) return 'es';
+    if (normalizedValue.startsWith('en')) return 'en';
+    return null;
+  }
 }
 
-// Resend invite is no longer needed in the new flow. You may remove this button from the UI.
+// Password reset is still available for already accepted users.
 
-Future<void> _resetPassword(BuildContext context, String email, ValueNotifier<bool> isLoading) async {
+Future<void> _resetPassword(
+  BuildContext context,
+  String email,
+  ValueNotifier<bool> isLoading,
+) async {
   if (email.isEmpty) {
     _showSnackBar(context, 'Email address is missing.', isError: true);
     return;
@@ -1335,7 +1564,11 @@ Future<void> _resetPassword(BuildContext context, String email, ValueNotifier<bo
     await _sendPasswordResetEmail(context, email);
     _showSnackBar(context, 'Password reset link sent to email.');
   } catch (e) {
-    _showSnackBar(context, 'Failed to send password reset email: ${e.toString()}', isError: true);
+    _showSnackBar(
+      context,
+      'Failed to send password reset email: ${e.toString()}',
+      isError: true,
+    );
   } finally {
     isLoading.value = false;
   }
@@ -1344,19 +1577,14 @@ Future<void> _resetPassword(BuildContext context, String email, ValueNotifier<bo
 Future<String?> _getOrganizationId() async {
   final currentUser = FirebaseAuth.instance.currentUser;
   if (currentUser != null) {
-    final currentUserDoc = await FirestoreEnforcer.instance.collection('users').doc(currentUser.uid).get();
+    final currentUserDoc =
+        await FirestoreEnforcer.instance
+            .collection('users')
+            .doc(currentUser.uid)
+            .get();
     return currentUserDoc.data()?['organizationId'];
   }
   return null;
-}
-
-Future<String> _getOrganizationName() async {
-  final organizationId = await _getOrganizationId();
-  if (organizationId != null) {
-    final orgDoc = await FirestoreEnforcer.instance.collection('organizations').doc(organizationId).get();
-    return orgDoc.data()?['name'] ?? 'Your Organization';
-  }
-  return 'Your Organization';
 }
 
 // All invitation/magic-link/cloud function code removed for the new flow.
@@ -1372,7 +1600,10 @@ Future<void> _sendPasswordResetEmail(BuildContext context, String email) async {
         androidMinimumVersion: '12',
       );
 
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: email, actionCodeSettings: actionCodeSettings);
+      await FirebaseAuth.instance.sendPasswordResetEmail(
+        email: email,
+        actionCodeSettings: actionCodeSettings,
+      );
     } catch (settingsError) {
       logger.w('Failed to send with action code settings: $settingsError');
       // Fallback to simpler reset email
@@ -1394,15 +1625,23 @@ Future<void> _sendPasswordResetEmail(BuildContext context, String email) async {
   }
 }
 
-void _showSnackBar(BuildContext context, String message, {bool isError = false}) {
+void _showSnackBar(
+  BuildContext context,
+  String message, {
+  bool isError = false,
+}) {
   final snackBar = SnackBar(
     content: Text(message),
-    backgroundColor: isError ? Theme.of(context).colorScheme.error : Colors.green,
+    backgroundColor:
+        isError ? Theme.of(context).colorScheme.error : Colors.green,
   );
   ScaffoldMessenger.of(context).showSnackBar(snackBar);
 }
 
-void _showJobTypeManagement(BuildContext context, ValueNotifier<List<String>> availableRoles) {
+void _showJobTypeManagement(
+  BuildContext context,
+  ValueNotifier<List<String>> availableRoles,
+) {
   showDialog(
     context: context,
     builder:
@@ -1423,13 +1662,24 @@ void _reloadRoles(ValueNotifier<List<String>> availableRoles) async {
     String? organizationId;
 
     if (currentUser != null) {
-      final currentUserDoc = await FirestoreEnforcer.instance.collection('users').doc(currentUser.uid).get();
+      final currentUserDoc =
+          await FirestoreEnforcer.instance
+              .collection('users')
+              .doc(currentUser.uid)
+              .get();
       organizationId = currentUserDoc.data()?['organizationId'];
     }
 
     if (organizationId == null || organizationId.isEmpty) {
       // Fallback to default job types if no organization
-      availableRoles.value = ['Bartender', 'Server', 'Kitchen Staff', 'Dishwasher', 'Host/Hostess', 'Manager'];
+      availableRoles.value = [
+        'Bartender',
+        'Server',
+        'Kitchen Staff',
+        'Dishwasher',
+        'Host/Hostess',
+        'Manager',
+      ];
       return;
     }
 
@@ -1450,11 +1700,27 @@ void _reloadRoles(ValueNotifier<List<String>> availableRoles) async {
             .toList();
 
     availableRoles.value =
-        jobTypes.isEmpty ? ['Bartender', 'Server', 'Kitchen Staff', 'Dishwasher', 'Host/Hostess', 'Manager'] : jobTypes;
+        jobTypes.isEmpty
+            ? [
+              'Bartender',
+              'Server',
+              'Kitchen Staff',
+              'Dishwasher',
+              'Host/Hostess',
+              'Manager',
+            ]
+            : jobTypes;
   } catch (e) {
     logger.e('Error reloading job types: $e', e);
     // Fallback to default job types
-    availableRoles.value = ['Bartender', 'Server', 'Kitchen Staff', 'Dishwasher', 'Host/Hostess', 'Manager'];
+    availableRoles.value = [
+      'Bartender',
+      'Server',
+      'Kitchen Staff',
+      'Dishwasher',
+      'Host/Hostess',
+      'Manager',
+    ];
   }
 }
 

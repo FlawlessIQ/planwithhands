@@ -1,11 +1,15 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hands_app/core/providers/crashlytics_provider.dart';
+import 'package:hands_app/features/releases/widgets/app_experience_coordinator.dart';
+import 'package:hands_app/l10n/generated/app_localizations.dart';
 import 'package:hands_app/routing/router_provider.dart';
 import 'package:hands_app/services/local_storage_service.dart';
 import 'package:hands_app/services/daily_background_service.dart';
 import 'package:hands_app/services/location_selection_service.dart';
+import 'package:hands_app/state/app_locale_controller.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
@@ -31,7 +35,9 @@ import 'package:hands_app/services/pk_fetcher_stub.dart'
     as pk_fetch;
 
 Future<Map<String, dynamic>> _fetchStripePublishableKey() async {
-  final callable = FirebaseFunctions.instance.httpsCallable('getStripePublishableKey');
+  final callable = FirebaseFunctions.instance.httpsCallable(
+    'getStripePublishableKey',
+  );
   final result = await callable.call({});
   final data = result.data;
   if (data is Map) {
@@ -87,7 +93,9 @@ void main() async {
                 final pkResp = await _fetchStripePublishableKey();
                 pk = pkResp['publishableKey'] as String?;
               } catch (e) {
-                print('⚠️ [STRIPE] Failed to fetch publishable key from callable: $e');
+                print(
+                  '⚠️ [STRIPE] Failed to fetch publishable key from callable: $e',
+                );
               }
             }
 
@@ -99,7 +107,9 @@ void main() async {
                   pk = fbPk;
                 }
               } catch (e) {
-                print('⚠️ [STRIPE] HTTP fallback for publishable key failed: $e');
+                print(
+                  '⚠️ [STRIPE] HTTP fallback for publishable key failed: $e',
+                );
               }
             }
 
@@ -110,9 +120,13 @@ void main() async {
               try {
                 web_helpers.setStripePkForEmbedded(pk);
               } catch (_) {}
-              print('✅ [STRIPE] Web settings applied with key: ${pk.substring(0, 12)}...');
+              print(
+                '✅ [STRIPE] Web settings applied with key: ${pk.substring(0, 12)}...',
+              );
             } else {
-              print('⚠️ [STRIPE] No publishable key available - Stripe disabled');
+              print(
+                '⚠️ [STRIPE] No publishable key available - Stripe disabled',
+              );
             }
           }
         } catch (e) {
@@ -171,10 +185,16 @@ void main() async {
                       const SizedBox(height: 16),
                       const Text(
                         'App Initialization Error',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       const SizedBox(height: 8),
-                      Text('Please refresh the page to try again.\n\nError: $e', textAlign: TextAlign.center),
+                      Text(
+                        'Please refresh the page to try again.\n\nError: $e',
+                        textAlign: TextAlign.center,
+                      ),
                       const SizedBox(height: 16),
                       ElevatedButton(
                         onPressed: () {
@@ -206,14 +226,19 @@ void main() async {
       // privacy / overlay disabling when capturing store screenshots.
       final bool treatAsRelease = !kDebugMode || RELEASE_SCREENSHOTS;
       if (!kIsWeb && treatAsRelease) {
-        await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
-        FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+        await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(
+          true,
+        );
+        FlutterError.onError =
+            FirebaseCrashlytics.instance.recordFlutterFatalError;
         crashlyticsEnabled = true;
       }
 
       runApp(
         ProviderScope(
-          overrides: [crashlyticsEnabledProvider.overrideWith((_) => crashlyticsEnabled)],
+          overrides: [
+            crashlyticsEnabledProvider.overrideWith((_) => crashlyticsEnabled),
+          ],
           child: const HandsApp(),
         ),
       );
@@ -237,24 +262,53 @@ void main() async {
   };
 }
 
-class HandsApp extends ConsumerWidget {
+class HandsApp extends ConsumerStatefulWidget {
   const HandsApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HandsApp> createState() => _HandsAppState();
+}
+
+class _HandsAppState extends ConsumerState<HandsApp> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(appLocaleControllerProvider.notifier).initialize();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
+    final localeState = ref.watch(appLocaleControllerProvider);
 
     // Wrap entire app with global gesture detection for activity tracking
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: () => ActivityTracker().recordActivity(source: 'global_tap'),
-      onScaleStart: (_) => ActivityTracker().recordActivity(source: 'global_interaction'),
-      onScaleUpdate: (_) => ActivityTracker().recordActivity(source: 'global_interaction'),
+      onScaleStart:
+          (_) => ActivityTracker().recordActivity(source: 'global_interaction'),
+      onScaleUpdate:
+          (_) => ActivityTracker().recordActivity(source: 'global_interaction'),
       child: MaterialApp.router(
         title: 'Hands',
+        locale: localeState.locale,
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
         theme: handsTheme,
         routerConfig: router,
         debugShowCheckedModeBanner: false,
+        builder:
+            (context, child) => AppExperienceCoordinator(
+              router: router,
+              child: child ?? const SizedBox.shrink(),
+            ),
       ),
     );
   }

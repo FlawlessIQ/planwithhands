@@ -174,11 +174,24 @@ export async function generateAndSendDailySummary(orgId: string, date: Date, org
   }
 
   // Generate notification content for in-app notifications
-  const title = `Daily Summary - ${formatDateReadable(date)}`;
-  const message = buildNotificationContent(summaryData, date);
+  const titleByLanguage = {
+    en: buildDailySummaryNotificationTitle(date, summaryData.summaryPeriod, "en"),
+    es: buildDailySummaryNotificationTitle(date, summaryData.summaryPeriod, "es"),
+    pt: buildDailySummaryNotificationTitle(date, summaryData.summaryPeriod, "pt"),
+  };
+  const messageByLanguage = {
+    en: buildNotificationContent(summaryData, date, "en"),
+    es: buildNotificationContent(summaryData, date, "es"),
+    pt: buildNotificationContent(summaryData, date, "pt"),
+  };
 
   // Send in-app notification using the outbox system
-  await sendNotificationToAdmins(orgId, title, message, adminUsers);
+  await sendNotificationToAdmins(
+    orgId,
+    titleByLanguage,
+    messageByLanguage,
+    adminUsers,
+  );
 
   // Send SendGrid email to admin users
   // Build enhanced HTML sections (tables, top/bottom lists, deltas)
@@ -523,12 +536,20 @@ async function getAdminUsers(orgId: string): Promise<any[]> {
       .where("isActive", "==", true)
       .get();
 
-    return usersSnapshot.docs.map(doc => ({
-      userId: doc.id,
-      firstName: doc.data().firstName || "",
-      lastName: doc.data().lastName || "",
-      email: doc.data().email || ""
-    }));
+    return usersSnapshot.docs.map(doc => {
+      const data = doc.data();
+      const email =
+        (data.emailAddress ?? data.email ?? data.userEmail ?? "")
+          .toString()
+          .trim();
+
+      return {
+        userId: doc.id,
+        firstName: data.firstName || "",
+        lastName: data.lastName || "",
+        email,
+      };
+    });
   } catch (error) {
     functions.logger.error("Error getting admin users:", error);
     return [];
@@ -768,7 +789,7 @@ async function sendDailySummaryEmails(
 
     // SendGrid configuration
   const templateId = 'd-000519b45ca84c0882d31d2cb7965948';
-    const fromEmail = process.env.SENDGRID_FROM_EMAIL || 'noreply@em5998.planwithhands.com';
+    const fromEmail = process.env.SENDGRID_FROM_EMAIL || 'noreply@planwithhands.com';
     const fromName = process.env.SENDGRID_FROM_NAME || 'Hands App';
 
     const overallPercentage = summaryData.overallPercentage || 0;
@@ -1154,7 +1175,12 @@ function escapeHtml(s: string) {
 /**
  * Send notification to admins using the new outbox system
  */
-async function sendNotificationToAdmins(orgId: string, title: string, message: string, adminUsers: any[]) {
+async function sendNotificationToAdmins(
+  orgId: string,
+  titleByLanguage: Record<string, string>,
+  messageByLanguage: Record<string, string>,
+  adminUsers: any[],
+) {
   try {
     const adminUserIds = Array.from(
       new Set(
@@ -1177,8 +1203,10 @@ async function sendNotificationToAdmins(orgId: string, title: string, message: s
       .doc();
 
     await notificationRef.set({
-      title,
-      message,
+      title: titleByLanguage.en || "Daily Summary",
+      message: messageByLanguage.en || "",
+      titleByLanguage,
+      messageByLanguage,
       type: "daily_summary",
       targetType: "user_ids",
       userIds: adminUserIds,
@@ -1197,87 +1225,193 @@ async function sendNotificationToAdmins(orgId: string, title: string, message: s
 /**
  * Build notification content from summary data
  */
-function buildNotificationContent(summaryData: any, date: Date): string {
-  const { notesEntries, missedTaskEntries, photoBypassed, completedTasks, overallPercentage, summaryPeriod, tasksScheduledForToday, locationBreakdown } = summaryData;
-  
-  // Add period indicator to title
-  const periodText = summaryPeriod === 'business-day' ? ' (Business Day)' : '';
-  let content = `📊 Daily Summary${periodText}\n\n`;
-  
-  // Overall performance with emoji
-  const performanceEmoji = overallPercentage >= 95 ? '🎉' : overallPercentage >= 85 ? '✅' : overallPercentage >= 70 ? '👍' : '⚠️';
-  content += `${performanceEmoji} Overall Progress: ${Math.round(overallPercentage)}% (${completedTasks}/${tasksScheduledForToday} tasks completed)\n\n`;
+function getDailySummaryNotificationCopy(languageCode: "en" | "es" | "pt") {
+  if (languageCode === "es") {
+    return {
+      summaryTitle: "Resumen diario",
+      businessDay: "Día operativo",
+      overallProgress: "Progreso general",
+      tasksCompletedSuffix: "tareas completadas",
+      performanceOutstanding: "Excelente trabajo. Casi una tasa de finalización perfecta.",
+      performanceGreat: "Gran trabajo. Rendimiento sólido en todas las áreas.",
+      performanceGood: "Buen progreso. Algunos elementos necesitan atención.",
+      performanceNeedsAction: "Se necesita acción. Varias tareas requieren seguimiento.",
+      locationPerformance: "Rendimiento por ubicación",
+      missedTasks: "Tareas no completadas",
+      noReasonProvided: "Sin motivo indicado",
+      reasonLabel: "Motivo",
+      andMore: "más",
+      missingPhotos: "Fotos faltantes",
+      byLabel: "por",
+      staffNotes: "Notas del personal",
+      allTasksCompleted: "Todas las tareas se completaron correctamente.",
+      significantAttentionNeeded: "Se necesita mucha atención",
+      tasksIncompleteSuffix: "tareas incompletas",
+      viewFullDetails: "Ver todos los detalles en la app",
+    };
+  }
+  if (languageCode === "pt") {
+    return {
+      summaryTitle: "Resumo diário",
+      businessDay: "Dia operacional",
+      overallProgress: "Progresso geral",
+      tasksCompletedSuffix: "tarefas concluídas",
+      performanceOutstanding: "Excelente trabalho. Taxa de conclusão quase perfeita.",
+      performanceGreat: "Ótimo trabalho. Desempenho sólido em todas as áreas.",
+      performanceGood: "Bom progresso. Alguns itens precisam de atenção.",
+      performanceNeedsAction: "Ação necessária. Várias tarefas precisam de acompanhamento.",
+      locationPerformance: "Desempenho por local",
+      missedTasks: "Tarefas perdidas",
+      noReasonProvided: "Nenhum motivo informado",
+      reasonLabel: "Motivo",
+      andMore: "mais",
+      missingPhotos: "Fotos ausentes",
+      byLabel: "por",
+      staffNotes: "Notas da equipe",
+      allTasksCompleted: "Todas as tarefas foram concluídas com sucesso!",
+      significantAttentionNeeded: "É necessária atenção significativa",
+      tasksIncompleteSuffix: "tarefas incompletas",
+      viewFullDetails: "Veja todos os detalhes no aplicativo",
+    };
+  }
 
-  // Performance message
+  return {
+    summaryTitle: "Daily Summary",
+    businessDay: "Business Day",
+    overallProgress: "Overall Progress",
+    tasksCompletedSuffix: "tasks completed",
+    performanceOutstanding: "Outstanding work! Nearly perfect completion rate.",
+    performanceGreat: "Great job! Strong performance across all areas.",
+    performanceGood: "Good progress! A few items need attention.",
+    performanceNeedsAction: "Action needed! Several tasks require follow-up.",
+    locationPerformance: "Performance by Location",
+    missedTasks: "Missed Tasks",
+    noReasonProvided: "No reason provided",
+    reasonLabel: "Reason",
+    andMore: "more",
+    missingPhotos: "Missing Photos",
+    byLabel: "by",
+    staffNotes: "Staff Notes",
+    allTasksCompleted: "All tasks completed successfully!",
+    significantAttentionNeeded: "Significant attention needed",
+    tasksIncompleteSuffix: "tasks incomplete",
+    viewFullDetails: "View full details in the app",
+  };
+}
+
+function buildDailySummaryNotificationTitle(
+  date: Date,
+  summaryPeriod: string,
+  languageCode: "en" | "es" | "pt",
+): string {
+  const copy = getDailySummaryNotificationCopy(languageCode);
+  const periodText =
+    summaryPeriod === "business-day" ? ` (${copy.businessDay})` : "";
+  return `${copy.summaryTitle} - ${formatDateReadable(date, languageCode)}${periodText}`;
+}
+
+function buildNotificationContent(
+  summaryData: any,
+  date: Date,
+  languageCode: "en" | "es" | "pt" = "en",
+): string {
+  const {
+    notesEntries,
+    missedTaskEntries,
+    photoBypassed,
+    completedTasks,
+    overallPercentage,
+    summaryPeriod,
+    tasksScheduledForToday,
+    locationBreakdown,
+  } = summaryData;
+  const copy = getDailySummaryNotificationCopy(languageCode);
+
+  const periodText =
+    summaryPeriod === "business-day" ? ` (${copy.businessDay})` : "";
+  let content = `📊 ${copy.summaryTitle}${periodText}\n\n`;
+
+  const performanceEmoji =
+    overallPercentage >= 95 ? "🎉" :
+    overallPercentage >= 85 ? "✅" :
+    overallPercentage >= 70 ? "👍" :
+    "⚠️";
+  content +=
+    `${performanceEmoji} ${copy.overallProgress}: ${Math.round(overallPercentage)}% ` +
+    `(${completedTasks}/${tasksScheduledForToday} ${copy.tasksCompletedSuffix})\n\n`;
+
   if (overallPercentage >= 95) {
-    content += `Outstanding work! Nearly perfect completion rate.\n\n`;
+    content += `${copy.performanceOutstanding}\n\n`;
   } else if (overallPercentage >= 85) {
-    content += `Great job! Strong performance across all areas.\n\n`;
+    content += `${copy.performanceGreat}\n\n`;
   } else if (overallPercentage >= 70) {
-    content += `Good progress! A few items need attention.\n\n`;
+    content += `${copy.performanceGood}\n\n`;
   } else {
-    content += `Action needed! Several tasks require follow-up.\n\n`;
-  }
-  
-  // Location breakdown (only regular tasks, excluding carry-forward)
-  if (locationBreakdown && locationBreakdown.length > 0) {
-    content += `📍 Performance by Location:\n`;
-    for (const loc of locationBreakdown) {
-      const emoji = loc.completionPercentage >= 90 ? '✅' : loc.completionPercentage >= 70 ? '⚠️' : '❌';
-      content += `${emoji} ${loc.locationName}: ${Math.round(loc.completionPercentage)}% (${loc.completedRegular}/${loc.totalRegular})\n`;
-    }
-    content += `\n`;
+    content += `${copy.performanceNeedsAction}\n\n`;
   }
 
-  // Missed tasks section with more detail
+  if (locationBreakdown && locationBreakdown.length > 0) {
+    content += `📍 ${copy.locationPerformance}:\n`;
+    for (const loc of locationBreakdown) {
+      const emoji =
+        loc.completionPercentage >= 90 ? "✅" :
+        loc.completionPercentage >= 70 ? "⚠️" :
+        "❌";
+      content +=
+        `${emoji} ${loc.locationName}: ${Math.round(loc.completionPercentage)}% ` +
+        `(${loc.completedRegular}/${loc.totalRegular})\n`;
+    }
+    content += "\n";
+  }
+
   if (missedTaskEntries.length > 0) {
-    content += `❌ Missed Tasks (${missedTaskEntries.length}):\n`;
+    content += `❌ ${copy.missedTasks} (${missedTaskEntries.length}):\n`;
     missedTaskEntries.slice(0, 5).forEach((entry: any) => {
-      const reason = entry.reason || 'No reason provided';
-      const shift = entry.shiftName ? ` - ${entry.shiftName}` : '';
-      content += `• ${entry.taskName}${shift}\n  Reason: ${reason}\n`;
+      const reason = entry.reason || copy.noReasonProvided;
+      const shift = entry.shiftName ? ` - ${entry.shiftName}` : "";
+      content += `• ${entry.taskName}${shift}\n  ${copy.reasonLabel}: ${reason}\n`;
     });
     if (missedTaskEntries.length > 5) {
-      content += `• ... and ${missedTaskEntries.length - 5} more\n`;
+      content +=
+        `• ... ${missedTaskEntries.length - 5} ${copy.andMore}\n`;
     }
-    content += `\n`;
+    content += "\n";
   }
 
-  // Photo bypassed section
   if (photoBypassed.length > 0) {
-    content += `📷 Missing Photos (${photoBypassed.length}):\n`;
+    content += `📷 ${copy.missingPhotos} (${photoBypassed.length}):\n`;
     photoBypassed.slice(0, 3).forEach((entry: any) => {
-      const shift = entry.shiftName ? ` - ${entry.shiftName}` : '';
-      content += `• ${entry.taskName}${shift}\n  by ${entry.userName}\n`;
+      const shift = entry.shiftName ? ` - ${entry.shiftName}` : "";
+      content += `• ${entry.taskName}${shift}\n  ${copy.byLabel} ${entry.userName}\n`;
     });
     if (photoBypassed.length > 3) {
-      content += `• ... and ${photoBypassed.length - 3} more\n`;
+      content +=
+        `• ... ${photoBypassed.length - 3} ${copy.andMore}\n`;
     }
-    content += `\n`;
+    content += "\n";
   }
 
-  // Staff notes section with more context
   if (notesEntries.length > 0) {
-    content += `📝 Staff Notes (${notesEntries.length}):\n`;
+    content += `📝 ${copy.staffNotes} (${notesEntries.length}):\n`;
     notesEntries.slice(0, 3).forEach((entry: any) => {
-      const shift = entry.shiftName ? ` - ${entry.shiftName}` : '';
+      const shift = entry.shiftName ? ` - ${entry.shiftName}` : "";
       content += `• ${entry.taskName}${shift}\n  "${entry.notes}" - ${entry.userName}\n`;
     });
     if (notesEntries.length > 3) {
-      content += `• ... and ${notesEntries.length - 3} more\n`;
+      content += `• ... ${notesEntries.length - 3} ${copy.andMore}\n`;
     }
-    content += `\n`;
+    content += "\n";
   }
 
-  // Summary of key metrics
   const incompleteTasks = missedTaskEntries.length;
   if (incompleteTasks === 0 && tasksScheduledForToday > 0) {
-    content += `✨ All tasks completed successfully!\n\n`;
+    content += `✨ ${copy.allTasksCompleted}\n\n`;
   } else if (incompleteTasks > 10) {
-    content += `⚠️ Significant attention needed: ${incompleteTasks} tasks incomplete\n\n`;
+    content +=
+      `⚠️ ${copy.significantAttentionNeeded}: ${incompleteTasks} ${copy.tasksIncompleteSuffix}\n\n`;
   }
 
-  content += `📱 View full details in the app`;
+  content += `📱 ${copy.viewFullDetails}`;
 
   return content;
 }
@@ -1338,11 +1472,18 @@ export function formatDate(date: Date): string {
 /**
  * Format date for readable display
  */
-function formatDateReadable(date: Date): string {
-  return date.toLocaleDateString('en-US', { 
-    weekday: 'long', 
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric' 
+function formatDateReadable(
+  date: Date,
+  languageCode: "en" | "es" | "pt" = "en",
+): string {
+  const locale =
+    languageCode === "es" ? "es-US" :
+    languageCode === "pt" ? "pt-BR" :
+    "en-US";
+  return date.toLocaleDateString(locale, {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
   });
 }

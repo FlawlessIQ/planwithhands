@@ -26,24 +26,38 @@ import 'package:hands_app/data/models/location_data.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/services/location_selection_service.dart';
 import 'package:hands_app/services/activity_tracker.dart';
+import 'package:hands_app/services/subscription_access_service.dart';
+import 'package:hands_app/widgets/pending_invites_panel.dart';
+import 'package:hands_app/features/help/widgets/context_help_trigger.dart';
+import 'package:hands_app/features/help/models/guided_tour_step.dart';
+import 'package:hands_app/features/help/models/help_topic.dart';
+import 'package:hands_app/features/help/widgets/guided_tour_host.dart';
+import 'package:hands_app/features/help/widgets/inline_start_here_card.dart';
+import 'package:hands_app/l10n/l10n.dart';
+import 'package:hands_app/utils/localized_content.dart';
 // Admin tools widgets removed from this page; imports intentionally removed
 import 'dart:convert';
 import 'package:crypto/crypto.dart' as crypto;
 
 // Admin dashboard view selector
-enum AdminView { shiftsChecklists, usersLocations }
+enum AdminView { locations, team, shifts, library }
 
 class AdminDashboardPage extends ConsumerStatefulWidget {
   final WidgetBuilder? overrideBodyBuilder;
   final bool isNewOrganizationSetup;
 
-  const AdminDashboardPage({super.key, this.overrideBodyBuilder, this.isNewOrganizationSetup = false});
+  const AdminDashboardPage({
+    super.key,
+    this.overrideBodyBuilder,
+    this.isNewOrganizationSetup = false,
+  });
 
   @override
   ConsumerState<AdminDashboardPage> createState() => _AdminDashboardPageState();
 }
 
-class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with ActivityTrackingMixin {
+class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage>
+    with ActivityTrackingMixin {
   int? userRole;
   String? organizationId;
   bool isLoading = true;
@@ -51,10 +65,14 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
   bool _isDisposed = false; // Guard to prevent using disposed notifiers
 
   // Admin view toggle
-  AdminView _currentView = AdminView.shiftsChecklists; // default
+  AdminView _currentView = AdminView.shifts; // default
 
   // Available locations (no longer storing selected location locally)
   List<Map<String, dynamic>> _availableLocations = [];
+
+  final GlobalKey _tourLocationScopeKey = GlobalKey();
+  final GlobalKey _tourSetupAreasKey = GlobalKey();
+  final GlobalKey _tourSectionContentKey = GlobalKey();
 
   // Add refresh keys to force StreamBuilder updates
   final ValueNotifier<int> _refreshTrigger = ValueNotifier<int>(0);
@@ -67,8 +85,22 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
 
   /// Get the currently selected location name from shared state
   String? get _selectedLocationName {
-    // Mirror training page behavior by reading from the global LocationSelectionService
-    return LocationSelectionService.instance.currentLocationName;
+    final serviceName = LocationSelectionService.instance.currentLocationName;
+    if (serviceName != null && serviceName.isNotEmpty) {
+      return serviceName;
+    }
+    final currentId = _selectedLocationId;
+    if (currentId == null) {
+      return null;
+    }
+    try {
+      return _availableLocations.firstWhere(
+            (location) => location['id'] == currentId,
+          )['name']
+          as String?;
+    } catch (_) {
+      return null;
+    }
   }
 
   @override
@@ -76,7 +108,9 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
     super.initState();
     _checkUserAccess();
     // Listen for global location changes (from UnifiedMenuButton)
-    LocationSelectionService.instance.listenable.addListener(_onGlobalLocationChanged);
+    LocationSelectionService.instance.listenable.addListener(
+      _onGlobalLocationChanged,
+    );
   }
 
   @override
@@ -89,8 +123,11 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
       final isSetup = uri.queryParameters['setup'] == 'true';
 
       if (isSetup && !_hasShownWelcomeDialog) {
-        logger.d('[AdminDashboard] New user setup detected, will show location creation flow');
-        _hasShownWelcomeDialog = true; // Mark as shown to prevent duplicate dialogs
+        logger.d(
+          '[AdminDashboard] New user setup detected, will show location creation flow',
+        );
+        _hasShownWelcomeDialog =
+            true; // Mark as shown to prevent duplicate dialogs
         // Show the location creation flow regardless of existing locations
         Future.delayed(const Duration(milliseconds: 500), () {
           if (mounted) {
@@ -103,11 +140,15 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
 
   Future<void> _loadLocations() async {
     if (organizationId == null) {
-      logger.w('[AdminDashboard] Cannot load locations - organizationId is null');
+      logger.w(
+        '[AdminDashboard] Cannot load locations - organizationId is null',
+      );
       return;
     }
 
-    logger.d('[AdminDashboard] Loading locations for organization: $organizationId');
+    logger.d(
+      '[AdminDashboard] Loading locations for organization: $organizationId',
+    );
 
     try {
       final locationsSnap =
@@ -122,10 +163,13 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
       final locations =
           locationsSnap.docs.map((doc) {
             final data = doc.data();
-            logger.d('[AdminDashboard] Location ${doc.id}: ${data['locationName'] ?? 'Unnamed'}');
+            logger.d(
+              '[AdminDashboard] Location ${doc.id}: ${data['locationName'] ?? 'Unnamed'}',
+            );
             return {
               'id': doc.id,
-              'name': data['locationName'] ?? 'Unnamed Location',
+              'name':
+                  data['locationName'] ?? context.l10n.webAdminUnnamedLocation,
               'isPrimary': data['isPrimary'] ?? false,
             };
           }).toList();
@@ -142,22 +186,36 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
           _availableLocations = locations;
 
           // Determine the effective location: global state takes precedence.
-          final globalLocationId = LocationSelectionService.instance.currentLocationId;
-          final currentSelectedLocation = ref.read(appStateProvider).selectedLocation;
+          final globalLocationId =
+              LocationSelectionService.instance.currentLocationId;
+          final currentSelectedLocation =
+              ref.read(appStateProvider).selectedLocation;
 
           Map<String, dynamic>? locationToSelect;
 
           // 1. Prioritize global selection if it's valid and available in the current list.
-          if (globalLocationId != null && locations.any((loc) => loc['id'] == globalLocationId)) {
-            locationToSelect = locations.firstWhere((loc) => loc['id'] == globalLocationId);
-            logger.d('[AdminDashboard] Applying location from global service: ${locationToSelect['name']}');
+          if (globalLocationId != null &&
+              locations.any((loc) => loc['id'] == globalLocationId)) {
+            locationToSelect = locations.firstWhere(
+              (loc) => loc['id'] == globalLocationId,
+            );
+            logger.d(
+              '[AdminDashboard] Applying location from global service: ${locationToSelect['name']}',
+            );
           }
           // 2. Fallback to auto-selecting primary/first location if no valid global or local selection exists.
           else if (locations.isNotEmpty &&
               (currentSelectedLocation == null ||
-                  !locations.any((loc) => loc['id'] == currentSelectedLocation.locationId))) {
-            locationToSelect = locations.firstWhere((loc) => loc['isPrimary'] == true, orElse: () => locations.first);
-            logger.d('[AdminDashboard] Auto-selecting default location: ${locationToSelect['name']}');
+                  !locations.any(
+                    (loc) => loc['id'] == currentSelectedLocation.locationId,
+                  ))) {
+            locationToSelect = locations.firstWhere(
+              (loc) => loc['isPrimary'] == true,
+              orElse: () => locations.first,
+            );
+            logger.d(
+              '[AdminDashboard] Auto-selecting default location: ${locationToSelect['name']}',
+            );
           }
 
           // If a location has been chosen (either global or default), update all state.
@@ -169,20 +227,32 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
               locationAddress: '',
             );
             // Update Riverpod state
-            ref.read(appStateProvider.notifier).setSelectedLocation(locationData);
+            ref
+                .read(appStateProvider.notifier)
+                .setSelectedLocation(locationData);
             // ALWAYS ensure global state is synchronized with the decision made.
-            LocationSelectionService.instance.setLocation(locationToSelect['id']);
+            LocationSelectionService.instance.setLocation(
+              locationToSelect['id'],
+              locationName: locationToSelect['name'] as String?,
+            );
 
             logger.d(
               '[AdminDashboard] Final selected location is: ${locationToSelect['name']} (${locationToSelect['id']})',
             );
           } else if (locations.isNotEmpty) {
-            logger.d('[AdminDashboard] Keeping existing Riverpod selection: ${currentSelectedLocation?.locationName}');
+            logger.d(
+              '[AdminDashboard] Keeping existing Riverpod selection: ${currentSelectedLocation?.locationName}',
+            );
           } else {
             // Clear selected location if no locations are available
             ref.read(appStateProvider.notifier).setSelectedLocation(null);
-            LocationSelectionService.instance.setLocation(null); // Also clear global state
-            logger.i('[AdminDashboard] No locations found - clearing selection.');
+            LocationSelectionService.instance.setLocation(
+              null,
+              locationName: null,
+            ); // Also clear global state
+            logger.i(
+              '[AdminDashboard] No locations found - clearing selection.',
+            );
 
             // Only show the location creation bottom sheet if we haven't already shown the welcome dialog
             if (!_hasShownWelcomeDialog) {
@@ -196,7 +266,9 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
     } catch (e) {
       logger.e('[AdminDashboard] Error loading locations: $e', e);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load locations: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to load locations: $e')));
       }
     }
   }
@@ -204,9 +276,11 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
   /// Show a guided flow for creating the first location
   void _showFirstLocationCreationFlow() {
     if (organizationId == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Organization ID not available. Please try again.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Organization ID not available. Please try again.'),
+        ),
+      );
       return;
     }
 
@@ -236,16 +310,19 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
   /// Show location bottom sheet specifically for first location creation with proper completion handling
   void _showLocationBottomSheetForFirstLocation() {
     if (organizationId == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Organization ID not available. Please try again.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Organization ID not available. Please try again.'),
+        ),
+      );
       return;
     }
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      isDismissible: false, // Don't allow dismissing during first location setup
+      isDismissible:
+          false, // Don't allow dismissing during first location setup
       enableDrag: false, // Don't allow dragging to dismiss
       builder:
           (context) => LocationWizard(
@@ -264,7 +341,9 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
   void dispose() {
     // Remove listener
     try {
-      LocationSelectionService.instance.listenable.removeListener(_onGlobalLocationChanged);
+      LocationSelectionService.instance.listenable.removeListener(
+        _onGlobalLocationChanged,
+      );
     } catch (_) {}
     _isDisposed = true;
     _refreshTrigger.dispose();
@@ -301,6 +380,154 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
     if (mounted) setState(() {});
   }
 
+  Future<void> _showLocationSwitcher() async {
+    if (_availableLocations.length <= 1 || !mounted) {
+      return;
+    }
+
+    final currentLocationId = _selectedLocationId;
+    final selectedLocationId = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: HandsColors.primaryContainer,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder:
+          (sheetContext) => SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Switch location',
+                    style: GoogleFonts.inter(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: HandsColors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Focus setup lists on one location so shifts, team, and workflows stay easier to manage.',
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: HandsColors.white70,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  ..._availableLocations.map((location) {
+                    final locationId = (location['id'] ?? '').toString();
+                    final isSelected = locationId == currentLocationId;
+                    final locationName =
+                        (location['name'] ??
+                                context.l10n.webAdminUnnamedLocation)
+                            .toString();
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      decoration: BoxDecoration(
+                        color:
+                            isSelected
+                                ? HandsColors.handsOrange.withValues(
+                                  alpha: 0.12,
+                                )
+                                : HandsColors.secondaryContainer,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color:
+                              isSelected
+                                  ? HandsColors.handsOrange.withValues(
+                                    alpha: 0.38,
+                                  )
+                                  : HandsColors.white12,
+                        ),
+                      ),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 4,
+                        ),
+                        onTap: () => Navigator.of(sheetContext).pop(locationId),
+                        leading: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color:
+                                isSelected
+                                    ? HandsColors.handsOrange.withValues(
+                                      alpha: 0.16,
+                                    )
+                                    : Colors.white.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            Icons.location_on_rounded,
+                            color:
+                                isSelected
+                                    ? HandsColors.handsOrange
+                                    : HandsColors.white70,
+                            size: 18,
+                          ),
+                        ),
+                        title: Text(
+                          locationName,
+                          style: GoogleFonts.inter(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: HandsColors.white,
+                          ),
+                        ),
+                        subtitle:
+                            isSelected
+                                ? Text(
+                                  'Currently selected',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: HandsColors.white70,
+                                  ),
+                                )
+                                : null,
+                        trailing: Icon(
+                          isSelected
+                              ? Icons.check_circle_rounded
+                              : Icons.chevron_right_rounded,
+                          color:
+                              isSelected
+                                  ? HandsColors.handsOrange
+                                  : HandsColors.white70,
+                        ),
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ),
+    );
+
+    if (!mounted ||
+        selectedLocationId == null ||
+        selectedLocationId == currentLocationId) {
+      return;
+    }
+
+    final selectedLocation = _availableLocations.firstWhere(
+      (location) => location['id'] == selectedLocationId,
+      orElse: () => <String, dynamic>{},
+    );
+    final selectedLocationName =
+        selectedLocation['name'] as String? ?? 'Selected Location';
+
+    await LocationSelectionService.instance.setLocationAsync(
+      selectedLocationId,
+      locationName: selectedLocationName,
+    );
+  }
+
   Future<void> _checkUserAccess() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -311,7 +538,11 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
     }
 
     try {
-      final userDoc = await FirestoreEnforcer.instance.collection('users').doc(user.uid).get();
+      final userDoc =
+          await FirestoreEnforcer.instance
+              .collection('users')
+              .doc(user.uid)
+              .get();
 
       if (userDoc.exists) {
         final userData = userDoc.data();
@@ -320,7 +551,9 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('User data is corrupted. Please contact support.'),
+                content: Text(
+                  'User data is corrupted. Please contact support.',
+                ),
                 backgroundColor: HandsColors.error,
               ),
             );
@@ -336,7 +569,9 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
 
         // Only allow admin access (userRole = 2) and require organizationId
         if (role != 2 || orgId == null) {
-          logger.w('[AdminDashboard] Access denied - role: $role, orgId: $orgId');
+          logger.w(
+            '[AdminDashboard] Access denied - role: $role, orgId: $orgId',
+          );
           if (mounted) {
             context.go(AppRoutes.userDashboardPage.path);
           }
@@ -344,16 +579,24 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
         }
 
         // Check organization subscription status
-        final orgDoc = await FirestoreEnforcer.instance.collection('organizations').doc(orgId).get();
+        final orgDoc =
+            await FirestoreEnforcer.instance
+                .collection('organizations')
+                .doc(orgId)
+                .get();
 
         if (orgDoc.exists) {
           final orgData = orgDoc.data();
           if (orgData == null) {
-            logger.w('[AdminDashboard] Organization document exists but data is null: $orgId');
+            logger.w(
+              '[AdminDashboard] Organization document exists but data is null: $orgId',
+            );
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('Organization data is corrupted. Please contact support.'),
+                  content: Text(
+                    'Organization data is corrupted. Please contact support.',
+                  ),
                   backgroundColor: HandsColors.error,
                 ),
               );
@@ -362,43 +605,43 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
             return;
           }
 
-          // Determine subscription status with multiple fallbacks
-          String? subscriptionStatus = orgData['subscriptionStatus'] as String?;
-          if (subscriptionStatus == null || subscriptionStatus.isEmpty) {
-            final settings = orgData['settings'];
-            if (settings is Map<String, dynamic>) {
-              subscriptionStatus = settings['subscriptionStatus'] as String?;
+          Map<String, dynamic>? subscriptionData;
+          try {
+            final subDoc =
+                await FirestoreEnforcer.instance
+                    .collection('organizations')
+                    .doc(orgId)
+                    .collection('stripe')
+                    .doc('subscription')
+                    .get();
+            if (subDoc.exists) {
+              subscriptionData = subDoc.data();
             }
+          } catch (e) {
+            logger.w(
+              '[AdminDashboard] Unable to fetch stripe/subscription doc: $e',
+            );
           }
-          if (subscriptionStatus == null || subscriptionStatus.isEmpty) {
-            // Fallback to Stripe sub-document if present
-            try {
-              final subDoc =
-                  await FirestoreEnforcer.instance
-                      .collection('organizations')
-                      .doc(orgId)
-                      .collection('stripe')
-                      .doc('subscription')
-                      .get();
-              if (subDoc.exists) {
-                subscriptionStatus = (subDoc.data()?['status'] as String?) ?? subscriptionStatus;
-              }
-            } catch (e) {
-              logger.w('[AdminDashboard] Unable to fetch stripe/subscription doc: $e');
-            }
-          }
-          subscriptionStatus ??= 'pending';
 
-          logger.d('[AdminDashboard] Organization data keys: ${orgData.keys.toList()}');
+          final subscriptionStatus =
+              (subscriptionData?['status'] as String?) ??
+              (orgData['subscriptionStatus'] as String?) ??
+              'pending';
+
+          logger.d(
+            '[AdminDashboard] Organization data keys: ${orgData.keys.toList()}',
+          );
           logger.d('[AdminDashboard] Subscription status: $subscriptionStatus');
 
-          // Allow active, trialing, or trial subscriptions
-          if (!(subscriptionStatus == 'active' || subscriptionStatus == 'trialing' || subscriptionStatus == 'trial')) {
+          if (!SubscriptionAccessService.hasAccess(
+            organizationData: orgData,
+            subscriptionData: subscriptionData,
+          )) {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(
-                    'Your subscription is not active ($subscriptionStatus). Please complete your payment to access the dashboard.',
+                    'Your trial or subscription has ended. Please add billing to continue using Hands.',
                   ),
                   backgroundColor: HandsColors.amber,
                 ),
@@ -412,7 +655,9 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Organization not found. Please contact support.'),
+                content: Text(
+                  'Organization not found. Please contact support.',
+                ),
                 backgroundColor: HandsColors.error,
               ),
             );
@@ -481,7 +726,8 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final Widget body = widget.overrideBodyBuilder?.call(context) ?? _buildMobileBody(context);
+    final Widget body =
+        widget.overrideBodyBuilder?.call(context) ?? _buildMobileBody(context);
 
     return Scaffold(
       backgroundColor: HandsColors.scaffoldBackground,
@@ -489,7 +735,10 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
         backgroundColor: HandsColors.cardPrimary,
         elevation: 0,
         toolbarHeight: kToolbarHeight,
-        title: GenericAppBarContent(appBarTitle: 'Setup', userRole: userRole),
+        title: GenericAppBarContent(
+          appBarTitle: context.l10n.bottomNavSetup,
+          userRole: userRole,
+        ),
         automaticallyImplyLeading: false,
         actions: [
           // Menu button
@@ -502,213 +751,316 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
   }
 
   Widget _buildMobileBody(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Location indicator (only show if multiple locations exist)
-          if (_availableLocations.length > 1) ...[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: HandsColors.cardPrimary,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: HandsColors.handsOrange.withOpacity(0.3), width: 1.5),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.location_on, color: HandsColors.handsOrange, size: 24),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Current Location',
-                          style: GoogleFonts.comfortaa(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                            color: HandsColors.white70,
+    final l10n = context.l10n;
+    final adminTourSteps = <GuidedTourStep>[
+      GuidedTourStep(
+        title: l10n.adminSetupTourWelcomeTitle,
+        description: l10n.adminSetupTourWelcomeDescription,
+      ),
+      if (_availableLocations.length > 1)
+        GuidedTourStep(
+          targetKey: _tourLocationScopeKey,
+          title: l10n.adminSetupTourLocationTitle,
+          description: l10n.adminSetupTourLocationDescription,
+          topicId: 'admin-multi-location',
+        ),
+      GuidedTourStep(
+        targetKey: _tourSetupAreasKey,
+        title: l10n.adminSetupTourAreasTitle,
+        description: l10n.adminSetupTourAreasDescription,
+        topicId: 'admin-first-location',
+        scrollAlignment: 0.1,
+      ),
+      GuidedTourStep(
+        targetKey: _tourSectionContentKey,
+        title: l10n.adminSetupTourPanelTitle,
+        description: l10n.adminSetupTourPanelDescription,
+        topicId: 'admin-create-shift',
+        scrollAlignment: 0.08,
+      ),
+    ];
+
+    return GuidedTourHost(
+      storageKey: 'admin-setup-tour-v2',
+      enabled: !isLoading,
+      steps: adminTourSteps,
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF0C1015), Color(0xFF090C10)],
+          ),
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildSetupHero(),
+              const SizedBox(height: 14),
+              if (_availableLocations.length > 1) ...[
+                KeyedSubtree(
+                  key: _tourLocationScopeKey,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(24),
+                    onTap: _showLocationSwitcher,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      decoration: _adminPanelDecoration(
+                        accent: _viewAccent(AdminView.locations),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: _viewAccent(
+                                AdminView.locations,
+                              ).withValues(alpha: 0.14),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Icon(
+                              Icons.location_on_rounded,
+                              color: _viewAccent(AdminView.locations),
+                              size: 20,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _selectedLocationName ?? 'All Locations',
-                          style: GoogleFonts.comfortaa(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: HandsColors.white,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  l10n.adminSetupActiveLocation,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: HandsColors.white70,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _selectedLocationName ??
+                                      l10n.adminSetupSelectLocation,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                    color: HandsColors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: HandsColors.handsOrange.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: HandsColors.handsOrange.withOpacity(0.3)),
-                    ),
-                    child: Text(
-                      '${_availableLocations.length} locations',
-                      style: GoogleFonts.comfortaa(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: HandsColors.handsOrange,
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 7,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.05),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(color: HandsColors.white12),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  l10n.dashboardSwitch,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: HandsColors.white,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                const Icon(
+                                  Icons.expand_more_rounded,
+                                  color: HandsColors.white70,
+                                  size: 16,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 7,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.05),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(color: HandsColors.white12),
+                            ),
+                            child: Text(
+                              l10n.dashboardLocationsCount(
+                                _availableLocations.length,
+                              ),
+                              style: GoogleFonts.inter(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: HandsColors.white,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                ],
+                ),
+                const SizedBox(height: 14),
+              ],
+              KeyedSubtree(key: _tourSetupAreasKey, child: _buildViewToggle()),
+              const SizedBox(height: 14),
+              const InlineStartHereCard(
+                role: HelpRole.admin,
+                storageKey: 'admin-setup',
               ),
-            ),
-          ],
-          _buildViewToggle(),
-          const SizedBox(height: 16),
-          if (_currentView == AdminView.shiftsChecklists) ...[
-            _buildShiftsSection(),
-            const SizedBox(height: 16),
-            _buildChecklistsSection(),
-          ] else if (_currentView == AdminView.usersLocations) ...[
-            _buildUsersSection(),
-            const SizedBox(height: 16),
-            _buildLocationsSection(),
-          ],
-        ],
+              const SizedBox(height: 14),
+              KeyedSubtree(
+                key: _tourSectionContentKey,
+                child:
+                    _currentView == AdminView.locations
+                        ? _buildLocationsSection()
+                        : _currentView == AdminView.team
+                        ? _buildUsersSection()
+                        : _currentView == AdminView.shifts
+                        ? _buildShiftsSection()
+                        : _buildChecklistsSection(),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildViewToggle() {
-    // Modern segmented control toggle
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isTight = constraints.maxWidth < 350; // More permissive threshold
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'View',
-              style: GoogleFonts.comfortaa(
-                fontSize: 12,
-                fontWeight: FontWeight.w400,
-                color: HandsColors.white70,
-                letterSpacing: 0.2,
-              ),
+    final l10n = context.l10n;
+    final items = <({AdminView view, IconData icon, String label})>[
+      (
+        view: AdminView.locations,
+        icon: Icons.location_on_rounded,
+        label: l10n.adminViewLocations,
+      ),
+      (
+        view: AdminView.team,
+        icon: Icons.group_rounded,
+        label: l10n.adminViewTeam,
+      ),
+      (
+        view: AdminView.shifts,
+        icon: Icons.schedule_rounded,
+        label: l10n.adminViewShifts,
+      ),
+      (
+        view: AdminView.library,
+        icon: Icons.library_books_rounded,
+        label: l10n.adminViewChecklistLibrary,
+      ),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: _adminPanelDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            l10n.adminSetupAreas,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: HandsColors.white70,
             ),
-            const SizedBox(height: 8),
-            Container(
-              height: 36,
-              decoration: BoxDecoration(
-                color: HandsColors.secondaryContainer,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: HandsColors.white12, width: 1),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: InkWell(
-                      borderRadius: const BorderRadius.horizontal(left: Radius.circular(10)),
-                      onTap: () {
-                        if (_currentView != AdminView.shiftsChecklists && mounted) {
-                          setState(() => _currentView = AdminView.shiftsChecklists);
-                        }
-                      },
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        curve: Curves.easeInOut,
-                        decoration: BoxDecoration(
-                          color:
-                              _currentView == AdminView.shiftsChecklists ? HandsColors.handsOrange : Colors.transparent,
-                          borderRadius: const BorderRadius.horizontal(left: Radius.circular(10)),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.schedule,
-                              size: 14,
+          ),
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children:
+                  items.map((item) {
+                    final isActive = _currentView == item.view;
+                    final accent = _viewAccent(item.view);
+                    return Padding(
+                      padding: EdgeInsets.only(
+                        right: item.view == items.last.view ? 0 : 8,
+                      ),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () {
+                          if (_currentView != item.view && mounted) {
+                            setState(() => _currentView = item.view);
+                          }
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 160),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color:
+                                isActive
+                                    ? accent.withValues(alpha: 0.14)
+                                    : Colors.white.withValues(alpha: 0.025),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
                               color:
-                                  _currentView == AdminView.shiftsChecklists ? HandsColors.white : HandsColors.white70,
+                                  isActive
+                                      ? accent.withValues(alpha: 0.34)
+                                      : HandsColors.white12,
                             ),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                isTight ? 'Shifts' : 'Shifts & Tasks',
-                                style: GoogleFonts.comfortaa(
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 28,
+                                height: 28,
+                                decoration: BoxDecoration(
                                   color:
-                                      _currentView == AdminView.shiftsChecklists
+                                      isActive
+                                          ? accent.withValues(alpha: 0.16)
+                                          : Colors.white.withValues(
+                                            alpha: 0.04,
+                                          ),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(
+                                  item.icon,
+                                  size: 15,
+                                  color:
+                                      isActive ? accent : HandsColors.white70,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                item.label,
+                                style: GoogleFonts.inter(
+                                  color:
+                                      isActive
                                           ? HandsColors.white
                                           : HandsColors.white70,
-                                  fontWeight: FontWeight.w500,
-                                  fontSize: isTight ? 10 : 11,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12.5,
                                 ),
-                                textAlign: TextAlign.center,
-                                overflow: TextOverflow.ellipsis,
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                  Expanded(
-                    child: InkWell(
-                      borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                      onTap: () {
-                        if (_currentView != AdminView.usersLocations && mounted) {
-                          setState(() => _currentView = AdminView.usersLocations);
-                        }
-                      },
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        curve: Curves.easeInOut,
-                        decoration: BoxDecoration(
-                          color:
-                              _currentView == AdminView.usersLocations ? HandsColors.handsOrange : Colors.transparent,
-                          borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.group,
-                              size: 14,
-                              color: _currentView == AdminView.usersLocations ? HandsColors.white : HandsColors.white70,
-                            ),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                isTight ? 'Staff' : 'Staff & Places',
-                                style: GoogleFonts.comfortaa(
-                                  color:
-                                      _currentView == AdminView.usersLocations
-                                          ? HandsColors.white
-                                          : HandsColors.white70,
-                                  fontWeight: FontWeight.w500,
-                                  fontSize: isTight ? 10 : 11,
-                                ),
-                                textAlign: TextAlign.center,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                    );
+                  }).toList(),
             ),
-          ],
-        );
-      },
+          ),
+        ],
+      ),
     );
   }
 
@@ -718,60 +1070,423 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
     required List<Color> colors,
     required VoidCallback onAdd,
     required Widget child,
+    List<String> helpTopicIds = const [],
   }) {
+    final l10n = context.l10n;
     return Container(
-      decoration: HandsDecorations.primaryBoxDecoration,
+      decoration: _adminPanelDecoration(
+        accent: colors.first,
+        highlighted: true,
+      ),
       child: Column(
         children: [
           Container(
             decoration: BoxDecoration(
-              color: HandsColors.primaryContainer,
-              borderRadius: const BorderRadius.only(topLeft: Radius.circular(16), topRight: Radius.circular(16)),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  colors.first.withValues(alpha: 0.16),
+                  colors.last.withValues(alpha: 0.08),
+                ],
+              ),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(22),
+                topRight: Radius.circular(22),
+              ),
             ),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(icon, color: HandsColors.handsOrange, size: 20),
-                  const SizedBox(width: 8),
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: colors.first.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(icon, color: colors.first, size: 21),
+                  ),
+                  const SizedBox(width: 12),
                   Expanded(
-                    child: Text(
-                      title,
-                      style: GoogleFonts.comfortaa(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w400,
-                        color: HandsColors.white,
-                        letterSpacing: 0.3,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: GoogleFonts.inter(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: HandsColors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _viewSubtitle(_currentView),
+                          style: GoogleFonts.inter(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w500,
+                            color: HandsColors.white70,
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  SizedBox(
-                    height: 32,
-                    child: IconButton(
-                      icon: const Icon(Icons.add_circle_outline, size: 20),
-                      color: HandsColors.handsOrange,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                      tooltip: 'Add New',
-                      onPressed: onAdd,
+                  if (helpTopicIds.isNotEmpty) ...[
+                    const SizedBox(width: 10),
+                    ContextHelpTrigger(
+                      title: title,
+                      subtitle: _viewSubtitle(_currentView),
+                      topicIds: helpTopicIds,
+                    ),
+                  ],
+                  const SizedBox(width: 12),
+                  FilledButton.icon(
+                    onPressed: onAdd,
+                    icon: const Icon(Icons.add, size: 16),
+                    label: Text(
+                      l10n.commonAdd,
+                      style: GoogleFonts.inter(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: colors.first,
+                      foregroundColor: const Color(0xFF0E1116),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      elevation: 0,
                     ),
                   ),
                 ],
               ),
             ),
           ),
-          child,
+          Padding(padding: const EdgeInsets.all(12), child: child),
         ],
       ),
+    );
+  }
+
+  List<String> _extractShiftChecklistIds(Map<String, dynamic> shiftData) {
+    return List<String>.from(
+      shiftData['checklistTemplateIds'] ??
+          shiftData['checklists'] ??
+          shiftData['checklistIds'] ??
+          const <String>[],
+    );
+  }
+
+  String _workflowSummaryForShift(Map<String, dynamic> shiftData) {
+    final l10n = context.l10n;
+    final checklistIds = _extractShiftChecklistIds(shiftData);
+    if (checklistIds.isEmpty) {
+      return l10n.adminWorkflowNoneAttached;
+    }
+    if (checklistIds.length == 1) {
+      return l10n.adminWorkflowOneAttached;
+    }
+    return l10n.adminWorkflowManyAttached(checklistIds.length);
+  }
+
+  void _editWorkflowForShift(Map<String, dynamic> shiftData) {
+    final checklistIds = _extractShiftChecklistIds(shiftData);
+    if (checklistIds.isEmpty) {
+      _createWorkflowForShift(shiftData);
+      return;
+    }
+    final checklistId = checklistIds.first;
+    _showChecklistBottomSheet(
+      checklistId,
+      null,
+      [shiftData['id'] as String],
+      context.l10n.adminWorkflowTitle(
+        (shiftData['name'] ?? shiftData['shiftName'] ?? 'Shift').toString(),
+      ),
+    );
+  }
+
+  void _createWorkflowForShift(Map<String, dynamic> shiftData) {
+    _showChecklistBottomSheet(
+      null,
+      {
+        'name': context.l10n.adminWorkflowTitle(
+          (shiftData['name'] ?? shiftData['shiftName'] ?? 'Shift').toString(),
+        ),
+        'description': '',
+        'tasks': const [],
+      },
+      [shiftData['id'] as String],
+      context.l10n.adminWorkflowTitle(
+        (shiftData['name'] ?? shiftData['shiftName'] ?? 'Shift').toString(),
+      ),
+    );
+  }
+
+  Color _viewAccent(AdminView view) {
+    switch (view) {
+      case AdminView.locations:
+        return const Color(0xFFE67E52);
+      case AdminView.team:
+        return const Color(0xFF6E8BFF);
+      case AdminView.shifts:
+        return const Color(0xFF4FB5A5);
+      case AdminView.library:
+        return const Color(0xFFF2B64A);
+    }
+  }
+
+  IconData _viewIcon(AdminView view) {
+    switch (view) {
+      case AdminView.locations:
+        return Icons.location_on_rounded;
+      case AdminView.team:
+        return Icons.group_rounded;
+      case AdminView.shifts:
+        return Icons.schedule_rounded;
+      case AdminView.library:
+        return Icons.library_books_rounded;
+    }
+  }
+
+  String _viewEyebrow(AdminView view) {
+    final l10n = context.l10n;
+    switch (view) {
+      case AdminView.locations:
+        return l10n.adminViewEyebrowPlaces;
+      case AdminView.team:
+        return l10n.adminViewEyebrowPeople;
+      case AdminView.shifts:
+        return l10n.adminViewEyebrowOperations;
+      case AdminView.library:
+        return l10n.adminViewEyebrowChecklistTemplates;
+    }
+  }
+
+  String _viewTitle(AdminView view) {
+    final l10n = context.l10n;
+    switch (view) {
+      case AdminView.locations:
+        return l10n.adminViewLocations;
+      case AdminView.team:
+        return l10n.adminViewTeam;
+      case AdminView.shifts:
+        return l10n.adminViewShifts;
+      case AdminView.library:
+        return l10n.adminViewChecklistLibrary;
+    }
+  }
+
+  String _viewSubtitle(AdminView view) {
+    final l10n = context.l10n;
+    switch (view) {
+      case AdminView.locations:
+        return l10n.adminViewLocationsSubtitle;
+      case AdminView.team:
+        return l10n.adminViewTeamSubtitle;
+      case AdminView.shifts:
+        return l10n.adminViewShiftsSubtitle;
+      case AdminView.library:
+        return l10n.adminViewChecklistLibrarySubtitle;
+    }
+  }
+
+  List<String> _viewHelpTopics(AdminView view) {
+    switch (view) {
+      case AdminView.locations:
+        return const ['admin-first-location', 'admin-multi-location'];
+      case AdminView.team:
+        return const ['admin-invite-team'];
+      case AdminView.shifts:
+        return const ['admin-create-shift', 'admin-attach-workflow'];
+      case AdminView.library:
+        return const ['admin-checklist-library', 'admin-attach-workflow'];
+    }
+  }
+
+  Widget _buildSetupHero() {
+    final accent = _viewAccent(_currentView);
+    final l10n = context.l10n;
+    final locationLabel = _selectedLocationName ?? l10n.adminSetupAllLocations;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF181D25), Color(0xFF11151C)],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: HandsColors.white12),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x16000000),
+            blurRadius: 20,
+            offset: Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(_viewIcon(_currentView), color: accent, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _viewEyebrow(_currentView).toUpperCase(),
+                      style: GoogleFonts.inter(
+                        color: accent,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.9,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      l10n.adminSetupHeroTitle,
+                      style: GoogleFonts.inter(
+                        color: HandsColors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.9,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              ContextHelpTrigger(
+                title: _viewTitle(_currentView),
+                subtitle: _viewSubtitle(_currentView),
+                topicIds: _viewHelpTopics(_currentView),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 7,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: HandsColors.white12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.place_rounded,
+                      size: 14,
+                      color: HandsColors.white70,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      locationLabel,
+                      style: GoogleFonts.inter(
+                        color: HandsColors.white,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  _viewTitle(_currentView),
+                  style: GoogleFonts.inter(
+                    color: HandsColors.white,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -1.0,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              ContextHelpTrigger(
+                title: _viewTitle(_currentView),
+                subtitle: _viewSubtitle(_currentView),
+                topicIds: _viewHelpTopics(_currentView),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _viewSubtitle(_currentView),
+            style: GoogleFonts.inter(
+              color: HandsColors.white70,
+              fontSize: 13.5,
+              height: 1.45,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  BoxDecoration _adminPanelDecoration({
+    Color? accent,
+    bool highlighted = false,
+  }) {
+    return BoxDecoration(
+      color: highlighted ? const Color(0xFF171C24) : const Color(0xFF151A21),
+      borderRadius: BorderRadius.circular(22),
+      border: Border.all(
+        color:
+            accent != null
+                ? accent.withValues(alpha: highlighted ? 0.28 : 0.18)
+                : HandsColors.white12,
+      ),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x12000000),
+          blurRadius: 18,
+          offset: Offset(0, 10),
+        ),
+      ],
     );
   }
 
   Widget _buildUsersSection() {
     return _buildGradientSection(
       icon: Icons.group,
-      title: 'Staff',
-      colors: [const Color(0xFF4c63d2), const Color(0xFF5a4dae)], // Darker purple-blue gradient
+      title: _viewTitle(AdminView.team),
+      colors: [
+        const Color(0xFF4c63d2),
+        const Color(0xFF5a4dae),
+      ], // Darker purple-blue gradient
       onAdd: () => _showUserBottomSheet(),
+      helpTopicIds: const ['admin-invite-team'],
       child: _buildUsersList(),
     );
   }
@@ -779,19 +1494,27 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
   Widget _buildShiftsSection() {
     return _buildGradientSection(
       icon: Icons.schedule,
-      title: 'Shifts',
-      colors: [const Color(0xFF2e86de), const Color(0xFF006ba6)], // Darker blue gradient
+      title: _viewTitle(AdminView.shifts),
+      colors: [
+        const Color(0xFF2e86de),
+        const Color(0xFF006ba6),
+      ], // Darker blue gradient
       onAdd: () => _showShiftBottomSheet(),
+      helpTopicIds: const ['admin-create-shift', 'admin-attach-workflow'],
       child: _buildShiftsList(),
     );
   }
 
   Widget _buildChecklistsSection() {
     return _buildGradientSection(
-      icon: Icons.checklist,
-      title: 'Checklists',
-      colors: [const Color(0xFF26de81), const Color(0xFF20bf6b)], // Darker green gradient
+      icon: Icons.library_books,
+      title: _viewTitle(AdminView.library),
+      colors: [
+        const Color(0xFF26de81),
+        const Color(0xFF20bf6b),
+      ], // Darker green gradient
       onAdd: () => _showChecklistBottomSheet(),
+      helpTopicIds: const ['admin-checklist-library', 'admin-attach-workflow'],
       child: _buildChecklistsList(),
     );
   }
@@ -801,9 +1524,13 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
   Widget _buildLocationsSection() {
     return _buildGradientSection(
       icon: Icons.location_on,
-      title: 'Locations',
-      colors: [const Color(0xFFe55039), const Color(0xFFfa7f72)], // Darker coral-red gradient
+      title: _viewTitle(AdminView.locations),
+      colors: [
+        const Color(0xFFe55039),
+        const Color(0xFFfa7f72),
+      ], // Darker coral-red gradient
       onAdd: () => _showLocationWizard(),
+      helpTopicIds: const ['admin-first-location', 'admin-multi-location'],
       child: _buildLocationsList(),
     );
   }
@@ -812,7 +1539,10 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
 
   Widget _buildUsersList() {
     if (organizationId == null) {
-      return const Padding(padding: EdgeInsets.all(16.0), child: Text('No organization data available'));
+      return Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Text(context.l10n.adminNoOrganizationDataAvailable),
+      );
     }
 
     return ValueListenableBuilder<int>(
@@ -828,11 +1558,15 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
           builder: (context, snapshot) {
             // Debug logging
             logger.d('[AdminDashboard] Organization ID: $organizationId');
-            logger.d('[AdminDashboard] User snapshot has data: ${snapshot.hasData}');
+            logger.d(
+              '[AdminDashboard] User snapshot has data: ${snapshot.hasData}',
+            );
             if (snapshot.hasData) {
               final snapshotData = snapshot.data;
               if (snapshotData != null) {
-                logger.d('[AdminDashboard] Number of users found: ${snapshotData.docs.length}');
+                logger.d(
+                  '[AdminDashboard] Number of users found: ${snapshotData.docs.length}',
+                );
                 for (final doc in snapshotData.docs) {
                   final userData = doc.data() as Map<String, dynamic>;
                   logger.d(
@@ -845,32 +1579,20 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
             if (snapshot.hasError) {
               return Padding(
                 padding: const EdgeInsets.all(16.0),
-                child: Text('Error loading users: ${snapshot.error}'),
+                child: Text(
+                  context.l10n.adminErrorLoadingUsers('${snapshot.error}'),
+                ),
               );
             }
 
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Padding(padding: EdgeInsets.all(16.0), child: Center(child: CircularProgressIndicator()));
+              return const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Center(child: CircularProgressIndicator()),
+              );
             }
 
             final users = snapshot.data?.docs ?? [];
-
-            if (users.isEmpty) {
-              return Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    const Icon(Icons.people_outline, size: 36, color: HandsColors.white30),
-                    const SizedBox(height: 8),
-                    Text('No staff found', style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11)),
-                    Text(
-                      'Add staff to get started',
-                      style: GoogleFonts.comfortaa(color: HandsColors.white30, fontSize: 10),
-                    ),
-                  ],
-                ),
-              );
-            }
 
             // Filter users by selected location
             final usersToShow =
@@ -886,7 +1608,9 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
 
                   if (role == 0) {
                     // General user: show ONLY if their locationIds contain the selected location
-                    final locIds = coerceToLocationIds(userData['locationIds'] ?? userData['locationId']);
+                    final locIds = coerceToLocationIds(
+                      userData['locationIds'] ?? userData['locationId'],
+                    );
 
                     if (kDebugMode) {
                       print(
@@ -903,7 +1627,9 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
 
                   if (role == 1) {
                     // Manager: only show if any of their locationIds contains selected location
-                    final locIds = coerceToLocationIds(userData['locationIds'] ?? userData['locationId']);
+                    final locIds = coerceToLocationIds(
+                      userData['locationIds'] ?? userData['locationId'],
+                    );
 
                     if (kDebugMode) {
                       print(
@@ -923,65 +1649,149 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
               );
             }
 
-            return Container(
-              constraints: const BoxConstraints(maxHeight: 200),
-              child: ListView.builder(
-                itemCount: usersToShow.length,
-                itemBuilder: (context, index) {
-                  final doc = usersToShow[index];
-                  final userData = doc.data() as Map<String, dynamic>;
-                  final name = '${userData['firstName'] ?? ''} ${userData['lastName'] ?? ''}'.trim();
-                  final email = userData['emailAddress'] ?? userData['userEmail'] ?? userData['email'] ?? 'No email';
-                  final role = userData['userRole'] ?? 0;
-                  final roleText =
-                      role == 2
-                          ? 'Admin'
-                          : role == 1
-                          ? 'Manager'
-                          : 'General User';
-
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    decoration: HandsDecorations.tertiaryBoxDecoration,
-                    child: ListTile(
-                      leading: const Icon(Icons.person, color: HandsColors.white),
-                      title: Text(
-                        name.isEmpty ? 'Unnamed User' : name,
-                        style: GoogleFonts.comfortaa(
-                          color: HandsColors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w400,
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                PendingInvitesPanel(
+                  organizationId: organizationId!,
+                  compact: true,
+                  maxVisible: 3,
+                ),
+                if (usersToShow.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      children: [
+                        const Icon(
+                          Icons.people_outline,
+                          size: 36,
+                          color: HandsColors.white30,
                         ),
-                      ),
-                      subtitle: Text(
-                        '$email • $roleText',
-                        style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11),
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit, color: HandsColors.white),
-                            iconSize: 18,
-                            onPressed: () => _showUserBottomSheet(doc.id, doc.data() as Map<String, dynamic>),
+                        const SizedBox(height: 8),
+                        Text(
+                          context.l10n.adminNoTeamMembersFound,
+                          style: GoogleFonts.inter(
+                            color: HandsColors.white70,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.delete, color: HandsColors.white),
-                            iconSize: 18,
-                            onPressed:
-                                () => _showDeleteConfirmation(
-                                  context: context,
-                                  title: 'Delete User',
-                                  content: 'Are you sure you want to delete this user? This action cannot be undone.',
-                                  onConfirm: () => _deleteUser(doc.id),
-                                ),
+                        ),
+                        Text(
+                          context.l10n.adminInviteTeamToGetStarted,
+                          style: GoogleFonts.inter(
+                            color: HandsColors.white30,
+                            fontSize: 11.5,
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  );
-                },
-              ),
+                  )
+                else
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 200),
+                    child: ListView.builder(
+                      itemCount: usersToShow.length,
+                      itemBuilder: (context, index) {
+                        final doc = usersToShow[index];
+                        final userData = doc.data() as Map<String, dynamic>;
+                        final name =
+                            '${userData['firstName'] ?? ''} ${userData['lastName'] ?? ''}'
+                                .trim();
+                        final email =
+                            userData['emailAddress'] ??
+                            userData['userEmail'] ??
+                            userData['email'] ??
+                            context.l10n.webAdminNoEmail;
+                        final role = userData['userRole'] ?? 0;
+                        final roleText =
+                            role == 2
+                                ? context.l10n.welcomeRoleAdmin
+                                : role == 1
+                                ? context.l10n.welcomeRoleManager
+                                : context.l10n.welcomeRoleUser;
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          decoration: _adminPanelDecoration(
+                            accent: _viewAccent(AdminView.team),
+                          ),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 6,
+                            ),
+                            leading: Container(
+                              width: 42,
+                              height: 42,
+                              decoration: BoxDecoration(
+                                color: _viewAccent(
+                                  AdminView.team,
+                                ).withValues(alpha: 0.16),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Icon(
+                                Icons.person_rounded,
+                                color: _viewAccent(AdminView.team),
+                                size: 20,
+                              ),
+                            ),
+                            title: Text(
+                              name.isEmpty
+                                  ? context.l10n.adminUnnamedUser
+                                  : name,
+                              style: GoogleFonts.inter(
+                                color: HandsColors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            subtitle: Text(
+                              '$email • $roleText',
+                              style: GoogleFonts.inter(
+                                color: HandsColors.white70,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.edit,
+                                    color: HandsColors.white,
+                                  ),
+                                  iconSize: 18,
+                                  onPressed:
+                                      () => _showUserBottomSheet(
+                                        doc.id,
+                                        doc.data() as Map<String, dynamic>,
+                                      ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.delete,
+                                    color: HandsColors.white,
+                                  ),
+                                  iconSize: 18,
+                                  onPressed:
+                                      () => _showDeleteConfirmation(
+                                        context: context,
+                                        title:
+                                            context.l10n.adminDeleteUserTitle,
+                                        content:
+                                            context.l10n.adminDeleteUserBody,
+                                        onConfirm: () => _deleteUser(doc.id),
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+              ],
             );
           },
         );
@@ -991,7 +1801,10 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
 
   Widget _buildLocationsList() {
     if (organizationId == null) {
-      return const Padding(padding: EdgeInsets.all(16.0), child: Text('No organization data available'));
+      return Padding(
+        padding: EdgeInsets.all(16.0),
+        child: Text(context.l10n.adminNoOrganizationDataAvailable),
+      );
     }
 
     return ValueListenableBuilder<int>(
@@ -1008,12 +1821,17 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
             if (snapshot.hasError) {
               return Padding(
                 padding: const EdgeInsets.all(16.0),
-                child: Text('Error loading locations: ${snapshot.error}'),
+                child: Text(
+                  context.l10n.adminErrorLoadingLocations('${snapshot.error}'),
+                ),
               );
             }
 
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Padding(padding: EdgeInsets.all(16.0), child: Center(child: CircularProgressIndicator()));
+              return const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Center(child: CircularProgressIndicator()),
+              );
             }
 
             final locations = snapshot.data?.docs ?? [];
@@ -1023,12 +1841,25 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   children: [
-                    const Icon(Icons.location_city_outlined, size: 36, color: HandsColors.white30),
+                    const Icon(
+                      Icons.location_city_outlined,
+                      size: 36,
+                      color: HandsColors.white30,
+                    ),
                     const SizedBox(height: 8),
-                    Text('No locations found', style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11)),
                     Text(
-                      'Add a location to get started',
-                      style: GoogleFonts.comfortaa(color: HandsColors.white30, fontSize: 10),
+                      context.l10n.adminNoLocationsFound,
+                      style: GoogleFonts.comfortaa(
+                        color: HandsColors.white70,
+                        fontSize: 11,
+                      ),
+                    ),
+                    Text(
+                      context.l10n.adminAddLocationToGetStarted,
+                      style: GoogleFonts.comfortaa(
+                        color: HandsColors.white30,
+                        fontSize: 10,
+                      ),
                     ),
                   ],
                 ),
@@ -1041,7 +1872,9 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
                   final locationData = doc.data() as Map<String, dynamic>;
 
                   // Debug logging
-                  logger.d('[AdminDashboard] Processing location ${doc.id}: $locationData');
+                  logger.d(
+                    '[AdminDashboard] Processing location ${doc.id}: $locationData',
+                  );
 
                   // Safe string extraction function
                   String safeGetString(dynamic value) {
@@ -1056,7 +1889,10 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
                   }
 
                   final name = safeGetString(locationData['locationName']);
-                  final displayName = name.isNotEmpty ? name : 'Unnamed Location';
+                  final displayName =
+                      name.isNotEmpty
+                          ? name
+                          : context.l10n.webAdminUnnamedLocation;
                   // Handle both old and new field names with safe extraction
                   final address =
                       safeGetString(locationData['street']).isNotEmpty
@@ -1076,31 +1912,67 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 8),
-                    decoration: HandsDecorations.tertiaryBoxDecoration,
+                    decoration: _adminPanelDecoration(
+                      accent: _viewAccent(AdminView.locations),
+                    ),
                     child: ListTile(
-                      leading: const Icon(Icons.location_on, color: HandsColors.white),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 6,
+                      ),
+                      leading: Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: _viewAccent(
+                            AdminView.locations,
+                          ).withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Icon(
+                          Icons.location_on_rounded,
+                          color: _viewAccent(AdminView.locations),
+                          size: 20,
+                        ),
+                      ),
                       title: Text(
                         displayName,
-                        style: GoogleFonts.comfortaa(
+                        style: GoogleFonts.inter(
                           color: HandsColors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w400,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                       subtitle: Text(
-                        addressDisplay.isEmpty ? 'No address provided' : addressDisplay,
-                        style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11),
+                        addressDisplay.isEmpty
+                            ? 'No address provided'
+                            : addressDisplay,
+                        style: GoogleFonts.inter(
+                          color: HandsColors.white70,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
-                            icon: const Icon(Icons.edit, color: HandsColors.white),
+                            icon: const Icon(
+                              Icons.edit,
+                              color: HandsColors.white,
+                            ),
                             iconSize: 18,
-                            onPressed: () => _showLocationBottomSheet(locationId: doc.id, initialData: locationData),
+                            onPressed:
+                                () => _showLocationBottomSheet(
+                                  locationId: doc.id,
+                                  initialData: locationData,
+                                ),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.delete, color: HandsColors.white),
+                            icon: const Icon(
+                              Icons.delete,
+                              color: HandsColors.white,
+                            ),
                             iconSize: 18,
                             onPressed:
                                 () => _showDeleteConfirmation(
@@ -1124,7 +1996,10 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
               itemBuilder: (context, index) => locationsToShow[index],
             );
 
-            return ConstrainedBox(constraints: const BoxConstraints(maxHeight: 300), child: locationsList);
+            return ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 300),
+              child: locationsList,
+            );
           },
         );
       },
@@ -1133,7 +2008,10 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
 
   Widget _buildShiftsList() {
     if (organizationId == null) {
-      return const Padding(padding: EdgeInsets.all(16.0), child: Text('No organization data available'));
+      return Padding(
+        padding: EdgeInsets.all(16.0),
+        child: Text(context.l10n.adminNoOrganizationDataAvailable),
+      );
     }
 
     return ValueListenableBuilder<int>(
@@ -1155,12 +2033,22 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
             }
 
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Padding(padding: EdgeInsets.all(16.0), child: Center(child: CircularProgressIndicator()));
+              return const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Center(child: CircularProgressIndicator()),
+              );
             }
 
             final snapshotDocs = snapshot.data?.docs ?? [];
             final allShifts =
-                snapshotDocs.map((doc) => {'id': doc.id, 'data': doc.data() as Map<String, dynamic>}).toList();
+                snapshotDocs
+                    .map(
+                      (doc) => {
+                        'id': doc.id,
+                        'data': doc.data() as Map<String, dynamic>,
+                      },
+                    )
+                    .toList();
 
             // Filter shifts by selected location if a location is selected
             List<Map<String, dynamic>> filteredShifts = allShifts;
@@ -1168,7 +2056,9 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
               filteredShifts =
                   allShifts.where((shift) {
                     final shiftData = shift['data'] as Map<String, dynamic>;
-                    final docLocationIds = coerceToLocationIds(shiftData['locationIds'] ?? shiftData['locationId']);
+                    final docLocationIds = coerceToLocationIds(
+                      shiftData['locationIds'] ?? shiftData['locationId'],
+                    );
                     return docLocationIds.contains(_selectedLocationId);
                   }).toList();
             }
@@ -1178,15 +2068,27 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   children: [
-                    Icon(Icons.schedule_outlined, size: 36, color: HandsColors.white30),
+                    Icon(
+                      Icons.schedule_outlined,
+                      size: 36,
+                      color: HandsColors.white30,
+                    ),
                     const SizedBox(height: 8),
                     Text(
-                      _selectedLocationId != null ? 'No shifts found for selected location' : 'No shifts found',
-                      style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11),
+                      _selectedLocationId != null
+                          ? context.l10n.adminNoShiftsForSelectedLocation
+                          : context.l10n.adminNoShiftsFound,
+                      style: GoogleFonts.comfortaa(
+                        color: HandsColors.white70,
+                        fontSize: 11,
+                      ),
                     ),
                     Text(
-                      'Create shifts to manage scheduling',
-                      style: GoogleFonts.comfortaa(color: HandsColors.white30, fontSize: 10),
+                      context.l10n.adminCreateShiftsAttachWorkflows,
+                      style: GoogleFonts.comfortaa(
+                        color: HandsColors.white30,
+                        fontSize: 10,
+                      ),
                     ),
                   ],
                 ),
@@ -1199,23 +2101,56 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
                   final shiftData = shift['data'] as Map<String, dynamic>;
                   final shiftId = shift['id'] as String;
 
-                  final name = shiftData['shiftName'] as String? ?? 'Unnamed Shift';
+                  final name =
+                      shiftData['shiftName'] as String? ??
+                      context.l10n.webAdminUnnamedShift;
                   final startTime = shiftData['startTime'] ?? '';
                   final endTime = shiftData['endTime'] ?? '';
-                  final roles = coerceToJobTypes(shiftData['jobTypes'] ?? shiftData['jobType']);
+                  final roles = coerceToJobTypes(
+                    shiftData['jobTypes'] ?? shiftData['jobType'],
+                  );
+                  final workflowSummary = _workflowSummaryForShift({
+                    'id': shiftId,
+                    ...shiftData,
+                  });
+                  final hasWorkflow =
+                      _extractShiftChecklistIds({
+                        'id': shiftId,
+                        ...shiftData,
+                      }).isNotEmpty;
                   // locationIds intentionally not used in mobile shifts list view; locations managed uniquely
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 8),
-                    decoration: HandsDecorations.tertiaryBoxDecoration,
+                    decoration: _adminPanelDecoration(
+                      accent: _viewAccent(AdminView.shifts),
+                    ),
                     child: ListTile(
-                      leading: const Icon(Icons.schedule, color: HandsColors.white),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      leading: Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: _viewAccent(
+                            AdminView.shifts,
+                          ).withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Icon(
+                          Icons.schedule_rounded,
+                          color: _viewAccent(AdminView.shifts),
+                          size: 20,
+                        ),
+                      ),
                       title: Text(
                         name,
-                        style: GoogleFonts.comfortaa(
+                        style: GoogleFonts.inter(
                           color: HandsColors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w400,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                       subtitle: Column(
@@ -1223,7 +2158,46 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
                         children: [
                           Text(
                             '${_range12h(startTime, endTime)} • ${roles.join(', ')}',
-                            style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11),
+                            style: GoogleFonts.inter(
+                              color: HandsColors.white70,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color:
+                                  hasWorkflow
+                                      ? _viewAccent(
+                                        AdminView.shifts,
+                                      ).withValues(alpha: 0.14)
+                                      : Colors.white.withValues(alpha: 0.04),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color:
+                                    hasWorkflow
+                                        ? _viewAccent(
+                                          AdminView.shifts,
+                                        ).withValues(alpha: 0.24)
+                                        : HandsColors.white12,
+                              ),
+                            ),
+                            child: Text(
+                              workflowSummary,
+                              style: GoogleFonts.inter(
+                                color:
+                                    hasWorkflow
+                                        ? _viewAccent(AdminView.shifts)
+                                        : HandsColors.white30,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                           ),
                           // Locations display removed - locations are now managed uniquely
                         ],
@@ -1232,7 +2206,28 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
-                            icon: const Icon(Icons.edit, color: HandsColors.white),
+                            icon: Icon(
+                              hasWorkflow
+                                  ? Icons.rule_folder_outlined
+                                  : Icons.add_task_rounded,
+                              color: HandsColors.handsOrange,
+                            ),
+                            iconSize: 18,
+                            tooltip:
+                                hasWorkflow
+                                    ? 'Edit workflow'
+                                    : 'Create workflow',
+                            onPressed:
+                                () => _editWorkflowForShift({
+                                  'id': shiftId,
+                                  ...shiftData,
+                                }),
+                          ),
+                          IconButton(
+                            icon: const Icon(
+                              Icons.edit,
+                              color: HandsColors.white,
+                            ),
                             iconSize: 18,
                             onPressed: () {
                               // Defensive normalization: some older shift docs may store
@@ -1240,41 +2235,68 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
                               // where the model expects lists. Coerce those to lists so
                               // the generated fromJson doesn't throw.
                               try {
-                                final raw = Map<String, dynamic>.from(shiftData);
+                                final raw = Map<String, dynamic>.from(
+                                  shiftData,
+                                );
                                 List<String> coerceStringList(dynamic v) {
                                   if (v == null) return <String>[];
-                                  if (v is List) return v.map((e) => e.toString()).toList();
+                                  if (v is List) {
+                                    return v.map((e) => e.toString()).toList();
+                                  }
                                   return <String>[v.toString()];
                                 }
 
                                 List<int> coerceIntList(dynamic v) {
                                   if (v == null) return <int>[];
-                                  if (v is List) return v.map((e) => int.tryParse(e.toString()) ?? 0).toList();
-                                  return <int>[(int.tryParse(v.toString()) ?? 0)];
+                                  if (v is List) {
+                                    return v
+                                        .map(
+                                          (e) =>
+                                              int.tryParse(e.toString()) ?? 0,
+                                        )
+                                        .toList();
+                                  }
+                                  return <int>[
+                                    (int.tryParse(v.toString()) ?? 0),
+                                  ];
                                 }
 
-                                raw['locationIds'] = coerceStringList(raw['locationIds'] ?? raw['locationId']);
-                                raw['checklistTemplateIds'] = coerceStringList(
-                                  raw['checklistTemplateIds'] ?? raw['checklistId'],
+                                raw['locationIds'] = coerceStringList(
+                                  raw['locationIds'] ?? raw['locationId'],
                                 );
-                                raw['jobType'] = coerceStringList(raw['jobTypes'] ?? raw['jobType']);
+                                raw['checklistTemplateIds'] = coerceStringList(
+                                  raw['checklistTemplateIds'] ??
+                                      raw['checklistId'],
+                                );
+                                raw['jobType'] = coerceStringList(
+                                  raw['jobTypes'] ?? raw['jobType'],
+                                );
                                 raw['days'] = coerceStringList(raw['days']);
-                                raw['activeDays'] = coerceIntList(raw['activeDays']);
+                                raw['activeDays'] = coerceIntList(
+                                  raw['activeDays'],
+                                );
 
                                 final normalized = ShiftData.fromJson(raw);
                                 _showShiftBottomSheet(shiftId, normalized);
                               } catch (e, st) {
-                                logger.e('Error normalizing shift data for edit: $e', st);
+                                logger.e(
+                                  'Error normalizing shift data for edit: $e',
+                                  st,
+                                );
                                 // Fallback: attempt to open sheet with best-effort map
                                 try {
                                   _showShiftBottomSheet(
                                     shiftId,
-                                    ShiftData.fromJson(Map<String, dynamic>.from(shiftData)),
+                                    ShiftData.fromJson(
+                                      Map<String, dynamic>.from(shiftData),
+                                    ),
                                   );
                                 } catch (_) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
-                                      content: Text('Unable to open shift editor for this shift (malformed data)'),
+                                      content: Text(
+                                        'Unable to open shift editor for this shift (malformed data)',
+                                      ),
                                     ),
                                   );
                                 }
@@ -1282,13 +2304,17 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
                             },
                           ),
                           IconButton(
-                            icon: const Icon(Icons.delete, color: HandsColors.white),
+                            icon: const Icon(
+                              Icons.delete,
+                              color: HandsColors.white,
+                            ),
                             iconSize: 18,
                             onPressed:
                                 () => _showDeleteConfirmation(
                                   context: context,
                                   title: 'Delete Shift',
-                                  content: 'Are you sure you want to delete $name? This action cannot be undone.',
+                                  content:
+                                      'Are you sure you want to delete $name? This action cannot be undone.',
                                   onConfirm: () => _deleteShift(shiftId),
                                 ),
                           ),
@@ -1305,7 +2331,10 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
               itemBuilder: (context, index) => shiftsToShow[index],
             );
 
-            return ConstrainedBox(constraints: const BoxConstraints(maxHeight: 300), child: shiftsList);
+            return ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 300),
+              child: shiftsList,
+            );
           },
         );
       },
@@ -1314,7 +2343,10 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
 
   Widget _buildChecklistsList() {
     if (organizationId == null) {
-      return const Padding(padding: EdgeInsets.all(16.0), child: Text('No organization data available'));
+      return const Padding(
+        padding: EdgeInsets.all(16.0),
+        child: Text('No organization data available'),
+      );
     }
 
     // Show organization-level checklist templates (not location-specific)
@@ -1337,7 +2369,10 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
             }
 
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Padding(padding: EdgeInsets.all(16.0), child: Center(child: CircularProgressIndicator()));
+              return const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Center(child: CircularProgressIndicator()),
+              );
             }
 
             final allChecklistDocs = snapshot.data?.docs ?? [];
@@ -1348,9 +2383,13 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
                   if (_selectedLocationId == null) return true; // no filter
                   final data = doc.data() as Map<String, dynamic>;
                   final rawLocs = data['locationIds'];
-                  if (rawLocs == null) return true; // global template (legacy) -> show
+                  if (rawLocs == null) {
+                    return true; // global template (legacy) -> show
+                  }
                   if (rawLocs is Iterable) {
-                    return rawLocs.map((e) => e.toString()).contains(_selectedLocationId);
+                    return rawLocs
+                        .map((e) => e.toString())
+                        .contains(_selectedLocationId);
                   }
                   return true; // unexpected type -> don't hide
                 }).toList();
@@ -1360,17 +2399,27 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   children: [
-                    Icon(Icons.checklist_outlined, size: 36, color: HandsColors.white30),
+                    Icon(
+                      Icons.checklist_outlined,
+                      size: 36,
+                      color: HandsColors.white30,
+                    ),
                     SizedBox(height: 8),
                     Text(
                       _selectedLocationName != null
-                          ? 'No checklists found for $_selectedLocationName'
-                          : 'No checklists found',
-                      style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11),
+                          ? 'No templates found for $_selectedLocationName'
+                          : 'No templates found',
+                      style: GoogleFonts.comfortaa(
+                        color: HandsColors.white70,
+                        fontSize: 11,
+                      ),
                     ),
                     Text(
-                      'Create checklists to track tasks',
-                      style: GoogleFonts.comfortaa(color: HandsColors.white30, fontSize: 10),
+                      'Create reusable workflow templates for your shifts',
+                      style: GoogleFonts.comfortaa(
+                        color: HandsColors.white30,
+                        fontSize: 10,
+                      ),
                     ),
                   ],
                 ),
@@ -1381,23 +2430,52 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
             final checklistsToShow =
                 filteredChecklistDocs.map((doc) {
                   final checklistData = doc.data() as Map<String, dynamic>;
-                  final name = checklistData['name'] ?? 'Unnamed Checklist';
-                  final description = checklistData['description'] ?? 'No description';
-                  final tasksList = checklistData['tasks'] as List<dynamic>? ?? [];
+                  final name = localizedContent(
+                    checklistData,
+                    fieldKeys: const ['name', 'checklistName', 'templateName'],
+                    fallback: 'Unnamed Template',
+                  );
+                  final description = localizedContent(
+                    checklistData,
+                    fieldKeys: const ['description'],
+                    fallback: 'No description',
+                  );
+                  final tasksList =
+                      checklistData['tasks'] as List<dynamic>? ?? [];
                   final taskCount = tasksList.length;
                   // locationIds intentionally not used in checklist list view; locations managed uniquely
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 8),
-                    decoration: HandsDecorations.tertiaryBoxDecoration,
+                    decoration: _adminPanelDecoration(
+                      accent: _viewAccent(AdminView.library),
+                    ),
                     child: ListTile(
-                      leading: const Icon(Icons.checklist, color: HandsColors.white),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 6,
+                      ),
+                      leading: Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: _viewAccent(
+                            AdminView.library,
+                          ).withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Icon(
+                          Icons.library_books_rounded,
+                          color: _viewAccent(AdminView.library),
+                          size: 20,
+                        ),
+                      ),
                       title: Text(
                         name,
-                        style: GoogleFonts.comfortaa(
+                        style: GoogleFonts.inter(
                           color: HandsColors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w400,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                       subtitle: Column(
@@ -1405,7 +2483,11 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
                         children: [
                           Text(
                             '$description • $taskCount tasks',
-                            style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11),
+                            style: GoogleFonts.inter(
+                              color: HandsColors.white70,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                           // Locations display removed - locations are now managed uniquely
                         ],
@@ -1414,18 +2496,29 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
-                            icon: const Icon(Icons.edit, color: HandsColors.white),
+                            icon: const Icon(
+                              Icons.edit,
+                              color: HandsColors.white,
+                            ),
                             iconSize: 18,
-                            onPressed: () => _showChecklistBottomSheet(doc.id, checklistData),
+                            onPressed:
+                                () => _showChecklistBottomSheet(
+                                  doc.id,
+                                  checklistData,
+                                ),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.delete, color: HandsColors.white),
+                            icon: const Icon(
+                              Icons.delete,
+                              color: HandsColors.white,
+                            ),
                             iconSize: 18,
                             onPressed:
                                 () => _showDeleteConfirmation(
                                   context: context,
-                                  title: 'Delete Checklist',
-                                  content: 'Are you sure you want to delete $name? This action cannot be undone.',
+                                  title: 'Delete Template',
+                                  content:
+                                      'Are you sure you want to delete $name? This action cannot be undone.',
                                   onConfirm: () => _deleteChecklist(doc.id),
                                 ),
                           ),
@@ -1442,7 +2535,10 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
               itemBuilder: (context, index) => checklistsToShow[index],
             );
 
-            return ConstrainedBox(constraints: const BoxConstraints(maxHeight: 300), child: checklistsList);
+            return ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 300),
+              child: checklistsList,
+            );
           },
         );
       },
@@ -1454,7 +2550,9 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (context) => UserManagementBottomSheet(userId: userId, userData: userData),
+      builder:
+          (context) =>
+              UserManagementBottomSheet(userId: userId, userData: userData),
     );
   }
 
@@ -1477,12 +2575,21 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
     );
   }
 
-  void _showChecklistBottomSheet([String? checklistId, Map<String, dynamic>? checklistData]) {
+  void _showChecklistBottomSheet([
+    String? checklistId,
+    Map<String, dynamic>? checklistData,
+    List<String> presetShiftIds = const [],
+    String? initialTitleSuggestion,
+  ]) {
     // For organization-level checklists, we don't need a specific location
     if (organizationId == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Organization ID not available. Please try refreshing the page.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Organization ID not available. Please try refreshing the page.',
+          ),
+        ),
+      );
       return;
     }
 
@@ -1492,15 +2599,23 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
       builder:
           (context) => ChecklistBottomSheet(
             organizationId: organizationId!,
-            locationId: _selectedLocationId ?? 'no-location', // Use placeholder if no location
+            locationId:
+                _selectedLocationId ??
+                'no-location', // Use placeholder if no location
             checklistId: checklistId,
             initialData: checklistData,
             availableLocations: _availableLocations,
+            presetShiftIds: presetShiftIds,
+            initialTitleSuggestion: initialTitleSuggestion,
             onSave: (result) {
               _saveChecklist(
                 checklistData: result['checklistData'],
-                selectedShiftIds: List<String>.from(result['selectedShiftIds'] ?? []),
-                selectedLocationIds: List<String>.from(result['selectedLocationIds'] ?? []),
+                selectedShiftIds: List<String>.from(
+                  result['selectedShiftIds'] ?? [],
+                ),
+                selectedLocationIds: List<String>.from(
+                  result['selectedLocationIds'] ?? [],
+                ),
                 duplicateToAll: result['duplicateToAll'] ?? false,
                 existingChecklistId: checklistId,
               );
@@ -1512,9 +2627,11 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
   // Locations: add/edit using inline bottom sheet
   void _showLocationWizard() {
     if (organizationId == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Organization ID not available. Please try again.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Organization ID not available. Please try again.'),
+        ),
+      );
       return;
     }
     Navigator.of(context).push(
@@ -1531,11 +2648,16 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
     );
   }
 
-  void _showLocationBottomSheet({String? locationId, Map<String, dynamic>? initialData}) {
+  void _showLocationBottomSheet({
+    String? locationId,
+    Map<String, dynamic>? initialData,
+  }) {
     if (organizationId == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Organization ID not available. Please try again.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Organization ID not available. Please try again.'),
+        ),
+      );
       return;
     }
 
@@ -1560,23 +2682,34 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
   Future<void> _deleteLocation(String locationId) async {
     if (organizationId == null) return;
     try {
-      final orgRef = FirestoreEnforcer.instance.collection('organizations').doc(organizationId);
+      final orgRef = FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(organizationId);
       await orgRef.collection('locations').doc(locationId).delete();
       await orgRef
-          .update({'locationCount': FieldValue.increment(-1), 'updatedAt': FieldValue.serverTimestamp()})
+          .update({
+            'locationCount': FieldValue.increment(-1),
+            'updatedAt': FieldValue.serverTimestamp(),
+          })
           .catchError((_) {});
       _triggerRefresh();
       await _loadLocations();
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Location deleted'), backgroundColor: HandsColors.sageGreen));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Location deleted'),
+            backgroundColor: HandsColors.sageGreen,
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error deleting location: $e'), backgroundColor: HandsColors.error));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting location: $e'),
+            backgroundColor: HandsColors.error,
+          ),
+        );
       }
     }
   }
@@ -1588,10 +2721,14 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
     required bool duplicateToAll,
     String? existingChecklistId,
   }) async {
-    logger.i('[AdminDashboard] _saveChecklist triggered. existingChecklistId: $existingChecklistId');
+    logger.i(
+      '[AdminDashboard] _saveChecklist triggered. existingChecklistId: $existingChecklistId',
+    );
     if (organizationId == null) {
       logger.e('[AdminDashboard] Aborting save: organizationId is null.');
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error: Missing organization ID.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error: Missing organization ID.')),
+      );
       return;
     }
 
@@ -1602,7 +2739,10 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
         .collection('organizations')
         .doc(organizationId)
         .collection('checklist_templates');
-    final mainChecklistRef = existingChecklistId == null ? checklistColl.doc() : checklistColl.doc(existingChecklistId);
+    final mainChecklistRef =
+        existingChecklistId == null
+            ? checklistColl.doc()
+            : checklistColl.doc(existingChecklistId);
     final mainChecklistId = mainChecklistRef.id;
     logger.d('[AdminDashboard] Main checklist ID: $mainChecklistId');
     final List<Map<String, dynamic>> tasksArray =
@@ -1615,9 +2755,13 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
       ...checklistData,
       'taskCount': tasksArray.length,
       'updatedAt': FieldValue.serverTimestamp(),
-      if (existingChecklistId == null) 'createdAt': FieldValue.serverTimestamp(),
+      if (existingChecklistId == null)
+        'createdAt': FieldValue.serverTimestamp(),
       'locationIds':
-          [_selectedLocationId, ...selectedLocationIds].where((id) => id != null && id != 'no-location').toList(),
+          [
+            _selectedLocationId,
+            ...selectedLocationIds,
+          ].where((id) => id != null && id != 'no-location').toList(),
     };
 
     batch.set(mainChecklistRef, checklistDocPayload, SetOptions(merge: true));
@@ -1637,13 +2781,17 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
     if (existingChecklistId != null) {
       // Find all shifts currently containing the checklist
       final shiftsWithChecklistSnapshot =
-          await shiftsCollection.where('checklistTemplateIds', arrayContains: existingChecklistId).get();
+          await shiftsCollection
+              .where('checklistTemplateIds', arrayContains: existingChecklistId)
+              .get();
 
       for (final shiftDoc in shiftsWithChecklistSnapshot.docs) {
         // If a shift that had the checklist is not in the new selection, remove it
         if (!selectedShiftIds.contains(shiftDoc.id)) {
           batch.update(shiftDoc.reference, {
-            'checklistTemplateIds': FieldValue.arrayRemove([existingChecklistId]),
+            'checklistTemplateIds': FieldValue.arrayRemove([
+              existingChecklistId,
+            ]),
           });
         }
       }
@@ -1668,7 +2816,9 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
       logger.d('[AdminDashboard] Deleting existing tasks...');
       final existingTasksSnap = await tasksColl.get();
       if (existingTasksSnap.docs.isNotEmpty) {
-        logger.d('[AdminDashboard] Found ${existingTasksSnap.docs.length} existing tasks to delete');
+        logger.d(
+          '[AdminDashboard] Found ${existingTasksSnap.docs.length} existing tasks to delete',
+        );
         WriteBatch delBatch = FirestoreEnforcer.instance.batch();
         int opCount = 0;
         for (final doc in existingTasksSnap.docs) {
@@ -1683,7 +2833,9 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
           }
         }
         if (opCount > 0) {
-          logger.d('[AdminDashboard] Committing final delete batch ($opCount ops)...');
+          logger.d(
+            '[AdminDashboard] Committing final delete batch ($opCount ops)...',
+          );
           await delBatch.commit();
         }
       }
@@ -1696,7 +2848,13 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
         final Map<String, int> nameCounts = {};
         for (int i = 0; i < tasksArray.length; i++) {
           final t = tasksArray[i];
-          final rawName = (t['name'] ?? t['taskName'] ?? t['title'] ?? t['description'] ?? '').toString();
+          final rawName =
+              (t['name'] ??
+                      t['taskName'] ??
+                      t['title'] ??
+                      t['description'] ??
+                      '')
+                  .toString();
           final normName = rawName.trim();
           final photoRequired = (t['photoRequired'] ?? false) == true;
           final order = t['order'] is int ? t['order'] : i;
@@ -1706,7 +2864,10 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
           nameCounts[normName.toLowerCase()] = count;
 
           final idSeed = normName.isEmpty ? 'untitled-$i' : '$normName|$count';
-          final hash = crypto.sha1.convert(utf8.encode(idSeed)).toString().substring(0, 16);
+          final hash = crypto.sha1
+              .convert(utf8.encode(idSeed))
+              .toString()
+              .substring(0, 16);
           final taskDocRef = tasksColl.doc(hash);
 
           addBatch.set(taskDocRef, {
@@ -1731,16 +2892,21 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
           }
         }
         if (opCount > 0) {
-          logger.d('[AdminDashboard] Committing final add batch ($opCount ops)...');
+          logger.d(
+            '[AdminDashboard] Committing final add batch ($opCount ops)...',
+          );
           await addBatch.commit();
         }
       }
 
       logger.d('[AdminDashboard] Checklist save completed successfully');
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Checklist saved successfully!'), backgroundColor: Colors.green));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Template saved successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
       }
       _triggerRefresh();
       // Reseed today's existing daily checklists that reference this template so
@@ -1754,10 +2920,10 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
 
         // Only reseed in locations where this checklist is assigned
         final checklistLocationIds =
-            [
-              _selectedLocationId,
-              ...selectedLocationIds,
-            ].where((id) => id != null && id != 'no-location').cast<String>().toList();
+            [_selectedLocationId, ...selectedLocationIds]
+                .where((id) => id != null && id != 'no-location')
+                .cast<String>()
+                .toList();
 
         for (final locationId in checklistLocationIds) {
           final existingDaily =
@@ -1778,7 +2944,10 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
                 checklistId: cd.id,
               );
             } catch (e) {
-              logger.e('[AdminDashboard] Error reseeding checklist ${cd.id}: $e', e);
+              logger.e(
+                '[AdminDashboard] Error reseeding checklist ${cd.id}: $e',
+                e,
+              );
             }
           }
         }
@@ -1788,9 +2957,12 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
     } catch (e, stackTrace) {
       logger.e('[AdminDashboard] Failed to save checklist: $e', e, stackTrace);
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to save checklist: $e'), backgroundColor: HandsColors.error));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save checklist: $e'),
+            backgroundColor: HandsColors.error,
+          ),
+        );
       }
     }
   }
@@ -1803,7 +2975,9 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
       final functions = FirebaseFunctions.instanceFor(region: 'us-central1');
       final callable = functions.httpsCallable('deleteUser');
 
-      logger.d('[AdminDashboard] Calling deleteUser function with uid: $userId');
+      logger.d(
+        '[AdminDashboard] Calling deleteUser function with uid: $userId',
+      );
 
       final resp = await callable.call(<String, dynamic>{'uid': userId});
       final data = resp.data as Map<String, dynamic>?;
@@ -1814,7 +2988,11 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(data != null && data['message'] != null ? data['message'] : 'User deleted successfully'),
+            content: Text(
+              data != null && data['message'] != null
+                  ? data['message']
+                  : 'User deleted successfully',
+            ),
             backgroundColor: Colors.green,
           ),
         );
@@ -1827,13 +3005,17 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
 
       // If the function doesn't exist or fails, try fallback deletion (Firestore only)
       if (e.code == 'not-found' || e.code == 'unimplemented') {
-        logger.w('[AdminDashboard] Cloud function not found, attempting Firestore-only deletion');
+        logger.w(
+          '[AdminDashboard] Cloud function not found, attempting Firestore-only deletion',
+        );
         await _deleteUserFallback(userId);
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Error deleting user: ${e.message} (Code: ${e.code})'),
+              content: Text(
+                'Error deleting user: ${e.message} (Code: ${e.code})',
+              ),
               backgroundColor: HandsColors.error,
             ),
           );
@@ -1850,18 +3032,24 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
 
   Future<void> _deleteUserFallback(String userId) async {
     try {
-      logger.d('[AdminDashboard] Starting fallback user deletion for userId: $userId');
+      logger.d(
+        '[AdminDashboard] Starting fallback user deletion for userId: $userId',
+      );
 
       // Delete user document from Firestore (Auth record will remain)
       await FirestoreEnforcer.instance.collection('users').doc(userId).delete();
 
-      logger.d('[AdminDashboard] User document deleted from Firestore: $userId');
+      logger.d(
+        '[AdminDashboard] User document deleted from Firestore: $userId',
+      );
 
       _triggerRefresh();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('User deleted from database. Note: Authentication record may still exist.'),
+            content: Text(
+              'User deleted from database. Note: Authentication record may still exist.',
+            ),
             backgroundColor: HandsColors.amber,
           ),
         );
@@ -1869,9 +3057,12 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
     } catch (e) {
       logger.e('[AdminDashboard] Fallback deletion error: $e', e);
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to delete user: $e'), backgroundColor: HandsColors.error));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to delete user: $e'),
+            backgroundColor: HandsColors.error,
+          ),
+        );
       }
     }
   }
@@ -1890,7 +3081,8 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
       final List<String> locs =
           (data['locationIds'] is Iterable)
               ? List<String>.from(data['locationIds'])
-              : (data['locationIds'] is String && (data['locationIds'] as String).isNotEmpty)
+              : (data['locationIds'] is String &&
+                  (data['locationIds'] as String).isNotEmpty)
               ? [data['locationIds'] as String]
               : <String>[];
 
@@ -1899,7 +3091,10 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
         if (newLocs.isEmpty) {
           await shiftRef.delete();
         } else {
-          await shiftRef.update({'locationIds': newLocs, 'updatedAt': FieldValue.serverTimestamp()});
+          await shiftRef.update({
+            'locationIds': newLocs,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
         }
       } else {
         // No specific location context -> perform full delete as before
@@ -1908,11 +3103,15 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
 
       _triggerRefresh();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Shift updated')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Shift updated')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error updating shift: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error updating shift: $e')));
       }
     }
   }
@@ -1928,11 +3127,15 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
           .delete();
       _triggerRefresh();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Checklist deleted successfully')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Template deleted successfully')),
+        );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting checklist: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error deleting checklist: $e')));
       }
     }
   }
@@ -1956,13 +3159,21 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
                 const SizedBox(height: 16),
                 Text(
                   content,
-                  style: GoogleFonts.inter(fontSize: 13, color: HandsColors.white70),
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    color: HandsColors.white70,
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),
                 Row(
                   children: [
-                    Expanded(child: HandsSecondaryButton(text: 'Cancel', onPressed: () => Navigator.of(context).pop())),
+                    Expanded(
+                      child: HandsSecondaryButton(
+                        text: 'Cancel',
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ),
                     const SizedBox(width: 16),
                     Expanded(
                       child: HandsTextButton(
@@ -1996,5 +3207,6 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> with Ac
     return '$h12.$mm$suffix';
   }
 
-  String _range12h(String startHhmm, String endHhmm) => '${_to12h(startHhmm)} – ${_to12h(endHhmm)}';
+  String _range12h(String startHhmm, String endHhmm) =>
+      '${_to12h(startHhmm)} – ${_to12h(endHhmm)}';
 }
