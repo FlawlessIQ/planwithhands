@@ -2165,5 +2165,110 @@
   "documentsUploadFailedMissingData": "Faltam dados obrigatórios. Tente selecionar o arquivo novamente.",
   "documentsUploadFailedPermission": "Permissão negada. Verifique as permissões da sua conta.",
   "documentsUploadFailedStorage": "Erro de armazenamento. Verifique sua conexão com a internet.",
-  "documentsDismissTip": "Fechar"
+  "documentsDismissTip": "Fechar",
+  "scheduleEditorTitle": "Editor de escala",
+  "scheduleMyTitle": "Minha escala",
+  "scheduleOrganizationNotFound": "Organização não encontrada",
+  "scheduleOrganizationLocationMissing": "Organização ou local não definido.",
+  "scheduleLocationLabel": "Local",
+  "schedulePickDateRange": "Escolha um intervalo de datas",
+  "scheduleSelectDateRange": "Selecionar intervalo de datas",
+  "scheduleNext7Days": "Próximos 7 dias",
+  "scheduleDaysWindow": "Dias {start}-{end}",
+  "@scheduleDaysWindow": {
+    "placeholders": {
+      "start": {
+        "type": "int"
+      },
+      "end": {
+        "type": "int"
+      }
+    }
+  },
+  "scheduleSelectLocationAndDateRange": "Selecione um local e um intervalo de datas para ver a escala",
+  "schedulePublishSchedule": "Publicar escala",
+  "scheduleCreateTemplateFirst": "Crie primeiro um modelo de turno no painel de administração",
+  "schedulePublishAllSuccess": "Todas as escalas foram publicadas com sucesso!",
+  "schedulePublishError": "Erro ao publicar escalas: {error}",
+  "@schedulePublishError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "scheduleDayPublished": "Escala de {date} publicada!",
+  "@scheduleDayPublished": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "scheduleDayPublishError": "Erro ao publicar escala: {error}",
+  "@scheduleDayPublishError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "scheduleNoPublishedShifts": "Nenhum turno publicado.",
+  "scheduleAssignedCount": "Atribuídos: {count}",
+  "@scheduleAssignedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "scheduleUsersLabel": "Usuários: {users}",
+  "@scheduleUsersLabel": {
+    "placeholders": {
+      "users": {
+        "type": "String"
+      }
+    }
+  },
+  "scheduleAssignedStatus": "Atribuído",
+  "scheduleShiftsHeader": "Turnos",
+  "scheduleAssignedCell": "atribuído",
+  "scheduleShiftTemplatesError": "Erro ao carregar turnos: {error}",
+  "@scheduleShiftTemplatesError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "scheduleNoShiftTemplates": "Nenhum modelo de turno encontrado para este local.\nCrie modelos de turno primeiro no Painel de Administração.",
+  "scheduleUnnamedShift": "Turno sem nome",
+  "scheduleMessageTitle": "Sua escala de {start} a {end}",
+  "@scheduleMessageTitle": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
+  "scheduleMessageLine": "{date}: {shiftName} ({startTime} - {endTime})",
+  "@scheduleMessageLine": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "shiftName": {
+        "type": "String"
+      },
+      "startTime": {
+        "type": "String"
+      },
+      "endTime": {
+        "type": "String"
+      }
+    }
+  }
 }

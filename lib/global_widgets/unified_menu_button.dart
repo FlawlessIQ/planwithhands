@@ -30,6 +30,7 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
 
   // Location state
   List<Map<String, dynamic>> _availableLocations = [];
+  bool _platformAccess = false;
 
   @override
   void initState() {
@@ -38,8 +39,11 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
       print('[UnifiedMenuButton] initState() called');
     }
     _loadLocations();
+    _loadPlatformAccess();
     // Listen for location changes to rebuild menu when location changes
-    LocationSelectionService.instance.listenable.addListener(_onLocationChanged);
+    LocationSelectionService.instance.listenable.addListener(
+      _onLocationChanged,
+    );
   }
 
   void _onLocationChanged() {
@@ -47,6 +51,24 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
       setState(() {
         // Trigger rebuild when location changes
       });
+    }
+  }
+
+  Future<void> _loadPlatformAccess() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+      final userDoc =
+          await FirestoreEnforcer.instance
+              .collection('users')
+              .doc(user.uid)
+              .get();
+      if (!mounted) return;
+      setState(() {
+        _platformAccess = userDoc.data()?['platformAccess'] == true;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _platformAccess = false);
     }
   }
 
@@ -61,7 +83,9 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
   Future<void> _loadLocations() async {
     if (widget.organizationId == null) {
       if (kDebugMode) {
-        print('[UnifiedMenuButton] Cannot load locations - organizationId is null');
+        print(
+          '[UnifiedMenuButton] Cannot load locations - organizationId is null',
+        );
       }
       return;
     }
@@ -76,7 +100,11 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
       }
 
       // Get user data to determine role and location access
-      final userDoc = await FirestoreEnforcer.instance.collection('users').doc(user.uid).get();
+      final userDoc =
+          await FirestoreEnforcer.instance
+              .collection('users')
+              .doc(user.uid)
+              .get();
 
       if (!userDoc.exists) {
         if (kDebugMode) {
@@ -143,10 +171,14 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
       }
 
       // If no current location is set but we have locations, set the first one
-      final currentLocationId = LocationSelectionService.instance.currentLocationId;
-      if ((currentLocationId == null || currentLocationId.isEmpty) && locations.isNotEmpty) {
+      final currentLocationId =
+          LocationSelectionService.instance.currentLocationId;
+      if ((currentLocationId == null || currentLocationId.isEmpty) &&
+          locations.isNotEmpty) {
         if (kDebugMode) {
-          print('[UnifiedMenuButton] No current location set, setting first available location');
+          print(
+            '[UnifiedMenuButton] No current location set, setting first available location',
+          );
         }
         final firstLocation = locations.first;
         try {
@@ -167,8 +199,12 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
       }
 
       if (kDebugMode) {
-        print('[UnifiedMenuButton] Loaded ${locations.length} locations for user role $userRole');
-        print('[UnifiedMenuButton] Current location: ${LocationSelectionService.instance.currentLocationId}');
+        print(
+          '[UnifiedMenuButton] Loaded ${locations.length} locations for user role $userRole',
+        );
+        print(
+          '[UnifiedMenuButton] Current location: ${LocationSelectionService.instance.currentLocationId}',
+        );
       }
     } catch (e) {
       if (kDebugMode) {
@@ -182,7 +218,9 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
     if (kDebugMode) {
       print('[UnifiedMenuButton] dispose() called');
     }
-    LocationSelectionService.instance.listenable.removeListener(_onLocationChanged);
+    LocationSelectionService.instance.listenable.removeListener(
+      _onLocationChanged,
+    );
     _closeMenu();
     super.dispose();
   }
@@ -204,7 +242,8 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
       return;
     }
 
-    final RenderBox? renderBox = _buttonKey.currentContext?.findRenderObject() as RenderBox?;
+    final RenderBox? renderBox =
+        _buttonKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null) {
       if (kDebugMode) {
         print('[UnifiedMenuButton] RenderBox is null, cannot show menu');
@@ -225,6 +264,7 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
             position: offset,
             buttonSize: size,
             userRole: widget.userRole ?? 0,
+            platformAccess: _platformAccess,
             sharedMode: ref.read(sharedModeControllerProvider),
             availableLocations: _availableLocations,
             onSelected: (action) {
@@ -238,10 +278,14 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
               final stableContext = _getStableContext();
               if (stableContext == null) return;
 
-              final canEnter = await _ensureCurrentUserHasSharedModePin(stableContext);
+              final canEnter = await _ensureCurrentUserHasSharedModePin(
+                stableContext,
+              );
               if (!canEnter) return;
 
-              await ref.read(sharedModeControllerProvider.notifier).enterSharedMode();
+              await ref
+                  .read(sharedModeControllerProvider.notifier)
+                  .enterSharedMode();
               if (stableContext.mounted) {
                 GoRouter.of(stableContext).go(AppRoutes.userDashboardPage.path);
               }
@@ -254,7 +298,9 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
               if (stableContext == null) return;
               final ok = await _promptOwnerPinAndExit(stableContext);
               if (ok == true) {
-                await ref.read(sharedModeControllerProvider.notifier).disableSharedMode();
+                await ref
+                    .read(sharedModeControllerProvider.notifier)
+                    .disableSharedMode();
               }
             },
             onSetSharedModePin: () async {
@@ -267,16 +313,23 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
               if (stableContext == null) return;
               final ok = await _confirmSignOutDevice(stableContext);
               if (ok == true) {
-                await ref.read(sharedModeControllerProvider.notifier).signOutDevice();
+                await ref
+                    .read(sharedModeControllerProvider.notifier)
+                    .signOutDevice();
               }
             },
             onLocationSelected: (locationId, locationName) async {
               if (kDebugMode) {
-                print('[UnifiedMenuButton] Location selected: $locationId ($locationName)');
+                print(
+                  '[UnifiedMenuButton] Location selected: $locationId ($locationName)',
+                );
               }
               _closeMenu();
               try {
-                await LocationSelectionService.instance.setLocationAsync(locationId, locationName: locationName);
+                await LocationSelectionService.instance.setLocationAsync(
+                  locationId,
+                  locationName: locationName,
+                );
               } catch (e) {
                 if (kDebugMode) {
                   print('[UnifiedMenuButton] Error setting location: $e');
@@ -329,15 +382,21 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
           builder: (ctx, setState) {
             return HandsDialog(
               title: 'Leave Shared Mode',
-              subtitle: 'Enter the owner PIN for the person who enabled Shared Mode on this device.',
+              subtitle:
+                  'Enter the owner PIN for the person who enabled Shared Mode on this device.',
               maxWidth: 460,
               actions: [
-                HandsSecondaryButton(text: 'Cancel', onPressed: () => Navigator.of(ctx).pop(false)),
+                HandsSecondaryButton(
+                  text: 'Cancel',
+                  onPressed: () => Navigator.of(ctx).pop(false),
+                ),
                 HandsPrimaryButton(
                   text: 'Leave',
                   onPressed: () async {
                     final pin = pinController.text.trim();
-                    final ok = await ref.read(sharedModeControllerProvider.notifier).verifyOwnerPinToExit(pin: pin);
+                    final ok = await ref
+                        .read(sharedModeControllerProvider.notifier)
+                        .verifyOwnerPinToExit(pin: pin);
                     if (!ok) {
                       setState(() => error = 'Invalid PIN');
                       return;
@@ -363,15 +422,22 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
                       fillColor: HandsModalTokens.surfaceMuted,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: HandsModalTokens.border),
+                        borderSide: const BorderSide(
+                          color: HandsModalTokens.border,
+                        ),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: HandsModalTokens.border),
+                        borderSide: const BorderSide(
+                          color: HandsModalTokens.border,
+                        ),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: HandsColors.handsOrange, width: 1.3),
+                        borderSide: const BorderSide(
+                          color: HandsColors.handsOrange,
+                          width: 1.3,
+                        ),
                       ),
                     ),
                     style: const TextStyle(color: HandsColors.white),
@@ -401,10 +467,14 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
           builder: (ctx, setState) {
             return HandsDialog(
               title: 'Set Shared Mode PIN',
-              subtitle: 'Choose a 4 to 10 digit PIN for switching users on shared devices.',
+              subtitle:
+                  'Choose a 4 to 10 digit PIN for switching users on shared devices.',
               maxWidth: 480,
               actions: [
-                HandsSecondaryButton(text: 'Cancel', onPressed: () => Navigator.of(ctx).pop()),
+                HandsSecondaryButton(
+                  text: 'Cancel',
+                  onPressed: () => Navigator.of(ctx).pop(),
+                ),
                 HandsPrimaryButton(
                   text: 'Save PIN',
                   onPressed: () async {
@@ -415,7 +485,9 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
                       return;
                     }
                     try {
-                      await ref.read(sharedModeControllerProvider.notifier).setPin(pin: pin);
+                      await ref
+                          .read(sharedModeControllerProvider.notifier)
+                          .setPin(pin: pin);
                       if (ctx.mounted) Navigator.of(ctx).pop();
                     } catch (e) {
                       setState(() => error = 'Failed to set PIN');
@@ -440,15 +512,22 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
                       fillColor: HandsModalTokens.surfaceMuted,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: HandsModalTokens.border),
+                        borderSide: const BorderSide(
+                          color: HandsModalTokens.border,
+                        ),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: HandsModalTokens.border),
+                        borderSide: const BorderSide(
+                          color: HandsModalTokens.border,
+                        ),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: HandsColors.handsOrange, width: 1.3),
+                        borderSide: const BorderSide(
+                          color: HandsColors.handsOrange,
+                          width: 1.3,
+                        ),
                       ),
                     ),
                   ),
@@ -466,15 +545,22 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
                       fillColor: HandsModalTokens.surfaceMuted,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: HandsModalTokens.border),
+                        borderSide: const BorderSide(
+                          color: HandsModalTokens.border,
+                        ),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: HandsModalTokens.border),
+                        borderSide: const BorderSide(
+                          color: HandsModalTokens.border,
+                        ),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: HandsColors.handsOrange, width: 1.3),
+                        borderSide: const BorderSide(
+                          color: HandsColors.handsOrange,
+                          width: 1.3,
+                        ),
                       ),
                     ),
                     style: const TextStyle(color: HandsColors.white),
@@ -495,7 +581,11 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return false;
 
-    final userDoc = await FirestoreEnforcer.instance.collection('users').doc(user.uid).get();
+    final userDoc =
+        await FirestoreEnforcer.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
     final data = userDoc.data();
     final hasPin = (data?['hasSharedModePin'] == true);
     if (hasPin) return true;
@@ -505,11 +595,18 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
       builder: (ctx) {
         return HandsDialog(
           title: 'Set a Shared Mode PIN',
-          subtitle: 'You need a PIN before Shared Mode can be enabled on this device.',
+          subtitle:
+              'You need a PIN before Shared Mode can be enabled on this device.',
           maxWidth: 460,
           actions: [
-            HandsSecondaryButton(text: 'Cancel', onPressed: () => Navigator.of(ctx).pop(false)),
-            HandsPrimaryButton(text: 'Set PIN', onPressed: () => Navigator.of(ctx).pop(true)),
+            HandsSecondaryButton(
+              text: 'Cancel',
+              onPressed: () => Navigator.of(ctx).pop(false),
+            ),
+            HandsPrimaryButton(
+              text: 'Set PIN',
+              onPressed: () => Navigator.of(ctx).pop(true),
+            ),
           ],
           child: Text(
             'This PIN is required to switch users and to leave Shared Mode on shared devices.',
@@ -524,7 +621,11 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
     await _promptSetSharedModePin(context);
 
     // Re-check after saving.
-    final userDoc2 = await FirestoreEnforcer.instance.collection('users').doc(user.uid).get();
+    final userDoc2 =
+        await FirestoreEnforcer.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
     final data2 = userDoc2.data();
     return (data2?['hasSharedModePin'] == true);
   }
@@ -533,12 +634,19 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
     return HandsDialog.show<bool>(
       context: context,
       title: 'Sign out device',
-      subtitle: 'This will sign out of the device and return to the login screen.',
+      subtitle:
+          'This will sign out of the device and return to the login screen.',
       maxWidth: 420,
       child: const SizedBox.shrink(),
       actions: [
-        HandsSecondaryButton(text: 'Cancel', onPressed: () => Navigator.of(context).pop(false)),
-        HandsPrimaryButton(text: 'Sign out', onPressed: () => Navigator.of(context).pop(true)),
+        HandsSecondaryButton(
+          text: 'Cancel',
+          onPressed: () => Navigator.of(context).pop(false),
+        ),
+        HandsPrimaryButton(
+          text: 'Sign out',
+          onPressed: () => Navigator.of(context).pop(true),
+        ),
       ],
     );
   }
@@ -584,7 +692,9 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
       final stableContext = _getStableContext();
       if (stableContext == null) {
         if (kDebugMode) {
-          print('[UnifiedMenuButton] No stable context available, aborting action');
+          print(
+            '[UnifiedMenuButton] No stable context available, aborting action',
+          );
         }
         return;
       }
@@ -647,6 +757,10 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
         GoRouter.of(stableContext).push(AppRoutes.settingsPage.path);
         break;
 
+      case _MenuAction.crm:
+        GoRouter.of(stableContext).push(AppRoutes.crmPage.path);
+        break;
+
       case _MenuAction.howToUse:
         if (kDebugMode) {
           print('[UnifiedMenuButton] Executing howToUse');
@@ -666,7 +780,9 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
   @override
   Widget build(BuildContext context) {
     if (kDebugMode) {
-      print('[UnifiedMenuButton] build() called - context.mounted: ${context.mounted}');
+      print(
+        '[UnifiedMenuButton] build() called - context.mounted: ${context.mounted}',
+      );
     }
 
     return Consumer(
@@ -675,7 +791,9 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
         // Check session validity before showing unread indicator
         final sessionValid = FirebaseAuth.instance.currentUser != null;
         if (kDebugMode) {
-          print('[UnifiedMenuButton] Unread count: $unreadCount, sessionValid: $sessionValid');
+          print(
+            '[UnifiedMenuButton] Unread count: $unreadCount, sessionValid: $sessionValid',
+          );
         }
         final hasUnread = sessionValid && unreadCount > 0;
 
@@ -706,7 +824,10 @@ class _UnifiedMenuButtonState extends ConsumerState<UnifiedMenuButton> {
                       child: Container(
                         width: 10,
                         height: 10,
-                        decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
                       ),
                     ),
                 ],
@@ -724,6 +845,7 @@ class _MenuOverlay extends StatefulWidget {
   final Offset position;
   final Size buttonSize;
   final int userRole;
+  final bool platformAccess;
   final SharedModeState sharedMode;
   final List<Map<String, dynamic>> availableLocations;
   final Function(_MenuAction) onSelected;
@@ -739,6 +861,7 @@ class _MenuOverlay extends StatefulWidget {
     required this.position,
     required this.buttonSize,
     required this.userRole,
+    required this.platformAccess,
     required this.sharedMode,
     required this.availableLocations,
     required this.onSelected,
@@ -762,7 +885,8 @@ class _MenuOverlayState extends State<_MenuOverlay> {
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
     final isSmallScreen = screenSize.width < 600; // Mobile detection
-    final menuWidth = isSmallScreen ? screenSize.width * 0.9 : 280.0; // Responsive width
+    final menuWidth =
+        isSmallScreen ? screenSize.width * 0.9 : 280.0; // Responsive width
 
     // Calculate position to ensure menu stays on screen with proper margin
     double left = widget.position.dx;
@@ -823,14 +947,21 @@ class _MenuOverlayState extends State<_MenuOverlay> {
               decoration: BoxDecoration(
                 color: Theme.of(context).cardColor,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.2), width: 1),
+                border: Border.all(
+                  color: Theme.of(context).dividerColor.withOpacity(0.2),
+                  width: 1,
+                ),
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [const SizedBox(height: 8), ..._buildMenuItems(), const SizedBox(height: 8)],
+                  children: [
+                    const SizedBox(height: 8),
+                    ..._buildMenuItems(),
+                    const SizedBox(height: 8),
+                  ],
                 ),
               ),
             ),
@@ -852,7 +983,10 @@ class _MenuOverlayState extends State<_MenuOverlay> {
           widget.sharedMode.locked ? 'Locked (select user)' : 'Switch user',
           null,
           Icons.switch_account,
-          subtitle: widget.sharedMode.locked ? 'Select a name and enter a PIN' : 'Lock and pick another user',
+          subtitle:
+              widget.sharedMode.locked
+                  ? 'Select a name and enter a PIN'
+                  : 'Lock and pick another user',
           onTap: () async {
             widget.onDismiss();
             await widget.onLockSharedMode();
@@ -890,15 +1024,22 @@ class _MenuOverlayState extends State<_MenuOverlay> {
     }
 
     if (kDebugMode) {
-      print('[UnifiedMenuButton] Building menu items. Available locations: ${widget.availableLocations.length}');
-      print('[UnifiedMenuButton] Current location ID: ${LocationSelectionService.instance.currentLocationId}');
-      print('[UnifiedMenuButton] Current location name: ${LocationSelectionService.instance.currentLocationName}');
+      print(
+        '[UnifiedMenuButton] Building menu items. Available locations: ${widget.availableLocations.length}',
+      );
+      print(
+        '[UnifiedMenuButton] Current location ID: ${LocationSelectionService.instance.currentLocationId}',
+      );
+      print(
+        '[UnifiedMenuButton] Current location name: ${LocationSelectionService.instance.currentLocationName}',
+      );
     }
 
     // Location switcher section (only show if there are multiple locations)
     if (widget.availableLocations.length > 1) {
       // Get current location from service
-      final currentLocationId = LocationSelectionService.instance.currentLocationId;
+      final currentLocationId =
+          LocationSelectionService.instance.currentLocationId;
 
       // Find the current location name from our available locations
       String displayName = 'Select Location';
@@ -911,7 +1052,8 @@ class _MenuOverlayState extends State<_MenuOverlay> {
           displayName = currentLocation['name'] as String;
         } else {
           // Fallback to service name if location not in our list
-          final serviceName = LocationSelectionService.instance.currentLocationName;
+          final serviceName =
+              LocationSelectionService.instance.currentLocationName;
           if (serviceName?.isNotEmpty == true) {
             displayName = serviceName!;
           }
@@ -937,26 +1079,67 @@ class _MenuOverlayState extends State<_MenuOverlay> {
         );
 
         for (final location in widget.availableLocations) {
-          final isSelected = LocationSelectionService.instance.currentLocationId == location['id'];
-          items.add(_buildLocationMenuItem(location['name'] as String, location['id'] as String, isSelected));
+          final isSelected =
+              LocationSelectionService.instance.currentLocationId ==
+              location['id'];
+          items.add(
+            _buildLocationMenuItem(
+              location['name'] as String,
+              location['id'] as String,
+              isSelected,
+            ),
+          );
         }
       } else {
         // Main menu with sections
         // Location section
         items.add(_buildSectionHeader('Location'));
         items.add(
-          _buildMenuItem(displayName, _MenuAction.changeLocation, Icons.location_on, subtitle: 'Switch location'),
+          _buildMenuItem(
+            displayName,
+            _MenuAction.changeLocation,
+            Icons.location_on,
+            subtitle: 'Switch location',
+          ),
         );
 
         // Communications section
         items.add(_buildSectionDivider());
         items.add(_buildSectionHeader('Communications'));
-        items.add(_buildMenuItem('Inbox', _MenuAction.viewMessages, Icons.inbox_outlined));
+        items.add(
+          _buildMenuItem(
+            'Inbox',
+            _MenuAction.viewMessages,
+            Icons.inbox_outlined,
+          ),
+        );
+
+        if (widget.platformAccess) {
+          items.add(
+            _buildMenuItem(
+              'Hands CRM',
+              _MenuAction.crm,
+              Icons.business_center_outlined,
+            ),
+          );
+        }
 
         // Admin-only features (role >= 2)
         if (widget.userRole >= 2) {
-          items.add(_buildMenuItem('New broadcast', _MenuAction.sendNotification, Icons.campaign_outlined));
-          items.add(_buildMenuItem('Manage audiences', _MenuAction.createGroup, Icons.groups_2_outlined));
+          items.add(
+            _buildMenuItem(
+              'New broadcast',
+              _MenuAction.sendNotification,
+              Icons.campaign_outlined,
+            ),
+          );
+          items.add(
+            _buildMenuItem(
+              'Manage audiences',
+              _MenuAction.createGroup,
+              Icons.groups_2_outlined,
+            ),
+          );
         }
 
         // Support & Settings section
@@ -986,20 +1169,54 @@ class _MenuOverlayState extends State<_MenuOverlay> {
             },
           ),
         );
-        items.add(_buildMenuItem('Settings', _MenuAction.settings, Icons.settings));
-        items.add(_buildMenuItem('Help', _MenuAction.howToUse, Icons.help_center));
-        items.add(_buildMenuItem('Contact us', _MenuAction.contactUs, Icons.contact_support));
+        items.add(
+          _buildMenuItem('Settings', _MenuAction.settings, Icons.settings),
+        );
+        items.add(
+          _buildMenuItem('Help', _MenuAction.howToUse, Icons.help_center),
+        );
+        items.add(
+          _buildMenuItem(
+            'Contact us',
+            _MenuAction.contactUs,
+            Icons.contact_support,
+          ),
+        );
       }
     } else {
       // No location switcher needed, just show other sections
       // Communications section
       items.add(_buildSectionHeader('Communications'));
-      items.add(_buildMenuItem('Inbox', _MenuAction.viewMessages, Icons.inbox_outlined));
+      items.add(
+        _buildMenuItem('Inbox', _MenuAction.viewMessages, Icons.inbox_outlined),
+      );
+
+      if (widget.platformAccess) {
+        items.add(
+          _buildMenuItem(
+            'Hands CRM',
+            _MenuAction.crm,
+            Icons.business_center_outlined,
+          ),
+        );
+      }
 
       // Admin-only features (role >= 2)
       if (widget.userRole >= 2) {
-        items.add(_buildMenuItem('New broadcast', _MenuAction.sendNotification, Icons.campaign_outlined));
-        items.add(_buildMenuItem('Manage audiences', _MenuAction.createGroup, Icons.groups_2_outlined));
+        items.add(
+          _buildMenuItem(
+            'New broadcast',
+            _MenuAction.sendNotification,
+            Icons.campaign_outlined,
+          ),
+        );
+        items.add(
+          _buildMenuItem(
+            'Manage audiences',
+            _MenuAction.createGroup,
+            Icons.groups_2_outlined,
+          ),
+        );
       }
 
       // Support & Settings section
@@ -1029,15 +1246,31 @@ class _MenuOverlayState extends State<_MenuOverlay> {
           },
         ),
       );
-      items.add(_buildMenuItem('Settings', _MenuAction.settings, Icons.settings));
-      items.add(_buildMenuItem('Help', _MenuAction.howToUse, Icons.help_center));
-      items.add(_buildMenuItem('Contact us', _MenuAction.contactUs, Icons.contact_support));
+      items.add(
+        _buildMenuItem('Settings', _MenuAction.settings, Icons.settings),
+      );
+      items.add(
+        _buildMenuItem('Help', _MenuAction.howToUse, Icons.help_center),
+      );
+      items.add(
+        _buildMenuItem(
+          'Contact us',
+          _MenuAction.contactUs,
+          Icons.contact_support,
+        ),
+      );
     }
 
     return items;
   }
 
-  Widget _buildMenuItem(String title, _MenuAction? action, IconData icon, {VoidCallback? onTap, String? subtitle}) {
+  Widget _buildMenuItem(
+    String title,
+    _MenuAction? action,
+    IconData icon, {
+    VoidCallback? onTap,
+    String? subtitle,
+  }) {
     return InkWell(
       onTap:
           onTap ??
@@ -1055,7 +1288,13 @@ class _MenuOverlayState extends State<_MenuOverlay> {
           mainAxisSize: MainAxisSize.max,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Icon(icon, size: 20, color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7)),
+            Icon(
+              icon,
+              size: 20,
+              color: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.color?.withOpacity(0.7),
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -1064,7 +1303,10 @@ class _MenuOverlayState extends State<_MenuOverlay> {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
                     textAlign: TextAlign.left,
                   ),
                   if (subtitle != null) ...[
@@ -1073,7 +1315,9 @@ class _MenuOverlayState extends State<_MenuOverlay> {
                       subtitle,
                       style: TextStyle(
                         fontSize: 12,
-                        color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.6),
+                        color: Theme.of(
+                          context,
+                        ).textTheme.bodySmall?.color?.withOpacity(0.6),
                       ),
                       textAlign: TextAlign.left,
                     ),
@@ -1085,7 +1329,9 @@ class _MenuOverlayState extends State<_MenuOverlay> {
               Icon(
                 Icons.keyboard_arrow_right,
                 size: 16,
-                color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.5),
+                color: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.color?.withOpacity(0.5),
               ),
           ],
         ),
@@ -1117,14 +1363,21 @@ class _MenuOverlayState extends State<_MenuOverlay> {
     );
   }
 
-  Widget _buildLocationMenuItem(String locationName, String locationId, bool isSelected) {
+  Widget _buildLocationMenuItem(
+    String locationName,
+    String locationId,
+    bool isSelected,
+  ) {
     return InkWell(
       onTap: () => widget.onLocationSelected(locationId, locationName),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected ? Theme.of(context).primaryColor.withOpacity(0.08) : null,
+          color:
+              isSelected
+                  ? Theme.of(context).primaryColor.withOpacity(0.08)
+                  : null,
           borderRadius: BorderRadius.circular(8),
         ),
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
@@ -1138,7 +1391,9 @@ class _MenuOverlayState extends State<_MenuOverlay> {
               color:
                   isSelected
                       ? Theme.of(context).primaryColor
-                      : Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7),
+                      : Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.color?.withOpacity(0.7),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -1152,7 +1407,12 @@ class _MenuOverlayState extends State<_MenuOverlay> {
                 textAlign: TextAlign.left,
               ),
             ),
-            if (isSelected) Icon(Icons.check_circle, size: 18, color: Theme.of(context).primaryColor),
+            if (isSelected)
+              Icon(
+                Icons.check_circle,
+                size: 18,
+                color: Theme.of(context).primaryColor,
+              ),
           ],
         ),
       ),
@@ -1160,4 +1420,13 @@ class _MenuOverlayState extends State<_MenuOverlay> {
   }
 }
 
-enum _MenuAction { changeLocation, viewMessages, sendNotification, createGroup, settings, howToUse, contactUs }
+enum _MenuAction {
+  changeLocation,
+  viewMessages,
+  sendNotification,
+  createGroup,
+  settings,
+  crm,
+  howToUse,
+  contactUs,
+}

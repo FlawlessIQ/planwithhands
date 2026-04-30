@@ -158,6 +158,8 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
         preferredLanguageCode:
             ref.read(appLocaleControllerProvider).locale.toLanguageTag(),
       );
+      final acceptedRole =
+          int.tryParse(result['userRole']?.toString() ?? '') ?? 0;
       final email =
           result['email']?.toString() ??
           _pendingUser?['emailAddress']?.toString() ??
@@ -170,7 +172,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
       );
       _inviteStatus = 'accepted';
 
-      _showSuccessDialog();
+      _showSuccessDialog(destinationPath: _dashboardPathForRole(acceptedRole));
     } catch (e) {
       String errorMessage = l10n.welcomeFailedSetup(e.toString());
       final lowered = e.toString().toLowerCase();
@@ -217,7 +219,13 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
     );
   }
 
-  void _showSuccessDialog() {
+  String _dashboardPathForRole(int userRole) {
+    if (userRole == 2) return '/admin_dashboard';
+    if (userRole == 1) return '/manager_dashboard';
+    return '/user_dashboard';
+  }
+
+  void _showSuccessDialog({required String destinationPath}) {
     final l10n = context.l10n;
     HandsDialog.show(
       context: context,
@@ -267,7 +275,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                     const SizedBox(height: 8),
                     _buildAppStoreButton(
                       onTap: () {
-                        context.go('/user_dashboard');
+                        context.go(destinationPath);
                       },
                       icon: Icons.laptop_mac,
                       topText: l10n.commonContinueIn,
@@ -296,7 +304,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
                     Expanded(
                       child: _buildAppStoreButton(
                         onTap: () {
-                          context.go('/user_dashboard');
+                          context.go(destinationPath);
                         },
                         icon: Icons.laptop_mac,
                         topText: l10n.commonContinueIn,
@@ -320,7 +328,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
           text: l10n.commonOpenHands,
           onPressed: () {
             Navigator.of(context).pop();
-            context.go('/user_dashboard');
+            context.go(destinationPath);
           },
         ),
       ],

@@ -33,8 +33,8 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.cancelSubscriptionElements = exports.updateSubscriptionQuantity = exports.getStripePublishableKeyHttp = exports.getStripePublishableKey = exports.getCheckoutSessionStatus = exports.createEmbeddedCheckoutSession = exports.createSetupIntentForCustomer = exports.createSubscriptionElements = exports.ensureStripeCustomer = exports.enforceDailyChecklistOwnership = exports.auditOrgChecklists = exports.manualTestEmail = exports.sharedModeVerifyPin = exports.sharedModeSetPin = exports.diagnoseRuntimeEnv = exports.sendTodaySummaryNow = exports.updateOrganizationDailySummaryTime = exports.validateDailySummaryTimeChange = exports.dailyCarryForwardMissedTasks = exports.triggerDailySummary = exports.scheduledDailySummary = exports.scheduledDailyGenerator = exports.onNotificationOutboxCreated = exports.proxyDownload = exports.proxyUpload = exports.getSignedUploadUrl = exports.sendHelpRequest = exports.placeDetailsHttp = exports.placesAutocompleteHttp = exports.createBillingPortalSession = exports.updateSubscription = exports.cancelSubscription = exports.stripeWebhook = exports.createCheckoutSession = exports.lookupInviteByEmail = exports.revokeInvite = exports.resendInvite = exports.acceptInvite = exports.verifyInvite = exports.createInvite = exports.sendOrganizationSignupNotification = exports.deleteUser = exports.createUser = exports.repairTaskTitlesFromCsv = exports.repairTemplateTaskTitles = exports.migrateChecklistTemplates = exports.syncTodayOnShiftChange = exports.cleanupDeletedTemplate = exports.syncTemplateNameChange = exports.syncTodayOnTemplateChange = void 0;
-exports.backfillSubscriptionQuantityForOrg = exports.validateCoupon = exports.getSubscriptionData = exports.createBillingPortalSessionElements = void 0;
+exports.createSetupIntentForCustomer = exports.createSubscriptionElements = exports.ensureStripeCustomer = exports.enforceDailyChecklistOwnership = exports.auditOrgChecklists = exports.manualTestEmail = exports.sharedModeVerifyPin = exports.sharedModeSetPin = exports.updateCrmOrganizationFlags = exports.createCrmPromotionCode = exports.listCrmPromotionCodes = exports.getCrmOrganization = exports.getCrmDashboard = exports.diagnoseRuntimeEnv = exports.sendTodaySummaryNow = exports.updateOrganizationDailySummaryTime = exports.validateDailySummaryTimeChange = exports.dailyCarryForwardMissedTasks = exports.triggerDailySummary = exports.scheduledDailySummary = exports.scheduledDailyGenerator = exports.onNotificationOutboxCreated = exports.proxyDownload = exports.proxyUpload = exports.getSignedUploadUrl = exports.sendHelpRequest = exports.placeDetailsHttp = exports.placesAutocompleteHttp = exports.createBillingPortalSession = exports.updateSubscription = exports.cancelSubscription = exports.stripeWebhook = exports.createCheckoutSession = exports.lookupInviteByEmail = exports.revokeInvite = exports.resendInvite = exports.acceptInvite = exports.verifyInvite = exports.createInvite = exports.sendOrganizationSignupNotification = exports.createOrganizationSignup = exports.deleteUser = exports.createUser = exports.repairTaskTitlesFromCsv = exports.repairTemplateTaskTitles = exports.migrateChecklistTemplates = exports.syncTodayOnShiftChange = exports.cleanupDeletedTemplate = exports.syncTemplateNameChange = exports.syncTodayOnTemplateChange = void 0;
+exports.backfillSubscriptionQuantityForOrg = exports.validateCoupon = exports.getSubscriptionData = exports.createBillingPortalSessionElements = exports.cancelSubscriptionElements = exports.updateSubscriptionQuantity = exports.getStripePublishableKeyHttp = exports.getStripePublishableKey = exports.getCheckoutSessionStatus = exports.createEmbeddedCheckoutSession = void 0;
 /* eslint-disable @typescript-eslint/no-require-imports */
 const dotenv = __importStar(require("dotenv"));
 const admin = __importStar(require("firebase-admin"));
@@ -84,6 +84,7 @@ exports.repairTaskTitlesFromCsv = repairCsvModule.repairTaskTitlesFromCsv;
 const userModule = require("../user_functions");
 exports.createUser = userModule.createUser;
 exports.deleteUser = userModule.deleteUser;
+exports.createOrganizationSignup = userModule.createOrganizationSignup;
 exports.sendOrganizationSignupNotification = userModule.sendOrganizationSignupNotification;
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const inviteModule = require("../invite_functions");
@@ -142,6 +143,12 @@ var sendTodaySummaryNow_1 = require("./sendTodaySummaryNow");
 Object.defineProperty(exports, "sendTodaySummaryNow", { enumerable: true, get: function () { return sendTodaySummaryNow_1.sendTodaySummaryNow; } });
 var diagnoseRuntimeEnv_1 = require("./diagnoseRuntimeEnv");
 Object.defineProperty(exports, "diagnoseRuntimeEnv", { enumerable: true, get: function () { return diagnoseRuntimeEnv_1.diagnoseRuntimeEnv; } });
+var crm_1 = require("./crm");
+Object.defineProperty(exports, "getCrmDashboard", { enumerable: true, get: function () { return crm_1.getCrmDashboard; } });
+Object.defineProperty(exports, "getCrmOrganization", { enumerable: true, get: function () { return crm_1.getCrmOrganization; } });
+Object.defineProperty(exports, "listCrmPromotionCodes", { enumerable: true, get: function () { return crm_1.listCrmPromotionCodes; } });
+Object.defineProperty(exports, "createCrmPromotionCode", { enumerable: true, get: function () { return crm_1.createCrmPromotionCode; } });
+Object.defineProperty(exports, "updateCrmOrganizationFlags", { enumerable: true, get: function () { return crm_1.updateCrmOrganizationFlags; } });
 // Shared Mode (communal device / PIN)
 var sharedMode_1 = require("./sharedMode");
 Object.defineProperty(exports, "sharedModeSetPin", { enumerable: true, get: function () { return sharedMode_1.sharedModeSetPin; } });

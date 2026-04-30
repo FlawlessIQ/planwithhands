@@ -399,13 +399,15 @@ class _GuidedTourOverlay extends StatelessWidget {
           final cardWidth =
               useBottomSheetLayout
                   ? overlaySize.width - 24
-                  : math.min(overlaySize.width - 32, 360.0);
+                  : math.min(overlaySize.width - 32, 460.0);
           final rect = targetRect;
           final availableViewportHeight =
               overlaySize.height - safeTop - safeBottom;
           const minCardHeight = 220.0;
           final estimatedCardHeight =
-              onLearnMore != null || onBack != null ? 316.0 : 288.0;
+              currentStepIndex == 0
+                  ? 430.0
+                  : (onLearnMore != null || onBack != null ? 360.0 : 330.0);
           final availableBelow =
               rect == null
                   ? availableViewportHeight
@@ -431,17 +433,18 @@ class _GuidedTourOverlay extends StatelessWidget {
             }
           }
 
+          final selectedSpace = placeBelow ? availableBelow : availableAbove;
+          final bestAnchoredSpace = math.max(availableBelow, availableAbove);
+          final shouldCenterCard =
+              rect != null &&
+              selectedSpace < estimatedCardHeight &&
+              bestAnchoredSpace < estimatedCardHeight;
           final cardMaxHeight =
               useBottomSheetLayout
-                  ? math.min(estimatedCardHeight, overlaySize.height * 0.42)
-                  : rect == null
-                  ? math.min(estimatedCardHeight, availableViewportHeight)
+                  ? math.min(estimatedCardHeight, overlaySize.height * 0.82)
                   : math.max(
                     minCardHeight,
-                    math.min(
-                      placeBelow ? availableBelow : availableAbove,
-                      availableViewportHeight,
-                    ),
+                    math.min(estimatedCardHeight, availableViewportHeight),
                   );
           final horizontalMargin = useBottomSheetLayout ? 12.0 : 16.0;
           final centeredLeft = math.max(
@@ -463,7 +466,7 @@ class _GuidedTourOverlay extends StatelessWidget {
           final top =
               useBottomSheetLayout
                   ? maxTop
-                  : rect == null
+                  : rect == null || shouldCenterCard
                   ? ((overlaySize.height - cardMaxHeight) / 2).clamp(
                     safeTop,
                     maxTop,
@@ -510,7 +513,7 @@ class _GuidedTourOverlay extends StatelessWidget {
             ),
           ],
         ),
-        child: SingleChildScrollView(
+        child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             mainAxisSize: MainAxisSize.min,

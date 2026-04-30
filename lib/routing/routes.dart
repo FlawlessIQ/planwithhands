@@ -16,6 +16,7 @@ import 'package:hands_app/features/auth/pages/account_creation_page_simple_brand
 import 'package:hands_app/features/settings/pages/settings_page.dart';
 import 'package:hands_app/features/subscription/pages/subscription_management_page.dart';
 import 'package:hands_app/features/training/pages/training_materials_page.dart';
+import 'package:hands_app/features/crm/pages/crm_dashboard_page.dart';
 import 'package:hands_app/features/help/models/help_topic.dart';
 import 'package:hands_app/features/help/pages/help_home_page.dart';
 import 'package:hands_app/features/help/pages/help_role_page.dart';
@@ -45,12 +46,14 @@ import 'package:hands_app/debug/stripe_probe_page.dart';
 import 'package:hands_app/billing/embedded_payment_page.dart';
 import 'package:hands_app/features/shared_mode/shared_mode_controller.dart';
 import 'package:hands_app/services/subscription_access_service.dart';
+import 'package:hands_app/theme/theme.dart';
 
 // Helper function to build the appropriate admin setup page based on platform
 Widget _buildAdminSetupPage(
   BuildContext ctx, {
   required String organizationId,
   String? tab,
+  bool allowPlatformAccess = false,
 }) {
   // Check if we should use the web version based on screen size and device characteristics
   final mediaQuery = MediaQuery.of(ctx);
@@ -65,7 +68,9 @@ Widget _buildAdminSetupPage(
   // Allow forcing the web layout via ?forceWeb=true in the browser URL (useful for debugging)
   final forceWeb = Uri.base.queryParameters['forceWeb'] == 'true';
   final useWebVersion =
-      forceWeb || (kIsWeb && (isLargeScreen || isLandscapeDesktop));
+      allowPlatformAccess ||
+      forceWeb ||
+      (kIsWeb && (isLargeScreen || isLandscapeDesktop));
 
   // Check for setup query parameter
   final isNewOrganizationSetup = Uri.base.queryParameters['setup'] == 'true';
@@ -101,6 +106,7 @@ Widget _buildAdminSetupPage(
         organizationId: organizationId,
         initialTab: webAdminTab,
         isNewOrganizationSetup: isNewOrganizationSetup,
+        allowPlatformAccess: allowPlatformAccess,
       )
       : AdminDashboardPage(isNewOrganizationSetup: isNewOrganizationSetup);
 }
@@ -109,6 +115,7 @@ Widget _buildAdminSetupPage(
 Widget _buildManagerDashboardPage(
   BuildContext ctx, {
   required String organizationId,
+  bool allowPlatformAccess = false,
 }) {
   // Check if we should use the web version based on screen size and device characteristics
   final mediaQuery = MediaQuery.of(ctx);
@@ -120,14 +127,18 @@ Widget _buildManagerDashboardPage(
 
   // Use web version for desktop-like environments (large screens in landscape)
   // Use mobile version for mobile devices, even when accessing via web
-  final useWebVersion = kIsWeb && (isLargeScreen || isLandscapeDesktop);
+  final useWebVersion =
+      allowPlatformAccess || (kIsWeb && (isLargeScreen || isLandscapeDesktop));
 
   debugPrint(
-    'Manager route -> ${useWebVersion ? 'WEB' : 'MOBILE'} | width=$screenWidth height=$screenHeight ratio=${aspectRatio.toStringAsFixed(2)} | orgId=$organizationId',
+    'Manager route -> ${useWebVersion ? 'WEB' : 'MOBILE'} | width=$screenWidth height=$screenHeight ratio=${aspectRatio.toStringAsFixed(2)} | orgId=$organizationId platform=$allowPlatformAccess',
   );
 
   return useWebVersion
-      ? web_manager.ManagerDashboardPage(organizationId: organizationId)
+      ? web_manager.ManagerDashboardPage(
+        organizationId: organizationId,
+        allowPlatformAccess: allowPlatformAccess,
+      )
       : ManagerDashboardPage(organizationId: organizationId);
 }
 
@@ -176,6 +187,11 @@ enum AppRoutes {
   messagesPage('/messages'),
   threadPage('/threads/:threadId'),
   notificationsPage('/notifications'),
+  crmPage('/crm'),
+  crmOrgTasksPage('/crm/org/:orgId/tasks'),
+  crmOrgDashboardPage('/crm/org/:orgId/dashboard'),
+  crmOrgAdminPage('/crm/org/:orgId/admin'),
+  crmOrgDocumentsPage('/crm/org/:orgId/documents'),
   paymentSuccessPage('/payment-success'),
   paymentCancelledPage('/payment-cancelled'),
   checkoutComplete('/billing/checkout-complete'),
@@ -232,7 +248,12 @@ class AuthGateWithOrg extends ConsumerWidget {
               currentPath.contains(AppRoutes.accountCreationPage.path)) {
             logger.d('[AuthGateWithOrg] *** ALLOWING DIRECT SIGNUP ACCESS ***');
             // Return signup page instead of login for this route
-            return const branded.SimpleSignUpPage();
+            final query = uri.queryParameters;
+            return branded.SimpleSignUpPage(
+              email: query['email'],
+              organizationId: query['orgId'] ?? query['organizationId'],
+              token: query['token'] ?? query['inviteId'],
+            );
           }
 
           // For all other routes, redirect to login
@@ -740,6 +761,55 @@ class AuthGateForAdminSetup extends ConsumerWidget {
   }
 }
 
+class PlatformAccessGate extends StatelessWidget {
+  final Widget child;
+
+  const PlatformAccessGate({required this.child, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const LoginPage();
+
+    return FutureBuilder<DocumentSnapshot>(
+      future:
+          FirestoreEnforcer.instance
+              .collection(FirestoreCollectionNames.users)
+              .doc(user.uid)
+              .get(),
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final data = snap.data?.data() as Map<String, dynamic>?;
+        final hasAccess = data?['platformAccess'] == true;
+        if (!hasAccess) {
+          return Scaffold(
+            backgroundColor: HandsColors.scaffoldBackground,
+            body: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: const Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text(
+                      'This dashboard is only available to Hands platform accounts.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+        return child;
+      },
+    );
+  }
+}
+
 GoRouter? _cachedRouter;
 
 // Local helper to determine payment quantity based on intendedLocationQuantity or existing locations
@@ -933,7 +1003,15 @@ GoRouter buildAppRouter(Ref ref) {
                 requestedFeature: 'Account creation',
               );
             }
-            return const branded.SimpleSignUpPage();
+            return branded.SimpleSignUpPage(
+              email: state.uri.queryParameters['email'],
+              organizationId:
+                  state.uri.queryParameters['orgId'] ??
+                  state.uri.queryParameters['organizationId'],
+              token:
+                  state.uri.queryParameters['token'] ??
+                  state.uri.queryParameters['inviteId'],
+            );
           },
         ),
         // iOS compliance route
@@ -979,6 +1057,98 @@ GoRouter buildAppRouter(Ref ref) {
               );
             }
             return AuthGate(child: SubscriptionManagementPage(orgId: orgId));
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.crmPage.path,
+          builder:
+              (context, state) =>
+                  const PlatformAccessGate(child: CrmDashboardPage()),
+        ),
+        GoRoute(
+          path: AppRoutes.crmOrgTasksPage.path,
+          builder: (context, state) {
+            final orgId = state.pathParameters['orgId'] ?? '';
+            if (orgId.isEmpty) {
+              return const PlatformAccessGate(
+                child: Scaffold(
+                  body: Center(child: Text('Organization ID required')),
+                ),
+              );
+            }
+            return PlatformAccessGate(
+              child: UserDashboardPage(
+                organizationIdOverride: orgId,
+                allowPlatformAccess: true,
+              ),
+            );
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.crmOrgDashboardPage.path,
+          builder: (context, state) {
+            final orgId = state.pathParameters['orgId'] ?? '';
+            if (orgId.isEmpty) {
+              return const PlatformAccessGate(
+                child: Scaffold(
+                  body: Center(child: Text('Organization ID required')),
+                ),
+              );
+            }
+            return PlatformAccessGate(
+              child: Builder(
+                builder:
+                    (context) => _buildManagerDashboardPage(
+                      context,
+                      organizationId: orgId,
+                      allowPlatformAccess: true,
+                    ),
+              ),
+            );
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.crmOrgAdminPage.path,
+          builder: (context, state) {
+            final orgId = state.pathParameters['orgId'] ?? '';
+            final tab = state.uri.queryParameters['tab'];
+            if (orgId.isEmpty) {
+              return const PlatformAccessGate(
+                child: Scaffold(
+                  body: Center(child: Text('Organization ID required')),
+                ),
+              );
+            }
+            return PlatformAccessGate(
+              child: Builder(
+                builder:
+                    (context) => _buildAdminSetupPage(
+                      context,
+                      organizationId: orgId,
+                      tab: tab,
+                      allowPlatformAccess: true,
+                    ),
+              ),
+            );
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.crmOrgDocumentsPage.path,
+          builder: (context, state) {
+            final orgId = state.pathParameters['orgId'] ?? '';
+            if (orgId.isEmpty) {
+              return const PlatformAccessGate(
+                child: Scaffold(
+                  body: Center(child: Text('Organization ID required')),
+                ),
+              );
+            }
+            return PlatformAccessGate(
+              child: ViewDocumentsPage(
+                organizationIdOverride: orgId,
+                allowPlatformAccess: true,
+              ),
+            );
           },
         ),
         GoRoute(

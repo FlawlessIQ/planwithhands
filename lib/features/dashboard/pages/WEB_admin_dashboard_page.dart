@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
@@ -26,9 +27,8 @@ import 'package:hands_app/widgets/pending_invites_panel.dart';
 import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/features/help/widgets/context_help_trigger.dart';
 import 'package:hands_app/features/help/models/guided_tour_step.dart';
-import 'package:hands_app/features/help/models/help_topic.dart';
 import 'package:hands_app/features/help/widgets/guided_tour_host.dart';
-import 'package:hands_app/features/help/widgets/inline_start_here_card.dart';
+import 'package:hands_app/features/crm/widgets/crm_scoped_bottom_nav.dart';
 import 'package:hands_app/l10n/l10n.dart';
 import 'package:hands_app/utils/localized_content.dart';
 
@@ -81,6 +81,7 @@ class WEBAdminDashboardPage extends StatefulWidget {
   final WebAdminTab? initialTab;
   final bool usePortalLayout;
   final bool isNewOrganizationSetup;
+  final bool allowPlatformAccess;
 
   const WEBAdminDashboardPage({
     super.key,
@@ -88,6 +89,7 @@ class WEBAdminDashboardPage extends StatefulWidget {
     this.initialTab,
     this.usePortalLayout = false,
     this.isNewOrganizationSetup = false,
+    this.allowPlatformAccess = false,
   });
 
   @override
@@ -98,6 +100,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
     with ActivityTrackingMixin {
   int? userRole;
   bool isLoading = true;
+  bool _accessDenied = false;
 
   // Current active tab - use persistent state
   late WebAdminTab _currentTab;
@@ -110,6 +113,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
   // Data caches
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _shiftDocs = [];
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _checklistDocs = [];
+  int _teamMemberCount = 0;
 
   // Lookups
   final Map<String, String> _checklistNameById = {}; // templateId -> name
@@ -231,7 +235,11 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
 
   // Reload on mount after access check sets up org
   Future<void> _reloadAllTables() async {
-    await Future.wait([_loadChecklistsTable(), _loadShiftsTable()]);
+    await Future.wait([
+      _loadChecklistsTable(),
+      _loadShiftsTable(),
+      _loadTeamMemberCount(),
+    ]);
   }
 
   // --- Data loaders -------------------------------------------------------
@@ -305,6 +313,22 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
       }
     } catch (e, st) {
       logger.e('[WEBAdminDashboard] _loadChecklistsTable error: $e\n$st');
+    }
+  }
+
+  Future<void> _loadTeamMemberCount() async {
+    try {
+      final snap =
+          await FirestoreEnforcer.instance
+              .collection('users')
+              .where('organizationId', isEqualTo: widget.organizationId)
+              .get();
+      _teamMemberCount = snap.docs.length;
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e, st) {
+      logger.e('[WEBAdminDashboard] _loadTeamMemberCount error: $e\n$st');
     }
   }
 
@@ -638,19 +662,28 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
           orgId = userData['organizationId'] as String?;
         }
 
-        // Only allow admin access (userRole = 2) and require matching organizationId
-        if (role != 2 || orgId != widget.organizationId) {
+        final hasPlatformAccess =
+            widget.allowPlatformAccess && userData['platformAccess'] == true;
+
+        // Only allow normal org admins, except CRM platform users opening
+        // customer orgs through the platform-only CRM manage route.
+        if ((role != 2 || orgId != widget.organizationId) &&
+            !hasPlatformAccess) {
           logger.w(
             '[WEBAdminDashboard] Access denied: role=$role, orgId=$orgId, expectedOrgId=${widget.organizationId}',
           );
           if (mounted) {
-            Navigator.of(context).pop();
+            setState(() {
+              _accessDenied = true;
+              isLoading = false;
+            });
           }
           return;
         }
 
         setState(() {
-          userRole = role;
+          _accessDenied = false;
+          userRole = hasPlatformAccess ? 2 : role;
           isLoading = false;
         });
 
@@ -815,6 +848,25 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
       );
     }
 
+    if (_accessDenied) {
+      return Scaffold(
+        backgroundColor: HandsColors.scaffoldBackground,
+        appBar: AppBar(
+          backgroundColor: HandsColors.cardPrimary,
+          title: const Text('Access unavailable'),
+        ),
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'You do not have admin access to this organization.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
+
     final l10n = context.l10n;
     final adminTourSteps = <GuidedTourStep>[
       GuidedTourStep(
@@ -850,22 +902,46 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
         backgroundColor: HandsColors.cardPrimary,
         elevation: 0,
         toolbarHeight: kToolbarHeight,
-        title: GenericAppBarContent(
-          appBarTitle: l10n.bottomNavSetup,
-          userRole: userRole,
-        ),
+        leading:
+            widget.allowPlatformAccess
+                ? IconButton(
+                  tooltip: 'Back to CRM',
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => context.go('/crm'),
+                )
+                : null,
+        title:
+            widget.allowPlatformAccess
+                ? Text(
+                  'CRM account workspace',
+                  style: GoogleFonts.comfortaa(fontWeight: FontWeight.w800),
+                )
+                : GenericAppBarContent(
+                  appBarTitle: l10n.bottomNavSetup,
+                  userRole: userRole,
+                ),
         automaticallyImplyLeading: false,
-        actions: [
-          // Unified menu button
-          UnifiedMenuButton(
-            userRole: userRole,
-            organizationId: widget.organizationId,
-          ),
-        ],
+        actions:
+            widget.allowPlatformAccess
+                ? [
+                  TextButton.icon(
+                    onPressed: () => context.go('/crm'),
+                    icon: const Icon(Icons.dashboard_customize_outlined),
+                    label: const Text('Back to CRM'),
+                  ),
+                  const SizedBox(width: 12),
+                ]
+                : [
+                  // Unified menu button
+                  UnifiedMenuButton(
+                    userRole: userRole,
+                    organizationId: widget.organizationId,
+                  ),
+                ],
       ),
       body: GuidedTourHost(
         storageKey: 'admin-setup-tour-v2',
-        enabled: !isLoading,
+        enabled: !isLoading && !widget.allowPlatformAccess,
         steps: adminTourSteps,
         child: Container(
           decoration: const BoxDecoration(
@@ -876,7 +952,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
             ),
           ),
           child: Padding(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(12),
             child: Row(
               children: [
                 KeyedSubtree(
@@ -887,10 +963,19 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
                 Expanded(
                   child: Column(
                     children: [
+                      if (widget.allowPlatformAccess) ...[
+                        _buildCrmManageBanner(),
+                        const SizedBox(height: 12),
+                      ],
                       KeyedSubtree(
                         key: _tourLocationScopeKey,
                         child: _buildFilterBar(),
                       ),
+                      if (widget.isNewOrganizationSetup &&
+                          !widget.allowPlatformAccess) ...[
+                        const SizedBox(height: 10),
+                        _buildLaunchChecklistCard(),
+                      ],
                       const SizedBox(height: 16),
                       Expanded(
                         child: KeyedSubtree(
@@ -906,16 +991,218 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
           ),
         ),
       ),
-      bottomNavigationBar: BottomNavBar(
-        currentIndex: 2,
-        userRole: userRole,
-      ), // Admin tab is index 2
+      bottomNavigationBar:
+          widget.allowPlatformAccess
+              ? CrmScopedBottomNav(
+                orgId: widget.organizationId,
+                currentIndex: 2,
+              )
+              : BottomNavBar(
+                currentIndex: 2,
+                userRole: userRole,
+              ), // Admin tab is index 2
+    );
+  }
+
+  Widget _buildLaunchChecklistCard() {
+    final locationDone = _availableLocations.isNotEmpty;
+    final teamDone = _teamMemberCount > 1;
+    final shiftsDone = _shiftDocs.isNotEmpty;
+    final workflowsDone = _checklistDocs.isNotEmpty;
+    final completeCount =
+        [
+          locationDone,
+          teamDone,
+          shiftsDone,
+          workflowsDone,
+        ].where((done) => done).length;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111821),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: HandsColors.white12),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: HandsColors.handsOrange.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.rocket_launch_outlined,
+              color: HandsColors.handsOrange,
+              size: 19,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      'Launch checklist',
+                      style: GoogleFonts.inter(
+                        color: HandsColors.white,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildTrialPill(),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    _buildLaunchStepChip(
+                      label: 'Location',
+                      done: locationDone,
+                      tab: WebAdminTab.locations,
+                    ),
+                    _buildLaunchStepChip(
+                      label: 'Team',
+                      done: teamDone,
+                      tab: WebAdminTab.users,
+                    ),
+                    _buildLaunchStepChip(
+                      label: 'Shift',
+                      done: shiftsDone,
+                      tab: WebAdminTab.shifts,
+                    ),
+                    _buildLaunchStepChip(
+                      label: 'Workflow',
+                      done: workflowsDone,
+                      tab: WebAdminTab.checklists,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            '$completeCount/4 ready',
+            style: GoogleFonts.inter(
+              color: HandsColors.white70,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTrialPill() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: HandsColors.sageGreen.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: HandsColors.sageGreen.withValues(alpha: 0.3)),
+      ),
+      child: Text(
+        'Trial active - add billing later in Settings',
+        style: GoogleFonts.inter(
+          color: HandsColors.sageGreen,
+          fontSize: 10.5,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLaunchStepChip({
+    required String label,
+    required bool done,
+    required WebAdminTab tab,
+  }) {
+    final color = done ? HandsColors.sageGreen : _accentForTab(tab);
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: () {
+        setState(() {
+          _currentTab = tab;
+          AdminDashboardState.lastTab = tab;
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: done ? 0.14 : 0.1),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: color.withValues(alpha: 0.28)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              done ? Icons.check_circle : Icons.radio_button_unchecked,
+              color: color,
+              size: 13,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: GoogleFonts.inter(
+                color: HandsColors.white,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCrmManageBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: HandsColors.handsOrange.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: HandsColors.handsOrange.withValues(alpha: 0.25),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.admin_panel_settings_outlined,
+            color: HandsColors.handsOrange,
+            size: 18,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Viewing this customer setup from CRM. This does not switch your signed-in app org; use Back to CRM when you are finished.',
+              style: GoogleFonts.inter(
+                color: HandsColors.white,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildLeftNavigation() {
     return Container(
-      width: 272,
+      width: 238,
       decoration: BoxDecoration(
         color: const Color(0xFF171B22),
         borderRadius: BorderRadius.circular(24),
@@ -932,7 +1219,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
         children: [
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
             decoration: const BoxDecoration(
               border: Border(
                 bottom: BorderSide(color: HandsColors.white12, width: 1),
@@ -1002,7 +1289,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
           ),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
+              padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
               children: [
                 _buildNavItem(
                   icon: Icons.location_on,
@@ -1033,7 +1320,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
           ),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
             decoration: const BoxDecoration(
               border: Border(
                 top: BorderSide(color: HandsColors.white12, width: 1),
@@ -1106,7 +1393,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
             });
           },
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color:
                   isActive
@@ -1159,16 +1446,16 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
 
   Widget _buildFilterBar() {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: const Color(0xFF171B22),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: HandsColors.white12),
         boxShadow: const [
           BoxShadow(
             color: Color(0x20000000),
-            blurRadius: 24,
-            offset: Offset(0, 16),
+            blurRadius: 14,
+            offset: Offset(0, 8),
           ),
         ],
       ),
@@ -1184,8 +1471,8 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
+                        horizontal: 8,
+                        vertical: 4,
                       ),
                       decoration: BoxDecoration(
                         color: _currentSectionAccent().withValues(alpha: 0.12),
@@ -1195,28 +1482,28 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
                         _currentSectionEyebrow(),
                         style: GoogleFonts.inter(
                           color: _currentSectionAccent(),
-                          fontSize: 11.5,
+                          fontSize: 10.5,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 8),
                     Text(
                       _currentSectionTitle(),
                       style: GoogleFonts.inter(
                         color: HandsColors.white,
-                        fontSize: 30,
+                        fontSize: 22,
                         fontWeight: FontWeight.w800,
-                        letterSpacing: -1.0,
+                        letterSpacing: -0.7,
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 3),
                     Text(
                       _currentSectionSubtitle(),
                       style: GoogleFonts.inter(
                         color: HandsColors.white70,
-                        fontSize: 13.5,
-                        height: 1.4,
+                        fontSize: 12,
+                        height: 1.25,
                       ),
                     ),
                   ],
@@ -1228,13 +1515,13 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
                 subtitle: _currentSectionSubtitle(),
                 topicIds: _currentSectionHelpTopics(),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 10),
               Container(
-                width: 124,
-                padding: const EdgeInsets.all(14),
+                width: 106,
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.03),
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: HandsColors.white12),
                 ),
                 child: Column(
@@ -1244,11 +1531,11 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
                       context.l10n.webAdminScope,
                       style: GoogleFonts.inter(
                         color: HandsColors.white70,
-                        fontSize: 11.5,
+                        fontSize: 10.5,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 6),
                     Row(
                       children: [
                         Icon(
@@ -1267,9 +1554,9 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
                             overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.inter(
                               color: HandsColors.white,
-                              fontSize: 12.5,
+                              fontSize: 11.5,
                               fontWeight: FontWeight.w700,
-                              height: 1.3,
+                              height: 1.2,
                             ),
                           ),
                         ),
@@ -1280,12 +1567,12 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
               ),
             ],
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 10),
           // Location indicator (only show if multiple locations exist)
           if (_availableLocations.length > 1) ...[
             Container(
-              margin: const EdgeInsets.only(bottom: 16),
-              child: _locationPicker(context, compact: false),
+              margin: const EdgeInsets.only(bottom: 8),
+              child: _locationPicker(context, compact: true),
             ),
           ],
           Row(
@@ -1323,17 +1610,17 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
                       borderSide: BorderSide.none,
                     ),
                     contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
+                      horizontal: 12,
+                      vertical: 9,
                     ),
                   ),
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 10),
               if (_shouldShowLocationFilter() &&
                   _availableLocations.isNotEmpty) ...[
-                SizedBox(width: 240, child: _locationPicker(context)),
-                const SizedBox(width: 10),
+                SizedBox(width: 210, child: _locationPicker(context)),
+                const SizedBox(width: 8),
               ],
               ElevatedButton.icon(
                 onPressed: () => _showCreateDialog(),
@@ -1347,8 +1634,8 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
                   backgroundColor: _currentSectionAccent(),
                   foregroundColor: HandsColors.white,
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
+                    horizontal: 13,
+                    vertical: 10,
                   ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
@@ -1375,37 +1662,37 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF171B22),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: HandsColors.white12),
         boxShadow: const [
           BoxShadow(
             color: Color(0x1C000000),
-            blurRadius: 24,
-            offset: Offset(0, 18),
+            blurRadius: 14,
+            offset: Offset(0, 8),
           ),
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Container(
-                  width: 42,
-                  height: 42,
+                  width: 32,
+                  height: 32,
                   decoration: BoxDecoration(
                     color: _currentSectionAccent().withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
                     _currentSectionIcon(),
                     color: _currentSectionAccent(),
-                    size: 20,
+                    size: 16,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1414,17 +1701,17 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
                         _currentSectionTitle(),
                         style: GoogleFonts.inter(
                           color: HandsColors.white,
-                          fontSize: 19,
+                          fontSize: 16,
                           fontWeight: FontWeight.w800,
-                          letterSpacing: -0.5,
+                          letterSpacing: -0.35,
                         ),
                       ),
-                      const SizedBox(height: 3),
+                      const SizedBox(height: 2),
                       Text(
                         _currentSectionTableSubtitle(),
                         style: GoogleFonts.inter(
                           color: HandsColors.white70,
-                          fontSize: 12.5,
+                          fontSize: 11.5,
                         ),
                       ),
                     ],
@@ -1432,12 +1719,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            const InlineStartHereCard(
-              role: HelpRole.admin,
-              storageKey: 'admin-setup',
-            ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
             Expanded(
               child: switch (_currentTab) {
                 WebAdminTab.shifts => _buildShiftsTable(),
@@ -2793,116 +3075,126 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
         break;
     }
 
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.all(36),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF181D25), Color(0xFF12161D)],
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 980),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF181D25), Color(0xFF12161D)],
+            ),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: HandsColors.white12),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x18000000),
+                blurRadius: 24,
+                offset: Offset(0, 16),
+              ),
+            ],
           ),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: HandsColors.white12),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x18000000),
-              blurRadius: 24,
-              offset: Offset(0, 16),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 88,
-              height: 88,
-              decoration: BoxDecoration(
-                color: _currentSectionAccent().withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(26),
-                border: Border.all(
-                  color: _currentSectionAccent().withValues(alpha: 0.24),
-                ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: _currentSectionAccent().withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: _currentSectionAccent().withValues(alpha: 0.24),
+                      ),
+                    ),
+                    child: Icon(icon, size: 28, color: _currentSectionAccent()),
+                  ),
+                  const SizedBox(width: 18),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: GoogleFonts.inter(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.75,
+                            color: HandsColors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          description,
+                          style: GoogleFonts.inter(
+                            fontSize: 14,
+                            color: HandsColors.white70,
+                            height: 1.45,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              child: Icon(icon, size: 40, color: _currentSectionAccent()),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              title,
-              style: GoogleFonts.inter(
-                fontSize: 26,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.8,
-                color: HandsColors.white,
+              const SizedBox(height: 18),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: () => _showCreateDialog(),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: Text(
+                      actionText,
+                      style: GoogleFonts.inter(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13.5,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _currentSectionAccent(),
+                      foregroundColor: HandsColors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 13,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(13),
+                      ),
+                      elevation: 0,
+                    ),
+                  ),
+                  _buildEmptyStateMetric(
+                    label: supportLabel,
+                    value: supportValue,
+                  ),
+                  _buildEmptyStateMetric(
+                    label: secondaryLabel,
+                    value: secondaryValue,
+                  ),
+                ],
               ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 620),
-              child: Text(
-                description,
+              const SizedBox(height: 14),
+              Text(
+                context.l10n.webAdminEmptyFooter,
                 style: GoogleFonts.inter(
-                  fontSize: 14.5,
-                  color: HandsColors.white70,
-                  height: 1.5,
+                  fontSize: 12,
+                  color: HandsColors.white30,
                   fontWeight: FontWeight.w500,
                 ),
-                textAlign: TextAlign.center,
               ),
-            ),
-            const SizedBox(height: 22),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              alignment: WrapAlignment.center,
-              children: [
-                _buildEmptyStateMetric(
-                  label: supportLabel,
-                  value: supportValue,
-                ),
-                _buildEmptyStateMetric(
-                  label: secondaryLabel,
-                  value: secondaryValue,
-                ),
-              ],
-            ),
-            const SizedBox(height: 28),
-            ElevatedButton.icon(
-              onPressed: () => _showCreateDialog(),
-              icon: const Icon(Icons.add, size: 20),
-              label: Text(
-                actionText,
-                style: GoogleFonts.inter(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14.5,
-                ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _currentSectionAccent(),
-                foregroundColor: HandsColors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 16,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                elevation: 0,
-              ),
-            ),
-            const SizedBox(height: 18),
-            Text(
-              context.l10n.webAdminEmptyFooter,
-              style: GoogleFonts.inter(
-                fontSize: 12.5,
-                color: HandsColors.white30,
-                fontWeight: FontWeight.w500,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -2913,11 +3205,11 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
     required String value,
   }) {
     return Container(
-      width: 190,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      width: 180,
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.03),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: HandsColors.white12),
       ),
       child: Column(
@@ -2960,20 +3252,20 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF141920),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: HandsColors.white12),
         boxShadow: const [
           BoxShadow(
             color: Color(0x12000000),
-            blurRadius: 16,
-            offset: Offset(0, 10),
+            blurRadius: 10,
+            offset: Offset(0, 6),
           ),
         ],
       ),
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
             child: Row(
               children: [
                 Expanded(
@@ -2984,16 +3276,16 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
                         '${rows.length} ${_getTabDisplayName()}',
                         style: GoogleFonts.inter(
                           color: HandsColors.white,
-                          fontSize: 15,
+                          fontSize: 13.5,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 2),
                       Text(
                         _currentSectionTableSubtitle(),
                         style: GoogleFonts.inter(
                           color: HandsColors.white70,
-                          fontSize: 12.5,
+                          fontSize: 11.5,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -3003,8 +3295,8 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
                 const SizedBox(width: 12),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
+                    horizontal: 8,
+                    vertical: 4,
                   ),
                   decoration: BoxDecoration(
                     color: _currentSectionAccent().withValues(alpha: 0.12),
@@ -3014,7 +3306,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
                     _searchQuery.isEmpty ? 'All visible' : 'Filtered',
                     style: GoogleFonts.inter(
                       color: _currentSectionAccent(),
-                      fontSize: 11.5,
+                      fontSize: 10.5,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -3023,7 +3315,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
             ),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Container(height: 1, color: HandsColors.white12),
           ),
           // Allow both vertical and horizontal scrolling for large tables on web
@@ -3041,7 +3333,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
                     padding: EdgeInsets.zero,
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+                      padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
                       child: SizedBox(
                         width: tableWidth,
                         child: Theme(
@@ -3049,11 +3341,11 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
                             context,
                           ).copyWith(dividerColor: HandsColors.white12),
                           child: DataTable(
-                            columnSpacing: 24,
-                            horizontalMargin: 16,
-                            headingRowHeight: 50,
-                            dataRowMinHeight: 62,
-                            dataRowMaxHeight: 62,
+                            columnSpacing: 18,
+                            horizontalMargin: 12,
+                            headingRowHeight: 38,
+                            dataRowMinHeight: 42,
+                            dataRowMaxHeight: 46,
                             sortColumnIndex: _sortColumnIndex,
                             sortAscending: _sortAscending,
                             headingRowColor: WidgetStateProperty.all(
@@ -3069,11 +3361,11 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
                             headingTextStyle: GoogleFonts.inter(
                               color: HandsColors.white,
                               fontWeight: FontWeight.w700,
-                              fontSize: 12.5,
+                              fontSize: 11.5,
                             ),
                             dataTextStyle: GoogleFonts.inter(
                               color: HandsColors.white70,
-                              fontSize: 12.5,
+                              fontSize: 11.5,
                               fontWeight: FontWeight.w500,
                             ),
                             showBottomBorder: true,
@@ -3141,7 +3433,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
                 : ((displayPage + 1) * _rowsPerPage));
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 9),
       decoration: BoxDecoration(
         color: const Color(0xFF141920),
         border: Border(top: BorderSide(color: HandsColors.white12, width: 1)),
@@ -3155,7 +3447,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
                 : 'Showing $startRow-$endRow of $totalRows',
             style: GoogleFonts.inter(
               color: HandsColors.white70,
-              fontSize: 12.5,
+              fontSize: 11.5,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -3191,8 +3483,8 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
                 },
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
+                    horizontal: 10,
+                    vertical: 6,
                   ),
                   decoration: BoxDecoration(
                     color: HandsColors.secondaryContainer,
@@ -3206,7 +3498,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
                         '$_rowsPerPage per page',
                         style: GoogleFonts.comfortaa(
                           color: HandsColors.white,
-                          fontSize: 14,
+                          fontSize: 12,
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -3219,7 +3511,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
                   ),
                 ),
               ),
-              const SizedBox(width: 24),
+              const SizedBox(width: 12),
               IconButton(
                 icon: const Icon(Icons.chevron_left),
                 color:
@@ -3277,7 +3569,11 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
   }
 
   Color _currentSectionAccent() {
-    switch (_currentTab) {
+    return _accentForTab(_currentTab);
+  }
+
+  Color _accentForTab(WebAdminTab tab) {
+    switch (tab) {
       case WebAdminTab.shifts:
         return const Color(0xFF4DA3FF);
       case WebAdminTab.checklists:

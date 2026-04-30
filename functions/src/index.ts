@@ -55,6 +55,7 @@ export const repairTaskTitlesFromCsv = repairCsvModule.repairTaskTitlesFromCsv a
 const userModule = require("../user_functions");
 export const createUser = userModule.createUser as any;
 export const deleteUser = userModule.deleteUser as any;
+export const createOrganizationSignup = userModule.createOrganizationSignup as any;
 export const sendOrganizationSignupNotification = userModule.sendOrganizationSignupNotification as any;
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const inviteModule = require("../invite_functions");
@@ -115,6 +116,13 @@ export {validateDailySummaryTimeChange} from "./validateDailySummaryTimeChange";
 export {updateOrganizationDailySummaryTime} from "./updateOrganizationDailySummaryTime";
 export {sendTodaySummaryNow} from "./sendTodaySummaryNow";
 export {diagnoseRuntimeEnv} from "./diagnoseRuntimeEnv";
+export {
+  getCrmDashboard,
+  getCrmOrganization,
+  listCrmPromotionCodes,
+  createCrmPromotionCode,
+  updateCrmOrganizationFlags,
+} from "./crm";
 
 // Shared Mode (communal device / PIN)
 export {sharedModeSetPin, sharedModeVerifyPin} from "./sharedMode";

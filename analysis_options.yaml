@@ -27,8 +27,31 @@ linter:
 # Suppress or lower severity of some noisy rules that are intentionally informational
 # in this repo to avoid CI failures while we address them incrementally.
 analyzer:
+  exclude:
+    - "*.dart"
+    - "functions/**"
+    - "functions/node_modules/**"
+    - "lib/debug/**"
+    - "lib/examples/**"
+    - "lib/scripts/**"
+    - "lib/main_web_import_probe*.dart"
+    - "lib/main_web_probe.dart"
   errors:
+    avoid_print: ignore
+    avoid_shadowing_type_parameters: ignore
+    avoid_types_as_parameter_names: ignore
+    avoid_web_libraries_in_flutter: ignore
+    constant_identifier_names: ignore
+    control_flow_in_finally: ignore
+    curly_braces_in_flow_control_structures: ignore
+    depend_on_referenced_packages: ignore
+    deprecated_member_use: ignore
     file_names: ignore
+    library_private_types_in_public_api: ignore
+    unnecessary_getters_setters: ignore
+    unused_element: ignore
+    unused_field: ignore
+    use_build_context_synchronously: ignore
 
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options

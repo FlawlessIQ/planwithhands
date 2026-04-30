@@ -1946,8 +1946,248 @@
   "releaseDialogWhatChanged": "Qué cambió",
   "releaseDialogLanguageFeatureTitle": "Nuevo: soporte de idioma",
   "releaseDialogLanguageFeatureBody": "Ahora tienes inglés, español y portugués disponibles desde Idioma en Configuración.",
+  "commonContinue": "Continuar",
+  "notificationsViewAction": "Ver",
+  "quickPdfViewerDocumentTitle": "Documento",
+  "quickPdfViewerTrainingDocumentTitle": "Documento de capacitación",
+  "quickPdfViewerDescription": "Este documento se abrirá en el visor nativo de tu dispositivo para una mejor experiencia.",
+  "quickPdfViewerOpenDocument": "Abrir documento",
+  "quickPdfViewerCopyLink": "Copiar enlace",
+  "quickPdfViewerShare": "Compartir",
+  "quickPdfViewerHelpBody": "Los documentos se abren en el visor integrado de tu dispositivo para ofrecer mejor rendimiento y compatibilidad.",
+  "quickPdfViewerOpenFailed": "No se pudo abrir el documento. Revisa tu conexión a internet.",
+  "quickPdfViewerOpenError": "Error al abrir el documento: {error}",
+  "@quickPdfViewerOpenError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "quickPdfViewerCopied": "Enlace del documento copiado al portapapeles",
+  "quickPdfViewerShareFailed": "No se pudo compartir el documento",
   "notificationSettingsTitle": "Configuración de notificaciones",
+  "notificationSettingsTestTooltip": "Probar notificaciones",
+  "notificationPermissionTitle": "Mantente al día con Hands",
+  "notificationPermissionBody": "Recibe notificaciones sobre cambios de horario, recordatorios de turno y anuncios importantes de tu equipo.",
+  "notificationSettingsQuickActions": "Acciones rápidas",
+  "notificationSettingsSubscribeTopics": "Suscribirse a temas",
+  "notificationSettingsSystemSettings": "Configuración del sistema",
+  "notificationSettingsTestTitle": "Prueba de configuración de notificaciones",
+  "notificationSettingsPermission": "Permiso: {value}",
+  "@notificationSettingsPermission": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "notificationSettingsToken": "Token: {value}",
+  "@notificationSettingsToken": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "notificationSettingsStatus": "Estado: {value}",
+  "@notificationSettingsStatus": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "notificationSettingsNone": "Ninguno",
+  "notificationSettingsReady": "✅ Listo",
+  "notificationSettingsNotReady": "❌ No está listo",
   "notificationTypesTitle": "Tipos de notificaciones",
+  "notificationOnboardingBody": "Recibe avisos sobre:\n• Actualizaciones de horario\n• Recordatorios de turno\n• Anuncios importantes",
+  "notificationOnboardingEnableBody": "Solo enviaremos notificaciones relevantes para tu horario de trabajo y actualizaciones importantes.",
+  "notificationOnboardingSkip": "Omitir por ahora",
+  "checklistSheetInfoLabel": "Información",
+  "checklistSheetNewChecklist": "Nueva lista",
+  "checklistSheetEditChecklist": "Editar lista",
+  "checklistSheetSaveChecklist": "Guardar lista",
+  "checklistSheetStepBasics": "Datos básicos",
+  "checklistSheetStepTasks": "Tareas",
+  "checklistSheetStepAdvanced": "Avanzado",
+  "checklistSheetNameRequired": "El nombre de la lista es obligatorio.",
+  "checklistSheetAddOneTask": "Agrega al menos una tarea.",
+  "checklistSheetAllTasksNamed": "Todas las tareas deben tener nombre.",
+  "checklistSheetInfoTipBasics": "Nombra esta plantilla de flujo de trabajo y agrega una breve descripción.",
+  "checklistSheetBasicsIntro": "Ingresa la información básica de esta plantilla:",
+  "checklistSheetTemplateName": "Nombre de la plantilla *",
+  "checklistSheetTemplateNameHint": "p. ej., Apertura del bar, Cierre de cocina",
+  "checklistSheetDescriptionOptional": "Descripción (opcional)",
+  "checklistSheetDescriptionHint": "Breve descripción de esta lista",
+  "checklistSheetNoShiftsAttach": "No hay turnos disponibles para adjuntar ahora.",
+  "checklistSheetNoShiftsFound": "No se encontraron turnos para esta ubicación. Crea turnos primero.",
+  "checklistSheetShiftTip": "Selecciona los turnos donde aparecerá esta lista. Puedes dejarlo vacío ahora y adjuntarla más tarde desde la pantalla de Turnos.",
+  "checklistSheetSelectShifts": "Selecciona qué turnos deben usar esta lista:",
+  "checklistSheetTasksTip": "Toca la cámara para exigir una foto. Si el personal no sube una foto, se notificará a los administradores.",
+  "checklistSheetTasksIntro": "Agrega tareas a tu lista. Arrastra para reordenar:",
+  "checklistSheetNoTasks": "Aún no hay tareas. Toca \"Agregar tarea\" para comenzar.",
+  "checklistSheetAddTask": "Agregar tarea",
+  "checklistSheetAdvancedTip": "La configuración avanzada es opcional. Úsala si quieres limitar quién puede ver esta lista o adjuntarla ahora a uno o más turnos.",
+  "checklistSheetVisibilityByJobType": "Visibilidad por tipo de puesto",
+  "checklistSheetAssignToShifts": "Asignar a turnos",
+  "checklistSheetSpanishTranslations": "Traducciones al español",
+  "checklistSheetPortugueseTranslations": "Traducciones al portugués",
+  "checklistSheetSpanishTip": "Opcional: agrega versiones en español de esta plantilla y sus tareas. El inglés seguirá como respaldo cuando un campo en español quede vacío.",
+  "checklistSheetTemplateNameSpanish": "Nombre de la plantilla (español)",
+  "checklistSheetTemplateNameSpanishHint": "p. ej., Apertura del bar",
+  "checklistSheetDescriptionSpanish": "Descripción (español)",
+  "checklistSheetDescriptionSpanishHint": "Breve descripción en español",
+  "checklistSheetAddTasksForSpanish": "Agrega tareas primero para incluir etiquetas en español.",
+  "checklistSheetSpanishTaskLabels": "Etiquetas de tareas en español",
+  "checklistSheetTaskSpanish": "Tarea {index} (español)",
+  "@checklistSheetTaskSpanish": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "checklistSheetSpanishTaskLabelHint": "Etiqueta de tarea en español",
+  "checklistSheetSpanishFor": "Español para: {name}",
+  "@checklistSheetSpanishFor": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "checklistSheetPortugueseTip": "Opcional: agrega versiones en portugués de esta plantilla y sus tareas. El inglés seguirá como respaldo cuando un campo en portugués quede vacío.",
+  "checklistSheetTemplateNamePortuguese": "Nombre de la plantilla (portugués)",
+  "checklistSheetTemplateNamePortugueseHint": "p. ej., Abertura do bar",
+  "checklistSheetDescriptionPortuguese": "Descripción (portugués)",
+  "checklistSheetDescriptionPortugueseHint": "Breve descripción en portugués",
+  "checklistSheetAddTasksForPortuguese": "Agrega tareas primero para incluir etiquetas en portugués.",
+  "checklistSheetPortugueseTaskLabels": "Etiquetas de tareas en portugués",
+  "checklistSheetTaskPortuguese": "Tarea {index} (portugués)",
+  "@checklistSheetTaskPortuguese": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "checklistSheetPortugueseTaskLabelHint": "Etiqueta de tarea en portugués",
+  "checklistSheetPortugueseFor": "Portugués para: {name}",
+  "@checklistSheetPortugueseFor": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "checklistSheetTask": "Tarea {index}",
+  "@checklistSheetTask": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "checklistSheetTaskHint": "Ingresa la descripción de la tarea",
+  "checklistSheetDeleteTask": "Eliminar tarea",
+  "checklistSheetPhotoRequired": "Foto obligatoria",
+  "checklistSheetNoPhotoRequired": "Sin foto obligatoria",
+  "checklistSheetTaskName": "Nombre de la tarea",
+  "checklistSheetPhoto": "Foto",
+  "checklistSheetLoadShiftsError": "Error al cargar turnos: {error}",
+  "@checklistSheetLoadShiftsError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "checklistSheetJobTypesTip": "Los tipos de puesto controlan quién verá esta lista. Déjalo vacío para que sea visible para todos en el turno.",
+  "checklistSheetJobTypesIntro": "Opcionalmente limita esta lista a personas con estos tipos de puesto. Déjalo vacío para que sea visible para todos.",
+  "checklistSheetManage": "Administrar",
+  "checklistSheetNoJobTypes": "Aún no hay tipos de puesto. Usa Administrar para crear el primero.",
+  "checklistSheetAddJobType": "Agregar tipo de puesto",
+  "checklistSheetAddJobTypeHint": "p. ej., Lavaplatos",
+  "checklistSheetAdd": "Agregar",
+  "checklistSheetSaveFailed": "No se pudo guardar la lista: {error}",
+  "@checklistSheetSaveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "shiftSheetLoadDataError": "Error al cargar datos: {error}",
+  "@shiftSheetLoadDataError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "shiftSheetSavedSuccess": "Horario del turno actualizado correctamente",
+  "shiftSheetSaveError": "Error al guardar el horario: {error}",
+  "@shiftSheetSaveError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "shiftSheetAddRequiredRole": "Agregar rol requerido",
+  "shiftSheetAlreadyAdded": "Ya agregado",
+  "shiftSheetAssignedCount": "{assigned} de {required} asignados",
+  "@shiftSheetAssignedCount": {
+    "placeholders": {
+      "assigned": {
+        "type": "int"
+      },
+      "required": {
+        "type": "int"
+      }
+    }
+  },
+  "shiftSheetRequiredRoles": "Roles requeridos",
+  "shiftSheetAddRole": "Agregar rol",
+  "shiftSheetNoRolesAssigned": "No hay roles asignados a este turno. Toca \"Agregar rol\" para agregar puestos requeridos.",
+  "shiftSheetAssignedUsers": "Usuarios asignados",
+  "shiftSheetNoUsersAssigned": "Aún no hay usuarios asignados.",
+  "shiftSheetAvailableUsers": "Usuarios disponibles (roles coincidentes)",
+  "shiftSheetOtherUsers": "Otros usuarios (sin rol coincidente)",
+  "shiftSheetLoadUsersError": "Error al cargar usuarios: {error}",
+  "@shiftSheetLoadUsersError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "shiftSheetNoOtherUsers": "No hay otros usuarios disponibles",
+  "shiftSheetSaveSchedule": "Guardar horario",
+  "shiftSheetUnknownRole": "Rol desconocido",
+  "shiftSheetRequiredCount": "Requeridos: {count}",
+  "@shiftSheetRequiredCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "shiftSheetDecreaseCount": "Disminuir cantidad",
+  "shiftSheetIncreaseCount": "Aumentar cantidad",
+  "shiftSheetRemoveRole": "Quitar rol",
+  "shiftSheetUnknownUserInitial": "U",
+  "shiftSheetCheckAssignmentsError": "Error al revisar asignaciones: {error}",
+  "@shiftSheetCheckAssignmentsError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "shiftSheetAlreadyAssignedAnotherShift": "Ya asignado a otro turno este día",
   "notificationTopicsTitle": "Tipos de notificación",
   "notificationTopicsIntro": "Elige qué actualizaciones quieres seguir:",
   "notificationTopicsScheduleUpdates": "Las actualizaciones de horario te avisan cuando cambian tus turnos.",

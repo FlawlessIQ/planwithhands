@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
@@ -27,12 +28,19 @@ import 'package:hands_app/features/help/models/guided_tour_step.dart';
 import 'package:hands_app/features/help/models/help_topic.dart';
 import 'package:hands_app/features/help/widgets/guided_tour_host.dart';
 import 'package:hands_app/features/help/widgets/inline_start_here_card.dart';
+import 'package:hands_app/features/crm/widgets/crm_scoped_bottom_nav.dart';
 import 'package:hands_app/l10n/l10n.dart';
 import 'package:hands_app/utils/localized_content.dart';
 
 class ManagerDashboardPage extends StatefulWidget {
   final String organizationId;
-  const ManagerDashboardPage({super.key, required this.organizationId});
+  final bool allowPlatformAccess;
+
+  const ManagerDashboardPage({
+    super.key,
+    required this.organizationId,
+    this.allowPlatformAccess = false,
+  });
 
   @override
   State<ManagerDashboardPage> createState() => _ManagerDashboardPageState();
@@ -1498,7 +1506,13 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage>
           backgroundColor: HandsColors.primaryContainer,
           foregroundColor: HandsColors.white,
         ),
-        bottomNavigationBar: BottomNavBar(currentIndex: 1, userRole: userRole),
+        bottomNavigationBar:
+            widget.allowPlatformAccess
+                ? CrmScopedBottomNav(
+                  orgId: widget.organizationId,
+                  currentIndex: 1,
+                )
+                : BottomNavBar(currentIndex: 1, userRole: userRole),
         body: const Center(
           child: CircularProgressIndicator(color: HandsColors.handsOrange),
         ),
@@ -1511,19 +1525,49 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage>
         backgroundColor: HandsColors.cardPrimary,
         elevation: 0,
         toolbarHeight: kToolbarHeight,
-        title: GenericAppBarContent(
-          appBarTitle: 'Manager Dashboard',
-          userRole: userRole,
-        ),
+        leading:
+            widget.allowPlatformAccess
+                ? IconButton(
+                  tooltip: 'Back to CRM',
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => context.go('/crm'),
+                )
+                : null,
+        title:
+            widget.allowPlatformAccess
+                ? Text(
+                  'CRM account dashboard',
+                  style: GoogleFonts.comfortaa(fontWeight: FontWeight.w800),
+                )
+                : GenericAppBarContent(
+                  appBarTitle: 'Manager Dashboard',
+                  userRole: userRole,
+                ),
         automaticallyImplyLeading: false,
-        actions: [
-          UnifiedMenuButton(
-            userRole: userRole,
-            organizationId: widget.organizationId,
-          ),
-        ],
+        actions:
+            widget.allowPlatformAccess
+                ? [
+                  TextButton.icon(
+                    onPressed: () => context.go('/crm'),
+                    icon: const Icon(Icons.dashboard_customize_outlined),
+                    label: const Text('Back to CRM'),
+                  ),
+                  const SizedBox(width: 12),
+                ]
+                : [
+                  UnifiedMenuButton(
+                    userRole: userRole,
+                    organizationId: widget.organizationId,
+                  ),
+                ],
       ),
-      bottomNavigationBar: BottomNavBar(currentIndex: 1, userRole: userRole),
+      bottomNavigationBar:
+          widget.allowPlatformAccess
+              ? CrmScopedBottomNav(
+                orgId: widget.organizationId,
+                currentIndex: 1,
+              )
+              : BottomNavBar(currentIndex: 1, userRole: userRole),
       body: _buildDashboardGrid(),
     );
   }
@@ -1647,13 +1691,21 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage>
 
     return GuidedTourHost(
       storageKey: 'manager-dashboard-tour-v1',
-      enabled: !_isLoadingUserRole && !_isLoadingLocations && !isPrimaryLoading,
+      enabled:
+          !widget.allowPlatformAccess &&
+          !_isLoadingUserRole &&
+          !_isLoadingLocations &&
+          !isPrimaryLoading,
       steps: managerTourSteps,
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (widget.allowPlatformAccess) ...[
+              _buildCrmDashboardBanner(),
+              const SizedBox(height: 14),
+            ],
             if (!_metricsEnabled) ...[
               DashboardSetupBanner(
                 completion: _setupCompletionProgress,
@@ -1951,6 +2003,40 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage>
             HistoryReportsButton(onTap: _openTaskHistorySheet),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildCrmDashboardBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: HandsColors.handsOrange.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: HandsColors.handsOrange.withValues(alpha: 0.25),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.admin_panel_settings_outlined,
+            color: HandsColors.handsOrange,
+            size: 18,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Viewing this customer dashboard from CRM. Navigation below stays scoped to this customer org.',
+              style: GoogleFonts.inter(
+                color: HandsColors.white,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -3,6 +3,7 @@ import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'dart:async';
@@ -35,12 +36,20 @@ import 'package:hands_app/features/help/models/help_topic.dart';
 import 'package:hands_app/features/help/models/guided_tour_step.dart';
 import 'package:hands_app/features/help/widgets/guided_tour_host.dart';
 import 'package:hands_app/features/help/widgets/inline_start_here_card.dart';
+import 'package:hands_app/features/crm/widgets/crm_scoped_bottom_nav.dart';
 import 'package:hands_app/l10n/l10n.dart';
 
 // --- MAIN DASHBOARD PAGE ---
 
 class UserDashboardPage extends HookConsumerWidget {
-  const UserDashboardPage({super.key});
+  final String? organizationIdOverride;
+  final bool allowPlatformAccess;
+
+  const UserDashboardPage({
+    super.key,
+    this.organizationIdOverride,
+    this.allowPlatformAccess = false,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -148,6 +157,16 @@ class UserDashboardPage extends HookConsumerWidget {
     final todayDayName = DateFormat('EEEE').format(now);
 
     Future<void> fetchUserRole() async {
+      if (organizationIdOverride != null) {
+        userRole.value = 2;
+        organizationId.value = organizationIdOverride;
+        userJobTypes.value = const [];
+        logger.d(
+          '[Dashboard][CRM] Using platform organization override: $organizationIdOverride',
+        );
+        return;
+      }
+
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
       final userDoc =
@@ -182,18 +201,25 @@ class UserDashboardPage extends HookConsumerWidget {
 
       isLoadingLocations.value = true;
       try {
-        final user = FirebaseAuth.instance.currentUser;
-        if (user == null) return;
+        Map<String, dynamic> userData = const {};
+        var userRoleValue = userRole.value;
 
-        final userDoc =
-            await FirestoreEnforcer.instance
-                .collection('users')
-                .doc(user.uid)
-                .get();
-        if (!userDoc.exists) return;
+        if (organizationIdOverride == null) {
+          final user = FirebaseAuth.instance.currentUser;
+          if (user == null) return;
 
-        final userData = userDoc.data()!;
-        final userRoleValue = userData['userRole'] ?? 0;
+          final userDoc =
+              await FirestoreEnforcer.instance
+                  .collection('users')
+                  .doc(user.uid)
+                  .get();
+          if (!userDoc.exists) return;
+
+          userData = userDoc.data()!;
+          userRoleValue = userData['userRole'] ?? 0;
+        } else {
+          userRoleValue = 2;
+        }
 
         List<String> locationIds = [];
 
@@ -1446,23 +1472,40 @@ class UserDashboardPage extends HookConsumerWidget {
         backgroundColor: HandsColors.cardPrimary,
         elevation: 0,
         toolbarHeight: kToolbarHeight,
-        title: GenericAppBarContent(
-          appBarTitle: 'Plan with Hands',
-          userRole: userRole.value,
-        ),
+        title:
+            allowPlatformAccess
+                ? Text(
+                  'CRM account tasks',
+                  style: GoogleFonts.comfortaa(fontWeight: FontWeight.w800),
+                )
+                : GenericAppBarContent(
+                  appBarTitle: 'Plan with Hands',
+                  userRole: userRole.value,
+                ),
         automaticallyImplyLeading: false,
-        actions: [
-          UnifiedMenuButton(
-            userRole: userRole.value,
-            organizationId: organizationId.value,
-          ),
-        ],
+        actions:
+            allowPlatformAccess
+                ? [
+                  TextButton.icon(
+                    onPressed: () => context.go('/crm'),
+                    icon: const Icon(Icons.dashboard_customize_outlined),
+                    label: const Text('Back to CRM'),
+                  ),
+                  const SizedBox(width: 12),
+                ]
+                : [
+                  UnifiedMenuButton(
+                    userRole: userRole.value,
+                    organizationId: organizationId.value,
+                  ),
+                ],
       ),
       body: Stack(
         children: [
           GuidedTourHost(
             storageKey: 'staff-dashboard-tour-v1',
             enabled:
+                !allowPlatformAccess &&
                 hasLoadedOnce.value &&
                 !isLoading.value &&
                 !minLoaderActive.value &&
@@ -1998,6 +2041,11 @@ class UserDashboardPage extends HookConsumerWidget {
       bottomNavigationBar:
           (sharedMode.enabled)
               ? null
+              : allowPlatformAccess && organizationIdOverride != null
+              ? CrmScopedBottomNav(
+                orgId: organizationIdOverride!,
+                currentIndex: 0,
+              )
               : BottomNavBar(currentIndex: 0, userRole: userRole.value),
     );
   }

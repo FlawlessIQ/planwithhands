@@ -963,6 +963,7 @@ exports.acceptInvite = functions.https.onCall(async (data) => {
       uid: userRecord.uid,
       email,
       organizationId,
+      userRole,
     };
   } catch (error) {
     if (userRecord?.uid) {

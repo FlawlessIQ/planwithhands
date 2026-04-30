@@ -253,7 +253,6 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final mq = MediaQuery.of(context);
     final isDialog = context.findAncestorWidgetOfExactType<Dialog>() != null;
 
     Widget header({bool showDivider = true, bool showHandle = false}) {

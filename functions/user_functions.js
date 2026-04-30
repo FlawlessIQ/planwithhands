@@ -155,6 +155,220 @@ exports.createUser = functions.https.onCall(async (data, context) => {
   );
 });
 
+function normalizeSignupEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
+function normalizeSignupLanguage(value) {
+  const normalized = String(value || "").trim().toLowerCase().replace(/_/g, "-");
+  if (normalized.startsWith("es")) return "es";
+  if (normalized.startsWith("pt")) return "pt";
+  return "en";
+}
+
+function asPositiveInt(value, fallback = 0) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+async function hasActiveInviteForEmail(email) {
+  const activeStatuses = ["pending", "sent", "opened"];
+  const inviteSnap = await db.collection("invites")
+      .where("emailLower", "==", email)
+      .get();
+  return inviteSnap.docs.some((doc) => {
+    const invite = doc.data() || {};
+    const status = String(invite.status || "pending").toLowerCase();
+    if (!activeStatuses.includes(status)) return false;
+    if (invite.used === true) return false;
+    if (invite.expiresAt?.toDate && invite.expiresAt.toDate() < new Date()) {
+      return false;
+    }
+    return true;
+  });
+}
+
+exports.createOrganizationSignup = functions.region("us-central1").https.onCall(async (data) => {
+  const email = normalizeSignupEmail(data?.email);
+  const password = String(data?.password || "");
+  const firstName = String(data?.firstName || "").trim();
+  const lastName = String(data?.lastName || "").trim();
+  const organizationName = String(data?.organizationName || "").trim();
+  const businessType = String(data?.businessType || "").trim() || null;
+  const numberOfEmployees = asPositiveInt(data?.numberOfEmployees, 0);
+  const intendedLocationQuantity = asPositiveInt(data?.numberOfLocations, 1);
+  const preferredLanguageCode = normalizeSignupLanguage(
+      data?.preferredLanguageCode,
+  );
+  const acceptedTerms = data?.acceptedTerms === true;
+
+  if (!email || !firstName || !lastName || !organizationName) {
+    throw new functions.https.HttpsError(
+        "invalid-argument",
+        "Business name, owner name, and email are required.",
+    );
+  }
+
+  if (password.length < 8) {
+    throw new functions.https.HttpsError(
+        "invalid-argument",
+        "Password must be at least 8 characters.",
+    );
+  }
+
+  if (!acceptedTerms) {
+    throw new functions.https.HttpsError(
+        "failed-precondition",
+        "Terms must be accepted before creating an account.",
+    );
+  }
+
+  if (await hasActiveInviteForEmail(email)) {
+    throw new functions.https.HttpsError(
+        "already-exists",
+        "This email already has an active invite. Finish that invite instead.",
+    );
+  }
+
+  try {
+    await admin.auth().getUserByEmail(email);
+    throw new functions.https.HttpsError(
+        "already-exists",
+        "An account with this email already exists. Sign in instead.",
+    );
+  } catch (error) {
+    if (error instanceof functions.https.HttpsError) throw error;
+    if (error?.code !== "auth/user-not-found") {
+      throw new functions.https.HttpsError(
+          "internal",
+          `Unable to verify account state: ${error.message}`,
+      );
+    }
+  }
+
+  const displayName = `${firstName} ${lastName}`.trim();
+  const orgRef = db.collection("organizations").doc();
+  let userRecord = null;
+
+  try {
+    userRecord = await admin.auth().createUser({
+      email,
+      password,
+      displayName: displayName || email,
+    });
+
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const trialEndsAt = admin.firestore.Timestamp.fromDate(
+        new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+    );
+    const salesAssisted = intendedLocationQuantity >= 5;
+
+    const batch = db.batch();
+    batch.set(orgRef, {
+      name: organizationName,
+      organizationName,
+      businessType,
+      numberOfEmployees,
+      intendedLocationQuantity,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: userRecord.uid,
+      ownerEmail: email,
+      isActive: true,
+      subscriptionStatus: "trial",
+      trialEndsAt,
+      salesAssisted,
+      onboardingStatus: {
+        firstLocation: false,
+        teamInvited: false,
+        shiftCreated: false,
+        workflowCreated: false,
+        billingAdded: false,
+      },
+      settings: {
+        allowUserRegistration: true,
+        requireLocationSelection: true,
+        defaultShiftLength: 8,
+        defaultLanguageCode: preferredLanguageCode,
+      },
+    });
+
+    batch.set(db.collection("users").doc(userRecord.uid), {
+      firstName,
+      lastName,
+      displayName: displayName || email,
+      email,
+      userEmail: email,
+      emailAddress: email,
+      userId: userRecord.uid,
+      uid: userRecord.uid,
+      userRole: 2,
+      organizationId: orgRef.id,
+      orgMemberships: [orgRef.id],
+      roles: {
+        [orgRef.id]: "admin",
+      },
+      locationIds: [],
+      locationId: null,
+      jobTypes: [],
+      jobType: null,
+      isAdmin: true,
+      isActive: true,
+      setupCompleted: false,
+      onboardingComplete: false,
+      preferredLanguageCode,
+      preferredLanguageSource: "signup",
+      preferredLocaleResolved: preferredLanguageCode,
+      createdAt: now,
+      updatedAt: now,
+      permissions: {
+        canManageUsers: true,
+        canManageLocations: true,
+        canManageShifts: true,
+        canViewReports: true,
+        canManageSettings: true,
+      },
+      notificationSettings: {
+        pushNotificationsEnabled: true,
+        emailNotificationsEnabled: false,
+        reminderHoursBefore: 1,
+      },
+    });
+
+    await batch.commit();
+
+    return {
+      success: true,
+      uid: userRecord.uid,
+      email,
+      organizationId: orgRef.id,
+      userRole: 2,
+      preferredLanguageCode,
+      salesAssisted,
+    };
+  } catch (error) {
+    if (userRecord?.uid) {
+      try {
+        await admin.auth().deleteUser(userRecord.uid);
+      } catch (cleanupError) {
+        logger.error("Failed to cleanup partial signup auth user:", cleanupError);
+      }
+    }
+
+    if (error instanceof functions.https.HttpsError) throw error;
+    if (error?.errorInfo?.code === "auth/email-already-exists") {
+      throw new functions.https.HttpsError(
+          "already-exists",
+          "An account with this email already exists.",
+      );
+    }
+    throw new functions.https.HttpsError(
+        "internal",
+        `Unable to create organization account: ${error.message}`,
+    );
+  }
+});
+
 
 // Send organization signup notification email to admin
 exports.sendOrganizationSignupNotification = functions.https.onCall(async (data, context) => {

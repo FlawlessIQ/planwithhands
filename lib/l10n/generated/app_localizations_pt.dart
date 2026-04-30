@@ -2094,102 +2094,102 @@ class AppLocalizationsPt extends AppLocalizations {
   String get documentsDismissTip => 'Fechar';
 
   @override
-  String get scheduleEditorTitle => 'Schedule Editor';
+  String get scheduleEditorTitle => 'Editor de escala';
 
   @override
-  String get scheduleMyTitle => 'My Schedule';
+  String get scheduleMyTitle => 'Minha escala';
 
   @override
-  String get scheduleOrganizationNotFound => 'Organization not found';
+  String get scheduleOrganizationNotFound => 'Organização não encontrada';
 
   @override
   String get scheduleOrganizationLocationMissing =>
-      'Organization or location not set.';
+      'Organização ou local não definido.';
 
   @override
-  String get scheduleLocationLabel => 'Location';
+  String get scheduleLocationLabel => 'Local';
 
   @override
-  String get schedulePickDateRange => 'Pick a date range';
+  String get schedulePickDateRange => 'Escolha um intervalo de datas';
 
   @override
-  String get scheduleSelectDateRange => 'Select Date Range';
+  String get scheduleSelectDateRange => 'Selecionar intervalo de datas';
 
   @override
-  String get scheduleNext7Days => 'Next 7 Days';
+  String get scheduleNext7Days => 'Próximos 7 dias';
 
   @override
   String scheduleDaysWindow(int start, int end) {
-    return 'Days $start-$end';
+    return 'Dias $start-$end';
   }
 
   @override
   String get scheduleSelectLocationAndDateRange =>
-      'Select a location and date range to view schedule';
+      'Selecione um local e um intervalo de datas para ver a escala';
 
   @override
-  String get schedulePublishSchedule => 'Publish Schedule';
+  String get schedulePublishSchedule => 'Publicar escala';
 
   @override
   String get scheduleCreateTemplateFirst =>
-      'Please create shift template first from admin dashboard';
+      'Crie primeiro um modelo de turno no painel de administração';
 
   @override
   String get schedulePublishAllSuccess =>
-      'All schedules published successfully!';
+      'Todas as escalas foram publicadas com sucesso!';
 
   @override
   String schedulePublishError(String error) {
-    return 'Error publishing schedules: $error';
+    return 'Erro ao publicar escalas: $error';
   }
 
   @override
   String scheduleDayPublished(String date) {
-    return '$date schedule published!';
+    return 'Escala de $date publicada!';
   }
 
   @override
   String scheduleDayPublishError(String error) {
-    return 'Error publishing schedule: $error';
+    return 'Erro ao publicar escala: $error';
   }
 
   @override
-  String get scheduleNoPublishedShifts => 'No published shifts.';
+  String get scheduleNoPublishedShifts => 'Nenhum turno publicado.';
 
   @override
   String scheduleAssignedCount(int count) {
-    return 'Assigned: $count';
+    return 'Atribuídos: $count';
   }
 
   @override
   String scheduleUsersLabel(String users) {
-    return 'Users: $users';
+    return 'Usuários: $users';
   }
 
   @override
-  String get scheduleAssignedStatus => 'Assigned';
+  String get scheduleAssignedStatus => 'Atribuído';
 
   @override
-  String get scheduleShiftsHeader => 'Shifts';
+  String get scheduleShiftsHeader => 'Turnos';
 
   @override
-  String get scheduleAssignedCell => 'assigned';
+  String get scheduleAssignedCell => 'atribuído';
 
   @override
   String scheduleShiftTemplatesError(String error) {
-    return 'Error loading shifts: $error';
+    return 'Erro ao carregar turnos: $error';
   }
 
   @override
   String get scheduleNoShiftTemplates =>
-      'No shift templates found for this location.\nCreate shift templates from the Admin Dashboard first.';
+      'Nenhum modelo de turno encontrado para este local.\nCrie modelos de turno primeiro no Painel de Administração.';
 
   @override
-  String get scheduleUnnamedShift => 'Unnamed Shift';
+  String get scheduleUnnamedShift => 'Turno sem nome';
 
   @override
   String scheduleMessageTitle(String start, String end) {
-    return 'Your Schedule $start to $end';
+    return 'Sua escala de $start a $end';
   }
 
   @override

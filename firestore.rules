@@ -41,6 +41,10 @@ service cloud.firestore {
       return ['admin','manager'].hasAny([ roleInOrg(orgId) ]) || isOrgOwner(orgId);
     }
 
+    function isPlatformUser() {
+      return hasUserDoc() && userDoc().data.platformAccess == true;
+    }
+
     // Users
     match /users/{userId} {
       allow read, update, delete: if request.auth != null && (
@@ -153,6 +157,10 @@ service cloud.firestore {
     // Fallback for legacy top-level collections
     match /locations/{locationId} { allow read, write: if request.auth != null; }
     match /shifts/{shiftId} { allow read, write: if request.auth != null; }
+    match /platform_crm/{document=**} {
+      allow read: if isPlatformUser();
+      allow write: if false;
+    }
     match /invites/{inviteId} {
       allow get, list: if request.auth != null && isOrgManagerOrAdmin(resource.data.organizationId);
       allow create: if request.auth != null && isOrgManagerOrAdmin(request.resource.data.organizationId);

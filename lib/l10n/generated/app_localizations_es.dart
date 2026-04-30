@@ -3752,77 +3752,79 @@ class AppLocalizationsEs extends AppLocalizations {
       'Ahora tienes inglés, español y portugués disponibles desde Idioma en Configuración.';
 
   @override
-  String get commonContinue => 'Continue';
+  String get commonContinue => 'Continuar';
 
   @override
-  String get notificationsViewAction => 'View';
+  String get notificationsViewAction => 'Ver';
 
   @override
-  String get quickPdfViewerDocumentTitle => 'Document';
+  String get quickPdfViewerDocumentTitle => 'Documento';
 
   @override
-  String get quickPdfViewerTrainingDocumentTitle => 'Training Document';
+  String get quickPdfViewerTrainingDocumentTitle => 'Documento de capacitación';
 
   @override
   String get quickPdfViewerDescription =>
-      'This document will open in your device\'s native viewer for the best experience.';
+      'Este documento se abrirá en el visor nativo de tu dispositivo para una mejor experiencia.';
 
   @override
-  String get quickPdfViewerOpenDocument => 'Open Document';
+  String get quickPdfViewerOpenDocument => 'Abrir documento';
 
   @override
-  String get quickPdfViewerCopyLink => 'Copy Link';
+  String get quickPdfViewerCopyLink => 'Copiar enlace';
 
   @override
-  String get quickPdfViewerShare => 'Share';
+  String get quickPdfViewerShare => 'Compartir';
 
   @override
   String get quickPdfViewerHelpBody =>
-      'Documents open in your device\'s built-in viewer for optimal performance and feature support.';
+      'Los documentos se abren en el visor integrado de tu dispositivo para ofrecer mejor rendimiento y compatibilidad.';
 
   @override
   String get quickPdfViewerOpenFailed =>
-      'Could not open document. Please check your internet connection.';
+      'No se pudo abrir el documento. Revisa tu conexión a internet.';
 
   @override
   String quickPdfViewerOpenError(String error) {
-    return 'Error opening document: $error';
+    return 'Error al abrir el documento: $error';
   }
 
   @override
-  String get quickPdfViewerCopied => 'Document link copied to clipboard';
+  String get quickPdfViewerCopied =>
+      'Enlace del documento copiado al portapapeles';
 
   @override
-  String get quickPdfViewerShareFailed => 'Could not share document';
+  String get quickPdfViewerShareFailed => 'No se pudo compartir el documento';
 
   @override
   String get notificationSettingsTitle => 'Configuración de notificaciones';
 
   @override
-  String get notificationSettingsTestTooltip => 'Test Notifications';
+  String get notificationSettingsTestTooltip => 'Probar notificaciones';
 
   @override
-  String get notificationPermissionTitle => 'Stay Updated with Hands';
+  String get notificationPermissionTitle => 'Mantente al día con Hands';
 
   @override
   String get notificationPermissionBody =>
-      'Get notified about schedule changes, shift reminders, and important announcements from your team.';
+      'Recibe notificaciones sobre cambios de horario, recordatorios de turno y anuncios importantes de tu equipo.';
 
   @override
-  String get notificationSettingsQuickActions => 'Quick Actions';
+  String get notificationSettingsQuickActions => 'Acciones rápidas';
 
   @override
-  String get notificationSettingsSubscribeTopics => 'Subscribe to Topics';
+  String get notificationSettingsSubscribeTopics => 'Suscribirse a temas';
 
   @override
-  String get notificationSettingsSystemSettings => 'System Settings';
+  String get notificationSettingsSystemSettings => 'Configuración del sistema';
 
   @override
-  String get notificationSettingsTestTitle => 'Notification Setup Test';
+  String get notificationSettingsTestTitle =>
+      'Prueba de configuración de notificaciones';
 
   @override
   String notificationSettingsPermission(String value) {
-    return 'Permission: $value';
+    return 'Permiso: $value';
   }
 
   @override
@@ -3832,352 +3834,363 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String notificationSettingsStatus(String value) {
-    return 'Status: $value';
+    return 'Estado: $value';
   }
 
   @override
-  String get notificationSettingsNone => 'None';
+  String get notificationSettingsNone => 'Ninguno';
 
   @override
-  String get notificationSettingsReady => '✅ Ready';
+  String get notificationSettingsReady => '✅ Listo';
 
   @override
-  String get notificationSettingsNotReady => '❌ Not Ready';
+  String get notificationSettingsNotReady => '❌ No está listo';
 
   @override
   String get notificationOnboardingStayConnected => 'Mantente al tanto';
 
   @override
   String get notificationOnboardingBody =>
-      'Get notified about:\n• Schedule updates\n• Shift reminders\n• Important announcements';
+      'Recibe avisos sobre:\n• Actualizaciones de horario\n• Recordatorios de turno\n• Anuncios importantes';
 
   @override
   String get notificationOnboardingEnableTitle => 'Activar notificaciones';
 
   @override
   String get notificationOnboardingEnableBody =>
-      'We\'ll only send notifications that are relevant to your work schedule and important updates.';
+      'Solo enviaremos notificaciones relevantes para tu horario de trabajo y actualizaciones importantes.';
 
   @override
-  String get notificationOnboardingSkip => 'Skip for now';
+  String get notificationOnboardingSkip => 'Omitir por ahora';
 
   @override
-  String get checklistSheetInfoLabel => 'Info';
+  String get checklistSheetInfoLabel => 'Información';
 
   @override
-  String get checklistSheetNewChecklist => 'New checklist';
+  String get checklistSheetNewChecklist => 'Nueva lista';
 
   @override
-  String get checklistSheetEditChecklist => 'Edit checklist';
+  String get checklistSheetEditChecklist => 'Editar lista';
 
   @override
-  String get checklistSheetSaveChecklist => 'Save checklist';
+  String get checklistSheetSaveChecklist => 'Guardar lista';
 
   @override
-  String get checklistSheetStepBasics => 'Basics';
+  String get checklistSheetStepBasics => 'Datos básicos';
 
   @override
-  String get checklistSheetStepTasks => 'Tasks';
+  String get checklistSheetStepTasks => 'Tareas';
 
   @override
-  String get checklistSheetStepAdvanced => 'Advanced';
+  String get checklistSheetStepAdvanced => 'Avanzado';
 
   @override
-  String get checklistSheetNameRequired => 'Checklist name is required.';
+  String get checklistSheetNameRequired =>
+      'El nombre de la lista es obligatorio.';
 
   @override
-  String get checklistSheetAddOneTask => 'Please add at least one task.';
+  String get checklistSheetAddOneTask => 'Agrega al menos una tarea.';
 
   @override
-  String get checklistSheetAllTasksNamed => 'All tasks must have names.';
+  String get checklistSheetAllTasksNamed =>
+      'Todas las tareas deben tener nombre.';
 
   @override
   String get checklistSheetInfoTipBasics =>
-      'Name this workflow template and add a short description.';
+      'Nombra esta plantilla de flujo de trabajo y agrega una breve descripción.';
 
   @override
   String get checklistSheetBasicsIntro =>
-      'Enter the basic information for this template:';
+      'Ingresa la información básica de esta plantilla:';
 
   @override
-  String get checklistSheetTemplateName => 'Template name *';
+  String get checklistSheetTemplateName => 'Nombre de la plantilla *';
 
   @override
   String get checklistSheetTemplateNameHint =>
-      'e.g., Opening Bar, Kitchen Close';
+      'p. ej., Apertura del bar, Cierre de cocina';
 
   @override
-  String get checklistSheetDescriptionOptional => 'Description (optional)';
+  String get checklistSheetDescriptionOptional => 'Descripción (opcional)';
 
   @override
-  String get checklistSheetDescriptionHint =>
-      'Brief description of this checklist';
+  String get checklistSheetDescriptionHint => 'Breve descripción de esta lista';
 
   @override
   String get checklistSheetNoShiftsAttach =>
-      'No shifts are available to attach right now.';
+      'No hay turnos disponibles para adjuntar ahora.';
 
   @override
   String get checklistSheetNoShiftsFound =>
-      'No shifts found for this location. Please create shifts first.';
+      'No se encontraron turnos para esta ubicación. Crea turnos primero.';
 
   @override
   String get checklistSheetShiftTip =>
-      'Select shifts where this checklist appears. You can leave this empty now and attach it later from the Shifts screen.';
+      'Selecciona los turnos donde aparecerá esta lista. Puedes dejarlo vacío ahora y adjuntarla más tarde desde la pantalla de Turnos.';
 
   @override
   String get checklistSheetSelectShifts =>
-      'Select which shifts should use this checklist:';
+      'Selecciona qué turnos deben usar esta lista:';
 
   @override
   String get checklistSheetTasksTip =>
-      'Tap the camera to require a photo. If a photo is not uploaded by staff, admins are notified.';
+      'Toca la cámara para exigir una foto. Si el personal no sube una foto, se notificará a los administradores.';
 
   @override
   String get checklistSheetTasksIntro =>
-      'Add tasks to your checklist. Drag to reorder:';
+      'Agrega tareas a tu lista. Arrastra para reordenar:';
 
   @override
   String get checklistSheetNoTasks =>
-      'No tasks added yet. Tap \"Add Task\" to get started.';
+      'Aún no hay tareas. Toca \"Agregar tarea\" para comenzar.';
 
   @override
-  String get checklistSheetAddTask => 'Add Task';
+  String get checklistSheetAddTask => 'Agregar tarea';
 
   @override
   String get checklistSheetAdvancedTip =>
-      'Advanced settings are optional. Use them if you want to limit who can see this checklist or attach it to one or more shifts now.';
+      'La configuración avanzada es opcional. Úsala si quieres limitar quién puede ver esta lista o adjuntarla ahora a uno o más turnos.';
 
   @override
-  String get checklistSheetVisibilityByJobType => 'Visibility by job type';
+  String get checklistSheetVisibilityByJobType =>
+      'Visibilidad por tipo de puesto';
 
   @override
-  String get checklistSheetAssignToShifts => 'Assign to shifts';
+  String get checklistSheetAssignToShifts => 'Asignar a turnos';
 
   @override
-  String get checklistSheetSpanishTranslations => 'Spanish translations';
+  String get checklistSheetSpanishTranslations => 'Traducciones al español';
 
   @override
-  String get checklistSheetPortugueseTranslations => 'Portuguese translations';
+  String get checklistSheetPortugueseTranslations =>
+      'Traducciones al portugués';
 
   @override
   String get checklistSheetSpanishTip =>
-      'Optional: add Spanish versions of this template and its task names. English stays as the fallback when a Spanish field is left blank.';
+      'Opcional: agrega versiones en español de esta plantilla y sus tareas. El inglés seguirá como respaldo cuando un campo en español quede vacío.';
 
   @override
-  String get checklistSheetTemplateNameSpanish => 'Template name (Spanish)';
+  String get checklistSheetTemplateNameSpanish =>
+      'Nombre de la plantilla (español)';
 
   @override
-  String get checklistSheetTemplateNameSpanishHint => 'e.g., Apertura del bar';
+  String get checklistSheetTemplateNameSpanishHint =>
+      'p. ej., Apertura del bar';
 
   @override
-  String get checklistSheetDescriptionSpanish => 'Description (Spanish)';
+  String get checklistSheetDescriptionSpanish => 'Descripción (español)';
 
   @override
   String get checklistSheetDescriptionSpanishHint =>
-      'Brief description in Spanish';
+      'Breve descripción en español';
 
   @override
   String get checklistSheetAddTasksForSpanish =>
-      'Add tasks first to include Spanish task labels.';
+      'Agrega tareas primero para incluir etiquetas en español.';
 
   @override
-  String get checklistSheetSpanishTaskLabels => 'Spanish task labels';
+  String get checklistSheetSpanishTaskLabels =>
+      'Etiquetas de tareas en español';
 
   @override
   String checklistSheetTaskSpanish(int index) {
-    return 'Task $index (Spanish)';
+    return 'Tarea $index (español)';
   }
 
   @override
-  String get checklistSheetSpanishTaskLabelHint => 'Spanish task label';
+  String get checklistSheetSpanishTaskLabelHint =>
+      'Etiqueta de tarea en español';
 
   @override
   String checklistSheetSpanishFor(String name) {
-    return 'Spanish for: $name';
+    return 'Español para: $name';
   }
 
   @override
   String get checklistSheetPortugueseTip =>
-      'Optional: add Portuguese versions of this template and its task names. English stays as the fallback when a Portuguese field is left blank.';
+      'Opcional: agrega versiones en portugués de esta plantilla y sus tareas. El inglés seguirá como respaldo cuando un campo en portugués quede vacío.';
 
   @override
   String get checklistSheetTemplateNamePortuguese =>
-      'Template name (Portuguese)';
+      'Nombre de la plantilla (portugués)';
 
   @override
   String get checklistSheetTemplateNamePortugueseHint =>
-      'e.g., Abertura do bar';
+      'p. ej., Abertura do bar';
 
   @override
-  String get checklistSheetDescriptionPortuguese => 'Description (Portuguese)';
+  String get checklistSheetDescriptionPortuguese => 'Descripción (portugués)';
 
   @override
   String get checklistSheetDescriptionPortugueseHint =>
-      'Brief description in Portuguese';
+      'Breve descripción en portugués';
 
   @override
   String get checklistSheetAddTasksForPortuguese =>
-      'Add tasks first to include Portuguese task labels.';
+      'Agrega tareas primero para incluir etiquetas en portugués.';
 
   @override
-  String get checklistSheetPortugueseTaskLabels => 'Portuguese task labels';
+  String get checklistSheetPortugueseTaskLabels =>
+      'Etiquetas de tareas en portugués';
 
   @override
   String checklistSheetTaskPortuguese(int index) {
-    return 'Task $index (Portuguese)';
+    return 'Tarea $index (portugués)';
   }
 
   @override
-  String get checklistSheetPortugueseTaskLabelHint => 'Portuguese task label';
+  String get checklistSheetPortugueseTaskLabelHint =>
+      'Etiqueta de tarea en portugués';
 
   @override
   String checklistSheetPortugueseFor(String name) {
-    return 'Portuguese for: $name';
+    return 'Portugués para: $name';
   }
 
   @override
   String checklistSheetTask(int index) {
-    return 'Task $index';
+    return 'Tarea $index';
   }
 
   @override
-  String get checklistSheetTaskHint => 'Enter task description';
+  String get checklistSheetTaskHint => 'Ingresa la descripción de la tarea';
 
   @override
-  String get checklistSheetDeleteTask => 'Delete task';
+  String get checklistSheetDeleteTask => 'Eliminar tarea';
 
   @override
-  String get checklistSheetPhotoRequired => 'Photo required';
+  String get checklistSheetPhotoRequired => 'Foto obligatoria';
 
   @override
-  String get checklistSheetNoPhotoRequired => 'No photo required';
+  String get checklistSheetNoPhotoRequired => 'Sin foto obligatoria';
 
   @override
-  String get checklistSheetTaskName => 'Task name';
+  String get checklistSheetTaskName => 'Nombre de la tarea';
 
   @override
-  String get checklistSheetPhoto => 'Photo';
+  String get checklistSheetPhoto => 'Foto';
 
   @override
   String checklistSheetLoadShiftsError(String error) {
-    return 'Error loading shifts: $error';
+    return 'Error al cargar turnos: $error';
   }
 
   @override
   String get checklistSheetJobTypesTip =>
-      'Job types control who will see this checklist. Leave this empty to make it visible to everyone on the shift.';
+      'Los tipos de puesto controlan quién verá esta lista. Déjalo vacío para que sea visible para todos en el turno.';
 
   @override
   String get checklistSheetJobTypesIntro =>
-      'Optionally restrict this checklist to people with these job types. Leave empty to make it visible to all.';
+      'Opcionalmente limita esta lista a personas con estos tipos de puesto. Déjalo vacío para que sea visible para todos.';
 
   @override
-  String get checklistSheetManage => 'Manage';
+  String get checklistSheetManage => 'Administrar';
 
   @override
   String get checklistSheetNoJobTypes =>
-      'No job types found yet. Use Manage to create your first one.';
+      'Aún no hay tipos de puesto. Usa Administrar para crear el primero.';
 
   @override
-  String get checklistSheetAddJobType => 'Add job type';
+  String get checklistSheetAddJobType => 'Agregar tipo de puesto';
 
   @override
-  String get checklistSheetAddJobTypeHint => 'e.g., Dishwasher';
+  String get checklistSheetAddJobTypeHint => 'p. ej., Lavaplatos';
 
   @override
-  String get checklistSheetAdd => 'Add';
+  String get checklistSheetAdd => 'Agregar';
 
   @override
   String checklistSheetSaveFailed(String error) {
-    return 'Failed to save checklist: $error';
+    return 'No se pudo guardar la lista: $error';
   }
 
   @override
   String shiftSheetLoadDataError(String error) {
-    return 'Error loading data: $error';
+    return 'Error al cargar datos: $error';
   }
 
   @override
-  String get shiftSheetSavedSuccess => 'Shift schedule updated successfully';
+  String get shiftSheetSavedSuccess =>
+      'Horario del turno actualizado correctamente';
 
   @override
   String shiftSheetSaveError(String error) {
-    return 'Error saving schedule: $error';
+    return 'Error al guardar el horario: $error';
   }
 
   @override
-  String get shiftSheetAddRequiredRole => 'Add Required Role';
+  String get shiftSheetAddRequiredRole => 'Agregar rol requerido';
 
   @override
-  String get shiftSheetAlreadyAdded => 'Already added';
+  String get shiftSheetAlreadyAdded => 'Ya agregado';
 
   @override
   String shiftSheetAssignedCount(int assigned, int required) {
-    return '$assigned of $required assigned';
+    return '$assigned de $required asignados';
   }
 
   @override
-  String get shiftSheetRequiredRoles => 'Required Roles';
+  String get shiftSheetRequiredRoles => 'Roles requeridos';
 
   @override
-  String get shiftSheetAddRole => 'Add Role';
+  String get shiftSheetAddRole => 'Agregar rol';
 
   @override
   String get shiftSheetNoRolesAssigned =>
-      'No roles assigned to this shift. Tap \"Add Role\" to add required positions.';
+      'No hay roles asignados a este turno. Toca \"Agregar rol\" para agregar puestos requeridos.';
 
   @override
-  String get shiftSheetAssignedUsers => 'Assigned Users';
+  String get shiftSheetAssignedUsers => 'Usuarios asignados';
 
   @override
-  String get shiftSheetNoUsersAssigned => 'No users assigned yet.';
+  String get shiftSheetNoUsersAssigned => 'Aún no hay usuarios asignados.';
 
   @override
-  String get shiftSheetAvailableUsers => 'Available Users (Matching Roles)';
+  String get shiftSheetAvailableUsers =>
+      'Usuarios disponibles (roles coincidentes)';
 
   @override
-  String get shiftSheetOtherUsers => 'Other Users (No Matching Role)';
+  String get shiftSheetOtherUsers => 'Otros usuarios (sin rol coincidente)';
 
   @override
   String shiftSheetLoadUsersError(String error) {
-    return 'Error loading users: $error';
+    return 'Error al cargar usuarios: $error';
   }
 
   @override
-  String get shiftSheetNoOtherUsers => 'No other users available';
+  String get shiftSheetNoOtherUsers => 'No hay otros usuarios disponibles';
 
   @override
-  String get shiftSheetSaveSchedule => 'Save Schedule';
+  String get shiftSheetSaveSchedule => 'Guardar horario';
 
   @override
-  String get shiftSheetUnknownRole => 'Unknown Role';
+  String get shiftSheetUnknownRole => 'Rol desconocido';
 
   @override
   String shiftSheetRequiredCount(int count) {
-    return 'Required: $count';
+    return 'Requeridos: $count';
   }
 
   @override
-  String get shiftSheetDecreaseCount => 'Decrease count';
+  String get shiftSheetDecreaseCount => 'Disminuir cantidad';
 
   @override
-  String get shiftSheetIncreaseCount => 'Increase count';
+  String get shiftSheetIncreaseCount => 'Aumentar cantidad';
 
   @override
-  String get shiftSheetRemoveRole => 'Remove role';
+  String get shiftSheetRemoveRole => 'Quitar rol';
 
   @override
   String get shiftSheetUnknownUserInitial => 'U';
 
   @override
   String shiftSheetCheckAssignmentsError(String error) {
-    return 'Error checking assignments: $error';
+    return 'Error al revisar asignaciones: $error';
   }
 
   @override
   String get shiftSheetAlreadyAssignedAnotherShift =>
-      'Already assigned to another shift this day';
+      'Ya asignado a otro turno este día';
 
   @override
   String get notificationTopicsTitle => 'Tipos de notificación';

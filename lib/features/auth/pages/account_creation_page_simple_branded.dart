@@ -57,15 +57,11 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
   String? businessType;
   bool agreeTerms = false;
   bool passwordVisible = false;
+  bool confirmPasswordVisible = false;
+  String _preferredLanguageCode = 'en';
   // Pricing/state
   int _locations = 1; // min 1
   int? _approxEmployees; // optional
-
-  // Convert string role to integer for storage
-  int _getRoleAsInt() {
-    // Always return 2 (Admin) for full access since they are paying customers
-    return 2; // Admin - full access to all features
-  }
 
   // Removed legacy tiered pricing mapping
 
@@ -126,6 +122,12 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
   @override
   void initState() {
     super.initState();
+    final deviceLanguage =
+        WidgetsBinding.instance.platformDispatcher.locale.languageCode;
+    if (deviceLanguage == 'es' || deviceLanguage == 'pt') {
+      _preferredLanguageCode = deviceLanguage;
+    }
+
     // Pre-fill email if provided from invitation
     if (widget.email != null) {
       emailController.text = widget.email ?? '';
@@ -166,7 +168,8 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
           logMatchEvent: true,
           source: 'signup_create_account',
         );
-        if (inviteLookup['hasActiveInvite'] == true && mounted) {
+        if (inviteLookup['hasActiveInvite'] == true) {
+          if (!mounted) return;
           final inviteId = inviteLookup['inviteId']?.toString();
           final orgName = inviteLookup['orgName']?.toString() ?? 'your team';
           ScaffoldMessenger.of(context).showSnackBar(
@@ -187,16 +190,9 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
       }
     }
 
-    if (widget.organizationId == null && _locations >= 5) {
-      await showDialog(
-        context: context,
-        builder: (_) => const ContactSalesDialog(),
-      );
-      return;
-    }
-
     // If it's a new organization sign-up, check for terms agreement
     if (widget.organizationId == null && !agreeTerms) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('You must agree to the terms and conditions.'),
@@ -221,7 +217,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: ${e.toString()}'),
+            content: Text(_friendlySignupError(e)),
             backgroundColor: Colors.red,
           ),
         );
@@ -231,6 +227,17 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  String _friendlySignupError(Object error) {
+    if (error is FirebaseFunctionsException) {
+      return error.message ??
+          'We could not create the account. Please try again.';
+    }
+    if (error is FirebaseAuthException) {
+      return error.message ?? 'We could not sign you in. Please try again.';
+    }
+    return 'We could not finish setup: $error';
   }
 
   Future<void> _joinExistingOrganization() async {
@@ -265,6 +272,9 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
     }
 
     final userDocRef = userQuery.docs.first.reference;
+    final pendingUserData = userQuery.docs.first.data();
+    final invitedRole =
+        int.tryParse(pendingUserData['userRole']?.toString() ?? '') ?? 0;
 
     // Update the user document with the new UID and set as active
     await userDocRef.update({
@@ -283,91 +293,57 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
 
     // Navigate to user dashboard
     if (mounted) {
-      context.go(AppRoutes.userDashboardPage.path);
+      context.go(_dashboardPathForRole(invitedRole));
     }
+  }
+
+  String _dashboardPathForRole(int userRole) {
+    if (userRole == 2) return AppRoutes.adminDashboardPage.path;
+    if (userRole == 1) return AppRoutes.managerDashboardPage.path;
+    return AppRoutes.userDashboardPage.path;
   }
 
   Future<void> _createNewOrganization() async {
     try {
       logger.d('Starting new organization creation...');
 
-      // Create user with Firebase Auth
-      final credential = await FirebaseAuth.instance
-          .createUserWithEmailAndPassword(
-            email: emailController.text.trim(),
-            password: passwordController.text,
-          );
-
-      final user = credential.user;
-      if (user == null) throw Exception('Failed to create user');
-      logger.d('Firebase Auth user created: ${user.uid}');
-
-      // Update user profile
-      await user.updateDisplayName(
-        '${firstNameController.text} ${lastNameController.text}',
-      );
-
-      // Generate organization ID
-      final orgId =
-          FirestoreEnforcer.instance.collection('organizations').doc().id;
-      logger.d('Generated organization ID: $orgId');
-
-      // Create organization document
-      await FirestoreEnforcer.instance.collection('organizations').doc(orgId).set({
-        'name': businessNameController.text.trim(),
+      final functions = FirebaseFunctions.instanceFor(region: 'us-central1');
+      final callable = functions.httpsCallable('createOrganizationSignup');
+      final response = await callable.call(<String, dynamic>{
+        'organizationName': businessNameController.text.trim(),
         'businessType': businessType,
-        // Store approx employees if provided; default to 0
         'numberOfEmployees':
             _approxEmployees ??
             int.tryParse(numberOfEmployeesController.text) ??
             0,
-        'intendedLocationQuantity':
-            _locations, // Store the intended location quantity for subscription
-        'createdAt': FieldValue.serverTimestamp(),
-        'createdBy': user.uid,
-        'isActive': true,
-        'subscriptionStatus': 'trial',
-        'trialEndsAt': Timestamp.fromDate(
-          DateTime.now().add(const Duration(days: kTrialDays)),
-        ),
-        'settings': {
-          'allowUserRegistration': true,
-          'requireLocationSelection': true,
-          'defaultShiftLength': 8,
-        },
-      });
-      logger.i('Organization document created');
-
-      // Create user document
-      await FirestoreEnforcer.instance.collection('users').doc(user.uid).set({
+        'numberOfLocations': _locations,
         'firstName': firstNameController.text.trim(),
         'lastName': lastNameController.text.trim(),
         'email': emailController.text.trim(),
-        'userRole': _getRoleAsInt(), // Use integer role instead of string
-        'organizationId': orgId,
-        'locationIds':
-            [], // Empty initially, will be populated when locations are added
-        'isAdmin': _getRoleAsInt() == 2, // Set admin flag for role 2
-        'isActive': true,
-        'createdAt': FieldValue.serverTimestamp(),
-        'permissions': {
-          'canManageUsers': true,
-          'canManageLocations': true,
-          'canManageShifts': true,
-          'canViewReports': true,
-          'canManageSettings': true,
-        },
+        'password': passwordController.text,
+        'preferredLanguageCode': _preferredLanguageCode,
+        'acceptedTerms': agreeTerms,
       });
-      logger.i('User document created successfully');
+
+      final result = Map<String, dynamic>.from(response.data as Map);
+      final orgId = result['organizationId']?.toString();
+      if (orgId == null || orgId.isEmpty) {
+        throw Exception('Account created but organization was not returned.');
+      }
+
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: emailController.text.trim(),
+        password: passwordController.text,
+      );
+      logger.i('Organization and owner user created via callable: $orgId');
 
       // Send organization signup notification to admin
       try {
-        final functions = FirebaseFunctions.instance;
-        final callable = functions.httpsCallable(
+        final notificationCallable = functions.httpsCallable(
           'sendOrganizationSignupNotification',
         );
 
-        await callable.call({
+        await notificationCallable.call({
           'organizationName': businessNameController.text.trim(),
           'adminFirstName': firstNameController.text.trim(),
           'adminLastName': lastNameController.text.trim(),
@@ -380,6 +356,8 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
           'numberOfLocations': _locations,
           'subscriptionType': 'Trial',
           'organizationId': orgId,
+          'preferredLanguageCode': _preferredLanguageCode,
+          'salesAssisted': _locations >= 5,
           'createdAt': DateTime.now().toIso8601String(),
         });
 
@@ -404,7 +382,9 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
       }
 
       if (mounted) {
-        context.go('${AppRoutes.adminDashboardPage.path}?setup=true');
+        context.go(
+          '${AppRoutes.adminDashboardPage.path}?setup=true&tab=locations',
+        );
       }
     } catch (e) {
       logger.e('Error in _createNewOrganization: $e', e);
@@ -577,6 +557,29 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                 children: [
                   // Show organization-related fields only for new org sign-up
                   if (!isInvitedUser) ...[
+                    DropdownButtonFormField<String>(
+                      initialValue: _preferredLanguageCode,
+                      decoration: const InputDecoration(
+                        labelText: 'Language',
+                        helperText:
+                            'Choose the setup language. Staff can still choose their own language later.',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'en', child: Text('English')),
+                        DropdownMenuItem(value: 'es', child: Text('Spanish')),
+                        DropdownMenuItem(
+                          value: 'pt',
+                          child: Text('Portuguese'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setState(() => _preferredLanguageCode = value);
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
                     HandsTextFormField(
                       controller: businessNameController,
                       decoration: const InputDecoration(
@@ -716,7 +719,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                       ),
                       child: Text(
                         _locations >= 5
-                            ? 'For 5 or more locations, we\'ll help with rollout and billing setup before you create the account.'
+                            ? 'Create your trial now. We\'ll flag this as a multi-location rollout so our team can help with billing and launch planning.'
                             : 'You can add billing later from Settings when you\'re ready to launch across your team.',
                         style: const TextStyle(
                           color: Colors.white70,
@@ -773,9 +776,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                     enabled: !isInvitedUser,
                     validator: (v) {
                       if (v?.isEmpty ?? true) return 'Enter email address';
-                      if (!RegExp(
-                        r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
-                      ).hasMatch(v!)) {
+                      if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v!)) {
                         return 'Enter valid email address';
                       }
                       return null;
@@ -806,8 +807,8 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                     obscureText: !passwordVisible,
                     validator: (v) {
                       if (v?.isEmpty ?? true) return 'Enter password';
-                      if (v!.length < 6) {
-                        return 'Password must be at least 6 characters';
+                      if (v!.length < 8) {
+                        return 'Password must be at least 8 characters';
                       }
                       return null;
                     },
@@ -819,11 +820,24 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                     textCapitalization:
                         TextCapitalization
                             .none, // Passwords don't need capitalization
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Confirm Password',
-                      border: OutlineInputBorder(),
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          confirmPasswordVisible
+                              ? Icons.visibility
+                              : Icons.visibility_off,
+                        ),
+                        onPressed:
+                            () => setState(
+                              () =>
+                                  confirmPasswordVisible =
+                                      !confirmPasswordVisible,
+                            ),
+                      ),
                     ),
-                    obscureText: true,
+                    obscureText: !confirmPasswordVisible,
                     validator: (v) {
                       if (v != passwordController.text) {
                         return 'Passwords do not match';
@@ -915,7 +929,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                               isInvitedUser
                                   ? 'Complete Sign Up'
                                   : (_locations >= 5
-                                      ? 'Talk to Sales'
+                                      ? 'Create Trial + Request Rollout Help'
                                       : 'Create Account'),
                             ),
                   ),

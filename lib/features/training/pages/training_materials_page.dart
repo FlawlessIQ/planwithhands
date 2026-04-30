@@ -25,6 +25,7 @@ import 'package:hands_app/services/location_selection_service.dart';
 import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:hands_app/features/help/widgets/context_help_trigger.dart';
+import 'package:hands_app/features/crm/widgets/crm_scoped_bottom_nav.dart';
 import 'package:hands_app/l10n/l10n.dart';
 
 String localizedDocumentCategoryLabel(BuildContext context, String category) {
@@ -53,7 +54,14 @@ String localizedDocumentCategoryLabel(BuildContext context, String category) {
 }
 
 class ViewDocumentsPage extends HookConsumerWidget {
-  const ViewDocumentsPage({super.key});
+  final String? organizationIdOverride;
+  final bool allowPlatformAccess;
+
+  const ViewDocumentsPage({
+    super.key,
+    this.organizationIdOverride,
+    this.allowPlatformAccess = false,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -114,6 +122,15 @@ class ViewDocumentsPage extends HookConsumerWidget {
     useEffect(() {
       Future<void> loadOrganizationId() async {
         try {
+          if (organizationIdOverride != null) {
+            organizationId.value = organizationIdOverride;
+            userRole = 2;
+            logger.d(
+              'DEBUG: Using CRM organizationId override: ${organizationId.value}',
+            );
+            return;
+          }
+
           // First try to use userState
           if (userState.userData?.organizationId != null) {
             organizationId.value = userState.userData!.organizationId;
@@ -154,7 +171,7 @@ class ViewDocumentsPage extends HookConsumerWidget {
 
       loadOrganizationId();
       return null;
-    }, [userState.userData?.organizationId]);
+    }, [userState.userData?.organizationId, organizationIdOverride]);
 
     // Load available locations
     useEffect(() {
@@ -227,7 +244,13 @@ class ViewDocumentsPage extends HookConsumerWidget {
           elevation: 0,
         ),
         body: const Center(child: CircularProgressIndicator()),
-        bottomNavigationBar: BottomNavBar(currentIndex: 4, userRole: userRole),
+        bottomNavigationBar:
+            allowPlatformAccess && organizationIdOverride != null
+                ? CrmScopedBottomNav(
+                  orgId: organizationIdOverride!,
+                  currentIndex: 3,
+                )
+                : BottomNavBar(currentIndex: 4, userRole: userRole),
       );
     }
 
@@ -259,7 +282,13 @@ class ViewDocumentsPage extends HookConsumerWidget {
           elevation: 0,
         ),
         body: Center(child: Text(l10n.documentsNoOrganization)),
-        bottomNavigationBar: BottomNavBar(currentIndex: 4, userRole: userRole),
+        bottomNavigationBar:
+            allowPlatformAccess && organizationIdOverride != null
+                ? CrmScopedBottomNav(
+                  orgId: organizationIdOverride!,
+                  currentIndex: 3,
+                )
+                : BottomNavBar(currentIndex: 4, userRole: userRole),
       );
     }
 
@@ -347,17 +376,33 @@ class ViewDocumentsPage extends HookConsumerWidget {
         backgroundColor: HandsColors.cardPrimary,
         elevation: 0,
         toolbarHeight: kToolbarHeight,
-        title: GenericAppBarContent(
-          appBarTitle: l10n.documentsTitle,
-          userRole: userRole,
-        ),
+        title:
+            allowPlatformAccess
+                ? Text(
+                  'CRM account documents',
+                  style: GoogleFonts.comfortaa(fontWeight: FontWeight.w800),
+                )
+                : GenericAppBarContent(
+                  appBarTitle: l10n.documentsTitle,
+                  userRole: userRole,
+                ),
         automaticallyImplyLeading: false,
-        actions: [
-          UnifiedMenuButton(
-            userRole: userRole,
-            organizationId: organizationId.value,
-          ),
-        ],
+        actions:
+            allowPlatformAccess
+                ? [
+                  TextButton.icon(
+                    onPressed: () => context.go('/crm'),
+                    icon: const Icon(Icons.dashboard_customize_outlined),
+                    label: const Text('Back to CRM'),
+                  ),
+                  const SizedBox(width: 12),
+                ]
+                : [
+                  UnifiedMenuButton(
+                    userRole: userRole,
+                    organizationId: organizationId.value,
+                  ),
+                ],
       ),
       body: Container(
         decoration: const BoxDecoration(
@@ -805,7 +850,13 @@ class ViewDocumentsPage extends HookConsumerWidget {
           ],
         ),
       ),
-      bottomNavigationBar: BottomNavBar(currentIndex: 4, userRole: userRole),
+      bottomNavigationBar:
+          allowPlatformAccess && organizationIdOverride != null
+              ? CrmScopedBottomNav(
+                orgId: organizationIdOverride!,
+                currentIndex: 3,
+              )
+              : BottomNavBar(currentIndex: 4, userRole: userRole),
     );
   }
 
