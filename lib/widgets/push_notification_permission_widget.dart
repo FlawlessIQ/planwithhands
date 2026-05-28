@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hands_app/l10n/l10n.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/services/push_notification_service.dart';
 import 'package:hands_app/core/logging/logger.dart';
 
@@ -95,23 +96,24 @@ class _PushNotificationPermissionWidgetState
           context: context,
           barrierDismissible: false,
           builder: (BuildContext context) {
-            return AlertDialog(
-              title: Text(
-                widget.title ?? l10n.notificationOnboardingEnableTitle,
-              ),
-              content: Text(
-                widget.message ?? l10n.pushPermissionExplanationBody,
-              ),
+            return HandsDialog(
+              title: widget.title ?? l10n.notificationOnboardingEnableTitle,
+              isDismissible: false,
+              maxWidth: 440,
               actions: [
-                TextButton(
+                HandsSecondaryButton(
+                  text: l10n.pushPermissionNotNow,
                   onPressed: () => Navigator.of(context).pop(false),
-                  child: Text(l10n.pushPermissionNotNow),
                 ),
-                FilledButton(
+                HandsPrimaryButton(
+                  text: l10n.notificationOnboardingEnableTitle,
                   onPressed: () => Navigator.of(context).pop(true),
-                  child: Text(l10n.notificationOnboardingEnableTitle),
                 ),
               ],
+              child: Text(
+                widget.message ?? l10n.pushPermissionExplanationBody,
+                style: HandsModalTokens.bodyStyle,
+              ),
             );
           },
         ) ??
@@ -216,22 +218,26 @@ class _PushNotificationPermissionWidgetState
     await showDialog(
       context: context,
       builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text(l10n.pushPermissionDisabledTitle),
-          content: Text(l10n.pushPermissionDisabledBody),
+        return HandsDialog(
+          title: l10n.pushPermissionDisabledTitle,
+          maxWidth: 440,
           actions: [
-            TextButton(
+            HandsSecondaryButton(
+              text: l10n.pushPermissionMaybeLater,
               onPressed: () => Navigator.of(context).pop(),
-              child: Text(l10n.pushPermissionMaybeLater),
             ),
-            FilledButton(
+            HandsPrimaryButton(
+              text: l10n.pushPermissionOpenSettings,
               onPressed: () {
                 Navigator.of(context).pop();
                 _notificationService.openAppSettings();
               },
-              child: Text(l10n.pushPermissionOpenSettings),
             ),
           ],
+          child: Text(
+            l10n.pushPermissionDisabledBody,
+            style: HandsModalTokens.bodyStyle,
+          ),
         );
       },
     );

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hands_app/l10n/l10n.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/services/push_notification_service.dart';
 
 /// Widget for managing notification settings and preferences
@@ -94,25 +95,38 @@ class _NotificationSettingsWidgetState
     await showDialog(
       context: context,
       builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text(l10n.notificationTopicsTitle),
-          content: Column(
+        return HandsDialog(
+          title: l10n.notificationTopicsTitle,
+          maxWidth: 440,
+          actions: [
+            HandsSecondaryButton(
+              text: l10n.notificationTopicsGotIt,
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ],
+          child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(l10n.notificationTopicsIntro),
+              Text(
+                l10n.notificationTopicsIntro,
+                style: HandsModalTokens.bodyStyle,
+              ),
               const SizedBox(height: 16),
-              Text(l10n.notificationTopicsScheduleUpdates),
-              Text(l10n.notificationTopicsShiftReminders),
-              Text(l10n.notificationTopicsGeneralAnnouncements),
+              Text(
+                l10n.notificationTopicsScheduleUpdates,
+                style: HandsModalTokens.bodyStyle,
+              ),
+              Text(
+                l10n.notificationTopicsShiftReminders,
+                style: HandsModalTokens.bodyStyle,
+              ),
+              Text(
+                l10n.notificationTopicsGeneralAnnouncements,
+                style: HandsModalTokens.bodyStyle,
+              ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text(l10n.notificationTopicsGotIt),
-            ),
-          ],
         );
       },
     );

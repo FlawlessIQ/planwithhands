@@ -78,6 +78,7 @@ class ChecklistBottomSheet extends StatefulWidget {
   final void Function(Map<String, dynamic> result) onSave;
   final List<String> presetShiftIds;
   final String? initialTitleSuggestion;
+  final bool forceInlineLayout;
 
   const ChecklistBottomSheet({
     super.key,
@@ -89,6 +90,7 @@ class ChecklistBottomSheet extends StatefulWidget {
     required this.onSave,
     this.presetShiftIds = const [],
     this.initialTitleSuggestion,
+    this.forceInlineLayout = false,
   });
 
   @override
@@ -334,7 +336,9 @@ class _ChecklistBottomSheetState extends State<ChecklistBottomSheet> {
     final mediaQuery = MediaQuery.of(context);
     // text scaling handled by system; no local override needed here
     final width = mediaQuery.size.width;
-    final isDialog = context.findAncestorWidgetOfExactType<Dialog>() != null;
+    final isDialog =
+        widget.forceInlineLayout ||
+        context.findAncestorWidgetOfExactType<Dialog>() != null;
     final isWide = width >= 900;
 
     // Reusable app bar widget (slightly tighter for web)

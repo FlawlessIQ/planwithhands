@@ -159,6 +159,24 @@
   "notificationsNewMessage": "New Message",
   "notificationsNoContent": "No content",
   "notificationsLoadMore": "Load More",
+  "notificationsUpdateType": "Update",
+  "notificationsSummaryType": "Daily summary",
+  "notificationsSummaryOverview": "Overview",
+  "notificationsSummaryCompletion": "Completion",
+  "notificationsSummaryTasks": "Tasks",
+  "notificationsSummaryMissedTasks": "Missed tasks",
+  "notificationsSummaryLocations": "Location performance",
+  "notificationsSummaryNotes": "Notes",
+  "notificationsSummaryPhotoBypassed": "Photo bypassed",
+  "notificationsSummaryNoReason": "No reason provided",
+  "notificationsSummaryMoreItems": "... and {count} more",
+  "@notificationsSummaryMoreItems": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "notificationsYesterdayAt": "Yesterday {time}",
   "@notificationsYesterdayAt": {
     "placeholders": {
@@ -933,6 +951,10 @@
   "documentsUploadTitle": "Upload document",
   "documentsEditTitle": "Edit document",
   "documentsUploadSubtitle": "Add SOPs, policies, guides, and training files for the team.",
+  "documentsLocationAccessTitle": "Document locations",
+  "documentsLocationAccessBody": "Choose where this document appears in Document Center. Select one location or keep more than one selected if the file applies across sites.",
+  "documentsLocationRequired": "Select at least one location for this document.",
+  "documentsUploadNeedsLocation": "Add a location before uploading documents.",
   "documentsUpdateButton": "Update document",
   "documentsInfoTip": "Upload PDFs, DOCX files, images, or videos up to 20 MB and place them in the right category.",
   "documentsDetails": "Details",

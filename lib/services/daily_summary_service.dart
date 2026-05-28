@@ -1329,6 +1329,7 @@ class DailySummaryService {
     required DateTime date,
   }) async {
     try {
+      final dateStr = _formatDate(date);
       // Get organization name for email
       String organizationName = 'Organization';
       try {
@@ -1364,6 +1365,8 @@ class DailySummaryService {
         'message': fallbackContent,
         'titleByLanguage': titleByLanguage,
         'messageByLanguage': contentByLanguage,
+        'summaryData': summaryData,
+        'summaryDate': dateStr,
         'type': 'daily_summary',
         'targetType':
             'all_users', // Will be filtered to admin users by the function
@@ -1398,6 +1401,8 @@ class DailySummaryService {
           'message': localizedContent,
           'titleByLanguage': titleByLanguage,
           'messageByLanguage': contentByLanguage,
+          'summaryData': summaryData,
+          'summaryDate': dateStr,
           'readBy': <String>[],
           'archivedBy': <String>[],
           'createdAt': timestamp,

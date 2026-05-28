@@ -7,6 +7,8 @@ const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || "planwithhand
 const db = new Firestore({databaseId: FIRESTORE_DATABASE_ID});
 const RECENT_CANCEL_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const OLD_INACTIVE_WINDOW_MS = 45 * 24 * 60 * 60 * 1000;
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 let stripe: Stripe | null = null;
 function getStripe(): Stripe {
@@ -379,9 +381,27 @@ export const getCrmDashboard = addCallable<{limit?: number; includeArchived?: bo
       acc.trialsEnding += customer.healthStatus === "trial_ending" ? 1 : 0;
       acc.recentlyCanceled += customer.recentlyCanceled ? 1 : 0;
       acc.oldInactive += customer.oldInactive ? 1 : 0;
+      acc.newSignups7d += customer.createdAt != null && customer.createdAt >= Date.now() - SEVEN_DAYS_MS ? 1 : 0;
+      acc.newSignups30d += customer.createdAt != null && customer.createdAt >= Date.now() - THIRTY_DAYS_MS ? 1 : 0;
+      acc.stoppedSubscriptions7d += customer.canceledAt != null && customer.canceledAt >= Date.now() - SEVEN_DAYS_MS ? 1 : 0;
+      acc.stoppedSubscriptions30d += customer.canceledAt != null && customer.canceledAt >= Date.now() - THIRTY_DAYS_MS ? 1 : 0;
       return acc;
     },
-    {totalCustomers: 0, activeCustomers: 0, totalUsers: 0, totalLocations: 0, mrrCents: 0, paymentIssues: 0, trialsEnding: 0, recentlyCanceled: 0, oldInactive: 0}
+    {
+      totalCustomers: 0,
+      activeCustomers: 0,
+      totalUsers: 0,
+      totalLocations: 0,
+      mrrCents: 0,
+      paymentIssues: 0,
+      trialsEnding: 0,
+      recentlyCanceled: 0,
+      oldInactive: 0,
+      newSignups7d: 0,
+      newSignups30d: 0,
+      stoppedSubscriptions7d: 0,
+      stoppedSubscriptions30d: 0,
+    }
   );
   await logCrmAction(actor, "viewed_crm_dashboard", {customerCount: customers.length, includeArchived});
   return {
@@ -504,29 +524,42 @@ export const listCrmPromotionCodes = addCallable<{}, any>("listCrmPromotionCodes
       const remainingRedemptions = maxRedemptions == null ? null : Math.max(maxRedemptions - timesRedeemed, 0);
       const expired = promo.expires_at ? promo.expires_at * 1000 < Date.now() : false;
       return {
-      id: promo.id,
-      code: promo.code,
-      active: promo.active,
-      statusLabel: promo.active && !expired ? "active" : expired ? "expired" : "inactive",
-      couponId: promo.coupon.id,
-      percentOff: promo.coupon.percent_off,
-      amountOff: promo.coupon.amount_off,
-      currency: promo.coupon.currency,
-      duration: promo.coupon.duration,
-      durationInMonths: promo.coupon.duration_in_months,
-      maxRedemptions,
-      timesRedeemed,
-      remainingRedemptions,
-      expiresAt: promo.expires_at ? promo.expires_at * 1000 : null,
-      created: promo.created * 1000,
-      redemptionLabel: maxRedemptions == null ? `${timesRedeemed} used` : `${timesRedeemed}/${maxRedemptions} used`,
-    };
+        id: promo.id,
+        code: promo.code,
+        active: promo.active,
+        statusLabel: promo.active && !expired ? "active" : expired ? "expired" : "inactive",
+        couponId: promo.coupon.id,
+        percentOff: promo.coupon.percent_off,
+        amountOff: promo.coupon.amount_off,
+        currency: promo.coupon.currency,
+        duration: promo.coupon.duration,
+        durationInMonths: promo.coupon.duration_in_months,
+        firstTimeCustomersOnly: promo.restrictions?.first_time_transaction === true,
+        campaign: promo.metadata?.campaign || promo.coupon.metadata?.campaign || "",
+        maxRedemptions,
+        timesRedeemed,
+        remainingRedemptions,
+        expiresAt: promo.expires_at ? promo.expires_at * 1000 : null,
+        created: promo.created * 1000,
+        redemptionLabel: maxRedemptions == null ? `${timesRedeemed} used` : `${timesRedeemed}/${maxRedemptions} used`,
+      };
     }).sort((a, b) => (b.timesRedeemed - a.timesRedeemed) || (b.created - a.created)),
   };
 });
 
 export const createCrmPromotionCode = addCallable<
-  {code: string; percentOff?: number; amountOff?: number; currency?: string; duration?: string; durationInMonths?: number; maxRedemptions?: number; expiresAt?: number; campaign?: string},
+  {
+    code: string;
+    percentOff?: number;
+    amountOff?: number;
+    currency?: string;
+    duration?: string;
+    durationInMonths?: number;
+    maxRedemptions?: number;
+    expiresAt?: number;
+    campaign?: string;
+    firstTimeCustomersOnly?: boolean;
+  },
   any
 >("createCrmPromotionCode", async (data, context) => {
   const actor = await requirePlatformUser(context);
@@ -537,11 +570,26 @@ export const createCrmPromotionCode = addCallable<
   if (percentOff <= 0 && amountOff <= 0) {
     throw new functions.https.HttpsError("invalid-argument", "Provide percentOff or amountOff");
   }
+  if (percentOff > 100) {
+    throw new functions.https.HttpsError("invalid-argument", "percentOff cannot be greater than 100");
+  }
+  const duration = (data.duration || "once") as Stripe.CouponCreateParams.Duration;
+  if (!["once", "repeating", "forever"].includes(duration)) {
+    throw new functions.https.HttpsError("invalid-argument", "duration must be once, repeating, or forever");
+  }
+  const durationInMonths = Number(data.durationInMonths || 0);
+  if (duration === "repeating" && durationInMonths <= 0) {
+    throw new functions.https.HttpsError("invalid-argument", "durationInMonths is required for repeating discounts");
+  }
+  const expiresAtSeconds = data.expiresAt ? Math.floor(Number(data.expiresAt) / 1000) : undefined;
+  if (expiresAtSeconds && expiresAtSeconds <= Math.floor(Date.now() / 1000)) {
+    throw new functions.https.HttpsError("invalid-argument", "expiresAt must be in the future");
+  }
 
   const coupon = await getStripe().coupons.create({
     name: data.campaign ? `${data.campaign} - ${code}` : code,
-    duration: (data.duration || "once") as Stripe.CouponCreateParams.Duration,
-    duration_in_months: data.duration === "repeating" ? Number(data.durationInMonths || 3) : undefined,
+    duration,
+    duration_in_months: duration === "repeating" ? durationInMonths : undefined,
     percent_off: percentOff > 0 ? percentOff : undefined,
     amount_off: amountOff > 0 ? amountOff : undefined,
     currency: amountOff > 0 ? (data.currency || "usd") : undefined,
@@ -554,7 +602,8 @@ export const createCrmPromotionCode = addCallable<
     coupon: coupon.id,
     code,
     max_redemptions: data.maxRedemptions ? Number(data.maxRedemptions) : undefined,
-    expires_at: data.expiresAt ? Math.floor(Number(data.expiresAt) / 1000) : undefined,
+    expires_at: expiresAtSeconds,
+    restrictions: data.firstTimeCustomersOnly === true ? {first_time_transaction: true} : undefined,
     metadata: {
       campaign: data.campaign || "CRM",
       createdBy: actor.uid,
@@ -566,10 +615,22 @@ export const createCrmPromotionCode = addCallable<
     stripeCouponId: coupon.id,
     stripePromotionCodeId: promotionCode.id,
     campaign: data.campaign || "CRM",
+    duration,
+    durationInMonths: duration === "repeating" ? durationInMonths : null,
+    expiresAt: data.expiresAt || null,
+    maxRedemptions: data.maxRedemptions ? Number(data.maxRedemptions) : null,
+    firstTimeCustomersOnly: data.firstTimeCustomersOnly === true,
     createdBy: actor.uid,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     active: true,
   }, {merge: true});
-  await logCrmAction(actor, "created_promotion_code", {code, stripePromotionCodeId: promotionCode.id});
+  await logCrmAction(actor, "created_promotion_code", {
+    code,
+    stripePromotionCodeId: promotionCode.id,
+    duration,
+    expiresAt: data.expiresAt || null,
+    maxRedemptions: data.maxRedemptions || null,
+    firstTimeCustomersOnly: data.firstTimeCustomersOnly === true,
+  });
   return {id: promotionCode.id, code: promotionCode.code, couponId: coupon.id, active: promotionCode.active};
 });

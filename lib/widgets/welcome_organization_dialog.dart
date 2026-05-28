@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hands_app/config/feature_flags.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/theme/theme.dart';
 
 class WelcomeOrganizationDialog extends StatelessWidget {
@@ -9,85 +10,58 @@ class WelcomeOrganizationDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      backgroundColor: HandsColors.cardPrimary,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: Row(
-        children: [
-          Icon(Icons.celebration, color: HandsColors.handsOrange, size: 28),
-          const SizedBox(width: 12),
-          Text(
-            'Welcome to Hands',
-            style: TextStyle(
-              color: HandsColors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'You\'re live on a $kTrialDays-day trial. Take these steps to get to first value quickly:',
-              style: TextStyle(
-                color: HandsColors.white70,
-                fontSize: 16,
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 20),
-            _buildSection(
-              icon: Icons.location_on,
-              title: 'Add your first location',
-              content:
-                  'This unlocks the rest of setup and gives your team a place to work from.',
-            ),
-            const SizedBox(height: 20),
-            _buildSection(
-              icon: Icons.auto_fix_high,
-              title: 'Use the starter setup',
-              content:
-                  'We\'ll create a sample shift and checklist after your first location so you have something real to edit.',
-            ),
-            const SizedBox(height: 20),
-            _buildSection(
-              icon: Icons.group_add,
-              title: 'Invite one teammate',
-              content:
-                  'Once someone else joins, you can enable performance tracking and see live completion data.',
-            ),
-            const SizedBox(height: 20),
-            _buildSection(
-              icon: Icons.credit_card,
-              title: 'Add billing when you\'re ready',
-              content:
-                  'You can start setup now and add your payment method later from Settings before the trial ends.',
-            ),
-          ],
-        ),
-      ),
+    return HandsDialog(
+      title: 'Welcome to Hands',
+      maxWidth: 560,
       actions: [
-        TextButton(
+        HandsPrimaryButton(
+          text: 'Set Up First Location',
           onPressed: () {
             Navigator.of(context).pop();
             if (onProceedToLocationSetup != null) {
               onProceedToLocationSetup!();
             }
           },
-          child: Text(
-            'Set Up First Location',
-            style: TextStyle(
-              color: HandsColors.handsOrange,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
         ),
       ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'You\'re live on a $kTrialDays-day trial. Take these steps to get to first value quickly:',
+            style: HandsModalTokens.bodyStyle,
+          ),
+          const SizedBox(height: 20),
+          _buildSection(
+            icon: Icons.location_on,
+            title: 'Add your first location',
+            content:
+                'This unlocks the rest of setup and gives your team a place to work from.',
+          ),
+          const SizedBox(height: 20),
+          _buildSection(
+            icon: Icons.auto_fix_high,
+            title: 'Use the starter setup',
+            content:
+                'We\'ll create a sample shift and checklist after your first location so you have something real to edit.',
+          ),
+          const SizedBox(height: 20),
+          _buildSection(
+            icon: Icons.group_add,
+            title: 'Invite one teammate',
+            content:
+                'Once someone else joins, you can enable performance tracking and see live completion data.',
+          ),
+          const SizedBox(height: 20),
+          _buildSection(
+            icon: Icons.credit_card,
+            title: 'Add billing when you\'re ready',
+            content:
+                'You can start setup now and add your payment method later from Settings before the trial ends.',
+          ),
+        ],
+      ),
     );
   }
 

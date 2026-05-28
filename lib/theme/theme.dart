@@ -35,6 +35,8 @@ class HandsColors {
   // Text Colors
   static const Color white = Color(0xFFFFFFFF);
   static const Color white70 = Color(0xB3FFFFFF); // 70% opacity white
+  static const Color white60 = Color(0x99FFFFFF); // 60% opacity white
+  static const Color white54 = Color(0x8AFFFFFF); // 54% opacity white
   static const Color white30 = Color(0x4DFFFFFF); // 30% opacity white
   static const Color white12 = Color(0x1FFFFFFF); // 12% opacity white
 

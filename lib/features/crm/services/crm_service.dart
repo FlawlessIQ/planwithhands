@@ -33,15 +33,26 @@ class CrmService {
     required String code,
     required int percentOff,
     required String campaign,
+    String duration = 'once',
+    int? durationInMonths,
     int? maxRedemptions,
+    DateTime? expiresAt,
+    bool firstTimeCustomersOnly = false,
   }) {
     return _call('createCrmPromotionCode', {
       'code': code,
       'percentOff': percentOff,
-      'duration': 'once',
+      'duration': duration,
+      if (duration == 'repeating' &&
+          durationInMonths != null &&
+          durationInMonths > 0)
+        'durationInMonths': durationInMonths,
       if (campaign.trim().isNotEmpty) 'campaign': campaign.trim(),
       if (maxRedemptions != null && maxRedemptions > 0)
         'maxRedemptions': maxRedemptions,
+      if (expiresAt != null) 'expiresAt': expiresAt.millisecondsSinceEpoch,
+      if (firstTimeCustomersOnly)
+        'firstTimeCustomersOnly': firstTimeCustomersOnly,
     });
   }
 

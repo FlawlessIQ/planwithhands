@@ -16,6 +16,7 @@ class ShiftTemplateBottomSheet extends StatefulWidget {
   final List<Map<String, dynamic>> availableLocations;
   final VoidCallback onShiftSaved;
   final String? selectedLocationId;
+  final bool forceInlineLayout;
 
   const ShiftTemplateBottomSheet({
     super.key,
@@ -25,6 +26,7 @@ class ShiftTemplateBottomSheet extends StatefulWidget {
     required this.availableLocations,
     required this.onShiftSaved,
     this.selectedLocationId,
+    this.forceInlineLayout = false,
   });
 
   @override
@@ -253,7 +255,9 @@ class _ShiftTemplateBottomSheetState extends State<ShiftTemplateBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final isDialog = context.findAncestorWidgetOfExactType<Dialog>() != null;
+    final isDialog =
+        widget.forceInlineLayout ||
+        context.findAncestorWidgetOfExactType<Dialog>() != null;
 
     Widget header({bool showDivider = true, bool showHandle = false}) {
       return Column(

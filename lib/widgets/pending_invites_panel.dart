@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/services/invite_service.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/utils/jobtype_helper.dart';
@@ -288,21 +289,23 @@ class _InviteCard extends StatelessWidget {
         await showDialog<bool>(
           context: context,
           builder:
-              (context) => AlertDialog(
-                title: const Text('Revoke Invite'),
-                content: const Text(
-                  'This will immediately disable the invite link. You can always send a fresh invite later.',
-                ),
+              (context) => HandsDialog(
+                title: 'Revoke Invite',
+                maxWidth: 440,
                 actions: [
-                  TextButton(
+                  HandsSecondaryButton(
+                    text: 'Cancel',
                     onPressed: () => Navigator.of(context).pop(false),
-                    child: const Text('Cancel'),
                   ),
-                  FilledButton(
+                  HandsPrimaryButton(
+                    text: 'Revoke',
                     onPressed: () => Navigator.of(context).pop(true),
-                    child: const Text('Revoke'),
                   ),
                 ],
+                child: Text(
+                  'This will immediately disable the invite link. You can always send a fresh invite later.',
+                  style: HandsModalTokens.bodyStyle,
+                ),
               ),
         ) ??
         false;

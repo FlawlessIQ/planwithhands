@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/ui/location_bottom_sheet_new.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/widgets/responsive_appbar_title.dart';
@@ -20,23 +21,31 @@ class _ManageLocationsPageState extends State<ManageLocationsPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder:
-          (ctx) => AlertDialog(
-            title: const Text('Delete Location'),
-            content: Text('Delete "${data['locationName'] ?? 'Location'}"? This cannot be undone.'),
+          (ctx) => HandsDialog(
+            title: 'Delete Location',
+            maxWidth: 440,
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-              TextButton(
+              HandsSecondaryButton(
+                text: 'Cancel',
+                onPressed: () => Navigator.pop(ctx, false),
+              ),
+              HandsPrimaryButton(
+                text: 'Delete',
                 onPressed: () => Navigator.pop(ctx, true),
-                style: TextButton.styleFrom(foregroundColor: Colors.red),
-                child: const Text('Delete'),
               ),
             ],
+            child: Text(
+              'Delete "${data['locationName'] ?? 'Location'}"? This cannot be undone.',
+              style: HandsModalTokens.bodyStyle,
+            ),
           ),
     );
     if (confirmed != true) return;
 
     try {
-      final orgRef = FirestoreEnforcer.instance.collection('organizations').doc(widget.organizationId);
+      final orgRef = FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(widget.organizationId);
       final locsRef = orgRef.collection('locations');
       final batch = FirestoreEnforcer.instance.batch();
 
@@ -44,27 +53,43 @@ class _ManageLocationsPageState extends State<ManageLocationsPage> {
       batch.delete(doc.reference);
 
       // Decrement count
-      batch.update(orgRef, {'locationCount': FieldValue.increment(-1), 'updatedAt': FieldValue.serverTimestamp()});
+      batch.update(orgRef, {
+        'locationCount': FieldValue.increment(-1),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
 
       if (isPrimary) {
         // Set another location as primary if any exist
-        final others = await locsRef.where(FieldPath.documentId, isNotEqualTo: doc.id).limit(1).get();
+        final others =
+            await locsRef
+                .where(FieldPath.documentId, isNotEqualTo: doc.id)
+                .limit(1)
+                .get();
         if (others.docs.isNotEmpty) {
-          batch.update(others.docs.first.reference, {'isPrimary': true, 'updatedAt': FieldValue.serverTimestamp()});
+          batch.update(others.docs.first.reference, {
+            'isPrimary': true,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
         }
       }
 
       await batch.commit();
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Location deleted'), backgroundColor: Colors.green));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Location deleted'),
+            backgroundColor: Colors.green,
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to delete: $e'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to delete: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
@@ -73,7 +98,8 @@ class _ManageLocationsPageState extends State<ManageLocationsPage> {
   String _resolveAddressString(Map<String, dynamic> data) {
     // Prefer new structured fields
     final formatted = data['formattedAddress'];
-    if (formatted is String && formatted.trim().isNotEmpty) return formatted.trim();
+    if (formatted is String && formatted.trim().isNotEmpty)
+      return formatted.trim();
 
     final address = data['address'];
     if (address is String && address.trim().isNotEmpty) return address.trim();
@@ -82,9 +108,14 @@ class _ManageLocationsPageState extends State<ManageLocationsPage> {
       final street = address['street'] as String?;
       final city = address['city'] as String?;
       final state = address['state'] as String?;
-      final zip = (address['zipCode'] as String?) ?? (address['zip'] as String?);
+      final zip =
+          (address['zipCode'] as String?) ?? (address['zip'] as String?);
       final parts =
-          [street, city, state, zip].whereType<String>().map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+          [street, city, state, zip]
+              .whereType<String>()
+              .map((e) => e.trim())
+              .where((e) => e.isNotEmpty)
+              .toList();
       if (parts.isNotEmpty) return parts.join(', ');
     }
 
@@ -94,7 +125,11 @@ class _ManageLocationsPageState extends State<ManageLocationsPage> {
     final state = data['state'] as String?;
     final zip = (data['zipCode'] as String?) ?? (data['zip'] as String?);
     final parts =
-        [street, city, state, zip].whereType<String>().map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+        [street, city, state, zip]
+            .whereType<String>()
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
     if (parts.isNotEmpty) return parts.join(', ');
 
     return '';
@@ -102,33 +137,48 @@ class _ManageLocationsPageState extends State<ManageLocationsPage> {
 
   Future<void> _setPrimary(DocumentSnapshot doc) async {
     try {
-      final orgRef = FirestoreEnforcer.instance.collection('organizations').doc(widget.organizationId);
+      final orgRef = FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(widget.organizationId);
       final locsRef = orgRef.collection('locations');
 
       final batch = FirestoreEnforcer.instance.batch();
       final all = await locsRef.get();
       for (final d in all.docs) {
-        batch.update(d.reference, {'isPrimary': d.id == doc.id, 'updatedAt': FieldValue.serverTimestamp()});
+        batch.update(d.reference, {
+          'isPrimary': d.id == doc.id,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
       }
       await batch.commit();
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Primary location updated'), backgroundColor: Colors.green));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Primary location updated'),
+            backgroundColor: Colors.green,
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to update primary: $e'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update primary: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final orgRef = FirestoreEnforcer.instance.collection('organizations').doc(widget.organizationId);
-    final locsRef = orgRef.collection('locations').orderBy('createdAt', descending: false);
+    final orgRef = FirestoreEnforcer.instance
+        .collection('organizations')
+        .doc(widget.organizationId);
+    final locsRef = orgRef
+        .collection('locations')
+        .orderBy('createdAt', descending: false);
 
     return Scaffold(
       appBar: AppBar(title: const ResponsiveAppBarTitle('Manage Locations')),
@@ -151,7 +201,12 @@ class _ManageLocationsPageState extends State<ManageLocationsPage> {
                     ElevatedButton.icon(
                       onPressed: () async {
                         final created = await Navigator.of(context).push<bool>(
-                          MaterialPageRoute(builder: (_) => LocationWizard(organizationId: widget.organizationId)),
+                          MaterialPageRoute(
+                            builder:
+                                (_) => LocationWizard(
+                                  organizationId: widget.organizationId,
+                                ),
+                          ),
                         );
                         if (created == true && mounted) setState(() {});
                       },
@@ -176,7 +231,10 @@ class _ManageLocationsPageState extends State<ManageLocationsPage> {
               final isPrimary = data['isPrimary'] as bool? ?? false;
 
               return ListTile(
-                leading: Icon(isPrimary ? Icons.star : Icons.place_outlined, color: isPrimary ? Colors.amber : null),
+                leading: Icon(
+                  isPrimary ? Icons.star : Icons.place_outlined,
+                  color: isPrimary ? Colors.amber : null,
+                ),
                 title: Text(name?.isNotEmpty == true ? name! : '(No name)'),
                 subtitle: Text(address.isNotEmpty ? address : '(No address)'),
                 trailing: PopupMenuButton<String>(
@@ -195,11 +253,17 @@ class _ManageLocationsPageState extends State<ManageLocationsPage> {
                         if (!isPrimary)
                           const PopupMenuItem(
                             value: 'primary',
-                            child: ListTile(leading: Icon(Icons.star), title: Text('Set as primary')),
+                            child: ListTile(
+                              leading: Icon(Icons.star),
+                              title: Text('Set as primary'),
+                            ),
                           ),
                         const PopupMenuItem(
                           value: 'delete',
-                          child: ListTile(leading: Icon(Icons.delete_outline), title: Text('Delete')),
+                          child: ListTile(
+                            leading: Icon(Icons.delete_outline),
+                            title: Text('Delete'),
+                          ),
                         ),
                       ],
                 ),
@@ -210,9 +274,12 @@ class _ManageLocationsPageState extends State<ManageLocationsPage> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
-          final created = await Navigator.of(
-            context,
-          ).push<bool>(MaterialPageRoute(builder: (_) => LocationWizard(organizationId: widget.organizationId)));
+          final created = await Navigator.of(context).push<bool>(
+            MaterialPageRoute(
+              builder:
+                  (_) => LocationWizard(organizationId: widget.organizationId),
+            ),
+          );
           if (created == true && mounted) setState(() {});
         },
         icon: const Icon(Icons.add_location_alt),

@@ -4,12 +4,15 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:hands_app/features/crm/services/crm_service.dart';
 import 'package:hands_app/routing/routes.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 enum _CrmAccountFilter { active, recentCanceled, inactive, all }
+
+enum _CrmPromoDuration { once, repeating, forever }
 
 extension _CrmAccountFilterLabel on _CrmAccountFilter {
   String get label {
@@ -22,6 +25,30 @@ extension _CrmAccountFilterLabel on _CrmAccountFilter {
         return 'Inactive/old';
       case _CrmAccountFilter.all:
         return 'All accounts';
+    }
+  }
+}
+
+extension _CrmPromoDurationLabel on _CrmPromoDuration {
+  String get stripeValue {
+    switch (this) {
+      case _CrmPromoDuration.once:
+        return 'once';
+      case _CrmPromoDuration.repeating:
+        return 'repeating';
+      case _CrmPromoDuration.forever:
+        return 'forever';
+    }
+  }
+
+  String get label {
+    switch (this) {
+      case _CrmPromoDuration.once:
+        return 'First invoice';
+      case _CrmPromoDuration.repeating:
+        return 'Months';
+      case _CrmPromoDuration.forever:
+        return 'Forever';
     }
   }
 }
@@ -138,66 +165,207 @@ class _CrmDashboardPageState extends State<CrmDashboardPage> {
     final campaignController = TextEditingController(text: 'Launch');
     final percentController = TextEditingController(text: '20');
     final maxController = TextEditingController();
+    final durationMonthsController = TextEditingController(text: '3');
+    _CrmPromoDuration duration = _CrmPromoDuration.once;
+    DateTime? expiresAt = DateTime.now().add(const Duration(days: 30));
+    bool firstTimeCustomersOnly = true;
 
     final shouldCreate = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
-        return AlertDialog(
-          backgroundColor: HandsColors.cardPrimary,
-          title: const Text('Generate promo code'),
-          content: SizedBox(
-            width: 420,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: codeController,
-                  textCapitalization: TextCapitalization.characters,
-                  decoration: const InputDecoration(labelText: 'Code'),
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final expiresLabel =
+                expiresAt == null
+                    ? 'No expiration'
+                    : DateFormat('MMM d, yyyy').format(expiresAt!);
+            return HandsDialog(
+              title: 'Generate promo code',
+              maxWidth: 520,
+              actions: [
+                HandsSecondaryButton(
+                  text: 'Cancel',
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: campaignController,
-                  decoration: const InputDecoration(labelText: 'Campaign'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: percentController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Percent off'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: maxController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Max redemptions',
-                  ),
+                HandsPrimaryButton(
+                  text: 'Create',
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
                 ),
               ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Create'),
-            ),
-          ],
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: codeController,
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: const InputDecoration(labelText: 'Code'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: campaignController,
+                    decoration: const InputDecoration(labelText: 'Campaign'),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: percentController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Percent off',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: maxController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Max redemptions',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Discount applies to',
+                    style: HandsModalTokens.sectionTitleStyle,
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children:
+                        _CrmPromoDuration.values
+                            .map(
+                              (value) => ChoiceChip(
+                                label: Text(value.label),
+                                selected: duration == value,
+                                onSelected:
+                                    (_) =>
+                                        setDialogState(() => duration = value),
+                              ),
+                            )
+                            .toList(),
+                  ),
+                  if (duration == _CrmPromoDuration.repeating) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: durationMonthsController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Discount duration in months',
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  Text(
+                    'Code valid through',
+                    style: HandsModalTokens.sectionTitleStyle,
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      ActionChip(
+                        label: Text(expiresLabel),
+                        avatar: const Icon(Icons.event_outlined, size: 18),
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: dialogContext,
+                            initialDate:
+                                expiresAt ??
+                                DateTime.now().add(const Duration(days: 30)),
+                            firstDate: DateTime.now(),
+                            lastDate: DateTime.now().add(
+                              const Duration(days: 730),
+                            ),
+                          );
+                          if (picked != null) {
+                            setDialogState(() => expiresAt = picked);
+                          }
+                        },
+                      ),
+                      for (final days in const [7, 30, 60, 90])
+                        ChoiceChip(
+                          label: Text('${days}d'),
+                          selected:
+                              expiresAt != null &&
+                              expiresAt!.difference(DateTime.now()).inDays >=
+                                  days - 1 &&
+                              expiresAt!.difference(DateTime.now()).inDays <=
+                                  days + 1,
+                          onSelected:
+                              (_) => setDialogState(
+                                () =>
+                                    expiresAt = DateTime.now().add(
+                                      Duration(days: days),
+                                    ),
+                              ),
+                        ),
+                      TextButton(
+                        onPressed: () => setDialogState(() => expiresAt = null),
+                        child: const Text('No expiry'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  SwitchListTile.adaptive(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    value: firstTimeCustomersOnly,
+                    title: const Text('First-time customers only'),
+                    subtitle: const Text(
+                      'Prevents existing Stripe customers from redeeming this code.',
+                    ),
+                    onChanged:
+                        (value) => setDialogState(
+                          () => firstTimeCustomersOnly = value,
+                        ),
+                  ),
+                ],
+              ),
+            );
+          },
         );
       },
     );
 
-    if (shouldCreate != true) return;
+    if (shouldCreate != true) {
+      codeController.dispose();
+      campaignController.dispose();
+      percentController.dispose();
+      maxController.dispose();
+      durationMonthsController.dispose();
+      return;
+    }
+    final code = codeController.text.trim();
+    final campaign = campaignController.text.trim();
+    final percentOff = int.tryParse(percentController.text.trim()) ?? 0;
+    final maxRedemptions = int.tryParse(maxController.text.trim());
+    final durationInMonths = int.tryParse(durationMonthsController.text.trim());
+    codeController.dispose();
+    campaignController.dispose();
+    percentController.dispose();
+    maxController.dispose();
+    durationMonthsController.dispose();
     try {
       await _service.createPromotionCode(
-        code: codeController.text.trim(),
-        campaign: campaignController.text.trim(),
-        percentOff: int.tryParse(percentController.text.trim()) ?? 0,
-        maxRedemptions: int.tryParse(maxController.text.trim()),
+        code: code,
+        campaign: campaign,
+        percentOff: percentOff,
+        duration: duration.stripeValue,
+        durationInMonths:
+            duration == _CrmPromoDuration.repeating ? durationInMonths : null,
+        maxRedemptions: maxRedemptions,
+        expiresAt: expiresAt,
+        firstTimeCustomersOnly: firstTimeCustomersOnly,
       );
       await _loadPromotionCodes();
       if (!mounted) return;
@@ -265,10 +433,20 @@ class _CrmDashboardPageState extends State<CrmDashboardPage> {
     final shouldUpdate = await showDialog<bool>(
       context: context,
       builder:
-          (dialogContext) => AlertDialog(
-            backgroundColor: HandsColors.cardPrimary,
-            title: Text(archived ? 'Unarchive account?' : 'Archive account?'),
-            content: Column(
+          (dialogContext) => HandsDialog(
+            title: archived ? 'Unarchive account?' : 'Archive account?',
+            maxWidth: 480,
+            actions: [
+              HandsSecondaryButton(
+                text: 'Cancel',
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+              ),
+              HandsPrimaryButton(
+                text: archived ? 'Unarchive' : 'Archive',
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+              ),
+            ],
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -276,6 +454,7 @@ class _CrmDashboardPageState extends State<CrmDashboardPage> {
                   archived
                       ? 'This will return the account to the default CRM list and metrics.'
                       : 'This hides the account from the default CRM list and excludes it from customer, user, location, and MRR totals. It does not delete data or cancel Stripe.',
+                  style: HandsModalTokens.bodyStyle,
                 ),
                 if (!archived) ...[
                   const SizedBox(height: 12),
@@ -286,16 +465,6 @@ class _CrmDashboardPageState extends State<CrmDashboardPage> {
                 ],
               ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(dialogContext).pop(true),
-                child: Text(archived ? 'Unarchive' : 'Archive'),
-              ),
-            ],
           ),
     );
     if (shouldUpdate != true) return;
@@ -422,9 +591,30 @@ class _CrmDashboardPageState extends State<CrmDashboardPage> {
               if (!wide) {
                 return Padding(
                   padding: const EdgeInsets.all(16),
-                  child: Column(
+                  child: ListView(
                     children: [
-                      ...content,
+                      _MetricsGrid(data: data),
+                      const SizedBox(height: 10),
+                      _Toolbar(
+                        controller: _searchController,
+                        onChanged: () => setState(() {}),
+                        onCreateCode: _createPromotionCode,
+                        showArchived: _showArchived,
+                        onShowArchivedChanged: _setShowArchived,
+                        accountFilter: _accountFilter,
+                        onAccountFilterChanged:
+                            (value) => setState(() => _accountFilter = value),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        height: 360,
+                        child: _CustomerTable(
+                          customers: filtered,
+                          selectedOrgId:
+                              _selectedCustomer?['organizationId']?.toString(),
+                          onSelect: _selectCustomer,
+                        ),
+                      ),
                       const SizedBox(height: 16),
                       SizedBox(
                         height: 520,
@@ -495,6 +685,11 @@ class _MetricsGrid extends StatelessWidget {
       ('Locations', data['totalLocations']?.toString() ?? '0'),
       ('Issues', data['paymentIssues']?.toString() ?? '0'),
       ('Recent cancels', data['recentlyCanceled']?.toString() ?? '0'),
+      ('New 7d', data['newSignups7d']?.toString() ?? '0'),
+      ('New 30d', data['newSignups30d']?.toString() ?? '0'),
+      ('Stopped 7d', data['stoppedSubscriptions7d']?.toString() ?? '0'),
+      ('Stopped 30d', data['stoppedSubscriptions30d']?.toString() ?? '0'),
+      ('Trials ending', data['trialsEnding']?.toString() ?? '0'),
       ('Inactive', data['oldInactive']?.toString() ?? '0'),
       ('Archived', data['archivedCustomers']?.toString() ?? '0'),
       ('Excluded', data['excludedFromMrrCustomers']?.toString() ?? '0'),
@@ -565,71 +760,94 @@ class _Toolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: SizedBox(
-            height: 42,
-            child: TextField(
-              controller: controller,
-              onChanged: (_) => onChanged(),
-              style: const TextStyle(fontSize: 13),
-              decoration: const InputDecoration(
-                isDense: true,
-                prefixIcon: Icon(Icons.search, size: 18),
-                prefixIconConstraints: BoxConstraints(minWidth: 38),
-                hintText: 'Search accounts',
-                border: OutlineInputBorder(),
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 12,
-                ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 620;
+        final search = SizedBox(
+          height: 42,
+          width: compact ? constraints.maxWidth : null,
+          child: TextField(
+            controller: controller,
+            onChanged: (_) => onChanged(),
+            style: const TextStyle(fontSize: 13),
+            decoration: const InputDecoration(
+              isDense: true,
+              prefixIcon: Icon(Icons.search, size: 18),
+              prefixIconConstraints: BoxConstraints(minWidth: 38),
+              hintText: 'Search accounts',
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 12,
               ),
             ),
           ),
-        ),
-        const SizedBox(width: 8),
-        FilledButton.icon(
-          onPressed: onCreateCode,
-          style: FilledButton.styleFrom(
-            visualDensity: VisualDensity.compact,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        );
+        final controls = [
+          FilledButton.icon(
+            onPressed: onCreateCode,
+            style: FilledButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            ),
+            icon: const Icon(Icons.confirmation_number_outlined, size: 17),
+            label: const Text('Promo'),
           ),
-          icon: const Icon(Icons.confirmation_number_outlined, size: 17),
-          label: const Text('Promo'),
-        ),
-        const SizedBox(width: 8),
-        SizedBox(
-          height: 42,
-          child: DropdownButton<_CrmAccountFilter>(
-            value: accountFilter,
-            underline: const SizedBox.shrink(),
-            style: const TextStyle(fontSize: 13, color: HandsColors.white),
-            onChanged: (value) {
-              if (value != null) onAccountFilterChanged(value);
-            },
-            items:
-                _CrmAccountFilter.values
-                    .map(
-                      (filter) => DropdownMenuItem(
-                        value: filter,
-                        child: Text(filter.label),
-                      ),
-                    )
-                    .toList(),
+          SizedBox(
+            height: 42,
+            child: DropdownButton<_CrmAccountFilter>(
+              value: accountFilter,
+              underline: const SizedBox.shrink(),
+              style: const TextStyle(fontSize: 13, color: HandsColors.white),
+              onChanged: (value) {
+                if (value != null) onAccountFilterChanged(value);
+              },
+              items:
+                  _CrmAccountFilter.values
+                      .map(
+                        (filter) => DropdownMenuItem(
+                          value: filter,
+                          child: Text(filter.label),
+                        ),
+                      )
+                      .toList(),
+            ),
           ),
-        ),
-        const SizedBox(width: 8),
-        SizedBox(
-          height: 42,
-          child: FilterChip(
-            visualDensity: VisualDensity.compact,
-            selected: showArchived,
-            label: const Text('Archived', style: TextStyle(fontSize: 12)),
-            onSelected: onShowArchivedChanged,
+          SizedBox(
+            height: 42,
+            child: FilterChip(
+              visualDensity: VisualDensity.compact,
+              selected: showArchived,
+              label: const Text('Archived', style: TextStyle(fontSize: 12)),
+              onSelected: onShowArchivedChanged,
+            ),
           ),
-        ),
-      ],
+        ];
+
+        if (compact) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              search,
+              const SizedBox(height: 8),
+              Wrap(spacing: 8, runSpacing: 8, children: controls),
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            Expanded(child: search),
+            const SizedBox(width: 8),
+            ...controls.expand(
+              (control) => [
+                control,
+                if (control != controls.last) const SizedBox(width: 8),
+              ],
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -1048,6 +1266,7 @@ String _promoDiscountLabel(Map<String, dynamic> code) {
 String _promoCodeSummary(Map<String, dynamic> code) {
   final parts = <String>[
     _promoDiscountLabel(code),
+    _promoDurationLabel(code),
     code['statusLabel']?.toString() ?? 'unknown',
     'Created ${_formatCrmDate(code['created'])}',
   ];
@@ -1057,7 +1276,23 @@ String _promoCodeSummary(Map<String, dynamic> code) {
   if (code['remainingRedemptions'] != null) {
     parts.add('${code['remainingRedemptions']} remaining');
   }
+  if (code['firstTimeCustomersOnly'] == true) {
+    parts.add('first-time only');
+  }
+  if ((code['campaign'] ?? '').toString().isNotEmpty) {
+    parts.add(code['campaign'].toString());
+  }
   return parts.join(' • ');
+}
+
+String _promoDurationLabel(Map<String, dynamic> code) {
+  final duration = code['duration']?.toString();
+  if (duration == 'repeating') {
+    final months = code['durationInMonths'];
+    return months == null ? 'Repeating' : '$months mo';
+  }
+  if (duration == 'forever') return 'Forever';
+  return 'First invoice';
 }
 
 class _DetailRow extends StatelessWidget {

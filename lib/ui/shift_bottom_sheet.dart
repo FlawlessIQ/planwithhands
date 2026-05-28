@@ -7,6 +7,7 @@ import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/utils/location_helper.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/l10n/l10n.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 // jobtype_helper import removed — not used in this file
@@ -380,9 +381,16 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
     showDialog(
       context: context,
       builder:
-          (context) => AlertDialog(
-            title: Text(l10n.shiftSheetAddRequiredRole),
-            content: SizedBox(
+          (context) => HandsDialog(
+            title: l10n.shiftSheetAddRequiredRole,
+            maxWidth: 480,
+            actions: [
+              HandsSecondaryButton(
+                text: l10n.commonCancel,
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+            child: SizedBox(
               width: double.maxFinite,
               child: ListView.builder(
                 shrinkWrap: true,
@@ -419,12 +427,6 @@ class _ShiftBottomSheetState extends State<ShiftBottomSheet> {
                 },
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(l10n.commonCancel),
-              ),
-            ],
           ),
     );
   }

@@ -53,6 +53,44 @@ String localizedDocumentCategoryLabel(BuildContext context, String category) {
   }
 }
 
+List<String> documentLocationIdsFromData(Map<String, dynamic> data) {
+  final rawList = data['locationIds'];
+  if (rawList is Iterable) {
+    final ids =
+        rawList
+            .map((value) => value?.toString().trim() ?? '')
+            .where((value) => value.isNotEmpty)
+            .toSet()
+            .toList();
+    if (ids.isNotEmpty) {
+      return ids;
+    }
+  }
+
+  final singleLocationId = (data['locationId'] as String?)?.trim();
+  if (singleLocationId != null && singleLocationId.isNotEmpty) {
+    return [singleLocationId];
+  }
+
+  return const [];
+}
+
+bool documentMatchesLocationScope(
+  Map<String, dynamic> data,
+  String? selectedLocationId,
+) {
+  if (selectedLocationId == null) {
+    return true;
+  }
+
+  final scopedLocationIds = documentLocationIdsFromData(data);
+  if (scopedLocationIds.isEmpty) {
+    return true;
+  }
+
+  return scopedLocationIds.contains(selectedLocationId);
+}
+
 class ViewDocumentsPage extends HookConsumerWidget {
   final String? organizationIdOverride;
   final bool allowPlatformAccess;
@@ -109,6 +147,85 @@ class ViewDocumentsPage extends HookConsumerWidget {
       } catch (_) {
         return l10n.commonNotSpecified;
       }
+    }
+
+    Future<void> showLocationSwitcher() async {
+      if (availableLocations.value.length <= 1) return;
+
+      final selection = await showModalBottomSheet<Map<String, String?>>(
+        context: context,
+        backgroundColor: HandsColors.primaryContainer,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        builder:
+            (sheetContext) => SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      l10n.dashboardSwitchLocationTitle,
+                      style: GoogleFonts.inter(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: HandsColors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      l10n.dashboardSwitchLocationBody,
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: HandsColors.white70,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    _LocationScopeOption(
+                      label: l10n.documentsAllLocations,
+                      icon: Icons.public_outlined,
+                      isSelected: currentLocationId == null,
+                      onTap:
+                          () => Navigator.of(sheetContext).pop({
+                            'id': null,
+                            'name': l10n.documentsAllLocations,
+                          }),
+                    ),
+                    const SizedBox(height: 10),
+                    ...availableLocations.value.map((location) {
+                      final locationId = (location['id'] ?? '').toString();
+                      final locationName =
+                          (location['name'] ?? l10n.commonNotSpecified)
+                              .toString();
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _LocationScopeOption(
+                          label: locationName,
+                          icon: Icons.location_on_outlined,
+                          isSelected: currentLocationId == locationId,
+                          onTap:
+                              () => Navigator.of(
+                                sheetContext,
+                              ).pop({'id': locationId, 'name': locationName}),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+            ),
+      );
+
+      if (selection == null) return;
+
+      await LocationSelectionService.instance.setLocationAsync(
+        selection['id'],
+        locationName: selection['name'],
+      );
     }
 
     logger.d('DEBUG: userState: $userState');
@@ -301,8 +418,8 @@ class ViewDocumentsPage extends HookConsumerWidget {
           return UploadDocumentBottomSheet(
             documentId: docId,
             documentData: docData,
-            locationId:
-                currentLocationId, // Pass the current location ID from LocationSelectionService
+            locationId: currentLocationId,
+            availableLocations: availableLocations.value,
             onDocumentUploaded: () {
               // Close the sheet from the parent on the next frame to avoid Navigator lock.
               WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -333,20 +450,23 @@ class ViewDocumentsPage extends HookConsumerWidget {
       final confirmed = await showDialog<bool>(
         context: context,
         builder:
-            (ctx) => AlertDialog(
-              title: Text(l10n.documentsDeleteTitle),
-              content: Text(l10n.documentsDeleteBody),
+            (ctx) => HandsDialog(
+              title: l10n.documentsDeleteTitle,
+              maxWidth: 440,
               actions: [
-                TextButton(
+                HandsSecondaryButton(
+                  text: l10n.commonCancel,
                   onPressed: () => Navigator.of(ctx).pop(false),
-                  child: Text(l10n.commonCancel),
                 ),
-                TextButton(
+                HandsPrimaryButton(
+                  text: l10n.commonDelete,
                   onPressed: () => Navigator.of(ctx).pop(true),
-                  style: TextButton.styleFrom(foregroundColor: Colors.red),
-                  child: Text(l10n.commonDelete),
                 ),
               ],
+              child: Text(
+                l10n.documentsDeleteBody,
+                style: HandsModalTokens.bodyStyle,
+              ),
             ),
       );
       if (confirmed != true) return;
@@ -432,28 +552,30 @@ class ViewDocumentsPage extends HookConsumerWidget {
                                   Text(
                                     l10n.documentsTitle,
                                     style: GoogleFonts.inter(
-                                      fontSize: 29,
+                                      fontSize: 24,
                                       fontWeight: FontWeight.w800,
                                       color: HandsColors.white,
-                                      letterSpacing: -0.7,
+                                      letterSpacing: -0.6,
                                     ),
                                   ),
-                                  const SizedBox(height: 6),
+                                  const SizedBox(height: 4),
                                   Text(
                                     userRole == 2
                                         ? l10n.documentsAdminSubtitle
                                         : l10n.documentsStaffSubtitle,
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis,
                                     style: GoogleFonts.inter(
-                                      fontSize: 13.5,
+                                      fontSize: 12.5,
                                       fontWeight: FontWeight.w500,
                                       color: HandsColors.white70,
-                                      height: 1.4,
+                                      height: 1.32,
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(width: 10),
                             ContextHelpTrigger(
                               title: l10n.documentsTitle,
                               subtitle: l10n.documentsHelpSubtitle,
@@ -463,16 +585,17 @@ class ViewDocumentsPage extends HookConsumerWidget {
                               ],
                             ),
                             if (userRole == 2) ...[
-                              const SizedBox(width: 16),
+                              const SizedBox(width: 10),
                               HandsPrimaryButton(
                                 text: l10n.documentsUpload,
                                 icon: Icons.cloud_upload_outlined,
+                                height: 46,
                                 onPressed: () => showUploadSheet(),
                               ),
                             ],
                           ],
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 12),
                         TextField(
                           onChanged: (value) => searchQuery.value = value,
                           style: GoogleFonts.inter(
@@ -496,7 +619,7 @@ class ViewDocumentsPage extends HookConsumerWidget {
                             fillColor: HandsModalTokens.surfaceMuted,
                             contentPadding: const EdgeInsets.symmetric(
                               horizontal: 14,
-                              vertical: 12,
+                              vertical: 10,
                             ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(16),
@@ -519,7 +642,7 @@ class ViewDocumentsPage extends HookConsumerWidget {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 14),
+                        const SizedBox(height: 10),
                         SingleChildScrollView(
                           scrollDirection: Axis.horizontal,
                           child: Row(
@@ -558,8 +681,8 @@ class ViewDocumentsPage extends HookConsumerWidget {
                                                 : HandsColors.white12,
                                       ),
                                       padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 6,
+                                        horizontal: 8,
+                                        vertical: 4,
                                       ),
                                       materialTapTargetSize:
                                           MaterialTapTargetSize.shrinkWrap,
@@ -575,14 +698,14 @@ class ViewDocumentsPage extends HookConsumerWidget {
                     const SizedBox(height: 12),
                     HandsModalSection(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
+                        horizontal: 14,
+                        vertical: 12,
                       ),
                       child: Row(
                         children: [
                           Container(
-                            width: 42,
-                            height: 42,
+                            width: 38,
+                            height: 38,
                             decoration: BoxDecoration(
                               color: HandsColors.handsOrange.withValues(
                                 alpha: 0.14,
@@ -592,10 +715,10 @@ class ViewDocumentsPage extends HookConsumerWidget {
                             child: const Icon(
                               Icons.location_on_outlined,
                               color: HandsColors.handsOrange,
-                              size: 20,
+                              size: 18,
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -612,7 +735,7 @@ class ViewDocumentsPage extends HookConsumerWidget {
                                 Text(
                                   getCurrentLocationName(),
                                   style: GoogleFonts.inter(
-                                    fontSize: 16.5,
+                                    fontSize: 15.5,
                                     fontWeight: FontWeight.w700,
                                     color: HandsColors.white,
                                   ),
@@ -620,26 +743,42 @@ class ViewDocumentsPage extends HookConsumerWidget {
                               ],
                             ),
                           ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 7,
-                            ),
-                            decoration: BoxDecoration(
-                              color: HandsColors.secondaryContainer,
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(color: HandsColors.white12),
-                            ),
-                            child: Text(
-                              l10n.documentsLocationsCount(
-                                availableLocations.value.length,
+                          const SizedBox(width: 8),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              HandsSecondaryButton(
+                                text: l10n.dashboardSwitch,
+                                icon: Icons.swap_horiz_rounded,
+                                height: 38,
+                                onPressed: showLocationSwitcher,
                               ),
-                              style: GoogleFonts.inter(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: HandsColors.white70,
+                              const SizedBox(height: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 9,
+                                  vertical: 5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: HandsColors.secondaryContainer,
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(
+                                    color: HandsColors.white12,
+                                  ),
+                                ),
+                                child: Text(
+                                  l10n.documentsLocationsCount(
+                                    availableLocations.value.length,
+                                  ),
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: HandsColors.white70,
+                                  ),
+                                ),
                               ),
-                            ),
+                            ],
                           ),
                         ],
                       ),
@@ -684,10 +823,10 @@ class ViewDocumentsPage extends HookConsumerWidget {
                   final locationScopedDocs =
                       allDocs.where((doc) {
                         final data = doc.data() as Map<String, dynamic>;
-                        final docLocationId = data['locationId'] as String?;
-                        final selectedLoc = currentLocationId;
-                        if (selectedLoc == null) return true;
-                        return docLocationId == selectedLoc;
+                        return documentMatchesLocationScope(
+                          data,
+                          currentLocationId,
+                        );
                       }).toList();
 
                   final normalizedSearch =
@@ -721,49 +860,10 @@ class ViewDocumentsPage extends HookConsumerWidget {
                     );
                   }
 
-                  final categoriesRepresented =
-                      docs
-                          .map(
-                            (doc) =>
-                                (doc.data() as Map<String, dynamic>)['category']
-                                    as String? ??
-                                'Other',
-                          )
-                          .toSet()
-                          .length;
-
                   return Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
                     child: Column(
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _DocumentMetricCard(
-                                label: l10n.documentsVisibleFiles,
-                                value: '${docs.length}',
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _DocumentMetricCard(
-                                label: l10n.documentsCategories,
-                                value: '$categoriesRepresented',
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _DocumentMetricCard(
-                                label: l10n.documentsScope,
-                                value:
-                                    currentLocationId == null
-                                        ? l10n.documentsScopeAll
-                                        : l10n.documentsScopeLocal,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
                         Expanded(
                           child: LayoutBuilder(
                             builder: (context, constraints) {
@@ -810,7 +910,7 @@ class ViewDocumentsPage extends HookConsumerWidget {
                               return ListView.separated(
                                 itemCount: docs.length,
                                 separatorBuilder:
-                                    (_, _) => const SizedBox(height: 10),
+                                    (_, _) => const SizedBox(height: 8),
                                 itemBuilder: (context, index) {
                                   final doc = docs[index];
                                   final data =
@@ -1101,43 +1201,6 @@ class ViewDocumentsPage extends HookConsumerWidget {
   }
 }
 
-class _DocumentMetricCard extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _DocumentMetricCard({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return HandsModalSection(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: GoogleFonts.inter(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
-              color: HandsColors.white70,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: GoogleFonts.inter(
-              fontSize: 21,
-              fontWeight: FontWeight.w800,
-              color: HandsColors.white,
-              letterSpacing: -0.4,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _DocumentCard extends StatelessWidget {
   final Map<String, dynamic> data;
   final int userRole;
@@ -1159,7 +1222,7 @@ class _DocumentCard extends StatelessWidget {
     final type = (data['fileType'] as String?) ?? 'document';
     final category = (data['category'] as String?) ?? 'Other';
     final fileName = (data['fileName'] as String?) ?? '';
-    final locationId = data['locationId'] as String?;
+    final locationIds = documentLocationIdsFromData(data);
     final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
 
     final icon = switch (type.toLowerCase()) {
@@ -1180,8 +1243,13 @@ class _DocumentCard extends StatelessWidget {
       _ => HandsColors.handsOrange,
     };
 
+    final isCompactPhone = MediaQuery.sizeOf(context).width < 430;
+
     return HandsModalSection(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: EdgeInsets.symmetric(
+        horizontal: isCompactPhone ? 12 : 16,
+        vertical: isCompactPhone ? 12 : 14,
+      ),
       child: InkWell(
         onTap: onOpen,
         borderRadius: BorderRadius.circular(18),
@@ -1191,15 +1259,19 @@ class _DocumentCard extends StatelessWidget {
             Row(
               children: [
                 Container(
-                  width: 42,
-                  height: 42,
+                  width: isCompactPhone ? 36 : 42,
+                  height: isCompactPhone ? 36 : 42,
                   decoration: BoxDecoration(
                     color: accent.withValues(alpha: 0.14),
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Icon(icon, color: accent, size: 20),
+                  child: Icon(
+                    icon,
+                    color: accent,
+                    size: isCompactPhone ? 18 : 20,
+                  ),
                 ),
-                const SizedBox(width: 12),
+                SizedBox(width: isCompactPhone ? 10 : 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1209,16 +1281,16 @@ class _DocumentCard extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.inter(
-                          fontSize: 16,
+                          fontSize: isCompactPhone ? 14.5 : 16,
                           fontWeight: FontWeight.w700,
                           color: HandsColors.white,
                           letterSpacing: -0.2,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 3),
                       Wrap(
                         spacing: 6,
-                        runSpacing: 6,
+                        runSpacing: 4,
                         children: [
                           _DocumentTag(
                             label: localizedDocumentCategoryLabel(
@@ -1229,9 +1301,13 @@ class _DocumentCard extends StatelessWidget {
                           _DocumentTag(label: typeLabel, accent: accent),
                           _DocumentTag(
                             label:
-                                locationId == null
-                                    ? context.l10n.documentsGlobal
-                                    : context.l10n.documentsLocation,
+                                locationIds.isEmpty
+                                    ? context.l10n.documentsAllLocations
+                                    : locationIds.length == 1
+                                    ? context.l10n.documentsLocation
+                                    : context.l10n.documentsLocationsCount(
+                                      locationIds.length,
+                                    ),
                           ),
                         ],
                       ),
@@ -1241,18 +1317,28 @@ class _DocumentCard extends StatelessWidget {
                 if (userRole == 2) ...[
                   IconButton(
                     onPressed: onEdit,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 30,
+                      height: 30,
+                    ),
                     icon: const Icon(
                       Icons.edit_outlined,
-                      size: 18,
+                      size: 17,
                       color: HandsColors.white70,
                     ),
                     tooltip: context.l10n.documentsEditTooltip,
                   ),
                   IconButton(
                     onPressed: onDelete,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 30,
+                      height: 30,
+                    ),
                     icon: const Icon(
                       Icons.delete_outline,
-                      size: 18,
+                      size: 17,
                       color: HandsColors.error,
                     ),
                     tooltip: context.l10n.documentsDeleteTooltip,
@@ -1266,7 +1352,7 @@ class _DocumentCard extends StatelessWidget {
               ],
             ),
             if (fileName.isNotEmpty || createdAt != null) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               Text(
                 fileName.isNotEmpty
                     ? fileName
@@ -1278,7 +1364,7 @@ class _DocumentCard extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: GoogleFonts.inter(
-                  fontSize: 12.5,
+                  fontSize: 11.5,
                   fontWeight: FontWeight.w500,
                   color: HandsColors.white70,
                 ),
@@ -1301,7 +1387,7 @@ class _DocumentTag extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = accent ?? HandsColors.white70;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
       decoration: BoxDecoration(
         color:
             accent == null
@@ -1317,10 +1403,84 @@ class _DocumentTag extends StatelessWidget {
       ),
       child: Text(
         label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: GoogleFonts.inter(
-          fontSize: 11.5,
+          fontSize: 10.5,
           fontWeight: FontWeight.w600,
           color: color,
+        ),
+      ),
+    );
+  }
+}
+
+class _LocationScopeOption extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _LocationScopeOption({
+    required this.label,
+    required this.icon,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color:
+              isSelected
+                  ? HandsColors.handsOrange.withValues(alpha: 0.12)
+                  : HandsColors.secondaryContainer,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color:
+                isSelected
+                    ? HandsColors.handsOrange.withValues(alpha: 0.38)
+                    : HandsColors.white12,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color:
+                    isSelected
+                        ? HandsColors.handsOrange.withValues(alpha: 0.18)
+                        : HandsColors.white.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: HandsColors.white, size: 18),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w700,
+                  color: HandsColors.white,
+                ),
+              ),
+            ),
+            if (isSelected)
+              const Icon(
+                Icons.check_circle_rounded,
+                color: HandsColors.handsOrange,
+                size: 18,
+              ),
+          ],
         ),
       ),
     );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:hands_app/services/push_notification_service.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/widgets/push_notification_permission_widget.dart';
 import 'package:hands_app/widgets/notification_settings_widget.dart';
 import 'package:hands_app/l10n/l10n.dart';
@@ -238,9 +239,16 @@ class _NotificationSettingsPageState
     showDialog(
       context: context,
       builder:
-          (context) => AlertDialog(
-            title: Text(l10n.notificationSettingsTestTitle),
-            content: Column(
+          (context) => HandsDialog(
+            title: l10n.notificationSettingsTestTitle,
+            maxWidth: 460,
+            actions: [
+              HandsSecondaryButton(
+                text: l10n.commonOk,
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -265,12 +273,6 @@ class _NotificationSettingsPageState
                 ),
               ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(l10n.commonOk),
-              ),
-            ],
           ),
     );
   }

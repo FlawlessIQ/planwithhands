@@ -326,98 +326,113 @@ class UserDashboardPage extends HookConsumerWidget {
         return;
       }
       final currentId = getCurrentLocationId();
-      final selected = await showModalBottomSheet<String>(
+      final selected = await HandsBottomSheet.show<String>(
         context: context,
-        backgroundColor: HandsColors.primaryContainer,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        builder:
-            (sheetContext) => SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+        title: context.l10n.dashboardSwitchLocationTitle,
+        subtitle: context.l10n.dashboardSwitchLocationBody,
+        initialChildSize: 0.42,
+        minChildSize: 0.28,
+        maxChildSize: 0.75,
+        child: ListView.separated(
+          shrinkWrap: true,
+          itemCount: availableLocations.value.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 10),
+          itemBuilder: (sheetContext, index) {
+            final location = availableLocations.value[index];
+            final locationId = (location['id'] ?? '').toString();
+            final isSelected = locationId == currentId;
+            final locationName =
+                (location['name'] ?? context.l10n.dashboardUnnamedLocation)
+                    .toString();
+
+            return InkWell(
+              borderRadius: BorderRadius.circular(
+                HandsModalTokens.sectionRadius,
+              ),
+              onTap: () => Navigator.of(sheetContext).pop(locationId),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 13,
+                ),
+                decoration: BoxDecoration(
+                  color:
+                      isSelected
+                          ? HandsColors.handsOrange.withValues(alpha: 0.12)
+                          : HandsModalTokens.surfaceElevated,
+                  borderRadius: BorderRadius.circular(
+                    HandsModalTokens.sectionRadius,
+                  ),
+                  border: Border.all(
+                    color:
+                        isSelected
+                            ? HandsColors.handsOrange.withValues(alpha: 0.55)
+                            : HandsModalTokens.border,
+                  ),
+                ),
+                child: Row(
                   children: [
-                    Text(
-                      context.l10n.dashboardSwitchLocationTitle,
-                      style: Theme.of(sheetContext).textTheme.titleLarge
-                          ?.copyWith(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      context.l10n.dashboardSwitchLocationBody,
-                      style: Theme.of(sheetContext).textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: 16),
-                    ...availableLocations.value.map((location) {
-                      final locationId = (location['id'] ?? '').toString();
-                      final isSelected = locationId == currentId;
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        decoration: BoxDecoration(
-                          color:
-                              isSelected
-                                  ? HandsColors.handsOrange.withValues(
-                                    alpha: 0.12,
-                                  )
-                                  : HandsColors.secondaryContainer,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color:
-                                isSelected
-                                    ? HandsColors.handsOrange
-                                    : HandsColors.white12,
-                          ),
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color:
+                            isSelected
+                                ? HandsColors.handsOrange.withValues(
+                                  alpha: 0.16,
+                                )
+                                : HandsModalTokens.surfaceMuted,
+                        borderRadius: BorderRadius.circular(
+                          HandsModalTokens.compactControlRadius,
                         ),
-                        child: ListTile(
-                          onTap:
-                              () => Navigator.of(sheetContext).pop(locationId),
-                          leading: Icon(
-                            Icons.location_on,
-                            color:
-                                isSelected
-                                    ? HandsColors.handsOrange
-                                    : HandsColors.white70,
-                          ),
-                          title: Text(
-                            (location['name'] ??
-                                    context.l10n.dashboardUnnamedLocation)
-                                .toString(),
-                            style: const TextStyle(
-                              color: HandsColors.white,
-                              fontWeight: FontWeight.w600,
+                      ),
+                      child: Icon(
+                        Icons.location_on_rounded,
+                        color:
+                            isSelected
+                                ? HandsColors.handsOrange
+                                : HandsModalTokens.textMuted,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            locationName,
+                            style: HandsModalTokens.sectionTitleStyle.copyWith(
+                              fontSize: 15,
                             ),
                           ),
-                          subtitle:
-                              isSelected
-                                  ? Text(
-                                    context
-                                        .l10n
-                                        .dashboardCurrentlySelectedLocation,
-                                    style: TextStyle(
-                                      color: HandsColors.white70,
-                                    ),
-                                  )
-                                  : null,
-                          trailing:
-                              isSelected
-                                  ? const Icon(
-                                    Icons.check_circle,
-                                    color: HandsColors.handsOrange,
-                                  )
-                                  : const Icon(
-                                    Icons.chevron_right,
-                                    color: HandsColors.white70,
-                                  ),
-                        ),
-                      );
-                    }),
+                          if (isSelected) ...[
+                            const SizedBox(height: 3),
+                            Text(
+                              context.l10n.dashboardCurrentlySelectedLocation,
+                              style: HandsModalTokens.bodyStyle.copyWith(
+                                fontSize: 12.5,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      isSelected
+                          ? Icons.check_circle_rounded
+                          : Icons.chevron_right_rounded,
+                      color:
+                          isSelected
+                              ? HandsColors.handsOrange
+                              : HandsModalTokens.textMuted,
+                    ),
                   ],
                 ),
               ),
-            ),
+            );
+          },
+        ),
       );
 
       if (selected == null || selected == currentId) return;
@@ -4946,54 +4961,56 @@ class _HeroMetricTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 148, maxWidth: 210),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.04),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: accent.withValues(alpha: 0.16)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, size: 15, color: accent),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    label,
-                    style: _mobileDashboardText(
-                      11.5,
-                      weight: FontWeight.w700,
-                      color: accent,
-                    ),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 9),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accent.withValues(alpha: 0.14)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 14, color: accent),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _mobileDashboardText(
+                    10.5,
+                    weight: FontWeight.w700,
+                    color: accent,
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              value,
-              style: _mobileDashboardText(
-                22,
-                weight: FontWeight.w800,
-                letterSpacing: -0.8,
               ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: _mobileDashboardText(
+              18,
+              weight: FontWeight.w800,
+              letterSpacing: -0.6,
             ),
-            const SizedBox(height: 3),
-            Text(
-              detail,
-              style: _mobileDashboardText(
-                11.5,
-                color: HandsColors.white70,
-                height: 1.3,
-              ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            detail,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: _mobileDashboardText(
+              10.5,
+              color: HandsColors.white70,
+              height: 1.2,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -5530,104 +5547,131 @@ class _PrimaryShiftOverview extends StatelessWidget {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 10),
                       Text(
                         shift.shiftName,
                         style: _mobileDashboardText(
-                          splitHero ? 30 : 26,
+                          splitHero ? 28 : 24,
                           weight: FontWeight.w800,
                           height: 1.02,
                           letterSpacing: -0.9,
                         ),
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 4),
                       Text(
                         '${shift.startTime} - ${shift.endTime} • ${timing.detail}',
                         style: _mobileDashboardText(
-                          12.5,
+                          12,
                           color: HandsColors.white70,
                         ),
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 10),
                       Text(
                         summaryText,
                         style: _mobileDashboardText(
-                          15.5,
+                          14,
                           weight: FontWeight.w600,
                           color: HandsColors.white,
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: [
-                          _HeroMetricTile(
-                            label: context.l10n.dashboardProgress,
-                            value:
-                                tasks.isEmpty
-                                    ? '—'
-                                    : '${(progress * 100).round()}%',
-                            detail:
-                                tasks.isEmpty
-                                    ? context.l10n.dashboardWaitingForTasks
-                                    : context.l10n.dashboardCompletedOfTotal(
-                                      completedCount,
-                                      tasks.length,
-                                    ),
-                            accent:
-                                progress >= 1
-                                    ? HandsColors.sageGreen
-                                    : HandsColors.handsOrange,
-                            icon: Icons.donut_small_rounded,
-                          ),
-                          _HeroMetricTile(
-                            label: context.l10n.dashboardRemaining,
-                            value: '${incompleteTasks.length}',
-                            detail: context.l10n.dashboardTasksLeftInShift,
-                            accent:
-                                incompleteTasks.isEmpty
-                                    ? HandsColors.sageGreen
-                                    : HandsColors.white70,
-                            icon: Icons.checklist_rtl_rounded,
-                          ),
-                          _HeroMetricTile(
-                            label:
-                                blockedTasks.isNotEmpty
-                                    ? context.l10n.dashboardAttention
-                                    : context.l10n.dashboardPhotos,
-                            value:
-                                blockedTasks.isNotEmpty
-                                    ? '${blockedTasks.length}'
-                                    : '${photoRequiredTasks.length}',
-                            detail:
-                                blockedTasks.isNotEmpty
-                                    ? context.l10n.dashboardBlockedOrFlagged
-                                    : context.l10n.dashboardNeedPhotoProof,
-                            accent:
-                                blockedTasks.isNotEmpty
-                                    ? HandsColors.amber
-                                    : HandsColors.handsOrange,
-                            icon:
-                                blockedTasks.isNotEmpty
-                                    ? Icons.warning_amber_rounded
-                                    : Icons.camera_alt_rounded,
-                          ),
-                        ],
+                      const SizedBox(height: 12),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final metricTiles = [
+                            _HeroMetricTile(
+                              label: context.l10n.dashboardProgress,
+                              value:
+                                  tasks.isEmpty
+                                      ? '—'
+                                      : '${(progress * 100).round()}%',
+                              detail:
+                                  tasks.isEmpty
+                                      ? context.l10n.dashboardWaitingForTasks
+                                      : context.l10n.dashboardCompletedOfTotal(
+                                        completedCount,
+                                        tasks.length,
+                                      ),
+                              accent:
+                                  progress >= 1
+                                      ? HandsColors.sageGreen
+                                      : HandsColors.handsOrange,
+                              icon: Icons.donut_small_rounded,
+                            ),
+                            _HeroMetricTile(
+                              label: context.l10n.dashboardRemaining,
+                              value: '${incompleteTasks.length}',
+                              detail: context.l10n.dashboardTasksLeftInShift,
+                              accent:
+                                  incompleteTasks.isEmpty
+                                      ? HandsColors.sageGreen
+                                      : HandsColors.white70,
+                              icon: Icons.checklist_rtl_rounded,
+                            ),
+                            _HeroMetricTile(
+                              label:
+                                  blockedTasks.isNotEmpty
+                                      ? context.l10n.dashboardAttention
+                                      : context.l10n.dashboardPhotos,
+                              value:
+                                  blockedTasks.isNotEmpty
+                                      ? '${blockedTasks.length}'
+                                      : '${photoRequiredTasks.length}',
+                              detail:
+                                  blockedTasks.isNotEmpty
+                                      ? context.l10n.dashboardBlockedOrFlagged
+                                      : context.l10n.dashboardNeedPhotoProof,
+                              accent:
+                                  blockedTasks.isNotEmpty
+                                      ? HandsColors.amber
+                                      : HandsColors.handsOrange,
+                              icon:
+                                  blockedTasks.isNotEmpty
+                                      ? Icons.warning_amber_rounded
+                                      : Icons.camera_alt_rounded,
+                            ),
+                          ];
+
+                          if (constraints.maxWidth < 360) {
+                            return Column(
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(child: metricTiles[0]),
+                                    const SizedBox(width: 8),
+                                    Expanded(child: metricTiles[1]),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                metricTiles[2],
+                              ],
+                            );
+                          }
+
+                          return Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(child: metricTiles[0]),
+                              const SizedBox(width: 8),
+                              Expanded(child: metricTiles[1]),
+                              const SizedBox(width: 8),
+                              Expanded(child: metricTiles[2]),
+                            ],
+                          );
+                        },
                       ),
                       if (isInitialTaskLoad) ...[
-                        const SizedBox(height: 14),
+                        const SizedBox(height: 10),
                         ClipRRect(
                           borderRadius: BorderRadius.circular(999),
                           child: const LinearProgressIndicator(minHeight: 5),
                         ),
                       ] else ...[
-                        const SizedBox(height: 14),
+                        const SizedBox(height: 10),
                         ClipRRect(
                           borderRadius: BorderRadius.circular(999),
                           child: LinearProgressIndicator(
                             value: progress,
-                            minHeight: 6,
+                            minHeight: 5,
                             backgroundColor: HandsColors.white12,
                             valueColor: AlwaysStoppedAnimation<Color>(
                               progress >= 1
@@ -5637,22 +5681,25 @@ class _PrimaryShiftOverview extends StatelessWidget {
                           ),
                         ),
                       ],
-                      const SizedBox(height: 16),
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: [
-                          FilledButton.icon(
+                      const SizedBox(height: 12),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final primaryButton = FilledButton.icon(
                             onPressed: onContinueTap,
                             icon: Icon(
                               incompleteTasks.isEmpty
                                   ? Icons.task_alt_rounded
                                   : Icons.arrow_downward_rounded,
+                              size: 18,
                             ),
                             style: FilledButton.styleFrom(
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 13,
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                              textStyle: _mobileDashboardText(
+                                13.5,
+                                weight: FontWeight.w700,
                               ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(16),
@@ -5663,28 +5710,62 @@ class _PrimaryShiftOverview extends StatelessWidget {
                                   ? context.l10n.dashboardReviewTodaysWork
                                   : context.l10n.dashboardContinueWorking,
                             ),
-                          ),
-                          if (tasks.isNotEmpty)
-                            OutlinedButton.icon(
-                              onPressed: onContinueTap,
-                              icon: const Icon(Icons.visibility_outlined),
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 13,
-                                ),
-                                side: BorderSide(
-                                  color: HandsColors.white.withValues(
-                                    alpha: 0.14,
-                                  ),
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                              ),
-                              label: Text(context.l10n.dashboardViewFullShift),
-                            ),
-                        ],
+                          );
+
+                          final secondaryButton =
+                              tasks.isNotEmpty
+                                  ? OutlinedButton.icon(
+                                    onPressed: onContinueTap,
+                                    icon: const Icon(
+                                      Icons.visibility_outlined,
+                                      size: 18,
+                                    ),
+                                    style: OutlinedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 12,
+                                      ),
+                                      textStyle: _mobileDashboardText(
+                                        13,
+                                        weight: FontWeight.w700,
+                                      ),
+                                      side: BorderSide(
+                                        color: HandsColors.white.withValues(
+                                          alpha: 0.14,
+                                        ),
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(16),
+                                      ),
+                                    ),
+                                    label: Text(
+                                      context.l10n.dashboardViewFullShift,
+                                    ),
+                                  )
+                                  : null;
+
+                          if (secondaryButton == null ||
+                              constraints.maxWidth < 360) {
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                primaryButton,
+                                if (secondaryButton != null) ...[
+                                  const SizedBox(height: 8),
+                                  secondaryButton,
+                                ],
+                              ],
+                            );
+                          }
+
+                          return Row(
+                            children: [
+                              Expanded(child: primaryButton),
+                              const SizedBox(width: 8),
+                              secondaryButton,
+                            ],
+                          );
+                        },
                       ),
                     ],
                   );
@@ -6876,24 +6957,28 @@ class _TaskTileFromData extends HookWidget {
           final choice = await showDialog<String?>(
             context: context,
             builder:
-                (ctx) => AlertDialog(
-                  title: Text(l10n.dashboardPhotoRequiredTitle),
-                  content: Text(l10n.dashboardPhotoRequiredBody),
+                (ctx) => HandsDialog(
+                  title: l10n.dashboardPhotoRequiredTitle,
+                  maxWidth: 480,
                   actions: [
-                    TextButton(
+                    HandsSecondaryButton(
+                      text: l10n.commonCancel,
                       onPressed: () => Navigator.of(ctx).pop('cancel'),
-                      child: Text(l10n.commonCancel),
                     ),
-                    TextButton(
+                    HandsSecondaryButton(
+                      text: l10n.dashboardCompleteWithoutPhoto,
                       onPressed:
                           () => Navigator.of(ctx).pop('complete_without_photo'),
-                      child: Text(l10n.dashboardCompleteWithoutPhoto),
                     ),
-                    TextButton(
+                    HandsPrimaryButton(
+                      text: l10n.dashboardAddPhoto,
                       onPressed: () => Navigator.of(ctx).pop('add_photo'),
-                      child: Text(l10n.dashboardAddPhoto),
                     ),
                   ],
+                  child: Text(
+                    l10n.dashboardPhotoRequiredBody,
+                    style: HandsModalTokens.bodyStyle,
+                  ),
                 ),
           );
 
@@ -6931,12 +7016,33 @@ class _TaskTileFromData extends HookWidget {
               context: context,
               barrierDismissible: false,
               builder:
-                  (ctx) => AlertDialog(
-                    title: Text(l10n.dashboardAddNoteRequiredTitle),
-                    content: Column(
+                  (ctx) => HandsDialog(
+                    title: l10n.dashboardAddNoteRequiredTitle,
+                    isDismissible: false,
+                    maxWidth: 480,
+                    actions: [
+                      HandsSecondaryButton(
+                        text: l10n.commonCancel,
+                        onPressed: () => Navigator.of(ctx).pop(null),
+                      ),
+                      HandsPrimaryButton(
+                        text: l10n.dashboardSave,
+                        onPressed: () {
+                          final text = noteController.text.trim();
+                          if (text.isEmpty) {
+                            return; // keep dialog open until non-empty
+                          }
+                          Navigator.of(ctx).pop(text);
+                        },
+                      ),
+                    ],
+                    child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(l10n.dashboardAddNoteRequiredBody),
+                        Text(
+                          l10n.dashboardAddNoteRequiredBody,
+                          style: HandsModalTokens.bodyStyle,
+                        ),
                         const SizedBox(height: 12),
                         TextField(
                           controller: noteController,
@@ -6947,22 +7053,6 @@ class _TaskTileFromData extends HookWidget {
                         ),
                       ],
                     ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(ctx).pop(null),
-                        child: Text(l10n.commonCancel),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          final text = noteController.text.trim();
-                          if (text.isEmpty) {
-                            return; // keep dialog open until non-empty
-                          }
-                          Navigator.of(ctx).pop(text);
-                        },
-                        child: Text(l10n.dashboardSave),
-                      ),
-                    ],
                   ),
             );
             if (note == null || note.isEmpty) return; // user canceled or empty
@@ -7457,26 +7547,30 @@ class _MissedTaskInteractionTile extends HookWidget {
               final choice = await showDialog<String?>(
                 context: context,
                 builder:
-                    (ctx) => AlertDialog(
-                      title: Text(l10n.dashboardPhotoRequiredTitle),
-                      content: Text(l10n.dashboardPhotoRequiredBody),
+                    (ctx) => HandsDialog(
+                      title: l10n.dashboardPhotoRequiredTitle,
+                      maxWidth: 480,
                       actions: [
-                        TextButton(
+                        HandsSecondaryButton(
+                          text: l10n.commonCancel,
                           onPressed: () => Navigator.of(ctx).pop('cancel'),
-                          child: Text(l10n.commonCancel),
                         ),
-                        TextButton(
+                        HandsSecondaryButton(
+                          text: l10n.dashboardCompleteWithoutPhoto,
                           onPressed:
                               () => Navigator.of(
                                 ctx,
                               ).pop('complete_without_photo'),
-                          child: Text(l10n.dashboardCompleteWithoutPhoto),
                         ),
-                        TextButton(
+                        HandsPrimaryButton(
+                          text: l10n.dashboardAddPhoto,
                           onPressed: () => Navigator.of(ctx).pop('add_photo'),
-                          child: Text(l10n.dashboardAddPhoto),
                         ),
                       ],
+                      child: Text(
+                        l10n.dashboardPhotoRequiredBody,
+                        style: HandsModalTokens.bodyStyle,
+                      ),
                     ),
               );
               if (choice == null || choice == 'cancel') return;
@@ -7501,12 +7595,33 @@ class _MissedTaskInteractionTile extends HookWidget {
                   context: context,
                   barrierDismissible: false,
                   builder:
-                      (ctx) => AlertDialog(
-                        title: Text(l10n.dashboardAddNoteRequiredTitle),
-                        content: Column(
+                      (ctx) => HandsDialog(
+                        title: l10n.dashboardAddNoteRequiredTitle,
+                        isDismissible: false,
+                        maxWidth: 480,
+                        actions: [
+                          HandsSecondaryButton(
+                            text: l10n.commonCancel,
+                            onPressed: () => Navigator.of(ctx).pop(null),
+                          ),
+                          HandsPrimaryButton(
+                            text: l10n.dashboardSave,
+                            onPressed: () {
+                              final text = noteController.text.trim();
+                              if (text.isEmpty) {
+                                return; // keep dialog open until non-empty
+                              }
+                              Navigator.of(ctx).pop(text);
+                            },
+                          ),
+                        ],
+                        child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(l10n.dashboardAddNoteRequiredBody),
+                            Text(
+                              l10n.dashboardAddNoteRequiredBody,
+                              style: HandsModalTokens.bodyStyle,
+                            ),
                             const SizedBox(height: 12),
                             TextField(
                               controller: noteController,
@@ -7517,22 +7632,6 @@ class _MissedTaskInteractionTile extends HookWidget {
                             ),
                           ],
                         ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(ctx).pop(null),
-                            child: Text(l10n.commonCancel),
-                          ),
-                          TextButton(
-                            onPressed: () {
-                              final text = noteController.text.trim();
-                              if (text.isEmpty) {
-                                return; // keep dialog open until non-empty
-                              }
-                              Navigator.of(ctx).pop(text);
-                            },
-                            child: Text(l10n.dashboardSave),
-                          ),
-                        ],
                       ),
                 );
                 if (note == null || note.isEmpty) {

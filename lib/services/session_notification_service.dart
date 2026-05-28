@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:hands_app/theme/theme.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/core/logging/logger.dart';
 
 /// Service to handle session timeout notifications and graceful logout
 class SessionNotificationService {
-  static final SessionNotificationService _instance = SessionNotificationService._internal();
+  static final SessionNotificationService _instance =
+      SessionNotificationService._internal();
   factory SessionNotificationService() => _instance;
   SessionNotificationService._internal();
 
@@ -20,7 +21,9 @@ class SessionNotificationService {
   Future<void> showSessionTimeoutNotification() async {
     final context = _context;
     if (context == null) {
-      logger.w('[SessionNotificationService] No context available for timeout notification');
+      logger.w(
+        '[SessionNotificationService] No context available for timeout notification',
+      );
       return;
     }
 
@@ -30,7 +33,9 @@ class SessionNotificationService {
       return;
     }
 
-    logger.d('[SessionNotificationService] Showing session timeout notification');
+    logger.d(
+      '[SessionNotificationService] Showing session timeout notification',
+    );
 
     await showDialog(
       context: context,
@@ -38,40 +43,56 @@ class SessionNotificationService {
       builder: (BuildContext dialogContext) {
         return PopScope(
           canPop: false, // Prevent dismissing with back button
-          child: AlertDialog(
-            backgroundColor: HandsColors.cardPrimary,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            title: Row(
-              children: [
-                Icon(Icons.timer_off, color: Colors.orange, size: 24),
-                const SizedBox(width: 8),
-                Text('Session Expired', style: TextStyle(color: HandsColors.white, fontWeight: FontWeight.w600)),
-              ],
-            ),
-            content: Column(
+          child: HandsDialog(
+            title: 'Session Expired',
+            isDismissible: false,
+            maxWidth: 480,
+            actions: [
+              HandsPrimaryButton(
+                text: 'Sign In Again',
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                  _navigateToLogin(context);
+                },
+              ),
+            ],
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Your session has expired due to inactivity. You\'ll need to sign in again to continue.',
-                  style: TextStyle(color: HandsColors.white),
+                  style: HandsModalTokens.bodyStyle.copyWith(
+                    color: HandsModalTokens.text,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                    color: HandsModalTokens.accent.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(
+                      HandsModalTokens.compactControlRadius,
+                    ),
+                    border: Border.all(
+                      color: HandsModalTokens.accent.withOpacity(0.3),
+                    ),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.info_outline, color: Colors.blue, size: 16),
+                      const Icon(
+                        Icons.info_outline,
+                        color: HandsModalTokens.accent,
+                        size: 16,
+                      ),
                       const SizedBox(width: 8),
-                      Expanded(
+                      const Expanded(
                         child: Text(
                           'You can adjust session timeout in Settings',
-                          style: TextStyle(color: Colors.blue, fontSize: 13),
+                          style: TextStyle(
+                            color: HandsModalTokens.accent,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
                     ],
@@ -79,15 +100,6 @@ class SessionNotificationService {
                 ),
               ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(dialogContext).pop();
-                  _navigateToLogin(context);
-                },
-                child: Text('Sign In Again', style: TextStyle(color: HandsColors.accent, fontWeight: FontWeight.w600)),
-              ),
-            ],
           ),
         );
       },
@@ -98,7 +110,9 @@ class SessionNotificationService {
   Future<void> showSessionWarning({required Duration timeRemaining}) async {
     final context = _context;
     if (context == null) {
-      logger.w('[SessionNotificationService] No context available for session warning');
+      logger.w(
+        '[SessionNotificationService] No context available for session warning',
+      );
       return;
     }
 
@@ -110,7 +124,9 @@ class SessionNotificationService {
 
     final minutesRemaining = timeRemaining.inMinutes;
 
-    logger.d('[SessionNotificationService] Showing session warning: $minutesRemaining minutes remaining');
+    logger.d(
+      '[SessionNotificationService] Showing session warning: $minutesRemaining minutes remaining',
+    );
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -125,7 +141,10 @@ class SessionNotificationService {
             Expanded(
               child: Text(
                 'Session expires in $minutesRemaining minutes. Tap anywhere to stay active.',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
           ],

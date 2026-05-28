@@ -760,6 +760,72 @@ abstract class AppLocalizations {
   /// **'Load More'**
   String get notificationsLoadMore;
 
+  /// No description provided for @notificationsUpdateType.
+  ///
+  /// In en, this message translates to:
+  /// **'Update'**
+  String get notificationsUpdateType;
+
+  /// No description provided for @notificationsSummaryType.
+  ///
+  /// In en, this message translates to:
+  /// **'Daily summary'**
+  String get notificationsSummaryType;
+
+  /// No description provided for @notificationsSummaryOverview.
+  ///
+  /// In en, this message translates to:
+  /// **'Overview'**
+  String get notificationsSummaryOverview;
+
+  /// No description provided for @notificationsSummaryCompletion.
+  ///
+  /// In en, this message translates to:
+  /// **'Completion'**
+  String get notificationsSummaryCompletion;
+
+  /// No description provided for @notificationsSummaryTasks.
+  ///
+  /// In en, this message translates to:
+  /// **'Tasks'**
+  String get notificationsSummaryTasks;
+
+  /// No description provided for @notificationsSummaryMissedTasks.
+  ///
+  /// In en, this message translates to:
+  /// **'Missed tasks'**
+  String get notificationsSummaryMissedTasks;
+
+  /// No description provided for @notificationsSummaryLocations.
+  ///
+  /// In en, this message translates to:
+  /// **'Location performance'**
+  String get notificationsSummaryLocations;
+
+  /// No description provided for @notificationsSummaryNotes.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes'**
+  String get notificationsSummaryNotes;
+
+  /// No description provided for @notificationsSummaryPhotoBypassed.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo bypassed'**
+  String get notificationsSummaryPhotoBypassed;
+
+  /// No description provided for @notificationsSummaryNoReason.
+  ///
+  /// In en, this message translates to:
+  /// **'No reason provided'**
+  String get notificationsSummaryNoReason;
+
+  /// No description provided for @notificationsSummaryMoreItems.
+  ///
+  /// In en, this message translates to:
+  /// **'... and {count} more'**
+  String notificationsSummaryMoreItems(int count);
+
   /// No description provided for @notificationsYesterdayAt.
   ///
   /// In en, this message translates to:
@@ -3561,6 +3627,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Add SOPs, policies, guides, and training files for the team.'**
   String get documentsUploadSubtitle;
+
+  /// No description provided for @documentsLocationAccessTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Document locations'**
+  String get documentsLocationAccessTitle;
+
+  /// No description provided for @documentsLocationAccessBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose where this document appears in Document Center. Select one location or keep more than one selected if the file applies across sites.'**
+  String get documentsLocationAccessBody;
+
+  /// No description provided for @documentsLocationRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Select at least one location for this document.'**
+  String get documentsLocationRequired;
+
+  /// No description provided for @documentsUploadNeedsLocation.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a location before uploading documents.'**
+  String get documentsUploadNeedsLocation;
 
   /// No description provided for @documentsUpdateButton.
   ///

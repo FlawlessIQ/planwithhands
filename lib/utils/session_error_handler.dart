@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hands_app/core/logging/logger.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
 
 /// Utility class for handling session-related errors in UI components
 /// Provides graceful handling when tokens expire or become invalid
 class SessionErrorHandler {
   /// Handle errors that might indicate session expiration
   /// Returns true if the error was a session-related error and was handled
-  static bool handleError(BuildContext context, dynamic error, {VoidCallback? onSessionExpired}) {
+  static bool handleError(
+    BuildContext context,
+    dynamic error, {
+    VoidCallback? onSessionExpired,
+  }) {
     final errorString = error.toString().toLowerCase();
 
     // Check for various authentication-related error patterns
@@ -30,18 +35,23 @@ class SessionErrorHandler {
   }
 
   /// Show a dialog informing the user their session has expired
-  static void _showSessionExpiredDialog(BuildContext context, VoidCallback? onSessionExpired) {
+  static void _showSessionExpiredDialog(
+    BuildContext context,
+    VoidCallback? onSessionExpired,
+  ) {
     if (!context.mounted) return;
 
     showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text('Session Expired'),
-          content: const Text('Your session has expired for security reasons. Please sign in again to continue.'),
+        return HandsDialog(
+          title: 'Session Expired',
+          isDismissible: false,
+          maxWidth: 440,
           actions: [
-            TextButton(
+            HandsPrimaryButton(
+              text: 'Sign In',
               onPressed: () {
                 Navigator.of(dialogContext).pop();
                 onSessionExpired?.call();
@@ -51,9 +61,12 @@ class SessionErrorHandler {
                   context.go('/login');
                 }
               },
-              child: const Text('Sign In'),
             ),
           ],
+          child: Text(
+            'Your session has expired for security reasons. Please sign in again to continue.',
+            style: HandsModalTokens.bodyStyle,
+          ),
         );
       },
     );

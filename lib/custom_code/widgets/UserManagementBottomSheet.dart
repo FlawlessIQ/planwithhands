@@ -131,9 +131,25 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
     final result = await showDialog<String>(
       context: context,
       builder:
-          (context) => AlertDialog(
-            title: const Text('Edit Job Type'),
-            content: HandsTextFormField(
+          (context) => HandsDialog(
+            title: 'Edit Job Type',
+            maxWidth: 440,
+            actions: [
+              HandsSecondaryButton(
+                text: 'Cancel',
+                onPressed: () => Navigator.pop(context),
+              ),
+              HandsPrimaryButton(
+                text: 'Save',
+                onPressed: () {
+                  final newName = _editJobTypeController.text.trim();
+                  if (newName.isNotEmpty) {
+                    Navigator.pop(context, newName);
+                  }
+                },
+              ),
+            ],
+            child: HandsTextFormField(
               controller: _editJobTypeController,
               decoration: const InputDecoration(
                 labelText: 'Job Type Name',
@@ -141,21 +157,6 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
               ),
               autofocus: true,
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  final newName = _editJobTypeController.text.trim();
-                  if (newName.isNotEmpty) {
-                    Navigator.pop(context, newName);
-                  }
-                },
-                child: const Text('Save'),
-              ),
-            ],
           ),
     );
 
@@ -194,25 +195,23 @@ class _JobTypeManagementDialogState extends State<JobTypeManagementDialog> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder:
-          (context) => AlertDialog(
-            title: const Text('Delete Job Type'),
-            content: Text(
-              'Are you sure you want to delete "$jobTypeName"?\n\nThis action cannot be undone and may affect existing staff assigned to this role.',
-            ),
+          (context) => HandsDialog(
+            title: 'Delete Job Type',
+            maxWidth: 460,
             actions: [
-              TextButton(
+              HandsSecondaryButton(
+                text: 'Cancel',
                 onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancel'),
               ),
-              ElevatedButton(
+              HandsPrimaryButton(
+                text: 'Delete',
                 onPressed: () => Navigator.pop(context, true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('Delete'),
               ),
             ],
+            child: Text(
+              'Are you sure you want to delete "$jobTypeName"?\n\nThis action cannot be undone and may affect existing staff assigned to this role.',
+              style: HandsModalTokens.bodyStyle,
+            ),
           ),
     );
 
@@ -1327,17 +1326,19 @@ class UserManagementBottomSheet extends HookConsumerWidget {
         showDialog(
           context: context,
           builder:
-              (ctx) => AlertDialog(
-                title: Text(
-                  isEditMode ? 'Error Updating Staff' : 'Error Creating Staff',
-                ),
-                content: Text(errorMsg),
+              (ctx) => HandsDialog(
+                title:
+                    isEditMode
+                        ? 'Error Updating Staff'
+                        : 'Error Creating Staff',
+                maxWidth: 460,
                 actions: [
-                  TextButton(
+                  HandsSecondaryButton(
+                    text: 'OK',
                     onPressed: () => Navigator.of(ctx).pop(),
-                    child: const Text('OK'),
                   ),
                 ],
+                child: Text(errorMsg, style: HandsModalTokens.bodyStyle),
               ),
         );
       }

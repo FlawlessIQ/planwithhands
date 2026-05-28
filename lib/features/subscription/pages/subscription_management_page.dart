@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/utils/app_platform.dart';
 import 'package:go_router/go_router.dart';
@@ -13,10 +14,12 @@ class SubscriptionManagementPage extends StatefulWidget {
   const SubscriptionManagementPage({super.key, required this.orgId});
 
   @override
-  State<SubscriptionManagementPage> createState() => _SubscriptionManagementPageState();
+  State<SubscriptionManagementPage> createState() =>
+      _SubscriptionManagementPageState();
 }
 
-class _SubscriptionManagementPageState extends State<SubscriptionManagementPage> {
+class _SubscriptionManagementPageState
+    extends State<SubscriptionManagementPage> {
   Map<String, dynamic>? _subscriptionData;
   bool _isLoadingSubscription = false;
   int? _actualLocationUsage;
@@ -39,7 +42,9 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
 
   Future<void> _loadSubscriptionData() async {
     try {
-      final data = await StripeService.getSubscriptionDataHydrated(widget.orgId);
+      final data = await StripeService.getSubscriptionDataHydrated(
+        widget.orgId,
+      );
       if (!mounted) return;
       setState(() {
         _subscriptionData = data;
@@ -48,16 +53,23 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoadingSubscription = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to load subscription: $e'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to load subscription: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
   Future<void> _loadLocationUsage() async {
     try {
       final query =
-          await FirestoreEnforcer.instance.collection('organizations').doc(widget.orgId).collection('locations').get();
+          await FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(widget.orgId)
+              .collection('locations')
+              .get();
       if (!mounted) return;
       setState(() {
         _actualLocationUsage = query.size;
@@ -66,9 +78,12 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoadingUsage = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to load usage: $e'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to load usage: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -77,9 +92,12 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
       await StripeService.openBillingPortal(widget.orgId);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to open billing portal: $e'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to open billing portal: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -88,18 +106,23 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
         await showDialog<bool>(
           context: context,
           builder:
-              (context) => AlertDialog(
-                title: const Text('Cancel Subscription'),
-                content: const Text(
-                  'Are you sure you want to cancel your subscription? You\'ll continue to have access until the end of your current billing period or trial.',
-                ),
+              (context) => HandsDialog(
+                title: 'Cancel Subscription',
+                maxWidth: 460,
                 actions: [
-                  TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep Subscription')),
-                  ElevatedButton(
+                  HandsSecondaryButton(
+                    text: 'Keep Subscription',
+                    onPressed: () => Navigator.pop(context, false),
+                  ),
+                  HandsPrimaryButton(
+                    text: 'Cancel Subscription',
                     onPressed: () => Navigator.pop(context, true),
-                    child: const Text('Cancel Subscription'),
                   ),
                 ],
+                child: Text(
+                  'Are you sure you want to cancel your subscription? You\'ll continue to have access until the end of your current billing period or trial.',
+                  style: HandsModalTokens.bodyStyle,
+                ),
               ),
         ) ??
         false;
@@ -120,38 +143,52 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to cancel subscription: $e'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to cancel subscription: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
   Future<void> _showQuantityManagementSheet() async {
     if (_subscriptionData == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('No subscription found'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No subscription found'),
+          backgroundColor: Colors.red,
+        ),
+      );
       return;
     }
 
-    final subscriptionId = (_subscriptionData!['subscriptionId'] as String?) ?? '';
+    final subscriptionId =
+        (_subscriptionData!['subscriptionId'] as String?) ?? '';
     final currentQuantity = (_subscriptionData!['quantity'] as int?) ?? 1;
     final currentUsage = _actualLocationUsage ?? 0;
 
     if (subscriptionId.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Missing subscription ID'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Missing subscription ID'),
+          backgroundColor: Colors.red,
+        ),
+      );
       return;
     }
 
     final newQty = await showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder:
           (context) => Padding(
-            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
             child: _QuantityManagementSheet(
               orgId: widget.orgId,
               subscriptionId: subscriptionId,
@@ -174,9 +211,16 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
               const SizedBox(width: 12),
-              Text('Loading subscription data...', style: Theme.of(context).textTheme.bodyMedium),
+              Text(
+                'Loading subscription data...',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
             ],
           ),
         ),
@@ -186,12 +230,14 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
     final status = _subscriptionData!['status'] as String?;
     final quantity = (_subscriptionData!['quantity'] as int?) ?? 1;
     final trialEnd = _subscriptionData!['trialEnd'] as int?;
-    final cancellationRequested = _subscriptionData!['cancellationRequested'] as bool? ?? false;
+    final cancellationRequested =
+        _subscriptionData!['cancellationRequested'] as bool? ?? false;
     final monthlyTotal = PricingService.calcMonthly(quantity);
 
     String? trialText;
     if (status == 'trialing' && trialEnd != null) {
-      trialText = 'Trial ends ${_formatDate(DateTime.fromMillisecondsSinceEpoch(trialEnd * 1000))}';
+      trialText =
+          'Trial ends ${_formatDate(DateTime.fromMillisecondsSinceEpoch(trialEnd * 1000))}';
     }
 
     return Card(
@@ -209,14 +255,18 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                     children: [
                       Text(
                         'Current Subscription',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 8),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text('Subscribed locations:'),
-                          Text('$quantity', style: const TextStyle(fontWeight: FontWeight.w600)),
+                          Text(
+                            '$quantity',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
                         ],
                       ),
                       if (_actualLocationUsage != null) ...[
@@ -229,7 +279,10 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                               '$_actualLocationUsage',
                               style: TextStyle(
                                 fontWeight: FontWeight.w600,
-                                color: _actualLocationUsage! <= quantity ? Colors.green : Colors.red,
+                                color:
+                                    _actualLocationUsage! <= quantity
+                                        ? Colors.green
+                                        : Colors.red,
                               ),
                             ),
                           ],
@@ -250,9 +303,16 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                         const SizedBox(height: 8),
                         Row(
                           children: [
-                            const Icon(Icons.timer, size: 16, color: Colors.blue),
+                            const Icon(
+                              Icons.timer,
+                              size: 16,
+                              color: Colors.blue,
+                            ),
                             const SizedBox(width: 6),
-                            Text(trialText, style: const TextStyle(color: Colors.blue)),
+                            Text(
+                              trialText,
+                              style: const TextStyle(color: Colors.blue),
+                            ),
                           ],
                         ),
                       ],
@@ -260,7 +320,11 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                         const SizedBox(height: 8),
                         Row(
                           children: [
-                            const Icon(Icons.schedule, size: 16, color: Colors.orange),
+                            const Icon(
+                              Icons.schedule,
+                              size: 16,
+                              color: Colors.orange,
+                            ),
                             const SizedBox(width: 6),
                             const Expanded(
                               child: Text(
@@ -289,7 +353,8 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                     SizedBox(
                       width: 180,
                       child: OutlinedButton.icon(
-                        onPressed: (kIsWeb || !isIOS) ? _openBillingPortal : null,
+                        onPressed:
+                            (kIsWeb || !isIOS) ? _openBillingPortal : null,
                         icon: const Icon(Icons.receipt_long),
                         label: const Text('Billing & Invoices'),
                       ),
@@ -312,9 +377,16 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
               const SizedBox(width: 12),
-              Text('Loading subscription data...', style: Theme.of(context).textTheme.bodyMedium),
+              Text(
+                'Loading subscription data...',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
             ],
           ),
         ),
@@ -334,9 +406,10 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                   const SizedBox(width: 8),
                   Text(
                     'No Active Subscription',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.orange[700]),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orange[700],
+                    ),
                   ),
                 ],
               ),
@@ -348,8 +421,13 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                 child: ElevatedButton.icon(
                   onPressed: () {
                     final int quantity =
-                        (_actualLocationUsage != null && _actualLocationUsage! > 0) ? _actualLocationUsage! : 1;
-                    context.go('/embedded-payment?orgId=${widget.orgId}&email=&quantity=$quantity');
+                        (_actualLocationUsage != null &&
+                                _actualLocationUsage! > 0)
+                            ? _actualLocationUsage!
+                            : 1;
+                    context.go(
+                      '/embedded-payment?orgId=${widget.orgId}&email=&quantity=$quantity',
+                    );
                   },
                   icon: const Icon(Icons.add_shopping_cart),
                   label: const Text('Start Subscription'),
@@ -364,7 +442,8 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
     final status = _subscriptionData!['status'] as String?;
     final quantity = (_subscriptionData!['quantity'] as int?) ?? 1;
     final trialEnd = _subscriptionData!['trialEnd'] as int?;
-    final cancellationRequested = _subscriptionData!['cancellationRequested'] as bool? ?? false;
+    final cancellationRequested =
+        _subscriptionData!['cancellationRequested'] as bool? ?? false;
     final monthlyTotal = PricingService.calcMonthly(quantity);
 
     Color statusColor;
@@ -410,11 +489,16 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                 const SizedBox(width: 8),
                 Text(
                   'Current Subscription',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const Spacer(),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: statusColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
@@ -422,7 +506,11 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                   ),
                   child: Text(
                     statusText,
-                    style: TextStyle(color: statusColor, fontWeight: FontWeight.w600, fontSize: 12),
+                    style: TextStyle(
+                      color: statusColor,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
                   ),
                 ),
               ],
@@ -443,7 +531,10 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('Subscribed Locations:'),
-                      Text('$quantity', style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Text(
+                        '$quantity',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
                     ],
                   ),
                   if (_actualLocationUsage != null) ...[
@@ -456,7 +547,10 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                           '$_actualLocationUsage',
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
-                            color: _actualLocationUsage! <= quantity ? Colors.green : Colors.red,
+                            color:
+                                _actualLocationUsage! <= quantity
+                                    ? Colors.green
+                                    : Colors.red,
                           ),
                         ),
                       ],
@@ -467,7 +561,10 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('Monthly Cost:'),
-                      Text('\$${monthlyTotal.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Text(
+                        '\$${monthlyTotal.toStringAsFixed(2)}',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
                     ],
                   ),
                 ],
@@ -532,7 +629,8 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
   Widget _buildQuickActionsCard() {
     if (_subscriptionData == null) return const SizedBox.shrink();
 
-    final cancellationRequested = _subscriptionData!['cancellationRequested'] as bool? ?? false;
+    final cancellationRequested =
+        _subscriptionData!['cancellationRequested'] as bool? ?? false;
 
     return Card(
       child: Padding(
@@ -542,7 +640,9 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
           children: [
             Text(
               'Quick Actions',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
 
@@ -553,7 +653,9 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                 onPressed: _showQuantityManagementSheet,
                 icon: const Icon(Icons.tune),
                 label: const Text('Manage Subscription Quantity'),
-                style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
               ),
             ),
             const SizedBox(height: 12),
@@ -607,14 +709,18 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                 const SizedBox(width: 8),
                 Text(
                   'Billing Management',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 8),
             Text(
               'Access your full billing history, update payment methods, and download invoices',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
             ),
             const SizedBox(height: 16),
 
@@ -626,7 +732,9 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                   onPressed: _openBillingPortal,
                   icon: const Icon(Icons.launch),
                   label: const Text('Open Billing Portal'),
-                  style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
                 ),
               ),
             ] else ...[
@@ -664,9 +772,16 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
               const SizedBox(width: 12),
-              Text('Loading usage data...', style: Theme.of(context).textTheme.bodyMedium),
+              Text(
+                'Loading usage data...',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
             ],
           ),
         ),
@@ -694,7 +809,9 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                 const SizedBox(width: 8),
                 Text(
                   'Usage Information',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
@@ -706,7 +823,9 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
               decoration: BoxDecoration(
                 color: isOverUsage ? Colors.red[50] : Colors.green[50],
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: isOverUsage ? Colors.red[200]! : Colors.green[200]!),
+                border: Border.all(
+                  color: isOverUsage ? Colors.red[200]! : Colors.green[200]!,
+                ),
               ),
               child: Column(
                 children: [
@@ -716,14 +835,16 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                       Text(
                         'Locations Used:',
                         style: TextStyle(
-                          color: isOverUsage ? Colors.red[700] : Colors.green[700],
+                          color:
+                              isOverUsage ? Colors.red[700] : Colors.green[700],
                           fontWeight: FontWeight.w500,
                         ),
                       ),
                       Text(
                         '$usage of $quantity',
                         style: TextStyle(
-                          color: isOverUsage ? Colors.red[700] : Colors.green[700],
+                          color:
+                              isOverUsage ? Colors.red[700] : Colors.green[700],
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -733,7 +854,9 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                   LinearProgressIndicator(
                     value: usage / quantity,
                     backgroundColor: Colors.grey[300],
-                    valueColor: AlwaysStoppedAnimation<Color>(isOverUsage ? Colors.red : Colors.green),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      isOverUsage ? Colors.red : Colors.green,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   if (isOverUsage) ...[
@@ -744,7 +867,10 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                         Expanded(
                           child: Text(
                             'You\'re using ${usage - quantity} more location${usage - quantity == 1 ? '' : 's'} than your subscription allows.',
-                            style: TextStyle(color: Colors.red[700], fontSize: 12),
+                            style: TextStyle(
+                              color: Colors.red[700],
+                              fontSize: 12,
+                            ),
                           ),
                         ),
                       ],
@@ -765,12 +891,19 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                   ] else if (remainingLocations > 0) ...[
                     Row(
                       children: [
-                        Icon(Icons.check_circle, color: Colors.green[700], size: 16),
+                        Icon(
+                          Icons.check_circle,
+                          color: Colors.green[700],
+                          size: 16,
+                        ),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
                             'You have $remainingLocations location${remainingLocations == 1 ? '' : 's'} remaining.',
-                            style: TextStyle(color: Colors.green[700], fontSize: 12),
+                            style: TextStyle(
+                              color: Colors.green[700],
+                              fontSize: 12,
+                            ),
                           ),
                         ),
                       ],
@@ -788,7 +921,10 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Subscription Management'), backgroundColor: HandsColors.cardPrimary),
+      appBar: AppBar(
+        title: const Text('Subscription Management'),
+        backgroundColor: HandsColors.cardPrimary,
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -830,7 +966,8 @@ class _QuantityManagementSheet extends StatefulWidget {
   });
 
   @override
-  State<_QuantityManagementSheet> createState() => _QuantityManagementSheetState();
+  State<_QuantityManagementSheet> createState() =>
+      _QuantityManagementSheetState();
 }
 
 class _QuantityManagementSheetState extends State<_QuantityManagementSheet> {
@@ -845,8 +982,10 @@ class _QuantityManagementSheetState extends State<_QuantityManagementSheet> {
 
   int get _delta => _newQuantity - widget.currentQuantity;
   double get _monthlyChange =>
-      PricingService.calcMonthly(_newQuantity) - PricingService.calcMonthly(widget.currentQuantity);
-  bool get _canDecrease => _newQuantity > widget.currentUsage && _newQuantity > 1;
+      PricingService.calcMonthly(_newQuantity) -
+      PricingService.calcMonthly(widget.currentQuantity);
+  bool get _canDecrease =>
+      _newQuantity > widget.currentUsage && _newQuantity > 1;
   bool get _canIncrease => _newQuantity < 100;
 
   void _increment() {
@@ -883,16 +1022,23 @@ class _QuantityManagementSheetState extends State<_QuantityManagementSheet> {
         Navigator.of(context).pop(_newQuantity);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(_delta > 0 ? 'Subscription upgraded successfully!' : 'Subscription updated successfully!'),
+            content: Text(
+              _delta > 0
+                  ? 'Subscription upgraded successfully!'
+                  : 'Subscription updated successfully!',
+            ),
             backgroundColor: Colors.green,
           ),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to update subscription: $e'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update subscription: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     } finally {
       if (mounted) {
@@ -912,46 +1058,67 @@ class _QuantityManagementSheetState extends State<_QuantityManagementSheet> {
     return await showDialog<bool>(
           context: context,
           builder:
-              (context) => AlertDialog(
-                title: Text('${isIncrease ? 'Upgrade' : 'Downgrade'} Subscription'),
-                content: Column(
+              (context) => HandsDialog(
+                title: '${isIncrease ? 'Upgrade' : 'Downgrade'} Subscription',
+                maxWidth: 460,
+                actions: [
+                  HandsSecondaryButton(
+                    text: 'Cancel',
+                    onPressed: () => Navigator.of(context).pop(false),
+                  ),
+                  HandsPrimaryButton(
+                    text: isIncrease ? 'Upgrade' : 'Downgrade',
+                    onPressed: () => Navigator.of(context).pop(true),
+                  ),
+                ],
+                child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('You\'re about to $changeText your location subscription:'),
+                    Text(
+                      'You\'re about to $changeText your location subscription:',
+                      style: HandsModalTokens.bodyStyle,
+                    ),
                     const SizedBox(height: 12),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [const Text('From:'), Text('${widget.currentQuantity} locations')],
+                      children: [
+                        Text('From:', style: HandsModalTokens.bodyStyle),
+                        Text(
+                          '${widget.currentQuantity} locations',
+                          style: HandsModalTokens.sectionTitleStyle,
+                        ),
+                      ],
                     ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [const Text('To:'), Text('$_newQuantity locations')],
-                    ),
-                    const Divider(),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Monthly change:'),
+                        Text('To:', style: HandsModalTokens.bodyStyle),
+                        Text(
+                          '$_newQuantity locations',
+                          style: HandsModalTokens.sectionTitleStyle,
+                        ),
+                      ],
+                    ),
+                    const Divider(color: HandsModalTokens.border),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Monthly change:',
+                          style: HandsModalTokens.bodyStyle,
+                        ),
                         Text(
                           '$monthlyChangeText/month',
-                          style: TextStyle(fontWeight: FontWeight.bold, color: isIncrease ? Colors.red : Colors.green),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: isIncrease ? Colors.red : Colors.green,
+                          ),
                         ),
                       ],
                     ),
                   ],
                 ),
-                actions: [
-                  TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-                  ElevatedButton(
-                    onPressed: () => Navigator.of(context).pop(true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isIncrease ? Colors.blue : Colors.orange,
-                      foregroundColor: Colors.white,
-                    ),
-                    child: Text(isIncrease ? 'Upgrade' : 'Downgrade'),
-                  ),
-                ],
               ),
         ) ??
         false;
@@ -979,10 +1146,15 @@ class _QuantityManagementSheetState extends State<_QuantityManagementSheet> {
                   const SizedBox(width: 12),
                   Text(
                     'Manage Subscription Quantity',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const Spacer(),
-                  IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.close)),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close),
+                  ),
                 ],
               ),
               const SizedBox(height: 20),
@@ -1000,14 +1172,19 @@ class _QuantityManagementSheetState extends State<_QuantityManagementSheet> {
                   children: [
                     Text(
                       'Current Subscription',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text('Subscribed locations:'),
-                        Text('${widget.currentQuantity}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                        Text(
+                          '${widget.currentQuantity}',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
                       ],
                     ),
                     Row(
@@ -1018,7 +1195,10 @@ class _QuantityManagementSheetState extends State<_QuantityManagementSheet> {
                           '${widget.currentUsage}',
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
-                            color: widget.currentUsage <= widget.currentQuantity ? Colors.green : Colors.red,
+                            color:
+                                widget.currentUsage <= widget.currentQuantity
+                                    ? Colors.green
+                                    : Colors.red,
                           ),
                         ),
                       ],
@@ -1041,7 +1221,9 @@ class _QuantityManagementSheetState extends State<_QuantityManagementSheet> {
               // Quantity selector
               Text(
                 'New Quantity',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 12),
 
@@ -1050,24 +1232,36 @@ class _QuantityManagementSheetState extends State<_QuantityManagementSheet> {
                 children: [
                   IconButton(
                     onPressed: _canDecrease ? _decrement : null,
-                    icon: Icon(Icons.remove_circle, size: 36, color: _canDecrease ? Colors.red : Colors.grey[300]),
+                    icon: Icon(
+                      Icons.remove_circle,
+                      size: 36,
+                      color: _canDecrease ? Colors.red : Colors.grey[300],
+                    ),
                   ),
                   const SizedBox(width: 24),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       border: Border.all(color: Colors.grey[300]!),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       '$_newQuantity',
-                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
+                      style: Theme.of(context).textTheme.headlineMedium
+                          ?.copyWith(fontWeight: FontWeight.bold),
                     ),
                   ),
                   const SizedBox(width: 24),
                   IconButton(
                     onPressed: _canIncrease ? _increment : null,
-                    icon: Icon(Icons.add_circle, size: 36, color: _canIncrease ? Colors.green : Colors.grey[300]),
+                    icon: Icon(
+                      Icons.add_circle,
+                      size: 36,
+                      color: _canIncrease ? Colors.green : Colors.grey[300],
+                    ),
                   ),
                 ],
               ),
@@ -1084,12 +1278,19 @@ class _QuantityManagementSheetState extends State<_QuantityManagementSheet> {
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.warning_amber, color: Colors.amber[700], size: 20),
+                      Icon(
+                        Icons.warning_amber,
+                        color: Colors.amber[700],
+                        size: 20,
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           'You cannot reduce below your current usage of ${widget.currentUsage} location${widget.currentUsage == 1 ? '' : 's'}.',
-                          style: TextStyle(color: Colors.amber[700], fontSize: 12),
+                          style: TextStyle(
+                            color: Colors.amber[700],
+                            fontSize: 12,
+                          ),
                         ),
                       ),
                     ],
@@ -1104,7 +1305,10 @@ class _QuantityManagementSheetState extends State<_QuantityManagementSheet> {
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: _delta > 0 ? Colors.blue[50] : Colors.orange[50],
-                    border: Border.all(color: _delta > 0 ? Colors.blue[200]! : Colors.orange[200]!),
+                    border: Border.all(
+                      color:
+                          _delta > 0 ? Colors.blue[200]! : Colors.orange[200]!,
+                    ),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Column(
@@ -1113,16 +1317,26 @@ class _QuantityManagementSheetState extends State<_QuantityManagementSheet> {
                       Row(
                         children: [
                           Icon(
-                            _delta > 0 ? Icons.trending_up : Icons.trending_down,
-                            color: _delta > 0 ? Colors.blue[700] : Colors.orange[700],
+                            _delta > 0
+                                ? Icons.trending_up
+                                : Icons.trending_down,
+                            color:
+                                _delta > 0
+                                    ? Colors.blue[700]
+                                    : Colors.orange[700],
                             size: 20,
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            _delta > 0 ? 'Subscription Upgrade' : 'Subscription Downgrade',
+                            _delta > 0
+                                ? 'Subscription Upgrade'
+                                : 'Subscription Downgrade',
                             style: TextStyle(
                               fontWeight: FontWeight.w600,
-                              color: _delta > 0 ? Colors.blue[700] : Colors.orange[700],
+                              color:
+                                  _delta > 0
+                                      ? Colors.blue[700]
+                                      : Colors.orange[700],
                             ),
                           ),
                         ],
@@ -1162,7 +1376,8 @@ class _QuantityManagementSheetState extends State<_QuantityManagementSheet> {
                 children: [
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
+                      onPressed:
+                          _isLoading ? null : () => Navigator.of(context).pop(),
                       child: const Text('Cancel'),
                     ),
                   ),
@@ -1170,7 +1385,10 @@ class _QuantityManagementSheetState extends State<_QuantityManagementSheet> {
                   Expanded(
                     flex: 2,
                     child: ElevatedButton(
-                      onPressed: _isLoading || _delta == 0 ? null : _updateSubscription,
+                      onPressed:
+                          _isLoading || _delta == 0
+                              ? null
+                              : _updateSubscription,
                       style: ElevatedButton.styleFrom(
                         backgroundColor:
                             _delta > 0
@@ -1186,7 +1404,10 @@ class _QuantityManagementSheetState extends State<_QuantityManagementSheet> {
                               ? const SizedBox(
                                 width: 20,
                                 height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
                               )
                               : Text(
                                 _delta == 0

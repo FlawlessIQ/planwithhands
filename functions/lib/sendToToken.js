@@ -52,6 +52,14 @@ exports.sendToToken = functions
         const message = {
             notification: { title, body: body || 'Test notification' },
             data: { testMessage: 'true', sentBy: uid },
+            apns: {
+                payload: {
+                    aps: {
+                        sound: 'default',
+                        badge: 1,
+                    },
+                },
+            },
             token: token,
         };
         const response = await (0, messaging_1.getMessaging)().send(message);

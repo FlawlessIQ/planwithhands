@@ -13,6 +13,7 @@ import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:hands_app/utils/app_platform.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/widgets/hands_text_field.dart';
 import 'package:hands_app/services/invite_service.dart';
 
@@ -974,17 +975,19 @@ class ContactSalesDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Contact Sales'),
-      content: const Text(
-        'For organizations with 5 or more locations, please contact our sales team so we can help with rollout planning and billing setup.',
-      ),
+    return HandsDialog(
+      title: 'Contact Sales',
+      maxWidth: 440,
       actions: [
-        TextButton(
+        HandsSecondaryButton(
+          text: 'Close',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close'),
         ),
       ],
+      child: Text(
+        'For organizations with 5 or more locations, please contact our sales team so we can help with rollout planning and billing setup.',
+        style: HandsModalTokens.bodyStyle,
+      ),
     );
   }
 }
@@ -995,78 +998,71 @@ class TermsDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Terms of Service'),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Text(
-                'Welcome to Plan With Hands ("Hands"). By accessing or using our website, mobile applications, or services, you agree to these Terms of Service.',
-              ),
-              SizedBox(height: 12),
-              Text(
-                'Use of Services',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 6),
-              Text(
-                'You may use Hands only in compliance with applicable laws and these Terms. You are responsible for the activities of your organization and users you invite.',
-              ),
-              SizedBox(height: 12),
-              Text('Accounts', style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 6),
-              Text(
-                'You must provide accurate information when creating an account. You are responsible for maintaining the confidentiality of your login credentials.',
-              ),
-              SizedBox(height: 12),
-              Text(
-                'Subscriptions & Payments',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 6),
-              Text(
-                'Hands is offered on a subscription basis. Pricing is published on our website and may change from time to time. Payments are billed in advance per billing cycle. Annual billing includes a discount as specified in our pricing page.',
-              ),
-              SizedBox(height: 12),
-              Text(
-                'Termination',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 6),
-              Text(
-                'We may suspend or terminate accounts that violate these Terms or are used for unlawful purposes. You may cancel your subscription at any time.',
-              ),
-              SizedBox(height: 12),
-              Text('Liability', style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 6),
-              Text(
-                'To the fullest extent permitted by law, Hands is not liable for indirect, incidental, or consequential damages. Our total liability is limited to the subscription fees you have paid for the service.',
-              ),
-              SizedBox(height: 12),
-              Text('Changes', style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 6),
-              Text(
-                'We may update these Terms periodically. Continued use of the service after changes indicates your acceptance of the updated Terms.',
-              ),
-              SizedBox(height: 12),
-              Text('Contact Us', style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 6),
-              Text(
-                'If you have any questions about these Terms, please contact us at support@planwithhands.com.',
-              ),
-            ],
-          ),
-        ),
-      ),
+    return HandsDialog(
+      title: 'Terms of Service',
+      maxWidth: 620,
       actions: [
-        TextButton(
+        HandsSecondaryButton(
+          text: 'Close',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close'),
         ),
       ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: const [
+          Text(
+            'Welcome to Plan With Hands ("Hands"). By accessing or using our website, mobile applications, or services, you agree to these Terms of Service.',
+          ),
+          SizedBox(height: 12),
+          Text(
+            'Use of Services',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 6),
+          Text(
+            'You may use Hands only in compliance with applicable laws and these Terms. You are responsible for the activities of your organization and users you invite.',
+          ),
+          SizedBox(height: 12),
+          Text('Accounts', style: TextStyle(fontWeight: FontWeight.bold)),
+          SizedBox(height: 6),
+          Text(
+            'You must provide accurate information when creating an account. You are responsible for maintaining the confidentiality of your login credentials.',
+          ),
+          SizedBox(height: 12),
+          Text(
+            'Subscriptions & Payments',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 6),
+          Text(
+            'Hands is offered on a subscription basis. Pricing is published on our website and may change from time to time. Payments are billed in advance per billing cycle. Annual billing includes a discount as specified in our pricing page.',
+          ),
+          SizedBox(height: 12),
+          Text('Termination', style: TextStyle(fontWeight: FontWeight.bold)),
+          SizedBox(height: 6),
+          Text(
+            'We may suspend or terminate accounts that violate these Terms or are used for unlawful purposes. You may cancel your subscription at any time.',
+          ),
+          SizedBox(height: 12),
+          Text('Liability', style: TextStyle(fontWeight: FontWeight.bold)),
+          SizedBox(height: 6),
+          Text(
+            'To the fullest extent permitted by law, Hands is not liable for indirect, incidental, or consequential damages. Our total liability is limited to the subscription fees you have paid for the service.',
+          ),
+          SizedBox(height: 12),
+          Text('Changes', style: TextStyle(fontWeight: FontWeight.bold)),
+          SizedBox(height: 6),
+          Text(
+            'We may update these Terms periodically. Continued use of the service after changes indicates your acceptance of the updated Terms.',
+          ),
+          SizedBox(height: 12),
+          Text('Contact Us', style: TextStyle(fontWeight: FontWeight.bold)),
+          SizedBox(height: 6),
+          Text(
+            'If you have any questions about these Terms, please contact us at support@planwithhands.com.',
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1077,69 +1073,62 @@ class PrivacyDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Privacy Policy'),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Text(
-                'At Plan With Hands ("Hands"), your privacy is important to us. This Privacy Policy explains how we collect, use, and protect your information when you use our website, mobile applications, and services.',
-              ),
-              SizedBox(height: 12),
-              Text(
-                'Information We Collect',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 6),
-              Text(
-                '• Personal information you provide (such as name, email, role, organization).\n• Information about how you use the app, including checklists, tasks, and uploads.\n• Device and log information to help us improve performance and security.',
-              ),
-              SizedBox(height: 12),
-              Text(
-                'How We Use Information',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 6),
-              Text(
-                '• To provide and improve our services.\n• To communicate with you about product updates, changes, or support.\n• To maintain security and prevent misuse of the platform.',
-              ),
-              SizedBox(height: 12),
-              Text(
-                'Sharing of Information',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 6),
-              Text(
-                'We do not sell your personal data. We may share limited information with trusted service providers (e.g., cloud hosting, analytics) to operate our services.',
-              ),
-              SizedBox(height: 12),
-              Text(
-                'Your Choices',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 6),
-              Text(
-                'You may request access, updates, or deletion of your personal information at any time by contacting support@planwithhands.com.',
-              ),
-              SizedBox(height: 12),
-              Text('Contact Us', style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 6),
-              Text(
-                'If you have any questions about this Privacy Policy, please reach out to us at support@planwithhands.com.',
-              ),
-            ],
-          ),
-        ),
-      ),
+    return HandsDialog(
+      title: 'Privacy Policy',
+      maxWidth: 620,
       actions: [
-        TextButton(
+        HandsSecondaryButton(
+          text: 'Close',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close'),
         ),
       ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: const [
+          Text(
+            'At Plan With Hands ("Hands"), your privacy is important to us. This Privacy Policy explains how we collect, use, and protect your information when you use our website, mobile applications, and services.',
+          ),
+          SizedBox(height: 12),
+          Text(
+            'Information We Collect',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 6),
+          Text(
+            '• Personal information you provide (such as name, email, role, organization).\n• Information about how you use the app, including checklists, tasks, and uploads.\n• Device and log information to help us improve performance and security.',
+          ),
+          SizedBox(height: 12),
+          Text(
+            'How We Use Information',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 6),
+          Text(
+            '• To provide and improve our services.\n• To communicate with you about product updates, changes, or support.\n• To maintain security and prevent misuse of the platform.',
+          ),
+          SizedBox(height: 12),
+          Text(
+            'Sharing of Information',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 6),
+          Text(
+            'We do not sell your personal data. We may share limited information with trusted service providers (e.g., cloud hosting, analytics) to operate our services.',
+          ),
+          SizedBox(height: 12),
+          Text('Your Choices', style: TextStyle(fontWeight: FontWeight.bold)),
+          SizedBox(height: 6),
+          Text(
+            'You may request access, updates, or deletion of your personal information at any time by contacting support@planwithhands.com.',
+          ),
+          SizedBox(height: 12),
+          Text('Contact Us', style: TextStyle(fontWeight: FontWeight.bold)),
+          SizedBox(height: 6),
+          Text(
+            'If you have any questions about this Privacy Policy, please reach out to us at support@planwithhands.com.',
+          ),
+        ],
+      ),
     );
   }
 }

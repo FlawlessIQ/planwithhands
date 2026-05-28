@@ -167,91 +167,9 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setState) {
-            return AlertDialog(
-              backgroundColor: HandsColors.primaryContainer,
-              title: Text(
-                l10n.audienceEditTitle,
-                style: GoogleFonts.inter(
-                  color: HandsColors.white,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              content: SizedBox(
-                width: 350,
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      HandsTextFormField(
-                        controller: editController,
-                        decoration: InputDecoration(
-                          labelText: l10n.audienceNameLabel,
-                          labelStyle: HandsModalTokens.labelStyle,
-                          filled: true,
-                          fillColor: HandsColors.secondaryContainer,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12.0),
-                            borderSide: const BorderSide(
-                              color: HandsColors.white12,
-                            ),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12.0),
-                            borderSide: const BorderSide(
-                              color: HandsColors.white12,
-                            ),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12.0),
-                            borderSide: const BorderSide(
-                              color: HandsColors.handsOrange,
-                              width: 2,
-                            ),
-                          ),
-                        ),
-                        style: GoogleFonts.inter(
-                          color: HandsColors.white,
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        autofocus: true,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        l10n.audienceMembersTitle,
-                        style: GoogleFonts.inter(
-                          fontWeight: FontWeight.w700,
-                          color: HandsColors.white,
-                        ),
-                      ),
-                      ..._users.map(
-                        (user) => CheckboxListTile(
-                          value: selectedUserIds.contains(user['id']),
-                          title: Text(
-                            user['name'],
-                            style: GoogleFonts.inter(
-                              color: HandsColors.white,
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          onChanged: (checked) {
-                            setState(() {
-                              if (checked == true) {
-                                selectedUserIds.add(user['id']);
-                              } else {
-                                selectedUserIds.remove(user['id']);
-                              }
-                            });
-                          },
-                          activeColor: HandsColors.handsOrange,
-                          checkColor: HandsColors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+            return HandsDialog(
+              title: l10n.audienceEditTitle,
+              maxWidth: 460,
               actions: [
                 HandsSecondaryButton(
                   text: l10n.commonCancel,
@@ -270,6 +188,74 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
                   },
                 ),
               ],
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  HandsTextFormField(
+                    controller: editController,
+                    decoration: InputDecoration(
+                      labelText: l10n.audienceNameLabel,
+                      labelStyle: HandsModalTokens.labelStyle,
+                      filled: true,
+                      fillColor: HandsColors.secondaryContainer,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12.0),
+                        borderSide: const BorderSide(
+                          color: HandsColors.white12,
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12.0),
+                        borderSide: const BorderSide(
+                          color: HandsColors.white12,
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12.0),
+                        borderSide: const BorderSide(
+                          color: HandsColors.handsOrange,
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                    style: GoogleFonts.inter(
+                      color: HandsColors.white,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    autofocus: true,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    l10n.audienceMembersTitle,
+                    style: HandsModalTokens.sectionTitleStyle,
+                  ),
+                  ..._users.map(
+                    (user) => CheckboxListTile(
+                      value: selectedUserIds.contains(user['id']),
+                      title: Text(
+                        user['name'],
+                        style: GoogleFonts.inter(
+                          color: HandsColors.white,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      onChanged: (checked) {
+                        setState(() {
+                          if (checked == true) {
+                            selectedUserIds.add(user['id']);
+                          } else {
+                            selectedUserIds.remove(user['id']);
+                          }
+                        });
+                      },
+                      activeColor: HandsColors.handsOrange,
+                      checkColor: HandsColors.white,
+                    ),
+                  ),
+                ],
+              ),
             );
           },
         );
@@ -302,23 +288,9 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder:
-          (context) => AlertDialog(
-            backgroundColor: HandsColors.primaryContainer,
-            title: Text(
-              l10n.audienceDeleteTitle,
-              style: GoogleFonts.inter(
-                color: HandsColors.white,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            content: Text(
-              l10n.audienceDeleteBody(groupName),
-              style: GoogleFonts.inter(
-                color: HandsColors.white,
-                fontSize: 13.5,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
+          (context) => HandsDialog(
+            title: l10n.audienceDeleteTitle,
+            maxWidth: 440,
             actions: [
               HandsSecondaryButton(
                 text: l10n.commonCancel,
@@ -329,6 +301,12 @@ class _CreateGroupSheetState extends ConsumerState<CreateGroupSheet> {
                 onPressed: () => Navigator.of(context).pop(true),
               ),
             ],
+            child: Text(
+              l10n.audienceDeleteBody(groupName),
+              style: HandsModalTokens.bodyStyle.copyWith(
+                color: HandsModalTokens.text,
+              ),
+            ),
           ),
     );
 

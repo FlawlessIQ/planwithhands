@@ -39,10 +39,35 @@ String localizedUploadDocumentCategoryLabel(
   }
 }
 
+List<String> uploadDocumentLocationIdsFromData(Map<String, dynamic>? data) {
+  if (data == null) return const [];
+
+  final rawList = data['locationIds'];
+  if (rawList is Iterable) {
+    final ids =
+        rawList
+            .map((value) => value?.toString().trim() ?? '')
+            .where((value) => value.isNotEmpty)
+            .toSet()
+            .toList();
+    if (ids.isNotEmpty) {
+      return ids;
+    }
+  }
+
+  final singleLocationId = (data['locationId'] as String?)?.trim();
+  if (singleLocationId != null && singleLocationId.isNotEmpty) {
+    return [singleLocationId];
+  }
+
+  return const [];
+}
+
 class UploadDocumentBottomSheet extends HookConsumerWidget {
   final Map<String, dynamic>? documentData;
   final String? documentId;
   final String? locationId;
+  final List<Map<String, dynamic>> availableLocations;
   final VoidCallback? onDocumentUploaded;
 
   const UploadDocumentBottomSheet({
@@ -50,6 +75,7 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
     this.documentData,
     this.documentId,
     this.locationId,
+    this.availableLocations = const [],
     this.onDocumentUploaded,
   });
 
@@ -65,9 +91,39 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
     final formKey = useMemoized(() => GlobalKey<FormState>());
     final organizationId = useState<String?>(null);
     final isLoadingOrgId = useState(true);
+    final selectedLocationIds = useState<List<String>>(
+      (() {
+        final existingIds = uploadDocumentLocationIdsFromData(documentData);
+        if (existingIds.isNotEmpty) {
+          return existingIds;
+        }
+        if (locationId != null && locationId!.isNotEmpty) {
+          return [locationId!];
+        }
+        if (availableLocations.isNotEmpty) {
+          final firstId = (availableLocations.first['id'] ?? '').toString();
+          if (firstId.isNotEmpty) {
+            return [firstId];
+          }
+        }
+        return <String>[];
+      })(),
+    );
 
     final userState = ref.watch(userStateProvider);
     final isEditMode = documentData != null && documentId != null;
+    final selectedLocationNames =
+        availableLocations
+            .where(
+              (location) => selectedLocationIds.value.contains(
+                (location['id'] ?? '').toString(),
+              ),
+            )
+            .map(
+              (location) =>
+                  (location['name'] ?? l10n.commonNotSpecified).toString(),
+            )
+            .toList();
 
     useEffect(() {
       Future<void> loadOrganizationId() async {
@@ -195,6 +251,20 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
         return;
       }
 
+      final normalizedLocationIds =
+          selectedLocationIds.value
+              .map((value) => value.trim())
+              .where((value) => value.isNotEmpty)
+              .toSet()
+              .toList();
+
+      if (normalizedLocationIds.isEmpty) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(l10n.documentsLocationRequired)));
+        return;
+      }
+
       final orgId = organizationId.value;
       if (orgId == null || orgId.isEmpty) {
         ScaffoldMessenger.of(
@@ -272,7 +342,8 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
           'fileType': fileType,
           'fileSize': fileSize,
           'organizationId': orgId,
-          'locationId': locationId,
+          'locationId': normalizedLocationIds.first,
+          'locationIds': normalizedLocationIds,
           'updatedAt': FieldValue.serverTimestamp(),
         };
 
@@ -472,6 +543,136 @@ class UploadDocumentBottomSheet extends HookConsumerWidget {
                                   ? l10n.documentsCategoryRequired
                                   : null,
                     ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              HandsModalSection(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      l10n.documentsLocationAccessTitle,
+                      style: HandsModalTokens.sectionTitleStyle,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      l10n.documentsLocationAccessBody,
+                      style: GoogleFonts.inter(
+                        color: HandsColors.white70,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w500,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (availableLocations.isEmpty)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: HandsColors.handsOrange.withValues(
+                            alpha: 0.08,
+                          ),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: HandsColors.handsOrange.withValues(
+                              alpha: 0.22,
+                            ),
+                          ),
+                        ),
+                        child: Text(
+                          l10n.documentsUploadNeedsLocation,
+                          style: GoogleFonts.inter(
+                            color: HandsColors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            height: 1.35,
+                          ),
+                        ),
+                      )
+                    else ...[
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children:
+                            availableLocations.map((location) {
+                              final resolvedId =
+                                  (location['id'] ?? '').toString();
+                              final resolvedName =
+                                  (location['name'] ?? l10n.commonNotSpecified)
+                                      .toString();
+                              final isSelected = selectedLocationIds.value
+                                  .contains(resolvedId);
+                              return FilterChip(
+                                label: Text(
+                                  resolvedName,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w600,
+                                    color:
+                                        isSelected
+                                            ? HandsColors.white
+                                            : HandsColors.white70,
+                                  ),
+                                ),
+                                selected: isSelected,
+                                onSelected: (selected) {
+                                  final next = List<String>.from(
+                                    selectedLocationIds.value,
+                                  );
+                                  if (selected) {
+                                    if (!next.contains(resolvedId)) {
+                                      next.add(resolvedId);
+                                    }
+                                  } else {
+                                    next.remove(resolvedId);
+                                  }
+                                  selectedLocationIds.value = next;
+                                },
+                                backgroundColor: HandsColors.secondaryContainer,
+                                selectedColor: HandsColors.handsOrange,
+                                side: BorderSide(
+                                  color:
+                                      isSelected
+                                          ? HandsColors.handsOrange
+                                          : HandsColors.white12,
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                              );
+                            }).toList(),
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 7,
+                        ),
+                        decoration: BoxDecoration(
+                          color: HandsModalTokens.surfaceMuted,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: HandsColors.white12),
+                        ),
+                        child: Text(
+                          selectedLocationIds.value.length == 1 &&
+                                  selectedLocationNames.isNotEmpty
+                              ? selectedLocationNames.first
+                              : l10n.documentsLocationsCount(
+                                selectedLocationIds.value.length,
+                              ),
+                          style: GoogleFonts.inter(
+                            color: HandsColors.white70,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

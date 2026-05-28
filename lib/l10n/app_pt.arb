@@ -160,6 +160,24 @@
   "notificationsLoadMore": "Carregar mais",
   "notificationsNewMessage": "Nova mensagem",
   "notificationsNoContent": "Sem conteúdo",
+  "notificationsUpdateType": "Atualização",
+  "notificationsSummaryType": "Resumo diário",
+  "notificationsSummaryOverview": "Visão geral",
+  "notificationsSummaryCompletion": "Conclusão",
+  "notificationsSummaryTasks": "Tarefas",
+  "notificationsSummaryMissedTasks": "Tarefas perdidas",
+  "notificationsSummaryLocations": "Desempenho por local",
+  "notificationsSummaryNotes": "Notas",
+  "notificationsSummaryPhotoBypassed": "Fotos ignoradas",
+  "notificationsSummaryNoReason": "Sem motivo informado",
+  "notificationsSummaryMoreItems": "... e mais {count}",
+  "@notificationsSummaryMoreItems": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "notificationsYesterdayAt": "Ontem {time}",
   "@notificationsYesterdayAt": {
     "placeholders": {
@@ -2132,6 +2150,10 @@
   "documentsUploadTitle": "Enviar documento",
   "documentsEditTitle": "Editar documento",
   "documentsUploadSubtitle": "Adicione POPs, políticas, guias e arquivos de treinamento para a equipe.",
+  "documentsLocationAccessTitle": "Locais do documento",
+  "documentsLocationAccessBody": "Escolha onde este documento aparece na Central de Documentos. Selecione um local ou mantenha vários selecionados se o arquivo valer para mais de uma unidade.",
+  "documentsLocationRequired": "Selecione pelo menos um local para este documento.",
+  "documentsUploadNeedsLocation": "Adicione um local antes de enviar documentos.",
   "documentsUpdateButton": "Atualizar documento",
   "documentsInfoTip": "Envie PDFs, arquivos DOCX, imagens ou vídeos de até 20 MB e coloque-os na categoria correta.",
   "documentsDetails": "Detalhes",

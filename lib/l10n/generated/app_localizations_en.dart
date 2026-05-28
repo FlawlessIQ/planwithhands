@@ -376,6 +376,41 @@ class AppLocalizationsEn extends AppLocalizations {
   String get notificationsLoadMore => 'Load More';
 
   @override
+  String get notificationsUpdateType => 'Update';
+
+  @override
+  String get notificationsSummaryType => 'Daily summary';
+
+  @override
+  String get notificationsSummaryOverview => 'Overview';
+
+  @override
+  String get notificationsSummaryCompletion => 'Completion';
+
+  @override
+  String get notificationsSummaryTasks => 'Tasks';
+
+  @override
+  String get notificationsSummaryMissedTasks => 'Missed tasks';
+
+  @override
+  String get notificationsSummaryLocations => 'Location performance';
+
+  @override
+  String get notificationsSummaryNotes => 'Notes';
+
+  @override
+  String get notificationsSummaryPhotoBypassed => 'Photo bypassed';
+
+  @override
+  String get notificationsSummaryNoReason => 'No reason provided';
+
+  @override
+  String notificationsSummaryMoreItems(int count) {
+    return '... and $count more';
+  }
+
+  @override
   String notificationsYesterdayAt(String time) {
     return 'Yesterday $time';
   }
@@ -1980,6 +2015,21 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get documentsUploadSubtitle =>
       'Add SOPs, policies, guides, and training files for the team.';
+
+  @override
+  String get documentsLocationAccessTitle => 'Document locations';
+
+  @override
+  String get documentsLocationAccessBody =>
+      'Choose where this document appears in Document Center. Select one location or keep more than one selected if the file applies across sites.';
+
+  @override
+  String get documentsLocationRequired =>
+      'Select at least one location for this document.';
+
+  @override
+  String get documentsUploadNeedsLocation =>
+      'Add a location before uploading documents.';
 
   @override
   String get documentsUpdateButton => 'Update document';

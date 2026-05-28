@@ -159,6 +159,24 @@
   "notificationsNewMessage": "Nuevo mensaje",
   "notificationsNoContent": "Sin contenido",
   "notificationsLoadMore": "Cargar más",
+  "notificationsUpdateType": "Actualización",
+  "notificationsSummaryType": "Resumen diario",
+  "notificationsSummaryOverview": "Resumen",
+  "notificationsSummaryCompletion": "Cumplimiento",
+  "notificationsSummaryTasks": "Tareas",
+  "notificationsSummaryMissedTasks": "Tareas pendientes",
+  "notificationsSummaryLocations": "Rendimiento por ubicación",
+  "notificationsSummaryNotes": "Notas",
+  "notificationsSummaryPhotoBypassed": "Fotos omitidas",
+  "notificationsSummaryNoReason": "Sin motivo indicado",
+  "notificationsSummaryMoreItems": "... y {count} más",
+  "@notificationsSummaryMoreItems": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "notificationsYesterdayAt": "Ayer {time}",
   "@notificationsYesterdayAt": {
     "placeholders": {
@@ -933,6 +951,10 @@
   "documentsUploadTitle": "Cargar documento",
   "documentsEditTitle": "Editar documento",
   "documentsUploadSubtitle": "Agrega SOP, políticas, guías y archivos de formación para el equipo.",
+  "documentsLocationAccessTitle": "Ubicaciones del documento",
+  "documentsLocationAccessBody": "Elige dónde aparece este documento en el Centro de Documentos. Selecciona una ubicación o deja varias seleccionadas si el archivo aplica en más de un local.",
+  "documentsLocationRequired": "Selecciona al menos una ubicación para este documento.",
+  "documentsUploadNeedsLocation": "Agrega una ubicación antes de cargar documentos.",
   "documentsUpdateButton": "Actualizar documento",
   "documentsInfoTip": "Carga PDF, archivos DOCX, imágenes o videos de hasta 20 MB y colócalos en la categoría correcta.",
   "documentsDetails": "Detalles",

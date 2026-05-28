@@ -386,6 +386,41 @@ class AppLocalizationsEs extends AppLocalizations {
   String get notificationsLoadMore => 'Cargar más';
 
   @override
+  String get notificationsUpdateType => 'Actualización';
+
+  @override
+  String get notificationsSummaryType => 'Resumen diario';
+
+  @override
+  String get notificationsSummaryOverview => 'Resumen';
+
+  @override
+  String get notificationsSummaryCompletion => 'Cumplimiento';
+
+  @override
+  String get notificationsSummaryTasks => 'Tareas';
+
+  @override
+  String get notificationsSummaryMissedTasks => 'Tareas pendientes';
+
+  @override
+  String get notificationsSummaryLocations => 'Rendimiento por ubicación';
+
+  @override
+  String get notificationsSummaryNotes => 'Notas';
+
+  @override
+  String get notificationsSummaryPhotoBypassed => 'Fotos omitidas';
+
+  @override
+  String get notificationsSummaryNoReason => 'Sin motivo indicado';
+
+  @override
+  String notificationsSummaryMoreItems(int count) {
+    return '... y $count más';
+  }
+
+  @override
   String notificationsYesterdayAt(String time) {
     return 'Ayer $time';
   }
@@ -2008,6 +2043,21 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get documentsUploadSubtitle =>
       'Agrega SOP, políticas, guías y archivos de formación para el equipo.';
+
+  @override
+  String get documentsLocationAccessTitle => 'Ubicaciones del documento';
+
+  @override
+  String get documentsLocationAccessBody =>
+      'Elige dónde aparece este documento en el Centro de Documentos. Selecciona una ubicación o deja varias seleccionadas si el archivo aplica en más de un local.';
+
+  @override
+  String get documentsLocationRequired =>
+      'Selecciona al menos una ubicación para este documento.';
+
+  @override
+  String get documentsUploadNeedsLocation =>
+      'Agrega una ubicación antes de cargar documentos.';
 
   @override
   String get documentsUpdateButton => 'Actualizar documento';

@@ -77,6 +77,11 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage>
   // Add refresh keys to force StreamBuilder updates
   final ValueNotifier<int> _refreshTrigger = ValueNotifier<int>(0);
 
+  bool get _isCompactPhoneLayout {
+    final size = MediaQuery.sizeOf(context);
+    return size.shortestSide < 520;
+  }
+
   /// Get the currently selected location ID from shared state
   String? get _selectedLocationId {
     // Mirror training page behavior by reading from the global LocationSelectionService
@@ -288,12 +293,10 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage>
       context: context,
       barrierDismissible: false, // User must complete this step
       builder:
-          (context) => AlertDialog(
-            title: const Text('Welcome to Hands!'),
-            content: const Text(
-              'Let\'s get you started by setting up your first location. '
-              'This will be where your team members check in and out for shifts.',
-            ),
+          (context) => HandsDialog(
+            title: 'Welcome to Hands!',
+            isDismissible: false,
+            maxWidth: 460,
             actions: [
               HandsPrimaryButton(
                 text: 'Create My First Location',
@@ -303,6 +306,11 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage>
                 },
               ),
             ],
+            child: Text(
+              'Let\'s get you started by setting up your first location. '
+              'This will be where your team members check in and out for shifts.',
+              style: HandsModalTokens.bodyStyle,
+            ),
           ),
     );
   }
@@ -386,127 +394,107 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage>
     }
 
     final currentLocationId = _selectedLocationId;
-    final selectedLocationId = await showModalBottomSheet<String>(
+    final selectedLocationId = await HandsBottomSheet.show<String>(
       context: context,
-      backgroundColor: HandsColors.primaryContainer,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      builder:
-          (sheetContext) => SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+      title: 'Switch location',
+      subtitle:
+          'Focus setup lists on one location so shifts, team, and workflows stay easier to manage.',
+      initialChildSize: 0.42,
+      minChildSize: 0.28,
+      maxChildSize: 0.75,
+      child: ListView.separated(
+        shrinkWrap: true,
+        itemCount: _availableLocations.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 10),
+        itemBuilder: (sheetContext, index) {
+          final location = _availableLocations[index];
+          final locationId = (location['id'] ?? '').toString();
+          final isSelected = locationId == currentLocationId;
+          final locationName =
+              (location['name'] ?? context.l10n.webAdminUnnamedLocation)
+                  .toString();
+
+          return InkWell(
+            borderRadius: BorderRadius.circular(HandsModalTokens.sectionRadius),
+            onTap: () => Navigator.of(sheetContext).pop(locationId),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+              decoration: BoxDecoration(
+                color:
+                    isSelected
+                        ? HandsColors.handsOrange.withValues(alpha: 0.12)
+                        : HandsModalTokens.surfaceElevated,
+                borderRadius: BorderRadius.circular(
+                  HandsModalTokens.sectionRadius,
+                ),
+                border: Border.all(
+                  color:
+                      isSelected
+                          ? HandsColors.handsOrange.withValues(alpha: 0.55)
+                          : HandsModalTokens.border,
+                ),
+              ),
+              child: Row(
                 children: [
-                  Text(
-                    'Switch location',
-                    style: GoogleFonts.inter(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: HandsColors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Focus setup lists on one location so shifts, team, and workflows stay easier to manage.',
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: HandsColors.white70,
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  ..._availableLocations.map((location) {
-                    final locationId = (location['id'] ?? '').toString();
-                    final isSelected = locationId == currentLocationId;
-                    final locationName =
-                        (location['name'] ??
-                                context.l10n.webAdminUnnamedLocation)
-                            .toString();
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      decoration: BoxDecoration(
-                        color:
-                            isSelected
-                                ? HandsColors.handsOrange.withValues(
-                                  alpha: 0.12,
-                                )
-                                : HandsColors.secondaryContainer,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(
-                          color:
-                              isSelected
-                                  ? HandsColors.handsOrange.withValues(
-                                    alpha: 0.38,
-                                  )
-                                  : HandsColors.white12,
-                        ),
-                      ),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 4,
-                        ),
-                        onTap: () => Navigator.of(sheetContext).pop(locationId),
-                        leading: Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color:
-                                isSelected
-                                    ? HandsColors.handsOrange.withValues(
-                                      alpha: 0.16,
-                                    )
-                                    : Colors.white.withValues(alpha: 0.05),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(
-                            Icons.location_on_rounded,
-                            color:
-                                isSelected
-                                    ? HandsColors.handsOrange
-                                    : HandsColors.white70,
-                            size: 18,
-                          ),
-                        ),
-                        title: Text(
-                          locationName,
-                          style: GoogleFonts.inter(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: HandsColors.white,
-                          ),
-                        ),
-                        subtitle:
-                            isSelected
-                                ? Text(
-                                  'Currently selected',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w600,
-                                    color: HandsColors.white70,
-                                  ),
-                                )
-                                : null,
-                        trailing: Icon(
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color:
                           isSelected
-                              ? Icons.check_circle_rounded
-                              : Icons.chevron_right_rounded,
-                          color:
-                              isSelected
-                                  ? HandsColors.handsOrange
-                                  : HandsColors.white70,
-                        ),
+                              ? HandsColors.handsOrange.withValues(alpha: 0.16)
+                              : HandsModalTokens.surfaceMuted,
+                      borderRadius: BorderRadius.circular(
+                        HandsModalTokens.compactControlRadius,
                       ),
-                    );
-                  }),
+                    ),
+                    child: Icon(
+                      Icons.location_on_rounded,
+                      color:
+                          isSelected
+                              ? HandsColors.handsOrange
+                              : HandsModalTokens.textMuted,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          locationName,
+                          style: HandsModalTokens.sectionTitleStyle.copyWith(
+                            fontSize: 15,
+                          ),
+                        ),
+                        if (isSelected) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            'Currently selected',
+                            style: HandsModalTokens.bodyStyle.copyWith(
+                              fontSize: 12.5,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    isSelected
+                        ? Icons.check_circle_rounded
+                        : Icons.chevron_right_rounded,
+                    color:
+                        isSelected
+                            ? HandsColors.handsOrange
+                            : HandsModalTokens.textMuted,
+                  ),
                 ],
               ),
             ),
-          ),
+          );
+        },
+      ),
     );
 
     if (!mounted ||
@@ -942,6 +930,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage>
 
   Widget _buildViewToggle() {
     final l10n = context.l10n;
+    final isCompactPhone = _isCompactPhoneLayout;
     final items = <({AdminView view, IconData icon, String label})>[
       (
         view: AdminView.locations,
@@ -966,7 +955,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage>
     ];
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(12),
       decoration: _adminPanelDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -979,85 +968,88 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage>
               color: HandsColors.white70,
             ),
           ),
-          const SizedBox(height: 10),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children:
-                  items.map((item) {
-                    final isActive = _currentView == item.view;
-                    final accent = _viewAccent(item.view);
-                    return Padding(
-                      padding: EdgeInsets.only(
-                        right: item.view == items.last.view ? 0 : 8,
+          const SizedBox(height: 8),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: items.length,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisSpacing: 7,
+              crossAxisSpacing: 7,
+              childAspectRatio: isCompactPhone ? 3.35 : 3.55,
+            ),
+            itemBuilder: (context, index) {
+              final item = items[index];
+              final isActive = _currentView == item.view;
+              final accent = _viewAccent(item.view);
+
+              return InkWell(
+                borderRadius: BorderRadius.circular(18),
+                onTap: () {
+                  if (_currentView != item.view && mounted) {
+                    setState(() => _currentView = item.view);
+                  }
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isCompactPhone ? 9 : 11,
+                    vertical: isCompactPhone ? 7 : 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color:
+                        isActive
+                            ? accent.withValues(alpha: 0.14)
+                            : Colors.white.withValues(alpha: 0.025),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color:
+                          isActive
+                              ? accent.withValues(alpha: 0.34)
+                              : HandsColors.white12,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: isCompactPhone ? 28 : 30,
+                        height: isCompactPhone ? 28 : 30,
+                        decoration: BoxDecoration(
+                          color:
+                              isActive
+                                  ? accent.withValues(alpha: 0.16)
+                                  : Colors.white.withValues(alpha: 0.04),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          item.icon,
+                          size: isCompactPhone ? 14 : 15,
+                          color: isActive ? accent : HandsColors.white70,
+                        ),
                       ),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(16),
-                        onTap: () {
-                          if (_currentView != item.view && mounted) {
-                            setState(() => _currentView = item.view);
-                          }
-                        },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 160),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                          decoration: BoxDecoration(
+                      const SizedBox(width: 7),
+                      Expanded(
+                        child: Text(
+                          item.label,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(
                             color:
                                 isActive
-                                    ? accent.withValues(alpha: 0.14)
-                                    : Colors.white.withValues(alpha: 0.025),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color:
-                                  isActive
-                                      ? accent.withValues(alpha: 0.34)
-                                      : HandsColors.white12,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 28,
-                                height: 28,
-                                decoration: BoxDecoration(
-                                  color:
-                                      isActive
-                                          ? accent.withValues(alpha: 0.16)
-                                          : Colors.white.withValues(
-                                            alpha: 0.04,
-                                          ),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Icon(
-                                  item.icon,
-                                  size: 15,
-                                  color:
-                                      isActive ? accent : HandsColors.white70,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                item.label,
-                                style: GoogleFonts.inter(
-                                  color:
-                                      isActive
-                                          ? HandsColors.white
-                                          : HandsColors.white70,
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 12.5,
-                                ),
-                              ),
-                            ],
+                                    ? HandsColors.white
+                                    : HandsColors.white70,
+                            fontWeight: FontWeight.w700,
+                            fontSize: isCompactPhone ? 11 : 11.5,
+                            height: 1.0,
                           ),
                         ),
                       ),
-                    );
-                  }).toList(),
-            ),
+                    ],
+                  ),
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -1073,6 +1065,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage>
     List<String> helpTopicIds = const [],
   }) {
     final l10n = context.l10n;
+    final isCompactPhone = _isCompactPhoneLayout;
     return Container(
       decoration: _adminPanelDecoration(
         accent: colors.first,
@@ -1096,20 +1089,29 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage>
               ),
             ),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+              padding: EdgeInsets.fromLTRB(
+                isCompactPhone ? 14 : 16,
+                isCompactPhone ? 14 : 16,
+                isCompactPhone ? 14 : 16,
+                isCompactPhone ? 12 : 14,
+              ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    width: 42,
-                    height: 42,
+                    width: isCompactPhone ? 38 : 42,
+                    height: isCompactPhone ? 38 : 42,
                     decoration: BoxDecoration(
                       color: colors.first.withValues(alpha: 0.16),
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: Icon(icon, color: colors.first, size: 21),
+                    child: Icon(
+                      icon,
+                      color: colors.first,
+                      size: isCompactPhone ? 19 : 21,
+                    ),
                   ),
-                  const SizedBox(width: 12),
+                  SizedBox(width: isCompactPhone ? 10 : 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1117,16 +1119,18 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage>
                         Text(
                           title,
                           style: GoogleFonts.inter(
-                            fontSize: 15,
+                            fontSize: isCompactPhone ? 14 : 15,
                             fontWeight: FontWeight.w800,
                             color: HandsColors.white,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 3),
                         Text(
                           _viewSubtitle(_currentView),
+                          maxLines: isCompactPhone ? 2 : 3,
+                          overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.inter(
-                            fontSize: 12.5,
+                            fontSize: isCompactPhone ? 11.5 : 12.5,
                             fontWeight: FontWeight.w500,
                             color: HandsColors.white70,
                             height: 1.35,
@@ -1143,37 +1147,82 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage>
                       topicIds: helpTopicIds,
                     ),
                   ],
-                  const SizedBox(width: 12),
-                  FilledButton.icon(
-                    onPressed: onAdd,
-                    icon: const Icon(Icons.add, size: 16),
-                    label: Text(
-                      l10n.commonAdd,
-                      style: GoogleFonts.inter(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
+                  SizedBox(width: isCompactPhone ? 8 : 12),
+                  isCompactPhone
+                      ? Tooltip(
+                        message: l10n.commonAdd,
+                        child: SizedBox(
+                          width: 46,
+                          height: 46,
+                          child: FilledButton(
+                            onPressed: onAdd,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: colors.first,
+                              foregroundColor: const Color(0xFF0E1116),
+                              padding: EdgeInsets.zero,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              elevation: 0,
+                            ),
+                            child: const Icon(Icons.add, size: 18),
+                          ),
+                        ),
+                      )
+                      : FilledButton.icon(
+                        onPressed: onAdd,
+                        icon: const Icon(Icons.add, size: 16),
+                        label: Text(
+                          l10n.commonAdd,
+                          style: GoogleFonts.inter(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: colors.first,
+                          foregroundColor: const Color(0xFF0E1116),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          elevation: 0,
+                        ),
                       ),
-                    ),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: colors.first,
-                      foregroundColor: const Color(0xFF0E1116),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      elevation: 0,
-                    ),
-                  ),
                 ],
               ),
             ),
           ),
-          Padding(padding: const EdgeInsets.all(12), child: child),
+          Padding(
+            padding: EdgeInsets.all(isCompactPhone ? 10 : 12),
+            child: child,
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _buildCompactActionColumn(List<Widget> children) {
+    return Column(mainAxisSize: MainAxisSize.min, children: children);
+  }
+
+  Widget _compactActionButton({
+    required IconData icon,
+    required Color color,
+    required VoidCallback onPressed,
+    String? tooltip,
+  }) {
+    return IconButton(
+      visualDensity: VisualDensity.compact,
+      splashRadius: 18,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 30, height: 30),
+      tooltip: tooltip,
+      onPressed: onPressed,
+      icon: Icon(icon, color: color, size: 18),
     );
   }
 
@@ -1710,80 +1759,168 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage>
                                 ? context.l10n.welcomeRoleManager
                                 : context.l10n.welcomeRoleUser;
 
+                        final isCompactPhone = _isCompactPhoneLayout;
                         return Container(
                           margin: const EdgeInsets.only(bottom: 8),
                           decoration: _adminPanelDecoration(
                             accent: _viewAccent(AdminView.team),
                           ),
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 6,
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: isCompactPhone ? 12 : 14,
+                              vertical: isCompactPhone ? 10 : 12,
                             ),
-                            leading: Container(
-                              width: 42,
-                              height: 42,
-                              decoration: BoxDecoration(
-                                color: _viewAccent(
-                                  AdminView.team,
-                                ).withValues(alpha: 0.16),
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: Icon(
-                                Icons.person_rounded,
-                                color: _viewAccent(AdminView.team),
-                                size: 20,
-                              ),
-                            ),
-                            title: Text(
-                              name.isEmpty
-                                  ? context.l10n.adminUnnamedUser
-                                  : name,
-                              style: GoogleFonts.inter(
-                                color: HandsColors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            subtitle: Text(
-                              '$email • $roleText',
-                              style: GoogleFonts.inter(
-                                color: HandsColors.white70,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.edit,
-                                    color: HandsColors.white,
+                                Container(
+                                  width: isCompactPhone ? 38 : 42,
+                                  height: isCompactPhone ? 38 : 42,
+                                  decoration: BoxDecoration(
+                                    color: _viewAccent(
+                                      AdminView.team,
+                                    ).withValues(alpha: 0.16),
+                                    borderRadius: BorderRadius.circular(14),
                                   ),
-                                  iconSize: 18,
-                                  onPressed:
-                                      () => _showUserBottomSheet(
-                                        doc.id,
-                                        doc.data() as Map<String, dynamic>,
-                                      ),
-                                ),
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.delete,
-                                    color: HandsColors.white,
+                                  child: Icon(
+                                    Icons.person_rounded,
+                                    color: _viewAccent(AdminView.team),
+                                    size: isCompactPhone ? 18 : 20,
                                   ),
-                                  iconSize: 18,
-                                  onPressed:
-                                      () => _showDeleteConfirmation(
-                                        context: context,
-                                        title:
-                                            context.l10n.adminDeleteUserTitle,
-                                        content:
-                                            context.l10n.adminDeleteUserBody,
-                                        onConfirm: () => _deleteUser(doc.id),
-                                      ),
                                 ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        name.isEmpty
+                                            ? context.l10n.adminUnnamedUser
+                                            : name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: GoogleFonts.inter(
+                                          color: HandsColors.white,
+                                          fontSize: isCompactPhone ? 13.5 : 14,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        email,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: GoogleFonts.inter(
+                                          color: HandsColors.white70,
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: _viewAccent(
+                                            AdminView.team,
+                                          ).withValues(alpha: 0.14),
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
+                                          border: Border.all(
+                                            color: _viewAccent(
+                                              AdminView.team,
+                                            ).withValues(alpha: 0.24),
+                                          ),
+                                        ),
+                                        child: Text(
+                                          roleText,
+                                          style: GoogleFonts.inter(
+                                            color: _viewAccent(AdminView.team),
+                                            fontSize: 10.5,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                isCompactPhone
+                                    ? _buildCompactActionColumn([
+                                      _compactActionButton(
+                                        icon: Icons.edit,
+                                        color: HandsColors.white,
+                                        tooltip: context.l10n.settingsEdit,
+                                        onPressed:
+                                            () => _showUserBottomSheet(
+                                              doc.id,
+                                              doc.data()
+                                                  as Map<String, dynamic>,
+                                            ),
+                                      ),
+                                      _compactActionButton(
+                                        icon: Icons.delete,
+                                        color: HandsColors.white,
+                                        tooltip: context.l10n.commonDelete,
+                                        onPressed:
+                                            () => _showDeleteConfirmation(
+                                              context: context,
+                                              title:
+                                                  context
+                                                      .l10n
+                                                      .adminDeleteUserTitle,
+                                              content:
+                                                  context
+                                                      .l10n
+                                                      .adminDeleteUserBody,
+                                              onConfirm:
+                                                  () => _deleteUser(doc.id),
+                                            ),
+                                      ),
+                                    ])
+                                    : Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.edit,
+                                            color: HandsColors.white,
+                                          ),
+                                          iconSize: 18,
+                                          onPressed:
+                                              () => _showUserBottomSheet(
+                                                doc.id,
+                                                doc.data()
+                                                    as Map<String, dynamic>,
+                                              ),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.delete,
+                                            color: HandsColors.white,
+                                          ),
+                                          iconSize: 18,
+                                          onPressed:
+                                              () => _showDeleteConfirmation(
+                                                context: context,
+                                                title:
+                                                    context
+                                                        .l10n
+                                                        .adminDeleteUserTitle,
+                                                content:
+                                                    context
+                                                        .l10n
+                                                        .adminDeleteUserBody,
+                                                onConfirm:
+                                                    () => _deleteUser(doc.id),
+                                              ),
+                                        ),
+                                      ],
+                                    ),
                               ],
                             ),
                           ),
@@ -1910,79 +2047,128 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage>
                     addressDisplay = city;
                   }
 
+                  final isCompactPhone = _isCompactPhoneLayout;
                   return Container(
                     margin: const EdgeInsets.only(bottom: 8),
                     decoration: _adminPanelDecoration(
                       accent: _viewAccent(AdminView.locations),
                     ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 6,
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isCompactPhone ? 12 : 14,
+                        vertical: isCompactPhone ? 10 : 12,
                       ),
-                      leading: Container(
-                        width: 42,
-                        height: 42,
-                        decoration: BoxDecoration(
-                          color: _viewAccent(
-                            AdminView.locations,
-                          ).withValues(alpha: 0.16),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Icon(
-                          Icons.location_on_rounded,
-                          color: _viewAccent(AdminView.locations),
-                          size: 20,
-                        ),
-                      ),
-                      title: Text(
-                        displayName,
-                        style: GoogleFonts.inter(
-                          color: HandsColors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      subtitle: Text(
-                        addressDisplay.isEmpty
-                            ? 'No address provided'
-                            : addressDisplay,
-                        style: GoogleFonts.inter(
-                          color: HandsColors.white70,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          IconButton(
-                            icon: const Icon(
-                              Icons.edit,
-                              color: HandsColors.white,
+                          Container(
+                            width: isCompactPhone ? 38 : 42,
+                            height: isCompactPhone ? 38 : 42,
+                            decoration: BoxDecoration(
+                              color: _viewAccent(
+                                AdminView.locations,
+                              ).withValues(alpha: 0.16),
+                              borderRadius: BorderRadius.circular(14),
                             ),
-                            iconSize: 18,
-                            onPressed:
-                                () => _showLocationBottomSheet(
-                                  locationId: doc.id,
-                                  initialData: locationData,
-                                ),
-                          ),
-                          IconButton(
-                            icon: const Icon(
-                              Icons.delete,
-                              color: HandsColors.white,
+                            child: Icon(
+                              Icons.location_on_rounded,
+                              color: _viewAccent(AdminView.locations),
+                              size: isCompactPhone ? 18 : 20,
                             ),
-                            iconSize: 18,
-                            onPressed:
-                                () => _showDeleteConfirmation(
-                                  context: context,
-                                  title: 'Delete Location',
-                                  content:
-                                      'Are you sure you want to delete ${displayName.isEmpty ? 'this location' : displayName}? This action cannot be undone.',
-                                  onConfirm: () => _deleteLocation(doc.id),
-                                ),
                           ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  displayName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.inter(
+                                    color: HandsColors.white,
+                                    fontSize: isCompactPhone ? 13.5 : 14,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  addressDisplay.isEmpty
+                                      ? 'No address provided'
+                                      : addressDisplay,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.inter(
+                                    color: HandsColors.white70,
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.32,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          isCompactPhone
+                              ? _buildCompactActionColumn([
+                                _compactActionButton(
+                                  icon: Icons.edit,
+                                  color: HandsColors.white,
+                                  tooltip: context.l10n.settingsEdit,
+                                  onPressed:
+                                      () => _showLocationBottomSheet(
+                                        locationId: doc.id,
+                                        initialData: locationData,
+                                      ),
+                                ),
+                                _compactActionButton(
+                                  icon: Icons.delete,
+                                  color: HandsColors.white,
+                                  tooltip: context.l10n.commonDelete,
+                                  onPressed:
+                                      () => _showDeleteConfirmation(
+                                        context: context,
+                                        title: 'Delete Location',
+                                        content:
+                                            'Are you sure you want to delete ${displayName.isEmpty ? 'this location' : displayName}? This action cannot be undone.',
+                                        onConfirm:
+                                            () => _deleteLocation(doc.id),
+                                      ),
+                                ),
+                              ])
+                              : Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.edit,
+                                      color: HandsColors.white,
+                                    ),
+                                    iconSize: 18,
+                                    onPressed:
+                                        () => _showLocationBottomSheet(
+                                          locationId: doc.id,
+                                          initialData: locationData,
+                                        ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.delete,
+                                      color: HandsColors.white,
+                                    ),
+                                    iconSize: 18,
+                                    onPressed:
+                                        () => _showDeleteConfirmation(
+                                          context: context,
+                                          title: 'Delete Location',
+                                          content:
+                                              'Are you sure you want to delete ${displayName.isEmpty ? 'this location' : displayName}? This action cannot be undone.',
+                                          onConfirm:
+                                              () => _deleteLocation(doc.id),
+                                        ),
+                                  ),
+                                ],
+                              ),
                         ],
                       ),
                     ),
@@ -2120,204 +2306,365 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage>
                       }).isNotEmpty;
                   // locationIds intentionally not used in mobile shifts list view; locations managed uniquely
 
+                  final isCompactPhone = _isCompactPhoneLayout;
                   return Container(
                     margin: const EdgeInsets.only(bottom: 8),
                     decoration: _adminPanelDecoration(
                       accent: _viewAccent(AdminView.shifts),
                     ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isCompactPhone ? 12 : 14,
+                        vertical: isCompactPhone ? 10 : 12,
                       ),
-                      leading: Container(
-                        width: 42,
-                        height: 42,
-                        decoration: BoxDecoration(
-                          color: _viewAccent(
-                            AdminView.shifts,
-                          ).withValues(alpha: 0.16),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Icon(
-                          Icons.schedule_rounded,
-                          color: _viewAccent(AdminView.shifts),
-                          size: 20,
-                        ),
-                      ),
-                      title: Text(
-                        name,
-                        style: GoogleFonts.inter(
-                          color: HandsColors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      subtitle: Column(
+                      child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            '${_range12h(startTime, endTime)} • ${roles.join(', ')}',
-                            style: GoogleFonts.inter(
-                              color: HandsColors.white70,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
                           Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 5,
-                            ),
+                            width: isCompactPhone ? 38 : 42,
+                            height: isCompactPhone ? 38 : 42,
                             decoration: BoxDecoration(
-                              color:
-                                  hasWorkflow
-                                      ? _viewAccent(
-                                        AdminView.shifts,
-                                      ).withValues(alpha: 0.14)
-                                      : Colors.white.withValues(alpha: 0.04),
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(
-                                color:
-                                    hasWorkflow
-                                        ? _viewAccent(
-                                          AdminView.shifts,
-                                        ).withValues(alpha: 0.24)
-                                        : HandsColors.white12,
-                              ),
+                              color: _viewAccent(
+                                AdminView.shifts,
+                              ).withValues(alpha: 0.16),
+                              borderRadius: BorderRadius.circular(14),
                             ),
-                            child: Text(
-                              workflowSummary,
-                              style: GoogleFonts.inter(
-                                color:
-                                    hasWorkflow
-                                        ? _viewAccent(AdminView.shifts)
-                                        : HandsColors.white30,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                              ),
+                            child: Icon(
+                              Icons.schedule_rounded,
+                              color: _viewAccent(AdminView.shifts),
+                              size: isCompactPhone ? 18 : 20,
                             ),
                           ),
-                          // Locations display removed - locations are now managed uniquely
-                        ],
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: Icon(
-                              hasWorkflow
-                                  ? Icons.rule_folder_outlined
-                                  : Icons.add_task_rounded,
-                              color: HandsColors.handsOrange,
-                            ),
-                            iconSize: 18,
-                            tooltip:
-                                hasWorkflow
-                                    ? 'Edit workflow'
-                                    : 'Create workflow',
-                            onPressed:
-                                () => _editWorkflowForShift({
-                                  'id': shiftId,
-                                  ...shiftData,
-                                }),
-                          ),
-                          IconButton(
-                            icon: const Icon(
-                              Icons.edit,
-                              color: HandsColors.white,
-                            ),
-                            iconSize: 18,
-                            onPressed: () {
-                              // Defensive normalization: some older shift docs may store
-                              // single-string fields (e.g. "locationId" or legacy values)
-                              // where the model expects lists. Coerce those to lists so
-                              // the generated fromJson doesn't throw.
-                              try {
-                                final raw = Map<String, dynamic>.from(
-                                  shiftData,
-                                );
-                                List<String> coerceStringList(dynamic v) {
-                                  if (v == null) return <String>[];
-                                  if (v is List) {
-                                    return v.map((e) => e.toString()).toList();
-                                  }
-                                  return <String>[v.toString()];
-                                }
-
-                                List<int> coerceIntList(dynamic v) {
-                                  if (v == null) return <int>[];
-                                  if (v is List) {
-                                    return v
-                                        .map(
-                                          (e) =>
-                                              int.tryParse(e.toString()) ?? 0,
-                                        )
-                                        .toList();
-                                  }
-                                  return <int>[
-                                    (int.tryParse(v.toString()) ?? 0),
-                                  ];
-                                }
-
-                                raw['locationIds'] = coerceStringList(
-                                  raw['locationIds'] ?? raw['locationId'],
-                                );
-                                raw['checklistTemplateIds'] = coerceStringList(
-                                  raw['checklistTemplateIds'] ??
-                                      raw['checklistId'],
-                                );
-                                raw['jobType'] = coerceStringList(
-                                  raw['jobTypes'] ?? raw['jobType'],
-                                );
-                                raw['days'] = coerceStringList(raw['days']);
-                                raw['activeDays'] = coerceIntList(
-                                  raw['activeDays'],
-                                );
-
-                                final normalized = ShiftData.fromJson(raw);
-                                _showShiftBottomSheet(shiftId, normalized);
-                              } catch (e, st) {
-                                logger.e(
-                                  'Error normalizing shift data for edit: $e',
-                                  st,
-                                );
-                                // Fallback: attempt to open sheet with best-effort map
-                                try {
-                                  _showShiftBottomSheet(
-                                    shiftId,
-                                    ShiftData.fromJson(
-                                      Map<String, dynamic>.from(shiftData),
-                                    ),
-                                  );
-                                } catch (_) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Unable to open shift editor for this shift (malformed data)',
-                                      ),
-                                    ),
-                                  );
-                                }
-                              }
-                            },
-                          ),
-                          IconButton(
-                            icon: const Icon(
-                              Icons.delete,
-                              color: HandsColors.white,
-                            ),
-                            iconSize: 18,
-                            onPressed:
-                                () => _showDeleteConfirmation(
-                                  context: context,
-                                  title: 'Delete Shift',
-                                  content:
-                                      'Are you sure you want to delete $name? This action cannot be undone.',
-                                  onConfirm: () => _deleteShift(shiftId),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.inter(
+                                    color: HandsColors.white,
+                                    fontSize: isCompactPhone ? 13.5 : 14,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  '${_range12h(startTime, endTime)} • ${roles.join(', ')}',
+                                  maxLines: isCompactPhone ? 1 : 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.inter(
+                                    color: HandsColors.white70,
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color:
+                                        hasWorkflow
+                                            ? _viewAccent(
+                                              AdminView.shifts,
+                                            ).withValues(alpha: 0.14)
+                                            : Colors.white.withValues(
+                                              alpha: 0.04,
+                                            ),
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(
+                                      color:
+                                          hasWorkflow
+                                              ? _viewAccent(
+                                                AdminView.shifts,
+                                              ).withValues(alpha: 0.24)
+                                              : HandsColors.white12,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    workflowSummary,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.inter(
+                                      color:
+                                          hasWorkflow
+                                              ? _viewAccent(AdminView.shifts)
+                                              : HandsColors.white30,
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
+                          const SizedBox(width: 8),
+                          isCompactPhone
+                              ? _buildCompactActionColumn([
+                                _compactActionButton(
+                                  icon:
+                                      hasWorkflow
+                                          ? Icons.rule_folder_outlined
+                                          : Icons.add_task_rounded,
+                                  color: HandsColors.handsOrange,
+                                  tooltip:
+                                      hasWorkflow
+                                          ? 'Edit workflow'
+                                          : 'Create workflow',
+                                  onPressed:
+                                      () => _editWorkflowForShift({
+                                        'id': shiftId,
+                                        ...shiftData,
+                                      }),
+                                ),
+                                _compactActionButton(
+                                  icon: Icons.edit,
+                                  color: HandsColors.white,
+                                  tooltip: context.l10n.settingsEdit,
+                                  onPressed: () {
+                                    try {
+                                      final raw = Map<String, dynamic>.from(
+                                        shiftData,
+                                      );
+                                      List<String> coerceStringList(dynamic v) {
+                                        if (v == null) return <String>[];
+                                        if (v is List) {
+                                          return v
+                                              .map((e) => e.toString())
+                                              .toList();
+                                        }
+                                        return <String>[v.toString()];
+                                      }
+
+                                      List<int> coerceIntList(dynamic v) {
+                                        if (v == null) return <int>[];
+                                        if (v is List) {
+                                          return v
+                                              .map(
+                                                (e) =>
+                                                    int.tryParse(
+                                                      e.toString(),
+                                                    ) ??
+                                                    0,
+                                              )
+                                              .toList();
+                                        }
+                                        return <int>[
+                                          (int.tryParse(v.toString()) ?? 0),
+                                        ];
+                                      }
+
+                                      raw['locationIds'] = coerceStringList(
+                                        raw['locationIds'] ?? raw['locationId'],
+                                      );
+                                      raw['checklistTemplateIds'] =
+                                          coerceStringList(
+                                            raw['checklistTemplateIds'] ??
+                                                raw['checklistId'],
+                                          );
+                                      raw['jobType'] = coerceStringList(
+                                        raw['jobTypes'] ?? raw['jobType'],
+                                      );
+                                      raw['days'] = coerceStringList(
+                                        raw['days'],
+                                      );
+                                      raw['activeDays'] = coerceIntList(
+                                        raw['activeDays'],
+                                      );
+
+                                      final normalized = ShiftData.fromJson(
+                                        raw,
+                                      );
+                                      _showShiftBottomSheet(
+                                        shiftId,
+                                        normalized,
+                                      );
+                                    } catch (e, st) {
+                                      logger.e(
+                                        'Error normalizing shift data for edit: $e',
+                                        st,
+                                      );
+                                      try {
+                                        _showShiftBottomSheet(
+                                          shiftId,
+                                          ShiftData.fromJson(
+                                            Map<String, dynamic>.from(
+                                              shiftData,
+                                            ),
+                                          ),
+                                        );
+                                      } catch (_) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'Unable to open shift editor for this shift (malformed data)',
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                                ),
+                                _compactActionButton(
+                                  icon: Icons.delete,
+                                  color: HandsColors.white,
+                                  tooltip: context.l10n.commonDelete,
+                                  onPressed:
+                                      () => _showDeleteConfirmation(
+                                        context: context,
+                                        title: 'Delete Shift',
+                                        content:
+                                            'Are you sure you want to delete $name? This action cannot be undone.',
+                                        onConfirm: () => _deleteShift(shiftId),
+                                      ),
+                                ),
+                              ])
+                              : Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: Icon(
+                                      hasWorkflow
+                                          ? Icons.rule_folder_outlined
+                                          : Icons.add_task_rounded,
+                                      color: HandsColors.handsOrange,
+                                    ),
+                                    iconSize: 18,
+                                    tooltip:
+                                        hasWorkflow
+                                            ? 'Edit workflow'
+                                            : 'Create workflow',
+                                    onPressed:
+                                        () => _editWorkflowForShift({
+                                          'id': shiftId,
+                                          ...shiftData,
+                                        }),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.edit,
+                                      color: HandsColors.white,
+                                    ),
+                                    iconSize: 18,
+                                    onPressed: () {
+                                      // Defensive normalization: some older shift docs may store
+                                      // single-string fields (e.g. "locationId" or legacy values)
+                                      // where the model expects lists. Coerce those to lists so
+                                      // the generated fromJson doesn't throw.
+                                      try {
+                                        final raw = Map<String, dynamic>.from(
+                                          shiftData,
+                                        );
+                                        List<String> coerceStringList(
+                                          dynamic v,
+                                        ) {
+                                          if (v == null) return <String>[];
+                                          if (v is List) {
+                                            return v
+                                                .map((e) => e.toString())
+                                                .toList();
+                                          }
+                                          return <String>[v.toString()];
+                                        }
+
+                                        List<int> coerceIntList(dynamic v) {
+                                          if (v == null) return <int>[];
+                                          if (v is List) {
+                                            return v
+                                                .map(
+                                                  (e) =>
+                                                      int.tryParse(
+                                                        e.toString(),
+                                                      ) ??
+                                                      0,
+                                                )
+                                                .toList();
+                                          }
+                                          return <int>[
+                                            (int.tryParse(v.toString()) ?? 0),
+                                          ];
+                                        }
+
+                                        raw['locationIds'] = coerceStringList(
+                                          raw['locationIds'] ??
+                                              raw['locationId'],
+                                        );
+                                        raw['checklistTemplateIds'] =
+                                            coerceStringList(
+                                              raw['checklistTemplateIds'] ??
+                                                  raw['checklistId'],
+                                            );
+                                        raw['jobType'] = coerceStringList(
+                                          raw['jobTypes'] ?? raw['jobType'],
+                                        );
+                                        raw['days'] = coerceStringList(
+                                          raw['days'],
+                                        );
+                                        raw['activeDays'] = coerceIntList(
+                                          raw['activeDays'],
+                                        );
+
+                                        final normalized = ShiftData.fromJson(
+                                          raw,
+                                        );
+                                        _showShiftBottomSheet(
+                                          shiftId,
+                                          normalized,
+                                        );
+                                      } catch (e, st) {
+                                        logger.e(
+                                          'Error normalizing shift data for edit: $e',
+                                          st,
+                                        );
+                                        // Fallback: attempt to open sheet with best-effort map
+                                        try {
+                                          _showShiftBottomSheet(
+                                            shiftId,
+                                            ShiftData.fromJson(
+                                              Map<String, dynamic>.from(
+                                                shiftData,
+                                              ),
+                                            ),
+                                          );
+                                        } catch (_) {
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            const SnackBar(
+                                              content: Text(
+                                                'Unable to open shift editor for this shift (malformed data)',
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    },
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.delete,
+                                      color: HandsColors.white,
+                                    ),
+                                    iconSize: 18,
+                                    onPressed:
+                                        () => _showDeleteConfirmation(
+                                          context: context,
+                                          title: 'Delete Shift',
+                                          content:
+                                              'Are you sure you want to delete $name? This action cannot be undone.',
+                                          onConfirm:
+                                              () => _deleteShift(shiftId),
+                                        ),
+                                  ),
+                                ],
+                              ),
                         ],
                       ),
                     ),
@@ -2445,83 +2792,126 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage>
                   final taskCount = tasksList.length;
                   // locationIds intentionally not used in checklist list view; locations managed uniquely
 
+                  final isCompactPhone = _isCompactPhoneLayout;
                   return Container(
                     margin: const EdgeInsets.only(bottom: 8),
                     decoration: _adminPanelDecoration(
                       accent: _viewAccent(AdminView.library),
                     ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 6,
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isCompactPhone ? 12 : 14,
+                        vertical: isCompactPhone ? 10 : 12,
                       ),
-                      leading: Container(
-                        width: 42,
-                        height: 42,
-                        decoration: BoxDecoration(
-                          color: _viewAccent(
-                            AdminView.library,
-                          ).withValues(alpha: 0.16),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Icon(
-                          Icons.library_books_rounded,
-                          color: _viewAccent(AdminView.library),
-                          size: 20,
-                        ),
-                      ),
-                      title: Text(
-                        name,
-                        style: GoogleFonts.inter(
-                          color: HandsColors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      subtitle: Column(
+                      child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            '$description • $taskCount tasks',
-                            style: GoogleFonts.inter(
-                              color: HandsColors.white70,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
+                          Container(
+                            width: isCompactPhone ? 38 : 42,
+                            height: isCompactPhone ? 38 : 42,
+                            decoration: BoxDecoration(
+                              color: _viewAccent(
+                                AdminView.library,
+                              ).withValues(alpha: 0.16),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Icon(
+                              Icons.library_books_rounded,
+                              color: _viewAccent(AdminView.library),
+                              size: isCompactPhone ? 18 : 20,
                             ),
                           ),
-                          // Locations display removed - locations are now managed uniquely
-                        ],
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(
-                              Icons.edit,
-                              color: HandsColors.white,
-                            ),
-                            iconSize: 18,
-                            onPressed:
-                                () => _showChecklistBottomSheet(
-                                  doc.id,
-                                  checklistData,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.inter(
+                                    color: HandsColors.white,
+                                    fontSize: isCompactPhone ? 13.5 : 14,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
-                          ),
-                          IconButton(
-                            icon: const Icon(
-                              Icons.delete,
-                              color: HandsColors.white,
-                            ),
-                            iconSize: 18,
-                            onPressed:
-                                () => _showDeleteConfirmation(
-                                  context: context,
-                                  title: 'Delete Template',
-                                  content:
-                                      'Are you sure you want to delete $name? This action cannot be undone.',
-                                  onConfirm: () => _deleteChecklist(doc.id),
+                                const SizedBox(height: 3),
+                                Text(
+                                  '$description • $taskCount tasks',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.inter(
+                                    color: HandsColors.white70,
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.32,
+                                  ),
                                 ),
+                              ],
+                            ),
                           ),
+                          const SizedBox(width: 8),
+                          isCompactPhone
+                              ? _buildCompactActionColumn([
+                                _compactActionButton(
+                                  icon: Icons.edit,
+                                  color: HandsColors.white,
+                                  tooltip: context.l10n.settingsEdit,
+                                  onPressed:
+                                      () => _showChecklistBottomSheet(
+                                        doc.id,
+                                        checklistData,
+                                      ),
+                                ),
+                                _compactActionButton(
+                                  icon: Icons.delete,
+                                  color: HandsColors.white,
+                                  tooltip: context.l10n.commonDelete,
+                                  onPressed:
+                                      () => _showDeleteConfirmation(
+                                        context: context,
+                                        title: 'Delete Template',
+                                        content:
+                                            'Are you sure you want to delete $name? This action cannot be undone.',
+                                        onConfirm:
+                                            () => _deleteChecklist(doc.id),
+                                      ),
+                                ),
+                              ])
+                              : Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.edit,
+                                      color: HandsColors.white,
+                                    ),
+                                    iconSize: 18,
+                                    onPressed:
+                                        () => _showChecklistBottomSheet(
+                                          doc.id,
+                                          checklistData,
+                                        ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.delete,
+                                      color: HandsColors.white,
+                                    ),
+                                    iconSize: 18,
+                                    onPressed:
+                                        () => _showDeleteConfirmation(
+                                          context: context,
+                                          title: 'Delete Template',
+                                          content:
+                                              'Are you sure you want to delete $name? This action cannot be undone.',
+                                          onConfirm:
+                                              () => _deleteChecklist(doc.id),
+                                        ),
+                                  ),
+                                ],
+                              ),
                         ],
                       ),
                     ),
@@ -2549,6 +2939,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage>
   void _showUserBottomSheet([String? userId, Map<String, dynamic>? userData]) {
     showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       builder:
           (context) =>
@@ -2556,22 +2947,43 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage>
     );
   }
 
+  Future<void> _showCompactEditorPage({required Widget child}) async {
+    await Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder:
+            (_) => Scaffold(
+              backgroundColor: HandsModalTokens.surface,
+              body: SafeArea(child: child),
+            ),
+      ),
+    );
+  }
+
   void _showShiftBottomSheet([String? shiftId, ShiftData? shiftData]) {
+    final editor = ShiftTemplateBottomSheet(
+      shiftId: shiftId,
+      shiftData: shiftData,
+      organizationId: organizationId!,
+      availableLocations: _availableLocations,
+      selectedLocationId: _selectedLocationId,
+      forceInlineLayout: _isCompactPhoneLayout,
+      onShiftSaved: () {
+        // Refresh the dashboard
+        _triggerRefresh();
+      },
+    );
+
+    if (_isCompactPhoneLayout) {
+      _showCompactEditorPage(child: editor);
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
-      builder:
-          (context) => ShiftTemplateBottomSheet(
-            shiftId: shiftId,
-            shiftData: shiftData,
-            organizationId: organizationId!,
-            availableLocations: _availableLocations,
-            selectedLocationId: _selectedLocationId,
-            onShiftSaved: () {
-              // Refresh the dashboard
-              _triggerRefresh();
-            },
-          ),
+      builder: (context) => editor,
     );
   }
 
@@ -2593,34 +3005,40 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage>
       return;
     }
 
+    final editor = ChecklistBottomSheet(
+      organizationId: organizationId!,
+      locationId:
+          _selectedLocationId ??
+          'no-location', // Use placeholder if no location
+      checklistId: checklistId,
+      initialData: checklistData,
+      availableLocations: _availableLocations,
+      presetShiftIds: presetShiftIds,
+      initialTitleSuggestion: initialTitleSuggestion,
+      forceInlineLayout: _isCompactPhoneLayout,
+      onSave: (result) {
+        _saveChecklist(
+          checklistData: result['checklistData'],
+          selectedShiftIds: List<String>.from(result['selectedShiftIds'] ?? []),
+          selectedLocationIds: List<String>.from(
+            result['selectedLocationIds'] ?? [],
+          ),
+          duplicateToAll: result['duplicateToAll'] ?? false,
+          existingChecklistId: checklistId,
+        );
+      },
+    );
+
+    if (_isCompactPhoneLayout) {
+      _showCompactEditorPage(child: editor);
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
-      builder:
-          (context) => ChecklistBottomSheet(
-            organizationId: organizationId!,
-            locationId:
-                _selectedLocationId ??
-                'no-location', // Use placeholder if no location
-            checklistId: checklistId,
-            initialData: checklistData,
-            availableLocations: _availableLocations,
-            presetShiftIds: presetShiftIds,
-            initialTitleSuggestion: initialTitleSuggestion,
-            onSave: (result) {
-              _saveChecklist(
-                checklistData: result['checklistData'],
-                selectedShiftIds: List<String>.from(
-                  result['selectedShiftIds'] ?? [],
-                ),
-                selectedLocationIds: List<String>.from(
-                  result['selectedLocationIds'] ?? [],
-                ),
-                duplicateToAll: result['duplicateToAll'] ?? false,
-                existingChecklistId: checklistId,
-              );
-            },
-          ),
+      builder: (context) => editor,
     );
   }
 
@@ -2665,6 +3083,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage>
 
     showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       builder:
           (context) => LocationWizard(

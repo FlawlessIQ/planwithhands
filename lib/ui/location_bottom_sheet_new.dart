@@ -1091,15 +1091,19 @@ class _SalesDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    return AlertDialog(
-      title: Text(l10n.settingsTalkToSales),
-      content: Text(l10n.settingsContactSalesBody),
+    return HandsDialog(
+      title: l10n.settingsTalkToSales,
+      maxWidth: 440,
       actions: [
-        TextButton(
+        HandsSecondaryButton(
+          text: l10n.commonClose,
           onPressed: () => Navigator.of(context).pop(),
-          child: Text(l10n.commonClose),
         ),
       ],
+      child: Text(
+        l10n.settingsContactSalesBody,
+        style: HandsModalTokens.bodyStyle,
+      ),
     );
   }
 }

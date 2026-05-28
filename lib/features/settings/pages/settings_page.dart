@@ -17,7 +17,6 @@ import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/ui/contact_sales_dialog.dart';
-import 'package:hands_app/ui/location_bottom_sheet_new.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/core/platform_ios.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -678,12 +677,6 @@ class _HandsSettingsPageState extends ConsumerState<HandsSettingsPage> {
           message:
               validation.message ??
               context.l10n.settingsDailySummaryChangeBlocked,
-          actions: [
-            CupertinoDialogAction(
-              child: Text(context.l10n.commonOk),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-          ],
         );
       }
       return;
@@ -746,31 +739,30 @@ class _HandsSettingsPageState extends ConsumerState<HandsSettingsPage> {
   Future<bool> _showTimeChangeConfirmation(
     TimeChangeValidationResult validation,
   ) async {
-    return await showCupertinoDialog<bool>(
+    return await showDialog<bool>(
           context: context,
           builder:
-              (context) => CupertinoAlertDialog(
-                title: Text(
-                  validation.timePassed
-                      ? context.l10n.settingsDailySummaryTimePassedTitle
-                      : context.l10n.settingsDailySummaryConfirmTitle,
-                ),
-                content: Text(
-                  validation.message ??
-                      context.l10n.settingsDailySummaryProceedQuestion,
-                ),
+              (context) => HandsDialog(
+                title:
+                    validation.timePassed
+                        ? context.l10n.settingsDailySummaryTimePassedTitle
+                        : context.l10n.settingsDailySummaryConfirmTitle,
+                maxWidth: 460,
                 actions: [
-                  CupertinoDialogAction(
-                    isDestructiveAction: true,
-                    child: Text(context.l10n.commonCancel),
+                  HandsSecondaryButton(
+                    text: context.l10n.commonCancel,
                     onPressed: () => Navigator.of(context).pop(false),
                   ),
-                  CupertinoDialogAction(
-                    isDefaultAction: true,
-                    child: Text(context.l10n.commonContinue),
+                  HandsPrimaryButton(
+                    text: context.l10n.commonContinue,
                     onPressed: () => Navigator.of(context).pop(true),
                   ),
                 ],
+                child: Text(
+                  validation.message ??
+                      context.l10n.settingsDailySummaryProceedQuestion,
+                  style: HandsModalTokens.bodyStyle,
+                ),
               ),
         ) ??
         false;
@@ -778,23 +770,26 @@ class _HandsSettingsPageState extends ConsumerState<HandsSettingsPage> {
 
   /// Offers to send summary immediately
   Future<bool> _offerImmediateSend() async {
-    return await showCupertinoDialog<bool>(
+    return await showDialog<bool>(
           context: context,
           builder:
-              (context) => CupertinoAlertDialog(
-                title: Text(context.l10n.settingsDailySummarySendNowTitle),
-                content: Text(context.l10n.settingsDailySummarySendNowBody),
+              (context) => HandsDialog(
+                title: context.l10n.settingsDailySummarySendNowTitle,
+                maxWidth: 460,
                 actions: [
-                  CupertinoDialogAction(
-                    child: Text(context.l10n.settingsDailySummarySendNowLater),
+                  HandsSecondaryButton(
+                    text: context.l10n.settingsDailySummarySendNowLater,
                     onPressed: () => Navigator.of(context).pop(false),
                   ),
-                  CupertinoDialogAction(
-                    isDefaultAction: true,
-                    child: Text(context.l10n.settingsDailySummarySendNowAction),
+                  HandsPrimaryButton(
+                    text: context.l10n.settingsDailySummarySendNowAction,
                     onPressed: () => Navigator.of(context).pop(true),
                   ),
                 ],
+                child: Text(
+                  context.l10n.settingsDailySummarySendNowBody,
+                  style: HandsModalTokens.bodyStyle,
+                ),
               ),
         ) ??
         false;
@@ -828,29 +823,25 @@ class _HandsSettingsPageState extends ConsumerState<HandsSettingsPage> {
                 ? context.l10n.settingsDailySummaryResultSuccess
                 : context.l10n.settingsDailySummaryResultError,
         message: result.message,
-        actions: [
-          CupertinoDialogAction(
-            child: Text(context.l10n.commonOk),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-        ],
       );
     }
   }
 
   /// Shows a validation dialog
-  void _showValidationDialog({
-    required String title,
-    required String message,
-    required List<CupertinoDialogAction> actions,
-  }) {
-    showCupertinoDialog(
+  void _showValidationDialog({required String title, required String message}) {
+    showDialog(
       context: context,
       builder:
-          (context) => CupertinoAlertDialog(
-            title: Text(title),
-            content: Text(message),
-            actions: actions,
+          (context) => HandsDialog(
+            title: title,
+            maxWidth: 460,
+            actions: [
+              HandsSecondaryButton(
+                text: context.l10n.commonOk,
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ],
+            child: Text(message, style: HandsModalTokens.bodyStyle),
           ),
     );
   }
@@ -1068,33 +1059,33 @@ class _HandsSettingsPageState extends ConsumerState<HandsSettingsPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder:
-          (context) => AlertDialog(
-            backgroundColor: HandsColors.cardPrimary,
-            title: Row(
-              children: [
-                const Icon(Icons.refresh, color: Colors.orange),
-                const SizedBox(width: 8),
-                Text(
-                  'Refresh Dashboard Metrics?',
-                  style: TextStyle(color: HandsColors.white),
-                ),
-              ],
-            ),
-            content: Column(
+          (context) => HandsDialog(
+            title: 'Refresh Dashboard Metrics?',
+            maxWidth: 480,
+            actions: [
+              HandsSecondaryButton(
+                text: 'Cancel',
+                onPressed: () => Navigator.pop(context, false),
+              ),
+              HandsPrimaryButton(
+                text: 'Continue',
+                onPressed: () => Navigator.pop(context, true),
+              ),
+            ],
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'This will recalculate all dashboard metrics starting from today.',
-                  style: TextStyle(color: HandsColors.white),
+                  style: HandsModalTokens.bodyStyle.copyWith(
+                    color: HandsModalTokens.text,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Text(
                   'This action will:',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: HandsColors.white,
-                  ),
+                  style: HandsModalTokens.sectionTitleStyle,
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -1102,24 +1093,10 @@ class _HandsSettingsPageState extends ConsumerState<HandsSettingsPage> {
                   '• Force recalculation of all metrics\n'
                   '• May take a few moments to complete\n'
                   '• Is irreversible',
-                  style: TextStyle(color: HandsColors.white.withOpacity(0.8)),
+                  style: HandsModalTokens.bodyStyle,
                 ),
               ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: Text(
-                  'Cancel',
-                  style: TextStyle(color: HandsColors.white.withOpacity(0.7)),
-                ),
-              ),
-              FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: Colors.orange),
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Continue'),
-              ),
-            ],
           ),
     );
 
@@ -1129,58 +1106,45 @@ class _HandsSettingsPageState extends ConsumerState<HandsSettingsPage> {
     final finalConfirmed = await showDialog<bool>(
       context: context,
       builder:
-          (context) => AlertDialog(
-            backgroundColor: HandsColors.cardPrimary,
-            title: Row(
-              children: [
-                const Icon(Icons.warning, color: Colors.red),
-                const SizedBox(width: 8),
-                Text(
-                  'Are you sure?',
-                  style: TextStyle(color: HandsColors.white),
-                ),
-              ],
-            ),
-            content: Column(
+          (context) => HandsDialog(
+            title: 'Are you sure?',
+            maxWidth: 480,
+            actions: [
+              HandsSecondaryButton(
+                text: 'Cancel',
+                onPressed: () => Navigator.pop(context, false),
+              ),
+              HandsPrimaryButton(
+                text: 'Yes, Refresh Metrics',
+                onPressed: () => Navigator.pop(context, true),
+              ),
+            ],
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'This will permanently reset your dashboard metrics calculation.',
-                  style: TextStyle(
+                  style: HandsModalTokens.bodyStyle.copyWith(
                     fontWeight: FontWeight.w600,
-                    color: Colors.red,
+                    color: HandsModalTokens.danger,
                   ),
                 ),
                 const SizedBox(height: 12),
                 Text(
                   'All historical dashboard calculations will be cleared and recalculated from today forward.',
-                  style: TextStyle(color: HandsColors.white.withOpacity(0.8)),
+                  style: HandsModalTokens.bodyStyle,
                 ),
                 const SizedBox(height: 12),
                 Text(
                   'This cannot be undone. Are you absolutely sure?',
-                  style: TextStyle(
+                  style: HandsModalTokens.bodyStyle.copyWith(
                     fontWeight: FontWeight.w600,
-                    color: HandsColors.white,
+                    color: HandsModalTokens.text,
                   ),
                 ),
               ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: Text(
-                  'Cancel',
-                  style: TextStyle(color: HandsColors.white.withOpacity(0.7)),
-                ),
-              ),
-              FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: Colors.red),
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Yes, Refresh Metrics'),
-              ),
-            ],
           ),
     );
 
@@ -1692,37 +1656,68 @@ class _HandsSettingsPageState extends ConsumerState<HandsSettingsPage> {
   }
 
   Widget _profileInfoRow(String label, String value) {
+    final isCompactPhone = MediaQuery.sizeOf(context).width < 430;
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10),
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: HandsModalTokens.border)),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 138,
-            child: Text(
-              label,
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: HandsModalTokens.textSubtle,
+      child:
+          isCompactPhone
+              ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: HandsModalTokens.textSubtle,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    value.isEmpty ? '—' : value,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: HandsColors.white,
+                      height: 1.28,
+                    ),
+                  ),
+                ],
+              )
+              : Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 138,
+                    child: Text(
+                      label,
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: HandsModalTokens.textSubtle,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      value.isEmpty ? '—' : value,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: HandsColors.white,
+                        height: 1.28,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value.isEmpty ? '—' : value,
-              style: GoogleFonts.inter(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w600,
-                color: HandsColors.white,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1894,61 +1889,42 @@ class _HandsSettingsPageState extends ConsumerState<HandsSettingsPage> {
     final firstConfirm = await showDialog<bool>(
       context: context,
       builder:
-          (ctx) => AlertDialog(
-            backgroundColor: HandsColors.cardPrimary,
-            title: Row(
-              children: [
-                const Icon(Icons.delete_forever, color: Colors.red),
-                const SizedBox(width: 8),
-                Text(
-                  l10n.settingsDeleteAccountWarningTitle,
-                  style: TextStyle(color: HandsColors.white),
-                ),
-              ],
-            ),
-            content: Column(
+          (ctx) => HandsDialog(
+            title: l10n.settingsDeleteAccountWarningTitle,
+            maxWidth: 500,
+            actions: [
+              HandsSecondaryButton(
+                text: l10n.commonCancel,
+                onPressed: () => Navigator.pop(ctx, false),
+              ),
+              HandsPrimaryButton(
+                text: l10n.settingsDeleteAccountConfirmAction,
+                onPressed: () => Navigator.pop(ctx, true),
+              ),
+            ],
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   l10n.settingsDeleteAccountWarningBody,
-                  style: TextStyle(
+                  style: HandsModalTokens.bodyStyle.copyWith(
                     fontWeight: FontWeight.w600,
-                    color: HandsColors.white,
+                    color: HandsModalTokens.text,
                   ),
                 ),
                 const SizedBox(height: 12),
                 Text(
                   l10n.settingsDeleteAccountReinviteBody,
-                  style: TextStyle(
-                    color: HandsColors.white.withValues(alpha: 0.8),
-                  ),
+                  style: HandsModalTokens.bodyStyle,
                 ),
                 const SizedBox(height: 12),
                 Text(
                   l10n.settingsDeleteAccountContinueQuestion,
-                  style: TextStyle(
-                    color: HandsColors.white.withValues(alpha: 0.8),
-                  ),
+                  style: HandsModalTokens.bodyStyle,
                 ),
               ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: Text(
-                  l10n.commonCancel,
-                  style: TextStyle(
-                    color: HandsColors.white.withValues(alpha: 0.7),
-                  ),
-                ),
-              ),
-              FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: Colors.red),
-                onPressed: () => Navigator.pop(ctx, true),
-                child: Text(l10n.settingsDeleteAccountConfirmAction),
-              ),
-            ],
           ),
     );
 
@@ -1959,79 +1935,75 @@ class _HandsSettingsPageState extends ConsumerState<HandsSettingsPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder:
-          (context) => AlertDialog(
-            backgroundColor: HandsColors.cardPrimary,
-            title: Row(
-              children: [
-                Icon(Icons.warning, color: Colors.red),
-                SizedBox(width: 8),
-                Text(
-                  l10n.settingsDeleteAccount,
-                  style: TextStyle(color: HandsColors.white),
-                ),
-              ],
-            ),
-            content: Column(
+          (context) => HandsDialog(
+            title: l10n.settingsDeleteAccount,
+            maxWidth: 500,
+            actions: [
+              HandsSecondaryButton(
+                text: l10n.commonCancel,
+                onPressed: () => Navigator.pop(context, false),
+              ),
+              HandsPrimaryButton(
+                text: l10n.settingsDeleteAccount,
+                onPressed: () => Navigator.pop(context, true),
+              ),
+            ],
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   l10n.settingsDeleteAccountBody,
-                  style: TextStyle(
+                  style: HandsModalTokens.bodyStyle.copyWith(
                     fontWeight: FontWeight.w500,
-                    color: HandsColors.white,
+                    color: HandsModalTokens.text,
                   ),
                 ),
-                SizedBox(height: 16),
+                const SizedBox(height: 16),
                 Text(
                   l10n.settingsDeleteAccountPasswordPrompt,
-                  style: TextStyle(
-                    color: HandsColors.white.withValues(alpha: 0.8),
-                  ),
+                  style: HandsModalTokens.bodyStyle,
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 TextField(
                   controller: passwordController,
                   obscureText: true,
-                  style: TextStyle(color: HandsColors.white),
+                  style: const TextStyle(color: HandsColors.white),
                   decoration: InputDecoration(
                     hintText: l10n.settingsDeleteAccountPasswordHint,
-                    hintStyle: TextStyle(
-                      color: HandsColors.white.withValues(alpha: 0.5),
+                    hintStyle: const TextStyle(
+                      color: HandsModalTokens.textSubtle,
                     ),
+                    filled: true,
+                    fillColor: HandsModalTokens.surfaceMuted,
                     border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(
+                        HandsModalTokens.controlRadius,
+                      ),
                       borderSide: BorderSide(
                         color: HandsColors.white.withValues(alpha: 0.3),
                       ),
                     ),
                     enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(
+                        HandsModalTokens.controlRadius,
+                      ),
                       borderSide: BorderSide(
                         color: HandsColors.white.withValues(alpha: 0.3),
                       ),
                     ),
                     focusedBorder: OutlineInputBorder(
-                      borderSide: BorderSide(color: HandsColors.white),
+                      borderRadius: BorderRadius.circular(
+                        HandsModalTokens.controlRadius,
+                      ),
+                      borderSide: const BorderSide(
+                        color: HandsColors.handsOrange,
+                      ),
                     ),
                   ),
                 ),
               ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: Text(
-                  l10n.commonCancel,
-                  style: TextStyle(
-                    color: HandsColors.white.withValues(alpha: 0.7),
-                  ),
-                ),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: TextButton.styleFrom(foregroundColor: Colors.red),
-                child: Text(l10n.settingsDeleteAccount),
-              ),
-            ],
           ),
     );
 
@@ -2202,22 +2174,23 @@ class _HandsSettingsPageState extends ConsumerState<HandsSettingsPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder:
-          (context) => AlertDialog(
-            title: const Text('Cancel Subscription'),
-            content: const Text(
-              'Are you sure you want to cancel your subscription? You\'ll continue to have access until the end of your current billing period or trial.',
-            ),
+          (context) => HandsDialog(
+            title: 'Cancel Subscription',
+            maxWidth: 460,
             actions: [
-              TextButton(
+              HandsSecondaryButton(
+                text: 'Keep Subscription',
                 onPressed: () => Navigator.pop(context, false),
-                child: const Text('Keep Subscription'),
               ),
-              TextButton(
+              HandsPrimaryButton(
+                text: 'Cancel Subscription',
                 onPressed: () => Navigator.pop(context, true),
-                style: TextButton.styleFrom(foregroundColor: Colors.red),
-                child: const Text('Cancel Subscription'),
               ),
             ],
+            child: Text(
+              'Are you sure you want to cancel your subscription? You\'ll continue to have access until the end of your current billing period or trial.',
+              style: HandsModalTokens.bodyStyle,
+            ),
           ),
     );
 
@@ -3607,70 +3580,6 @@ class _HandsSettingsPageState extends ConsumerState<HandsSettingsPage> {
     );
   }
 
-  Future<void> _onAddLocation() async {
-    if (!_isAdmin || _organizationId.isEmpty) return;
-
-    // Always fetch actual location count for accuracy
-    debugPrint(
-      '[SettingsPage] _onAddLocation: Fetching actual location count...',
-    );
-    final locationsQuery =
-        await FirestoreEnforcer.instance
-            .collection('organizations')
-            .doc(_organizationId)
-            .collection('locations')
-            .get();
-    final orgCount = locationsQuery.size;
-    debugPrint(
-      '[SettingsPage] _onAddLocation: Actual location count: $orgCount',
-    );
-
-    final sub = await StripeService.getSubscriptionDataHydrated(
-      _organizationId,
-    );
-    final quantity = (sub?['quantity'] as int?) ?? 1;
-    final subscriptionId = (sub?['subscriptionId'] as String?) ?? '';
-    debugPrint(
-      '[SettingsPage] _onAddLocation: Subscription quantity: $quantity',
-    );
-
-    if (orgCount < quantity) {
-      // Open the location wizard directly
-      if (!mounted) return;
-      final created = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(
-          builder: (_) => LocationWizard(organizationId: _organizationId),
-        ),
-      );
-      if (created == true && mounted) {
-        // Trigger a refresh so the FutureBuilders refetch org/billing
-        setState(() {});
-      }
-    } else if (quantity < 5) {
-      // Show subscription management dialog for upgrade
-      if (!mounted) return;
-      final newQty = await showDialog<int>(
-        context: context,
-        builder:
-            (context) => _SubscriptionManagementDialog(
-              orgId: _organizationId,
-              subscriptionId: subscriptionId,
-              currentQuantity: quantity,
-              currentUsage: orgCount,
-            ),
-      );
-      if (newQty != null) {
-        // Optionally refresh after upgrade
-        await _loadSubscriptionData();
-        if (mounted) setState(() {});
-      }
-    } else {
-      // Contact sales
-      if (!mounted) return;
-      showDialog(context: context, builder: (_) => const ContactSalesDialog());
-    }
-  }
-
   @override
   void dispose() {
     _firstNameController.dispose();
@@ -3686,6 +3595,7 @@ class _HandsSettingsPageState extends ConsumerState<HandsSettingsPage> {
     final l10n = context.l10n;
     final isWide = MediaQuery.of(context).size.width >= 980;
     return Scaffold(
+      backgroundColor: HandsColors.scaffoldBackground,
       appBar: AppBar(
         backgroundColor: HandsColors.cardPrimary,
         elevation: 0,
@@ -3703,19 +3613,24 @@ class _HandsSettingsPageState extends ConsumerState<HandsSettingsPage> {
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 1120),
                   child: Padding(
-                    padding: const EdgeInsets.all(18),
+                    padding: EdgeInsets.all(_isCompactPhone ? 12 : 18),
                     child: Form(
                       key: _formKey,
                       child: ListView(
                         children: [
                           Container(
-                            padding: const EdgeInsets.all(24),
+                            padding: EdgeInsets.all(_isCompactPhone ? 18 : 22),
                             decoration: BoxDecoration(
-                              color: HandsModalTokens.surface,
-                              borderRadius: BorderRadius.circular(28),
-                              border: Border.all(
-                                color: HandsModalTokens.border,
-                              ),
+                              color: const Color(0xFF151A21),
+                              borderRadius: BorderRadius.circular(22),
+                              border: Border.all(color: HandsColors.white12),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x12000000),
+                                  blurRadius: 18,
+                                  offset: Offset(0, 10),
+                                ),
+                              ],
                             ),
                             child:
                                 isWide
@@ -3805,50 +3720,6 @@ class _HandsSettingsPageState extends ConsumerState<HandsSettingsPage> {
                               const SizedBox(height: 16),
                               _buildOrganizationInfoCard(),
                             ],
-                            const SizedBox(height: 16),
-                            _buildSettingsSectionCard(
-                              title: l10n.settingsLocationsTitle,
-                              subtitle: l10n.settingsLocationsSubtitle,
-                              icon: Icons.location_on_outlined,
-                              trailing:
-                                  !isIOS
-                                      ? HandsPrimaryButton(
-                                        text: l10n.settingsAddLocation,
-                                        icon: Icons.add_rounded,
-                                        onPressed: _onAddLocation,
-                                      )
-                                      : HandsSecondaryButton(
-                                        text: l10n.helpContactSupport,
-                                        icon: Icons.support_agent_rounded,
-                                        onPressed: () async {
-                                          final Uri emailUri = Uri(
-                                            scheme: 'mailto',
-                                            path: 'support@planwithhands.com',
-                                            query:
-                                                'subject=Location Management Request - ${_businessNameController.text}',
-                                          );
-                                          try {
-                                            await launchUrl(emailUri);
-                                          } catch (e) {
-                                            if (mounted) {
-                                              ScaffoldMessenger.of(
-                                                context,
-                                              ).showSnackBar(
-                                                SnackBar(
-                                                  content: Text(
-                                                    l10n.settingsLocationSupportEmail,
-                                                  ),
-                                                ),
-                                              );
-                                            }
-                                          }
-                                        },
-                                      ),
-                              child: Text(
-                                l10n.settingsLocationsBody,
-                                style: HandsModalTokens.bodyStyle,
-                              ),
-                            ),
                           ],
                           const SizedBox(height: 16),
                           _buildSettingsSectionCard(
@@ -3973,6 +3844,8 @@ class _HandsSettingsPageState extends ConsumerState<HandsSettingsPage> {
 }
 
 extension on _HandsSettingsPageState {
+  bool get _isCompactPhone => MediaQuery.sizeOf(context).width < 430;
+
   Widget _buildSettingsHeroContent() {
     final l10n = context.l10n;
     return Column(
@@ -4045,18 +3918,43 @@ extension on _HandsSettingsPageState {
   }
 
   Widget _buildHeroMetaRow(String label, String value) {
+    if (_isCompactPhone) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: HandsModalTokens.labelStyle),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: HandsColors.white,
+              height: 1.28,
+            ),
+          ),
+        ],
+      );
+    }
+
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(child: Text(label, style: HandsModalTokens.labelStyle)),
         const SizedBox(width: 10),
         Flexible(
           child: Text(
             value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.right,
             style: GoogleFonts.inter(
               fontSize: 13,
               fontWeight: FontWeight.w700,
               color: HandsColors.white,
+              height: 1.28,
             ),
           ),
         ),
@@ -4072,11 +3970,18 @@ extension on _HandsSettingsPageState {
     required Widget child,
   }) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(_isCompactPhone ? 16 : 18),
       decoration: BoxDecoration(
-        color: HandsModalTokens.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: HandsModalTokens.border),
+        color: const Color(0xFF151A21),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: HandsColors.white12),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x12000000),
+            blurRadius: 18,
+            offset: Offset(0, 10),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -4085,13 +3990,17 @@ extension on _HandsSettingsPageState {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 44,
-                height: 44,
+                width: _isCompactPhone ? 40 : 44,
+                height: _isCompactPhone ? 40 : 44,
                 decoration: BoxDecoration(
                   color: HandsColors.handsOrange.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(icon, color: HandsColors.handsOrange, size: 20),
+                child: Icon(
+                  icon,
+                  color: HandsColors.handsOrange,
+                  size: _isCompactPhone ? 19 : 20,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -4234,23 +4143,32 @@ class _SubscriptionManagementDialogState
     return await showDialog<bool>(
           context: context,
           builder:
-              (context) => AlertDialog(
-                backgroundColor: HandsColors.cardPrimary,
-                title: Text(
-                  isIncrease
-                      ? l10n.settingsUpgradeSubscription
-                      : l10n.settingsDowngradeSubscription,
-                  style: TextStyle(color: HandsColors.white),
-                ),
-                content: Column(
+              (context) => HandsDialog(
+                title:
+                    isIncrease
+                        ? l10n.settingsUpgradeSubscription
+                        : l10n.settingsDowngradeSubscription,
+                maxWidth: 460,
+                actions: [
+                  HandsSecondaryButton(
+                    text: l10n.commonCancel,
+                    onPressed: () => Navigator.of(context).pop(false),
+                  ),
+                  HandsPrimaryButton(
+                    text:
+                        isIncrease
+                            ? l10n.settingsUpgrade
+                            : l10n.settingsDowngrade,
+                    onPressed: () => Navigator.of(context).pop(true),
+                  ),
+                ],
+                child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       l10n.settingsSubscriptionAboutToChange(changeText),
-                      style: TextStyle(
-                        color: HandsColors.white.withValues(alpha: 0.8),
-                      ),
+                      style: HandsModalTokens.bodyStyle,
                     ),
                     const SizedBox(height: 12),
                     Row(
@@ -4258,13 +4176,11 @@ class _SubscriptionManagementDialogState
                       children: [
                         Text(
                           l10n.settingsFrom,
-                          style: TextStyle(
-                            color: HandsColors.white.withValues(alpha: 0.8),
-                          ),
+                          style: HandsModalTokens.bodyStyle,
                         ),
                         Text(
                           l10n.settingsLocationsCount(widget.currentQuantity),
-                          style: TextStyle(color: HandsColors.white),
+                          style: HandsModalTokens.sectionTitleStyle,
                         ),
                       ],
                     ),
@@ -4273,25 +4189,21 @@ class _SubscriptionManagementDialogState
                       children: [
                         Text(
                           l10n.settingsTo,
-                          style: TextStyle(
-                            color: HandsColors.white.withValues(alpha: 0.8),
-                          ),
+                          style: HandsModalTokens.bodyStyle,
                         ),
                         Text(
                           l10n.settingsLocationsCount(_newQuantity),
-                          style: TextStyle(color: HandsColors.white),
+                          style: HandsModalTokens.sectionTitleStyle,
                         ),
                       ],
                     ),
-                    const Divider(),
+                    const Divider(color: HandsModalTokens.border),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
                           l10n.settingsMonthlyChange,
-                          style: TextStyle(
-                            color: HandsColors.white.withValues(alpha: 0.8),
-                          ),
+                          style: HandsModalTokens.bodyStyle,
                         ),
                         Text(
                           '$monthlyChangeText${l10n.settingsPerMonth}',
@@ -4307,14 +4219,22 @@ class _SubscriptionManagementDialogState
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: Colors.orange[50],
-                          border: Border.all(color: Colors.orange[200]!),
-                          borderRadius: BorderRadius.circular(6),
+                          color: HandsModalTokens.warning.withValues(
+                            alpha: 0.12,
+                          ),
+                          border: Border.all(
+                            color: HandsModalTokens.warning.withValues(
+                              alpha: 0.32,
+                            ),
+                          ),
+                          borderRadius: BorderRadius.circular(
+                            HandsModalTokens.compactControlRadius,
+                          ),
                         ),
                         child: Text(
                           l10n.settingsBillingEffectiveNextCycle,
                           style: TextStyle(
-                            color: Colors.orange[700],
+                            color: HandsModalTokens.warning,
                             fontSize: 11,
                           ),
                         ),
@@ -4322,29 +4242,6 @@ class _SubscriptionManagementDialogState
                     ],
                   ],
                 ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(false),
-                    child: Text(
-                      l10n.commonCancel,
-                      style: TextStyle(
-                        color: HandsColors.white.withValues(alpha: 0.7),
-                      ),
-                    ),
-                  ),
-                  ElevatedButton(
-                    onPressed: () => Navigator.of(context).pop(true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isIncrease ? Colors.blue : Colors.orange,
-                      foregroundColor: Colors.white,
-                    ),
-                    child: Text(
-                      isIncrease
-                          ? l10n.settingsUpgrade
-                          : l10n.settingsDowngrade,
-                    ),
-                  ),
-                ],
               ),
         ) ??
         false;

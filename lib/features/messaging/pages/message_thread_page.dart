@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:hands_app/features/messaging/models/message.dart';
 import 'package:hands_app/features/messaging/services/messaging_service.dart';
 import 'package:hands_app/l10n/l10n.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/widgets/responsive_appbar_title.dart';
 import 'package:hands_app/widgets/hands_text_field.dart';
 import 'package:intl/intl.dart';
@@ -178,22 +179,23 @@ class _MessageThreadPageState extends State<MessageThreadPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder:
-          (context) => AlertDialog(
-            title: Text(l10n.threadDeleteTitle),
-            content: Text(l10n.threadDeleteBody),
+          (context) => HandsDialog(
+            title: l10n.threadDeleteTitle,
+            maxWidth: 440,
             actions: [
-              TextButton(
+              HandsSecondaryButton(
+                text: l10n.commonCancel,
                 onPressed: () => Navigator.of(context).pop(false),
-                child: Text(l10n.commonCancel),
               ),
-              TextButton(
+              HandsPrimaryButton(
+                text: l10n.commonDelete,
                 onPressed: () => Navigator.of(context).pop(true),
-                child: Text(
-                  l10n.commonDelete,
-                  style: const TextStyle(color: Colors.red),
-                ),
               ),
             ],
+            child: Text(
+              l10n.threadDeleteBody,
+              style: HandsModalTokens.bodyStyle,
+            ),
           ),
     );
 
