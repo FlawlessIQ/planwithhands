@@ -12,7 +12,6 @@ import 'package:hands_app/state/operational_state.dart';
 import 'package:hands_app/state/user_state.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
-import 'package:hands_app/features/messaging/services/token_registration_service.dart';
 import 'package:hands_app/services/push_notification_service.dart';
 import 'package:hands_app/utils/location_helper.dart';
 import 'package:hands_app/utils/jobtype_helper.dart';
@@ -35,7 +34,10 @@ class AuthController extends _$AuthController {
   FirebaseAuth get _auth => FirebaseAuth.instance;
 
   Future<User?> signUp(String email, String password) async {
-    final userCredential = await _auth.createUserWithEmailAndPassword(email: email, password: password);
+    final userCredential = await _auth.createUserWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
     return userCredential.user;
   }
 
@@ -43,9 +45,14 @@ class AuthController extends _$AuthController {
     debugPrint('[AUTH_CONTROLLER] Attempting sign in for email: $email');
     try {
       // Sign in with email and password
-      final userCredential = await _auth.signInWithEmailAndPassword(email: email, password: password);
+      final userCredential = await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
       final user = userCredential.user;
-      debugPrint('[AUTH_CONTROLLER] Firebase Auth sign-in successful. UID: ${user?.uid}');
+      debugPrint(
+        '[AUTH_CONTROLLER] Firebase Auth sign-in successful. UID: ${user?.uid}',
+      );
 
       if (user == null) {
         debugPrint('[AUTH_CONTROLLER] Error: User is null after sign-in.');
@@ -55,17 +62,29 @@ class AuthController extends _$AuthController {
       // First, fetch user data from Firestore
       final FirebaseFirestore firestore = FirestoreEnforcer.instance;
       final userId = user.uid;
-      debugPrint('[AUTH_CONTROLLER] Looking up Firestore user with UID: $userId');
+      debugPrint(
+        '[AUTH_CONTROLLER] Looking up Firestore user with UID: $userId',
+      );
 
-      DocumentSnapshot snapshot = await firestore.collection(FirestoreCollectionNames.users).doc(userId).get();
+      DocumentSnapshot snapshot =
+          await firestore
+              .collection(FirestoreCollectionNames.users)
+              .doc(userId)
+              .get();
 
-      debugPrint('[AUTH_CONTROLLER] Firestore user document exists: ${snapshot.exists}');
+      debugPrint(
+        '[AUTH_CONTROLLER] Firestore user document exists: ${snapshot.exists}',
+      );
 
       if (snapshot.exists) {
         // If the document exists, update lastLogin
         try {
-          await firestore.collection('users').doc(userId).update({'lastLogin': FieldValue.serverTimestamp()});
-          debugPrint('[AUTH_CONTROLLER] lastLogin timestamp updated successfully.');
+          await firestore.collection('users').doc(userId).update({
+            'lastLogin': FieldValue.serverTimestamp(),
+          });
+          debugPrint(
+            '[AUTH_CONTROLLER] lastLogin timestamp updated successfully.',
+          );
         } catch (e) {
           debugPrint(
             '[AUTH_CONTROLLER] Warning: failed to update lastLogin, but proceeding since user data exists. Error: $e',
@@ -76,7 +95,8 @@ class AuthController extends _$AuthController {
         var data = snapshot.data() as Map<String, dynamic>;
         debugPrint('[AUTH_CONTROLLER] Firestore user data: $data');
 
-        DateTime createdAt = (data[UserFieldNames.createdAt] as Timestamp).toDate();
+        DateTime createdAt =
+            (data[UserFieldNames.createdAt] as Timestamp).toDate();
 
         // Handle missing or differently named fields with safe fallbacks
         String userEmail =
@@ -93,11 +113,15 @@ class AuthController extends _$AuthController {
 
         // Handle locationIds - canonicalize into a List<String>
         final locationIds = coerceToLocationIds(
-          data[UserFieldNames.locationIds] ?? data['primaryLocationId'] ?? data['locationId'],
+          data[UserFieldNames.locationIds] ??
+              data['primaryLocationId'] ??
+              data['locationId'],
         );
 
         // Handle jobTypes - might be stored as jobType (single) or jobTypes (array)
-        final jobTypes = coerceToJobTypes(data[UserFieldNames.jobTypes] ?? data['jobType']);
+        final jobTypes = coerceToJobTypes(
+          data[UserFieldNames.jobTypes] ?? data['jobType'],
+        );
 
         // Construct the UserData object
         var userData = UserData(
@@ -114,8 +138,10 @@ class AuthController extends _$AuthController {
         );
 
         // If security rules depend on orgMemberships/roles maps (new schema) but they are absent, add ephemeral client-side logging & optional patch
-        final needsOrgMemberships = !(data.containsKey('orgMemberships')) && organizationId.isNotEmpty;
-        final needsRoles = !(data.containsKey('roles')) && organizationId.isNotEmpty;
+        final needsOrgMemberships =
+            !(data.containsKey('orgMemberships')) && organizationId.isNotEmpty;
+        final needsRoles =
+            !(data.containsKey('roles')) && organizationId.isNotEmpty;
         if (needsOrgMemberships || needsRoles) {
           debugPrint(
             '[AUTH_CONTROLLER] User doc missing new schema fields: ${needsOrgMemberships ? 'orgMemberships ' : ''}${needsRoles ? 'roles ' : ''}- applying lightweight server merge to satisfy rules.',
@@ -141,11 +167,18 @@ class AuthController extends _$AuthController {
               patch['roles'] = {organizationId: roleStr};
             }
             if (patch.isNotEmpty) {
-              await firestore.collection('users').doc(userId).set(patch, SetOptions(merge: true));
-              debugPrint('[AUTH_CONTROLLER] Added missing membership fields: $patch');
+              await firestore
+                  .collection('users')
+                  .doc(userId)
+                  .set(patch, SetOptions(merge: true));
+              debugPrint(
+                '[AUTH_CONTROLLER] Added missing membership fields: $patch',
+              );
             }
           } catch (e) {
-            debugPrint('[AUTH_CONTROLLER] Failed to patch missing membership fields: $e');
+            debugPrint(
+              '[AUTH_CONTROLLER] Failed to patch missing membership fields: $e',
+            );
           }
         }
 
@@ -161,30 +194,43 @@ class AuthController extends _$AuthController {
         ref.read(userStateProvider.notifier).setUserData(userData);
         debugPrint('[AUTH_CONTROLLER] UserData set in UserState provider');
 
-        // Register FCM device token (best-effort, non-blocking)
+        // Register the current device token after login using the main push service path.
         try {
-          await TokenRegistrationService.registerCurrentDevice(userId);
+          await PushNotificationService().ensureRegistered(
+            context: 'post_login',
+          );
         } catch (e) {
-          debugPrint('[AUTH_CONTROLLER] Token registration failed: $e');
+          debugPrint('[AUTH_CONTROLLER] Push registration failed: $e');
         }
 
         // Request notification permissions (best-effort, non-blocking)
         try {
-          final permissionResult = await PushNotificationService().requestPermission();
-          debugPrint('[AUTH_CONTROLLER] Notification permission result: ${permissionResult.name}');
+          final permissionResult =
+              await PushNotificationService().requestPermission();
+          debugPrint(
+            '[AUTH_CONTROLLER] Notification permission result: ${permissionResult.name}',
+          );
           if (permissionResult.isGranted) {
             // Ensure token is persisted/cleaned up and registered for messaging
-            await PushNotificationService().ensureRegistered();
+            await PushNotificationService().ensureRegistered(
+              context: 'post_login_permission_granted',
+            );
           }
         } catch (e) {
-          debugPrint('[AUTH_CONTROLLER] Notification permission request failed: $e');
+          debugPrint(
+            '[AUTH_CONTROLLER] Notification permission request failed: $e',
+          );
         }
 
         log('starting data fetch timer');
-        _dataFetchTimer = Timer.periodic(Duration(seconds: _fetchInterval), (Timer timer) async {
+        _dataFetchTimer = Timer.periodic(Duration(seconds: _fetchInterval), (
+          Timer timer,
+        ) async {
           // Validate session before fetching data
           if (!await validateSession()) {
-            debugPrint('[AUTH_CONTROLLER] Session invalid, stopping data fetch timer');
+            debugPrint(
+              '[AUTH_CONTROLLER] Session invalid, stopping data fetch timer',
+            );
             timer.cancel();
             return;
           }
@@ -193,7 +239,9 @@ class AuthController extends _$AuthController {
           OrganizationData? orgData = await getOrganizationById(orgId);
           if (orgData != null) {
             log('retrived organization data at org: $orgId');
-            ref.read(operationalStateProvider.notifier).setOrganizationDataToState(orgData);
+            ref
+                .read(operationalStateProvider.notifier)
+                .setOrganizationDataToState(orgData);
             log('organization data set to state');
           }
         });
@@ -203,14 +251,17 @@ class AuthController extends _$AuthController {
         debugPrint(
           '[AUTH_CONTROLLER] CRITICAL: User exists in Auth, but no document found in Firestore for UID: $userId. The user profile may not have been created correctly.',
         );
-        debugPrint('[AUTH_CONTROLLER] Attempting to create a fallback user document.');
+        debugPrint(
+          '[AUTH_CONTROLLER] Attempting to create a fallback user document.',
+        );
 
         try {
           // Create a basic user document to allow login using current timestamp
           final now = DateTime.now();
           final newUser = {
             UserFieldNames.userId: userId,
-            UserFieldNames.emailAddress: user.email ?? 'no-email@placeholder.com',
+            UserFieldNames.emailAddress:
+                user.email ?? 'no-email@placeholder.com',
             UserFieldNames.userRole: 0, // Default role
             UserFieldNames.createdAt: Timestamp.fromDate(now),
             'lastLogin': Timestamp.fromDate(now),
@@ -224,7 +275,9 @@ class AuthController extends _$AuthController {
           };
 
           await firestore.collection('users').doc(userId).set(newUser);
-          debugPrint('[AUTH_CONTROLLER] Fallback user document created for UID: $userId');
+          debugPrint(
+            '[AUTH_CONTROLLER] Fallback user document created for UID: $userId',
+          );
 
           // Create UserData object directly from the data we just saved
           var userData = UserData(
@@ -241,10 +294,14 @@ class AuthController extends _$AuthController {
           );
 
           ref.read(userStateProvider.notifier).setUserData(userData);
-          debugPrint('[AUTH_CONTROLLER] Fallback UserData created and set in state');
+          debugPrint(
+            '[AUTH_CONTROLLER] Fallback UserData created and set in state',
+          );
           return userData;
         } catch (fallbackError) {
-          debugPrint('[AUTH_CONTROLLER] FATAL: Error creating fallback user document: $fallbackError');
+          debugPrint(
+            '[AUTH_CONTROLLER] FATAL: Error creating fallback user document: $fallbackError',
+          );
           return null;
         }
       }
@@ -300,7 +357,8 @@ class AuthController extends _$AuthController {
       debugPrint('[AUTH_CONTROLLER] Session validation failed: $e');
 
       // If validation fails due to network issues, don't invalidate session
-      if (e.toString().contains('network') || e.toString().contains('timeout')) {
+      if (e.toString().contains('network') ||
+          e.toString().contains('timeout')) {
         debugPrint('[AUTH_CONTROLLER] Network issue detected, keeping session');
         return true;
       }

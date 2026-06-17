@@ -325,6 +325,10 @@ class _AppLifecycleObserver extends WidgetsBindingObserver {
     } else if (state == AppLifecycleState.resumed) {
       // Validate session when app resumes from background
       SessionManager().handleAppResume();
+      // Refresh FCM registration after app updates, restores, or token rotation.
+      unawaited(
+        PushNotificationService().ensureRegistered(context: 'app_resume'),
+      );
       // Record activity on app resume
       ActivityTracker().recordActivity(source: 'app_resume');
     }

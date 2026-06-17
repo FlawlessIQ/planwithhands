@@ -23,22 +23,27 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 class PushNotificationService {
-  static final PushNotificationService _instance = PushNotificationService._internal();
+  static final PushNotificationService _instance =
+      PushNotificationService._internal();
   factory PushNotificationService() => _instance;
   PushNotificationService._internal();
 
   // Exposed navigator key for routing from background taps
-  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
 
   // Firebase Messaging instance
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
 
   // Local notifications for Android
-  final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _localNotifications =
+      FlutterLocalNotificationsPlugin();
 
   // Stream controllers for notification events
-  final StreamController<RemoteMessage> _messageStreamController = StreamController<RemoteMessage>.broadcast();
-  final StreamController<String> _tokenStreamController = StreamController<String>.broadcast();
+  final StreamController<RemoteMessage> _messageStreamController =
+      StreamController<RemoteMessage>.broadcast();
+  final StreamController<String> _tokenStreamController =
+      StreamController<String>.broadcast();
 
   // Public streams
   Stream<RemoteMessage> get onMessage => _messageStreamController.stream;
@@ -51,11 +56,18 @@ class PushNotificationService {
   // Initialization flag
   bool _isInitialized = false;
 
+  static const int _maxTokenAttempts = 5;
+  static const Duration _tokenRetryDelay = Duration(seconds: 2);
+  static const int _maxApnsAttempts = 6;
+  static const Duration _apnsRetryDelay = Duration(seconds: 1);
+
   /// Initialize the push notification service
   Future<void> initialize() async {
     // Web push notifications: keep disabled for now only on mobile Safari; allow desktop web attempts later.
     if (kIsWeb) {
-      logger.w('[PushNotificationService] Web platform detected, skipping initialization.');
+      logger.w(
+        '[PushNotificationService] Web platform detected, skipping initialization.',
+      );
       _isInitialized = true;
       return;
     }
@@ -72,23 +84,37 @@ class PushNotificationService {
 
       // Configure FCM for iOS foreground presentation
       if (!kIsWeb && isIOS) {
-        await _firebaseMessaging.setForegroundNotificationPresentationOptions(alert: true, badge: true, sound: true);
+        await _firebaseMessaging.setForegroundNotificationPresentationOptions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
 
         // Check permission status; if not determined, request once on first init to register device token
         final settings = await _firebaseMessaging.getNotificationSettings();
-        logger.d('[PushNotificationService] iOS current auth status: ${settings.authorizationStatus}');
+        logger.d(
+          '[PushNotificationService] iOS current auth status: ${settings.authorizationStatus}',
+        );
         if (settings.authorizationStatus == AuthorizationStatus.notDetermined) {
-          logger.d('[PushNotificationService] Requesting iOS notification permission on first launch');
-          final perm = await requestPermissionWithContext(context: 'initialization');
+          logger.d(
+            '[PushNotificationService] Requesting iOS notification permission on first launch',
+          );
+          final perm = await requestPermissionWithContext(
+            context: 'initialization',
+          );
           if (perm.isGranted) {
-            await ensureRegistered();
+            await ensureRegistered(
+              context: 'initialization_permission_granted',
+            );
           }
         }
 
         // APNs token logging can help diagnose push delivery
         try {
           final apnsToken = await _firebaseMessaging.getAPNSToken();
-          logger.d('[PushNotificationService] APNs token: ${apnsToken != null ? apnsToken.substring(0, 12) : 'null'}');
+          logger.d(
+            '[PushNotificationService] APNs token: ${apnsToken != null ? apnsToken.substring(0, 12) : 'null'}',
+          );
         } catch (e) {
           logger.w('[PushNotificationService] Failed to get APNs token: $e');
         }
@@ -113,16 +139,24 @@ class PushNotificationService {
 
   /// Initialize local notifications for Android
   Future<void> _initializeLocalNotifications() async {
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: false,
       requestBadgePermission: false,
       requestSoundPermission: false,
     );
 
-    const initSettings = InitializationSettings(android: androidSettings, iOS: iosSettings);
+    const initSettings = InitializationSettings(
+      android: androidSettings,
+      iOS: iosSettings,
+    );
 
-    await _localNotifications.initialize(initSettings, onDidReceiveNotificationResponse: _onNotificationTapped);
+    await _localNotifications.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: _onNotificationTapped,
+    );
 
     // Create notification channel for Android
     if (!kIsWeb && isAndroid) {
@@ -133,7 +167,10 @@ class PushNotificationService {
   /// Create Android notification channels
   Future<void> _createNotificationChannel() async {
     final androidPlugin =
-        _localNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+        _localNotifications
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >();
 
     if (androidPlugin == null) return;
 
@@ -141,7 +178,8 @@ class PushNotificationService {
     const generalChannel = AndroidNotificationChannel(
       'general_notifications',
       'General Notifications',
-      description: 'General notifications from Hands app including messages and updates.',
+      description:
+          'General notifications from Hands app including messages and updates.',
       importance: Importance.high,
       playSound: true,
       sound: RawResourceAndroidNotificationSound('notification'),
@@ -198,11 +236,110 @@ class PushNotificationService {
     _checkInitialMessage();
   }
 
+  Future<void> _recordRegistrationState({
+    required String status,
+    required String context,
+    String? detail,
+    bool? hasApnsToken,
+  }) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      await FirestoreEnforcer.instance.collection('users').doc(user.uid).set({
+        'lastPushRegistrationStatus': status,
+        'lastPushRegistrationContext': context,
+        'lastPushRegistrationUpdatedAt': FieldValue.serverTimestamp(),
+        'lastPushRegistrationDetail': detail ?? FieldValue.delete(),
+        'lastPushRegistrationHasApnsToken': hasApnsToken ?? FieldValue.delete(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      logger.w(
+        '[PushNotificationService] Failed to record registration state: $e',
+      );
+    }
+  }
+
+  Future<String?> _waitForApnsToken({required String context}) async {
+    if (kIsWeb || !isIOS) return null;
+
+    for (var attempt = 1; attempt <= _maxApnsAttempts; attempt++) {
+      try {
+        final token = await _firebaseMessaging.getAPNSToken();
+        if (token != null && token.isNotEmpty) {
+          logger.d(
+            '[PushNotificationService] APNs token ready on attempt $attempt for $context',
+          );
+          return token;
+        }
+      } catch (e) {
+        logger.w(
+          '[PushNotificationService] APNs token read failed on attempt $attempt for $context: $e',
+        );
+      }
+
+      if (attempt < _maxApnsAttempts) {
+        await Future.delayed(_apnsRetryDelay);
+      }
+    }
+
+    logger.w(
+      '[PushNotificationService] APNs token unavailable after $_maxApnsAttempts attempts for $context',
+    );
+    return null;
+  }
+
+  Future<String?> _resolveCurrentToken({required String context}) async {
+    String? apnsToken;
+
+    try {
+      await _firebaseMessaging.setAutoInitEnabled(true);
+    } catch (e) {
+      logger.w('[PushNotificationService] Failed to enable FCM auto-init: $e');
+    }
+
+    if (!kIsWeb && isIOS) {
+      apnsToken = await _waitForApnsToken(context: context);
+    }
+
+    for (var attempt = 1; attempt <= _maxTokenAttempts; attempt++) {
+      try {
+        final token = await _firebaseMessaging.getToken();
+        if (token != null && token.isNotEmpty) {
+          await _recordRegistrationState(
+            status: 'token_resolved',
+            context: context,
+            hasApnsToken: apnsToken != null,
+          );
+          return token;
+        }
+      } catch (e) {
+        logger.w(
+          '[PushNotificationService] FCM token read failed on attempt $attempt for $context: $e',
+        );
+      }
+
+      if (attempt < _maxTokenAttempts) {
+        await Future.delayed(_tokenRetryDelay);
+      }
+    }
+
+    await _recordRegistrationState(
+      status: 'token_unavailable',
+      context: context,
+      detail: 'FCM token remained null after $_maxTokenAttempts attempts',
+      hasApnsToken: apnsToken != null,
+    );
+    return null;
+  }
+
   /// Check if app was launched from a notification
   Future<void> _checkInitialMessage() async {
     final initialMessage = await _firebaseMessaging.getInitialMessage();
     if (initialMessage != null) {
-      logger.d('[FCM] App launched from notification: ${initialMessage.messageId}');
+      logger.d(
+        '[FCM] App launched from notification: ${initialMessage.messageId}',
+      );
       _onOpenedMessage(initialMessage);
     }
   }
@@ -221,13 +358,15 @@ class PushNotificationService {
   /// Get initial FCM token
   Future<void> _getInitialToken() async {
     try {
-      final token = await _firebaseMessaging.getToken();
+      final token = await _resolveCurrentToken(context: 'initial_token_fetch');
       if (token != null) {
         _currentToken = token;
         logger.d('[FCM] Initial token: ${token.substring(0, 20)}...');
         _tokenStreamController.add(token);
         // Persist initial token as well
-        _persistToken(token);
+        await _persistToken(token);
+      } else {
+        logger.w('[FCM] Initial token unavailable during startup');
       }
     } catch (e) {
       debugPrint('[FCM] Error getting initial token: $e');
@@ -240,30 +379,55 @@ class PushNotificationService {
       final auth = FirebaseAuth.instance;
       final user = auth.currentUser;
       if (user == null) {
-        logger.w('[PushNotificationService] Cannot persist token: user not authenticated');
+        logger.w(
+          '[PushNotificationService] Cannot persist token: user not authenticated',
+        );
         return;
       }
       final userId = user.uid;
       final tokenHash = token.hashCode.abs().toString();
 
       // Store token in user-specific subcollection to avoid top-level deviceTokens collection
-      await FirestoreEnforcer.instance.collection('users').doc(userId).collection('deviceTokens').doc(tokenHash).set({
-        'fcmToken': token,
-        'isActive': true,
-        'updatedAt': FieldValue.serverTimestamp(),
-        'platform': kIsWeb ? 'web' : (isIOS ? 'ios' : (isAndroid ? 'android' : 'other')),
-        'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
-      }, SetOptions(merge: true));
+      await FirestoreEnforcer.instance
+          .collection('users')
+          .doc(userId)
+          .collection('deviceTokens')
+          .doc(tokenHash)
+          .set({
+            'fcmToken': token,
+            'isActive': true,
+            'updatedAt': FieldValue.serverTimestamp(),
+            'platform':
+                kIsWeb
+                    ? 'web'
+                    : (isIOS ? 'ios' : (isAndroid ? 'android' : 'other')),
+            'expiresAt': Timestamp.fromDate(
+              DateTime.now().add(const Duration(days: 30)),
+            ),
+          }, SetOptions(merge: true));
 
       // Also store lastFcmToken on user doc for quick debugging
       try {
         await FirestoreEnforcer.instance.collection('users').doc(userId).set({
           'lastFcmToken': token,
           'lastFcmTokenUpdatedAt': FieldValue.serverTimestamp(),
+          'lastFcmTokenInvalidatedAt': FieldValue.delete(),
         }, SetOptions(merge: true));
-        logger.d('[PushNotificationService] Token persisted successfully for user $userId');
+        await _recordRegistrationState(
+          status: 'persisted',
+          context: 'persist_token',
+          hasApnsToken:
+              !kIsWeb && isIOS
+                  ? (await _firebaseMessaging.getAPNSToken()) != null
+                  : null,
+        );
+        logger.d(
+          '[PushNotificationService] Token persisted successfully for user $userId',
+        );
       } catch (e) {
-        logger.w('[PushNotificationService] Failed to update lastFcmToken on user doc: $e');
+        logger.w(
+          '[PushNotificationService] Failed to update lastFcmToken on user doc: $e',
+        );
       }
     } catch (e) {
       logger.w('[PushNotificationService] Failed to persist token: $e');
@@ -271,20 +435,29 @@ class PushNotificationService {
   }
 
   /// Public helper to force token refresh & registration post-permission grant
-  Future<void> ensureRegistered() async {
+  Future<void> ensureRegistered({String context = 'ensure_registered'}) async {
     try {
-      final token = await _firebaseMessaging.getToken();
+      final token = await _resolveCurrentToken(context: context);
       if (token != null) {
         if (token != _currentToken) {
           _currentToken = token;
           _tokenStreamController.add(token);
         }
-        _persistToken(token);
+        await _persistToken(token);
 
         // Clean up old tokens for this user to avoid duplicates
         await _cleanupOldTokens();
+      } else {
+        logger.w(
+          '[PushNotificationService] ensureRegistered could not resolve an FCM token for $context',
+        );
       }
     } catch (e) {
+      await _recordRegistrationState(
+        status: 'error',
+        context: context,
+        detail: e.toString(),
+      );
       logger.e('[PushNotificationService] ensureRegistered error', e);
     }
   }
@@ -302,7 +475,11 @@ class PushNotificationService {
 
       // Get all tokens for this user
       final tokensSnapshot =
-          await FirestoreEnforcer.instance.collection('users').doc(userId).collection('deviceTokens').get();
+          await FirestoreEnforcer.instance
+              .collection('users')
+              .doc(userId)
+              .collection('deviceTokens')
+              .get();
 
       final batch = FirestoreEnforcer.instance.batch();
       int cleanupCount = 0;
@@ -321,7 +498,9 @@ class PushNotificationService {
 
       if (cleanupCount > 0) {
         await batch.commit();
-        logger.d('[PushNotificationService] Cleaned up $cleanupCount old tokens');
+        logger.d(
+          '[PushNotificationService] Cleaned up $cleanupCount old tokens',
+        );
       }
     } catch (e) {
       logger.w('[PushNotificationService] Failed to cleanup old tokens: $e');
@@ -331,7 +510,9 @@ class PushNotificationService {
   /// Request notification permissions (native)
   Future<NotificationPermissionResult> requestPermission() async {
     try {
-      debugPrint('[PushNotificationService] Requesting notification permission...');
+      debugPrint(
+        '[PushNotificationService] Requesting notification permission...',
+      );
 
       // Request FCM permissions (this shows native system dialog)
       final settings = await _firebaseMessaging.requestPermission(
@@ -344,12 +525,16 @@ class PushNotificationService {
         sound: true,
       );
 
-      debugPrint('[PushNotificationService] Permission result: ${settings.authorizationStatus}');
+      debugPrint(
+        '[PushNotificationService] Permission result: ${settings.authorizationStatus}',
+      );
 
       // Also request permission for local notifications on Android
       if (!kIsWeb && isAndroid) {
         final status = await perm.Permission.notification.request();
-        debugPrint('[PushNotificationService] Android notification permission: $status');
+        debugPrint(
+          '[PushNotificationService] Android notification permission: $status',
+        );
       }
 
       // Return unified result
@@ -425,7 +610,9 @@ class PushNotificationService {
     final payload = response.payload;
     if (payload == null) return;
 
-    logger.d('[PushNotificationService] Notification tapped with payload: $payload');
+    logger.d(
+      '[PushNotificationService] Notification tapped with payload: $payload',
+    );
 
     if (payload.startsWith('thread:')) {
       final threadId = payload.substring('thread:'.length);
@@ -442,7 +629,9 @@ class PushNotificationService {
     final data = message.data;
     final type = data['type'];
 
-    logger.d('[PushNotificationService] Message opened - type: $type, data: $data');
+    logger.d(
+      '[PushNotificationService] Message opened - type: $type, data: $data',
+    );
 
     switch (type) {
       case 'message':
@@ -467,8 +656,12 @@ class PushNotificationService {
   void _openThread(String threadId) {
     final ctx = navigatorKey.currentContext;
     if (ctx == null) {
-      logger.w('[PushNotificationService] navigator context null; scheduling post-frame nav');
-      WidgetsBinding.instance.addPostFrameCallback((_) => _openThread(threadId));
+      logger.w(
+        '[PushNotificationService] navigator context null; scheduling post-frame nav',
+      );
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _openThread(threadId),
+      );
       return;
     }
     final router = GoRouter.of(ctx);
@@ -479,8 +672,12 @@ class PushNotificationService {
   void _openDailySummary(String orgId) {
     final ctx = navigatorKey.currentContext;
     if (ctx == null) {
-      logger.w('[PushNotificationService] navigator context null; scheduling post-frame nav');
-      WidgetsBinding.instance.addPostFrameCallback((_) => _openDailySummary(orgId));
+      logger.w(
+        '[PushNotificationService] navigator context null; scheduling post-frame nav',
+      );
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _openDailySummary(orgId),
+      );
       return;
     }
     final router = GoRouter.of(ctx);
@@ -489,7 +686,10 @@ class PushNotificationService {
   }
 
   /// Show local notification (Android/iOS)
-  Future<void> _showLocalNotification(RemoteMessage message, {bool foreground = false}) async {
+  Future<void> _showLocalNotification(
+    RemoteMessage message, {
+    bool foreground = false,
+  }) async {
     final notification = message.notification;
     if (notification == null) return;
 
@@ -515,15 +715,20 @@ class PushNotificationService {
         default:
           channelId = 'general_notifications';
           channelName = 'General Notifications';
-          channelDescription = 'General notifications from Hands app including messages and updates.';
+          channelDescription =
+              'General notifications from Hands app including messages and updates.';
       }
 
       final androidDetails = AndroidNotificationDetails(
         channelId,
         channelName,
         channelDescription: channelDescription,
-        importance: type == 'daily_summary' ? Importance.defaultImportance : Importance.high,
-        priority: type == 'daily_summary' ? Priority.defaultPriority : Priority.high,
+        importance:
+            type == 'daily_summary'
+                ? Importance.defaultImportance
+                : Importance.high,
+        priority:
+            type == 'daily_summary' ? Priority.defaultPriority : Priority.high,
         icon: '@mipmap/ic_launcher',
         channelShowBadge: true,
       );
@@ -531,7 +736,8 @@ class PushNotificationService {
       const iosDetails = DarwinNotificationDetails();
 
       String? payload;
-      if ((type == 'message' || type == 'admin_message') && message.data['threadId'] != null) {
+      if ((type == 'message' || type == 'admin_message') &&
+          message.data['threadId'] != null) {
         payload = 'thread:${message.data['threadId']}';
       } else if (type == 'daily_summary') {
         payload = 'daily_summary:${message.data['orgId'] ?? ''}';
@@ -547,7 +753,9 @@ class PushNotificationService {
         payload: payload,
       );
 
-      logger.d('[PushNotificationService] Local notification shown for type: $type, channel: $channelId');
+      logger.d(
+        '[PushNotificationService] Local notification shown for type: $type, channel: $channelId',
+      );
     } catch (e) {
       logger.e('[PushNotificationService] Error showing local notification', e);
     }
@@ -557,7 +765,9 @@ class PushNotificationService {
   Future<String?> getToken() async {
     try {
       final token = await _firebaseMessaging.getToken();
-      logger.d('[PushNotificationService] Current FCM token: ${token?.substring(0, 20)}...');
+      logger.d(
+        '[PushNotificationService] Current FCM token: ${token?.substring(0, 20)}...',
+      );
       return token;
     } catch (e) {
       logger.e('[PushNotificationService] Error getting FCM token', e);
@@ -582,15 +792,22 @@ class PushNotificationService {
       logger.d('[PushNotificationService] Notification settings: $settingsMap');
       return settingsMap;
     } catch (e) {
-      logger.e('[PushNotificationService] Error getting notification settings', e);
+      logger.e(
+        '[PushNotificationService] Error getting notification settings',
+        e,
+      );
       return {};
     }
   }
 
   /// Enhanced permission request with better UX and logging
-  Future<NotificationPermissionResult> requestPermissionWithContext({String? context}) async {
+  Future<NotificationPermissionResult> requestPermissionWithContext({
+    String? context,
+  }) async {
     try {
-      logger.d('[PushNotificationService] Requesting notification permission - context: ${context ?? "general"}');
+      logger.d(
+        '[PushNotificationService] Requesting notification permission - context: ${context ?? "general"}',
+      );
 
       // Request FCM permissions (this shows native system dialog)
       final settings = await _firebaseMessaging.requestPermission(
@@ -603,12 +820,16 @@ class PushNotificationService {
         sound: true,
       );
 
-      logger.d('[PushNotificationService] Permission result: ${settings.authorizationStatus}');
+      logger.d(
+        '[PushNotificationService] Permission result: ${settings.authorizationStatus}',
+      );
 
       // Also request permission for local notifications on Android
       if (!kIsWeb && isAndroid) {
         final status = await perm.Permission.notification.request();
-        logger.d('[PushNotificationService] Android notification permission: $status');
+        logger.d(
+          '[PushNotificationService] Android notification permission: $status',
+        );
       }
 
       // If permission granted, ensure we register the token
@@ -618,8 +839,10 @@ class PushNotificationService {
         case AuthorizationStatus.provisional:
           result = NotificationPermissionResult.granted;
           // Ensure token is registered after permission grant
-          await ensureRegistered();
-          logger.d('[PushNotificationService] Permission granted and token registered');
+          await ensureRegistered(context: 'request_permission');
+          logger.d(
+            '[PushNotificationService] Permission granted and token registered',
+          );
           break;
         case AuthorizationStatus.denied:
           result = NotificationPermissionResult.denied;
@@ -660,7 +883,8 @@ class PushNotificationService {
 enum NotificationPermissionResult { granted, denied, notDetermined, error }
 
 /// Extension for user-friendly permission status messages
-extension NotificationPermissionResultExtension on NotificationPermissionResult {
+extension NotificationPermissionResultExtension
+    on NotificationPermissionResult {
   String get message {
     switch (this) {
       case NotificationPermissionResult.granted:

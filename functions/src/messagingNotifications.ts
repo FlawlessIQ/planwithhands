@@ -59,6 +59,76 @@ function getLocalizedField(
   return fallback;
 }
 
+function isInvalidFcmTokenError(code?: string): boolean {
+  return code === "messaging/registration-token-not-registered" ||
+    code === "messaging/invalid-registration-token";
+}
+
+function timestampMillis(value: unknown): number {
+  if (!value) return 0;
+  if (value instanceof Date) return value.getTime();
+
+  const timestampLike = value as { toMillis?: () => number };
+  if (typeof timestampLike.toMillis === "function") {
+    return timestampLike.toMillis();
+  }
+
+  return 0;
+}
+
+function shouldUseLastFcmToken(userData: FirebaseFirestore.DocumentData): boolean {
+  const token = userData.lastFcmToken;
+  if (typeof token !== "string" || token.trim().length === 0) return false;
+
+  const updatedAt = timestampMillis(userData.lastFcmTokenUpdatedAt);
+  const invalidatedAt = timestampMillis(userData.lastFcmTokenInvalidatedAt);
+  return invalidatedAt === 0 || updatedAt >= invalidatedAt;
+}
+
+function addTokenRef(
+  refsByToken: Map<string, FirebaseFirestore.DocumentReference[]>,
+  token: string,
+  ref: FirebaseFirestore.DocumentReference,
+): void {
+  const refs = refsByToken.get(token) || [];
+  refs.push(ref);
+  refsByToken.set(token, refs);
+}
+
+async function deactivateInvalidTokens(
+  tokens: Set<string>,
+  tokenRefsByToken: Map<string, FirebaseFirestore.DocumentReference[]>,
+  fallbackUserRefsByToken: Map<string, FirebaseFirestore.DocumentReference[]>,
+): Promise<void> {
+  if (tokens.size === 0) return;
+
+  const writer = db.bulkWriter();
+  const invalidatedAt = admin.firestore.FieldValue.serverTimestamp();
+
+  for (const token of tokens) {
+    const tokenRefs = tokenRefsByToken.get(token) || [];
+    tokenRefs.forEach((ref) => {
+      writer.set(
+        ref,
+        {isActive: false, invalidatedAt},
+        {merge: true},
+      );
+    });
+
+    const fallbackUserRefs = fallbackUserRefsByToken.get(token) || [];
+    fallbackUserRefs.forEach((ref) => {
+      writer.set(
+        ref,
+        {lastFcmTokenInvalidatedAt: invalidatedAt},
+        {merge: true},
+      );
+    });
+  }
+
+  await writer.close();
+  console.log(`🧹 [Outbox] Marked ${tokens.size} invalid FCM token(s) inactive`);
+}
+
 // Main function: Outbox trigger, fan-out to per-user inbox
 export const onNotificationOutboxCreated = functions.firestore
   .database(FIRESTORE_DATABASE_ID)
@@ -175,9 +245,13 @@ export const onNotificationOutboxCreated = functions.firestore
     const tokenPromises = recipientUserIds.map(async (userId: string) => {
       try {
         const userDoc = await db.collection("users").doc(userId).get();
+        const userData = userDoc.data() || {};
+        const userRef = userDoc.ref;
         const preferredLanguageCode = normalizeLanguageCode(
-          userDoc.data()?.preferredLanguageCode,
+          userData.preferredLanguageCode,
         );
+        const tokenRefsByToken = new Map<string, FirebaseFirestore.DocumentReference[]>();
+        const fallbackUserRefsByToken = new Map<string, FirebaseFirestore.DocumentReference[]>();
 
         // First try user-specific subcollection (new format)
         const userTokenSnap = await db
@@ -189,7 +263,16 @@ export const onNotificationOutboxCreated = functions.firestore
 
         let tokens: string[] = [];
         if (!userTokenSnap.empty) {
-          tokens = userTokenSnap.docs.map((doc) => doc.data().fcmToken);
+          tokens = userTokenSnap.docs
+            .map((doc) => {
+              const fcmToken = doc.data().fcmToken;
+              if (typeof fcmToken === "string" && fcmToken.trim().length > 0) {
+                addTokenRef(tokenRefsByToken, fcmToken, doc.ref);
+                return fcmToken;
+              }
+              return "";
+            })
+            .filter(Boolean);
         } else {
           // Fallback to legacy top-level collection
           const legacyTokenSnap = await db
@@ -197,16 +280,40 @@ export const onNotificationOutboxCreated = functions.firestore
             .where("userId", "==", userId)
             .where("isActive", "==", true)
             .get();
-          tokens = legacyTokenSnap.docs.map((doc) => doc.data().fcmToken);
+          tokens = legacyTokenSnap.docs
+            .map((doc) => {
+              const fcmToken = doc.data().fcmToken;
+              if (typeof fcmToken === "string" && fcmToken.trim().length > 0) {
+                addTokenRef(tokenRefsByToken, fcmToken, doc.ref);
+                return fcmToken;
+              }
+              return "";
+            })
+            .filter(Boolean);
         }
+
+        if (tokens.length === 0 && shouldUseLastFcmToken(userData)) {
+          tokens = [userData.lastFcmToken];
+          addTokenRef(fallbackUserRefsByToken, userData.lastFcmToken, userRef);
+          console.log(`[Outbox] Using lastFcmToken fallback for user ${userId}`);
+        }
+
         return {
           userId,
           preferredLanguageCode,
           tokens: tokens.filter(Boolean),
+          tokenRefsByToken,
+          fallbackUserRefsByToken,
         };
       } catch (error) {
         console.error(`Error fetching tokens for user ${userId}:`, error);
-        return {userId, preferredLanguageCode: "en", tokens: []};
+        return {
+          userId,
+          preferredLanguageCode: "en",
+          tokens: [],
+          tokenRefsByToken: new Map<string, FirebaseFirestore.DocumentReference[]>(),
+          fallbackUserRefsByToken: new Map<string, FirebaseFirestore.DocumentReference[]>(),
+        };
       }
     });
 
@@ -214,6 +321,17 @@ export const onNotificationOutboxCreated = functions.firestore
     const userMeta = new Map(
       userTokens.map((entry) => [entry.userId, entry]),
     );
+    const tokenRefsByToken = new Map<string, FirebaseFirestore.DocumentReference[]>();
+    const fallbackUserRefsByToken = new Map<string, FirebaseFirestore.DocumentReference[]>();
+    userTokens.forEach((entry) => {
+      entry.tokenRefsByToken.forEach((refs, token) => {
+        refs.forEach((ref) => addTokenRef(tokenRefsByToken, token, ref));
+      });
+      entry.fallbackUserRefsByToken.forEach((refs, token) => {
+        refs.forEach((ref) => addTokenRef(fallbackUserRefsByToken, token, ref));
+      });
+    });
+
     // Flatten and de-duplicate tokens to avoid duplicate sends
     const tokenSet = new Set<string>();
     userTokens.forEach(({tokens}) => {
@@ -266,8 +384,13 @@ export const onNotificationOutboxCreated = functions.firestore
       const chunkSize = 500;
       let totalSuccess = 0;
       let totalFailure = 0;
+      const invalidTokens = new Set<string>();
 
       for (const [languageCode, tokens] of tokenGroups.entries()) {
+        const notificationType =
+          typeof notif.type === "string" && notif.type.trim().length > 0 ?
+            notif.type :
+            "general_notification";
         const baseMessage = {
           notification: {
             title:
@@ -276,17 +399,28 @@ export const onNotificationOutboxCreated = functions.firestore
             body: getLocalizedField(notif, "message", languageCode) || "",
           },
           data: {
-            type: "general_notification",
+            type: notificationType,
             orgId: orgId,
             outboxId: notifId,
             languageCode,
           },
           apns: {
+            headers: {
+              "apns-priority": "10",
+              "apns-push-type": "alert",
+            },
             payload: {
               aps: {
                 sound: "default" as const,
                 badge: 1,
               },
+            },
+          },
+          android: {
+            notification: {
+              channelId: notificationType === "daily_summary" ?
+                "daily_summary" :
+                "general_notifications",
             },
           },
         };
@@ -307,6 +441,11 @@ export const onNotificationOutboxCreated = functions.firestore
               .map((r, idx) => ({ idx, error: r.error }))
               .filter((x) => !!x.error)
               .slice(0, 3);
+            response.responses.forEach((result, idx) => {
+              if (isInvalidFcmTokenError(result.error?.code)) {
+                invalidTokens.add(chunk[idx]);
+              }
+            });
             if (sampleErrors.length > 0) {
               console.warn(
                 `⚠️ [Outbox] ${languageCode} chunk ${Math.floor(i / chunkSize) + 1}: sample errors:`,
@@ -324,6 +463,15 @@ export const onNotificationOutboxCreated = functions.firestore
         }
       }
 
+      try {
+        await deactivateInvalidTokens(
+          invalidTokens,
+          tokenRefsByToken,
+          fallbackUserRefsByToken,
+        );
+      } catch (error) {
+        console.error("🧹 [Outbox] Failed to mark invalid FCM tokens inactive:", error);
+      }
       console.log(`✅ [Outbox] Push notifications summary: ${totalSuccess} successful, ${totalFailure} failed`);
     } else {
       console.log(`📱 [Outbox] No FCM tokens found for push notifications`);
