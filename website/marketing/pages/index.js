@@ -4,7 +4,7 @@ import Image from 'next/image'
 import SEO from '../components/SEO'
 
 export default function Home() {
-  const signupUrl = '/app-signup';
+  const signupUrl = '/app-signup?src=home_final_cta';
   const [showTransition, setShowTransition] = useState(false);
   const [nextHref, setNextHref] = useState(null);
   const videoRef = useRef(null);
@@ -71,7 +71,7 @@ export default function Home() {
     "@type": "SoftwareApplication",
     "name": "Plan With Hands",
     "alternateName": "Hands App",
-    "description": "Restaurant operations management software with digital checklists, team messaging, training documents, and real-time insights. No hardware needed.",
+    "description": "Restaurant operations software with shift checklists, photo proof, team messaging, training documents, daily summaries, and manager dashboards. No hardware needed.",
     "url": "https://planwithhands.com",
     "applicationCategory": "BusinessApplication",
     "operatingSystem": "iOS, Android, Web",
@@ -96,11 +96,14 @@ export default function Home() {
       }
     },
     "featureList": [
-      "Digital Checklists",
-      "Team Messaging", 
+      "Shift Checklists",
+      "Photo Proof",
+      "Team Messaging",
       "Training Documents",
-      "Real-time Analytics",
-      "Multi-location Management"
+      "Daily Summaries",
+      "Location Performance Dashboards",
+      "English, Spanish, and Portuguese Workflows",
+      "Shared Device Mode"
     ]
   };
 
@@ -108,7 +111,7 @@ export default function Home() {
     <>
       <SEO
         title="Plan With Hands - Restaurant Task & Team Management Software"
-        description="Transform restaurant operations with Hands - digital checklists, team messaging, training documents, and real-time insights. No hardware needed. Start a 14-day trial with no card required."
+        description="Run every restaurant shift with proof. Hands combines checklists, photo proof, training docs, team messages, dashboards, and daily summaries. Start a 14-day trial with no card required."
         canonical="https://planwithhands.com/"
         structuredData={structuredData}
         keywords="restaurant management software, digital checklists, restaurant operations, team communication, food service software, restaurant technology, operational excellence, task management"
@@ -125,15 +128,14 @@ export default function Home() {
             </span>
           </div>
           <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold mb-4 sm:mb-6 leading-tight">
-            Get hands on
-            <span className="block text-accent">every task</span>
+            Run every shift
+            <span className="block text-accent">with proof</span>
           </h1>
           <p className="text-lg sm:text-xl md:text-2xl text-white/80 mb-8 sm:mb-10 max-w-4xl mx-auto leading-relaxed px-2">
-            Transform chaotic operations into consistent excellence with checklists, 
-            documents, and real-time insights that scale across your entire business.
+            Checklists, photo proof, training docs, team messages, dashboards, and daily summaries for restaurants that need every location operating the same way.
           </p>
           <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4 mb-8 sm:mb-12 px-4">
-            <Link href="/pricing" className="px-6 sm:px-8 py-3 sm:py-4 bg-accent text-primary font-semibold rounded-2xl shadow-2xl hover:shadow-accent/25 transition-all duration-300 text-base sm:text-lg">
+            <Link href="/app-signup?src=home_hero_cta" className="px-6 sm:px-8 py-3 sm:py-4 bg-accent text-primary font-semibold rounded-2xl shadow-2xl hover:shadow-accent/25 transition-all duration-300 text-base sm:text-lg">
               Start 14-day trial
             </Link>
             <button
@@ -159,13 +161,13 @@ export default function Home() {
               <svg className="w-4 h-4 sm:w-5 sm:h-5 text-accent flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
               </svg>
-              <span className="whitespace-nowrap">14-day trial</span>
+              <span className="whitespace-nowrap">No card required</span>
             </div>
             <div className="flex items-center gap-2">
               <svg className="w-4 h-4 sm:w-5 sm:h-5 text-accent flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
               </svg>
-              <span className="whitespace-nowrap">No card required</span>
+              <span className="whitespace-nowrap">English, Spanish, Portuguese</span>
             </div>
           </div>
         </div>
@@ -218,8 +220,8 @@ export default function Home() {
                     <path fillRule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11.707 4.707a1 1 0 00-1.414-1.414L10 9.586 8.707 8.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                   </svg>
                 ),
-                title: 'Bulletproof Consistency',
-                description: 'Every location follows the same standards. No exceptions, no missed steps, no surprises.',
+                title: 'Shift Execution',
+                description: 'Assign opening, prep, closing, and manager checks by location, shift, and role.',
               },
               {
                 icon: (
@@ -228,8 +230,8 @@ export default function Home() {
                     <path fillRule="evenodd" d="M4 5a2 2 0 012-2v1a2 2 0 00-2 2v6a2 2 0 002 2h8a2 2 0 002-2V6a2 2 0 00-2-2V3a2 2 0 012-2v1a2 2 0 00-2 2v6a2 2 0 002 2h8a2 2 0 002-2V6a2 2 0 00-2-2h1zm0 5V9a1 1 0 011-1h1a1 1 0 110 2v1a1 1 0 11-2 0z" clipRule="evenodd" />
                   </svg>
                 ),
-                title: 'Real-Time Visibility',
-                description: 'See what\'s happening across all locations instantly. Spot issues before they become problems.',
+                title: 'Proof of Work',
+                description: 'Require photos, notes, and reasons so managers know what happened, when, and by whom.',
               },
               {
                 icon: (
@@ -238,8 +240,8 @@ export default function Home() {
                     <path d="M2 13.692V16a2 2 0 002 2h12a2 2 0 002-2v-2.308A24.974 24.974 0 0110 15c-2.796 0-5.487-.46-8-1.308z" />
                   </svg>
                 ),
-                title: 'Effortless Scaling',
-                description: 'Add locations without adding chaos. Your systems grow with you, not against you.',
+                title: 'Manager Visibility',
+                description: 'Use live dashboards, daily summaries, and location breakdowns to catch issues early.',
               }
             ].map((benefit, index) => (
               <div key={index} className="bg-surface text-white p-6 sm:p-8 rounded-2xl sm:rounded-3xl hover:bg-white/5 transition-all duration-300 group">
@@ -288,25 +290,25 @@ export default function Home() {
                   <svg className="w-5 h-5 sm:w-6 sm:h-6 text-accent flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                   </svg>
-                  <p className="text-white text-sm sm:text-base">Foolproof checklists that can't be skipped</p>
+                  <p className="text-white text-sm sm:text-base">Shift checklists with photo proof and notes</p>
                 </div>
                 <div className="flex gap-3 sm:gap-4 items-center">
                   <svg className="w-5 h-5 sm:w-6 sm:h-6 text-accent flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                   </svg>
-                  <p className="text-white text-sm sm:text-base">Identical standards everywhere, automatically</p>
+                  <p className="text-white text-sm sm:text-base">Role-based workflows for staff, managers, and admins</p>
                 </div>
                 <div className="flex gap-3 sm:gap-4 items-center">
                   <svg className="w-5 h-5 sm:w-6 sm:h-6 text-accent flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                   </svg>
-                  <p className="text-white text-sm sm:text-base">Live dashboard with real completion data</p>
+                  <p className="text-white text-sm sm:text-base">Daily summaries and location performance breakdowns</p>
                 </div>
                 <div className="flex gap-3 sm:gap-4 items-center">
                   <svg className="w-5 h-5 sm:w-6 sm:h-6 text-accent flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                   </svg>
-                  <p className="text-white text-sm sm:text-base">Built-in docs and training materials</p>
+                  <p className="text-white text-sm sm:text-base">Training docs, team messages, and multilingual staff access</p>
                 </div>
               </div>
             </div>
@@ -322,15 +324,15 @@ export default function Home() {
             {[
               {
                 title: "Open stronger",
-                body: "Give every location the same opening, closing, and handoff standards."
+                body: "Give every location the same opening, prep, closing, and manager-check standards."
               },
               {
                 title: "Train faster",
-                body: "Keep procedures, documents, and task expectations in one place for every shift."
+                body: "Keep procedures, documents, and task expectations in one place, available on staff phones and shared devices."
               },
               {
                 title: "See issues sooner",
-                body: "Spot missed tasks and uneven execution before they turn into guest-facing problems."
+                body: "Use live dashboards and daily summaries to spot missed tasks before they turn into guest-facing problems."
               }
             ].map((item, index) => (
               <div key={index} className="bg-surface p-6 sm:p-8 rounded-2xl sm:rounded-3xl">
@@ -345,9 +347,9 @@ export default function Home() {
       {/* CTA Section */}
       <section className="py-16 sm:py-20 md:py-24 px-4 sm:px-6 bg-gradient-to-r from-accent/10 to-primary">
         <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-4 sm:mb-6 leading-tight">Stop stressing about operations</h2>
+          <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-4 sm:mb-6 leading-tight">Start your first location today</h2>
           <p className="text-base sm:text-lg md:text-xl text-white/80 mb-8 sm:mb-10 max-w-2xl mx-auto leading-relaxed px-2">
-            Transform chaotic shifts into predictable success with one place for checklists, documents, and team communication.
+            Create your organization, add locations, build your first shift checklist, and invite the team. No card required to begin setup.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center mb-6 sm:mb-8 px-4">
             <a href={signupUrl} className="px-6 sm:px-8 py-3 sm:py-4 bg-accent text-primary font-semibold rounded-xl sm:rounded-2xl shadow-2xl hover:shadow-accent/25 transition-all duration-300 text-base sm:text-lg min-h-[48px] flex items-center justify-center">

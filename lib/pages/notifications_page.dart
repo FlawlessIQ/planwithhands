@@ -92,8 +92,36 @@ class _NotificationListSheetState extends ConsumerState<NotificationListSheet> {
     _hasMoreData = true;
     _notifications.clear();
 
+    _subscribeToNotifications();
+
     // Load first page
     await _loadNotifications(isLoadMore: false);
+  }
+
+  void _subscribeToNotifications() {
+    if (_userId == null) return;
+
+    _subscription?.cancel();
+    _subscription = FirestoreEnforcer.instance
+        .collection('userNotifications')
+        .doc(_userId!)
+        .collection('notifications')
+        .orderBy('createdAt', descending: true)
+        .limit(_pageSize * 3)
+        .snapshots()
+        .listen(
+          (_) {
+            if (!mounted || _isLoadingMore) return;
+            unawaited(_loadNotifications(isLoadMore: false));
+          },
+          onError: (error) {
+            if (kDebugMode) {
+              print(
+                '[NotificationListSheet] Notification stream error: $error',
+              );
+            }
+          },
+        );
   }
 
   Future<void> _loadNotifications({required bool isLoadMore}) async {

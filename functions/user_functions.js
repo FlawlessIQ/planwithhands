@@ -171,6 +171,32 @@ function asPositiveInt(value, fallback = 0) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function normalizeSignupAttribution(value) {
+  if (!value || typeof value !== "object") return null;
+  const allowedKeys = [
+    "source",
+    "referrer",
+    "landingUrl",
+    "marketingLandingUrl",
+    "path",
+    "utmSource",
+    "utmMedium",
+    "utmCampaign",
+    "utmTerm",
+    "utmContent",
+    "capturedAt",
+  ];
+  const output = {};
+  allowedKeys.forEach((key) => {
+    const raw = value[key];
+    if (raw === undefined || raw === null) return;
+    const text = String(raw).trim();
+    if (!text) return;
+    output[key] = text.slice(0, 500);
+  });
+  return Object.keys(output).length > 0 ? output : null;
+}
+
 async function hasActiveInviteForEmail(email) {
   const activeStatuses = ["pending", "sent", "opened"];
   const inviteSnap = await db.collection("invites")
@@ -200,6 +226,7 @@ exports.createOrganizationSignup = functions.region("us-central1").https.onCall(
   const preferredLanguageCode = normalizeSignupLanguage(
       data?.preferredLanguageCode,
   );
+  const signupAttribution = normalizeSignupAttribution(data?.signupAttribution);
   const acceptedTerms = data?.acceptedTerms === true;
 
   if (!email || !firstName || !lastName || !organizationName) {
@@ -262,6 +289,13 @@ exports.createOrganizationSignup = functions.region("us-central1").https.onCall(
         new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
     );
     const salesAssisted = intendedLocationQuantity >= 5;
+    const signupMetadata = {
+      source: signupAttribution && signupAttribution.source ?
+        signupAttribution.source :
+        "direct",
+      attribution: signupAttribution,
+      acceptedTermsAt: now,
+    };
 
     const batch = db.batch();
     batch.set(orgRef, {
@@ -278,6 +312,7 @@ exports.createOrganizationSignup = functions.region("us-central1").https.onCall(
       subscriptionStatus: "trial",
       trialEndsAt,
       salesAssisted,
+      signupMetadata,
       onboardingStatus: {
         firstLocation: false,
         teamInvited: false,
@@ -319,6 +354,7 @@ exports.createOrganizationSignup = functions.region("us-central1").https.onCall(
       preferredLanguageCode,
       preferredLanguageSource: "signup",
       preferredLocaleResolved: preferredLanguageCode,
+      signupMetadata,
       createdAt: now,
       updatedAt: now,
       permissions: {

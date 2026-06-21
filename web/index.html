@@ -12,7 +12,7 @@
   <meta name="flutter-web-renderer" content="html" />
   
   <!-- Content Security Policy for Stripe, Firebase, and Flutter Web -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://js.stripe.com https://www.gstatic.com 'unsafe-inline' 'unsafe-eval'; frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://firebasestorage.googleapis.com https://view.officeapps.live.com; child-src 'self' https://firebasestorage.googleapis.com https://view.officeapps.live.com; connect-src 'self' blob: https://api.stripe.com https://r.stripe.com https://m.stripe.network https://fonts.gstatic.com https://www.gstatic.com https://firebase.googleapis.com https://firestore.googleapis.com https://firebaseinstallations.googleapis.com https://firebaseremoteconfig.googleapis.com https://firebasestorage.googleapis.com https://fcm.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://us-central1-plan-with-hands.cloudfunctions.net https://us-central1-planwithhands.cloudfunctions.net https://fcmregistrations.googleapis.com; img-src 'self' data: blob: https://q.stripe.com https://m.stripe.network https://firebasestorage.googleapis.com; style-src 'self' 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com;"
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://js.stripe.com https://www.gstatic.com 'unsafe-inline' 'unsafe-eval'; frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://firebasestorage.googleapis.com https://view.officeapps.live.com; child-src 'self' https://firebasestorage.googleapis.com https://view.officeapps.live.com; connect-src 'self' blob: https://api.stripe.com https://r.stripe.com https://m.stripe.network https://fonts.gstatic.com https://www.gstatic.com https://firebase.googleapis.com https://firestore.googleapis.com https://firebaseinstallations.googleapis.com https://firebaseremoteconfig.googleapis.com https://firebasestorage.googleapis.com https://fcm.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://us-central1-plan-with-hands.cloudfunctions.net https://us-central1-planwithhands.cloudfunctions.net https://fcmregistrations.googleapis.com; img-src 'self' data: blob: https://q.stripe.com https://m.stripe.network https://firebasestorage.googleapis.com; style-src 'self' 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com;">
 
   <!-- iOS meta tags & icons -->
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -183,65 +183,9 @@
     */
   </style>
 
-  <!-- This script adds the flutter initialization JS inline -->
-  <script src="flutter.js" defer></script>
 </head>
 <body>
-  <script>
-    // Initialize Flutter safely in both `flutter run` (dev) and built (prod) modes.
-    // Call loader methods on the `_flutter.loader` object to preserve `this`.
-    window.addEventListener('load', function () {
-      try {
-        var attempts = 0;
-        var maxAttempts = 10;
-
-        var startApp = function(loaderFn) {
-          try {
-            loaderFn.call(_flutter.loader, {
-              onEntrypointLoaded: function (engineInitializer) {
-                engineInitializer.initializeEngine().then(function (appRunner) {
-                  appRunner.runApp();
-                });
-              }
-            });
-            return true;
-          } catch (e) {
-            console.warn('Flutter loader invocation failed:', e);
-            return false;
-          }
-        };
-
-        var tryInit = function() {
-          attempts++;
-          try {
-            if (typeof _flutter !== 'undefined' && _flutter && _flutter.loader) {
-              // Prefer modern API when buildConfig is available
-              if (typeof _flutter.buildConfig !== 'undefined' && typeof _flutter.loader.load === 'function') {
-                if (startApp(_flutter.loader.load)) return;
-              }
-
-              // Legacy fallback for development servers that expect loadEntrypoint
-              if (typeof _flutter.loader.loadEntrypoint === 'function') {
-                if (startApp(_flutter.loader.loadEntrypoint)) return;
-              }
-            }
-
-            if (attempts < maxAttempts) {
-              setTimeout(tryInit, 200);
-            } else {
-              console.error('Flutter loader not available after retries.');
-            }
-          } catch (err) {
-            if (attempts < maxAttempts) setTimeout(tryInit, 200);
-          }
-        };
-
-        tryInit();
-      } catch (e) {
-        console.error('Failed to initialize Flutter loader:', e);
-      }
-    });
-  </script>
+  <script src="flutter_bootstrap.js" async></script>
 
   <!-- Service Worker Unregistration Script -->
   <!-- Version check: show reload banner when a new version is deployed -->

@@ -41,6 +41,7 @@ class NotificationController {
 
     // Build targeting data based on recipient type
     Map<String, dynamic> notificationData = {
+      'type': 'broadcast',
       'title': title,
       'message': body,
       'createdAt': FieldValue.serverTimestamp(),

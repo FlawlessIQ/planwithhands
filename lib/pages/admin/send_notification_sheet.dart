@@ -22,6 +22,8 @@ class _SendNotificationSheetState extends ConsumerState<SendNotificationSheet> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _messageController = TextEditingController();
+  final _titleFocusNode = FocusNode();
+  final _messageFocusNode = FocusNode();
 
   String _recipientType = 'Everyone';
   String? _selectedGroup;
@@ -156,6 +158,7 @@ class _SendNotificationSheetState extends ConsumerState<SendNotificationSheet> {
 
   Future<void> _send() async {
     if (!_formKey.currentState!.validate()) return;
+    FocusScope.of(context).unfocus();
     setState(() {
       _sending = true;
       _error = null;
@@ -195,6 +198,8 @@ class _SendNotificationSheetState extends ConsumerState<SendNotificationSheet> {
   void dispose() {
     _titleController.dispose();
     _messageController.dispose();
+    _titleFocusNode.dispose();
+    _messageFocusNode.dispose();
     super.dispose();
   }
 
@@ -263,227 +268,250 @@ class _SendNotificationSheetState extends ConsumerState<SendNotificationSheet> {
           onPressed: _send,
         ),
       ],
-      child: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _InfoTip(text: l10n.broadcastInfoTip),
-              HandsModalSection(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      l10n.broadcastAudienceSectionTitle,
-                      style: HandsModalTokens.sectionTitleStyle,
-                    ),
-                    const SizedBox(height: 10),
-                    DropdownButtonFormField<String>(
-                      initialValue: _recipientType,
-                      items: [
-                        DropdownMenuItem(
-                          value: 'Everyone',
-                          child: Text(l10n.broadcastRecipientEveryone),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Audience',
-                          child: Text(l10n.broadcastRecipientSavedAudience),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Location',
-                          child: Text(l10n.broadcastRecipientLocation),
-                        ),
-                      ],
-                      decoration: _fieldDecoration(
-                        label: l10n.broadcastSendToLabel,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _InfoTip(text: l10n.broadcastInfoTip),
+                HandsModalSection(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        l10n.broadcastAudienceSectionTitle,
+                        style: HandsModalTokens.sectionTitleStyle,
                       ),
-                      style: GoogleFonts.inter(
-                        color: HandsColors.white,
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      dropdownColor: HandsModalTokens.surfaceElevated,
-                      onChanged: (v) {
-                        setState(() {
-                          _recipientType = v!;
-                          _selectedGroup = null;
-                          _selectedLocation = null;
-                          _updateTitle();
-                        });
-                      },
-                    ),
-                    if (_loading) ...[
-                      const SizedBox(height: 16),
-                      const Center(
-                        child: CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            HandsColors.handsOrange,
+                      const SizedBox(height: 10),
+                      DropdownButtonFormField<String>(
+                        initialValue: _recipientType,
+                        items: [
+                          DropdownMenuItem(
+                            value: 'Everyone',
+                            child: Text(l10n.broadcastRecipientEveryone),
                           ),
-                        ),
-                      ),
-                    ] else ...[
-                      if (_recipientType == 'Audience') ...[
-                        const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
-                          initialValue: _selectedGroup,
-                          decoration: _fieldDecoration(
-                            label: l10n.broadcastRecipientSavedAudience,
+                          DropdownMenuItem(
+                            value: 'Audience',
+                            child: Text(l10n.broadcastRecipientSavedAudience),
                           ),
-                          hint: Text(
-                            l10n.broadcastChooseAudience,
-                            style: GoogleFonts.inter(
-                              color: HandsModalTokens.textSubtle,
-                              fontSize: 13,
+                          DropdownMenuItem(
+                            value: 'Location',
+                            child: Text(l10n.broadcastRecipientLocation),
+                          ),
+                        ],
+                        decoration: _fieldDecoration(
+                          label: l10n.broadcastSendToLabel,
+                        ),
+                        style: GoogleFonts.inter(
+                          color: HandsColors.white,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        dropdownColor: HandsModalTokens.surfaceElevated,
+                        onChanged: (v) {
+                          setState(() {
+                            _recipientType = v!;
+                            _selectedGroup = null;
+                            _selectedLocation = null;
+                            _updateTitle();
+                          });
+                        },
+                      ),
+                      if (_loading) ...[
+                        const SizedBox(height: 16),
+                        const Center(
+                          child: CircularProgressIndicator(
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              HandsColors.handsOrange,
                             ),
                           ),
-                          items:
-                              _groups
-                                  .map(
-                                    (g) => DropdownMenuItem(
-                                      value: g['id'],
-                                      child: Text(
-                                        g['name']!,
-                                        style: GoogleFonts.inter(
-                                          color: HandsColors.white,
-                                          fontSize: 13.5,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                  )
-                                  .toList(),
-                          onChanged: (v) {
-                            setState(() {
-                              _selectedGroup = v;
-                              _updateTitle();
-                            });
-                          },
-                          dropdownColor: HandsModalTokens.surfaceElevated,
-                          validator:
-                              (v) =>
-                                  _recipientType == 'Audience' && v == null
-                                      ? l10n.broadcastSelectAudience
-                                      : null,
                         ),
-                      ],
-                      if (_recipientType == 'Location') ...[
-                        const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
-                          initialValue: _selectedLocation,
-                          items:
-                              _locations
-                                  .map(
-                                    (l) => DropdownMenuItem(
-                                      value: l['id'],
-                                      child: Text(
-                                        l['name']!,
-                                        style: GoogleFonts.inter(
-                                          color: HandsColors.white,
-                                          fontSize: 13.5,
-                                          fontWeight: FontWeight.w600,
+                      ] else ...[
+                        if (_recipientType == 'Audience') ...[
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<String>(
+                            initialValue: _selectedGroup,
+                            decoration: _fieldDecoration(
+                              label: l10n.broadcastRecipientSavedAudience,
+                            ),
+                            hint: Text(
+                              l10n.broadcastChooseAudience,
+                              style: GoogleFonts.inter(
+                                color: HandsModalTokens.textSubtle,
+                                fontSize: 13,
+                              ),
+                            ),
+                            items:
+                                _groups
+                                    .map(
+                                      (g) => DropdownMenuItem(
+                                        value: g['id'],
+                                        child: Text(
+                                          g['name']!,
+                                          style: GoogleFonts.inter(
+                                            color: HandsColors.white,
+                                            fontSize: 13.5,
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  )
-                                  .toList(),
-                          decoration: _fieldDecoration(
-                            label: l10n.messagesLocation,
+                                    )
+                                    .toList(),
+                            onChanged: (v) {
+                              setState(() {
+                                _selectedGroup = v;
+                                _updateTitle();
+                              });
+                            },
+                            dropdownColor: HandsModalTokens.surfaceElevated,
+                            validator:
+                                (v) =>
+                                    _recipientType == 'Audience' && v == null
+                                        ? l10n.broadcastSelectAudience
+                                        : null,
                           ),
-                          onChanged: (v) {
-                            setState(() {
-                              _selectedLocation = v;
-                              _updateTitle();
-                            });
-                          },
-                          dropdownColor: HandsModalTokens.surfaceElevated,
-                          validator:
-                              (v) =>
-                                  _recipientType == 'Location' &&
-                                          (v == null || v.isEmpty)
-                                      ? l10n.broadcastSelectLocation
-                                      : null,
-                        ),
+                        ],
+                        if (_recipientType == 'Location') ...[
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<String>(
+                            initialValue: _selectedLocation,
+                            items:
+                                _locations
+                                    .map(
+                                      (l) => DropdownMenuItem(
+                                        value: l['id'],
+                                        child: Text(
+                                          l['name']!,
+                                          style: GoogleFonts.inter(
+                                            color: HandsColors.white,
+                                            fontSize: 13.5,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                            decoration: _fieldDecoration(
+                              label: l10n.messagesLocation,
+                            ),
+                            onChanged: (v) {
+                              setState(() {
+                                _selectedLocation = v;
+                                _updateTitle();
+                              });
+                            },
+                            dropdownColor: HandsModalTokens.surfaceElevated,
+                            validator:
+                                (v) =>
+                                    _recipientType == 'Location' &&
+                                            (v == null || v.isEmpty)
+                                        ? l10n.broadcastSelectLocation
+                                        : null,
+                          ),
+                        ],
                       ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              HandsModalSection(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      l10n.broadcastMessageSectionTitle,
-                      style: HandsModalTokens.sectionTitleStyle,
-                    ),
-                    const SizedBox(height: 10),
-                    HandsTextFormField(
-                      controller: _titleController,
-                      decoration: _fieldDecoration(
-                        label: l10n.broadcastHeadlineLabel,
+                const SizedBox(height: 16),
+                HandsModalSection(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        l10n.broadcastMessageSectionTitle,
+                        style: HandsModalTokens.sectionTitleStyle,
                       ),
+                      const SizedBox(height: 10),
+                      HandsTextFormField(
+                        controller: _titleController,
+                        focusNode: _titleFocusNode,
+                        textInputAction: TextInputAction.next,
+                        onFieldSubmitted:
+                            (_) => _messageFocusNode.requestFocus(),
+                        scrollPadding: const EdgeInsets.fromLTRB(
+                          20,
+                          20,
+                          20,
+                          220,
+                        ),
+                        decoration: _fieldDecoration(
+                          label: l10n.broadcastHeadlineLabel,
+                        ),
+                        style: GoogleFonts.inter(
+                          color: HandsColors.white,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        validator:
+                            (v) =>
+                                v == null || v.trim().isEmpty
+                                    ? l10n.broadcastEnterHeadline
+                                    : null,
+                      ),
+                      const SizedBox(height: 12),
+                      HandsTextFormField(
+                        controller: _messageController,
+                        focusNode: _messageFocusNode,
+                        minLines: 4,
+                        maxLines: 6,
+                        scrollPadding: const EdgeInsets.fromLTRB(
+                          20,
+                          20,
+                          20,
+                          260,
+                        ),
+                        decoration: _fieldDecoration(
+                          label: l10n.broadcastMessageLabel,
+                          hint: l10n.broadcastMessageHint,
+                        ),
+                        style: GoogleFonts.inter(
+                          color: HandsColors.white,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w500,
+                          height: 1.35,
+                        ),
+                        validator:
+                            (v) =>
+                                v == null || v.trim().isEmpty
+                                    ? l10n.broadcastEnterMessage
+                                    : null,
+                      ),
+                    ],
+                  ),
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: HandsModalTokens.danger.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: HandsModalTokens.danger.withValues(alpha: 0.35),
+                      ),
+                    ),
+                    child: Text(
+                      _error!,
                       style: GoogleFonts.inter(
-                        color: HandsColors.white,
-                        fontSize: 13.5,
+                        color: HandsModalTokens.danger,
+                        fontSize: 12.5,
                         fontWeight: FontWeight.w600,
                       ),
-                      validator:
-                          (v) =>
-                              v == null || v.trim().isEmpty
-                                  ? l10n.broadcastEnterHeadline
-                                  : null,
-                    ),
-                    const SizedBox(height: 12),
-                    HandsTextFormField(
-                      controller: _messageController,
-                      decoration: _fieldDecoration(
-                        label: l10n.broadcastMessageLabel,
-                        hint: l10n.broadcastMessageHint,
-                      ),
-                      style: GoogleFonts.inter(
-                        color: HandsColors.white,
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w500,
-                        height: 1.35,
-                      ),
-                      maxLines: 4,
-                      validator:
-                          (v) =>
-                              v == null || v.trim().isEmpty
-                                  ? l10n.broadcastEnterMessage
-                                  : null,
-                    ),
-                  ],
-                ),
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 14),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: HandsModalTokens.danger.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: HandsModalTokens.danger.withValues(alpha: 0.35),
                     ),
                   ),
-                  child: Text(
-                    _error!,
-                    style: GoogleFonts.inter(
-                      color: HandsModalTokens.danger,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

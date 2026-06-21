@@ -315,6 +315,9 @@ class AuthController extends _$AuthController {
   }
 
   Future<void> signOut() async {
+    await PushNotificationService().detachCurrentDeviceFromUser(
+      context: 'auth_controller_sign_out',
+    );
     await _auth.signOut();
     if (_dataFetchTimer != null) {
       _dataFetchTimer!.cancel();

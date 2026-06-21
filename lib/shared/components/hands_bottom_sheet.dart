@@ -294,93 +294,98 @@ class HandsBottomSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    final sheetContent = Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: const BoxDecoration(
-        color: HandsModalTokens.surface,
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(HandsModalTokens.radius),
+    final sheetContent = AnimatedPadding(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: const BoxDecoration(
+          color: HandsModalTokens.surface,
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(HandsModalTokens.radius),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Color(0x52000000),
+              blurRadius: 32,
+              offset: Offset(0, -8),
+            ),
+          ],
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x52000000),
-            blurRadius: 32,
-            offset: Offset(0, -8),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          if (enableDrag) ...[
-            const SizedBox(height: 10),
-            Container(
-              width: 46,
-              height: 4,
-              decoration: BoxDecoration(
-                color: HandsModalTokens.border,
-                borderRadius: BorderRadius.circular(999),
+        child: Column(
+          children: [
+            if (enableDrag) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: 46,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: HandsModalTokens.border,
+                  borderRadius: BorderRadius.circular(999),
+                ),
               ),
-            ),
-            const SizedBox(height: 10),
-          ],
-          if (title != null || isDismissible) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 2, 20, 16),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (title != null)
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(title!, style: HandsModalTokens.titleStyle),
-                          if (subtitle != null) ...[
-                            const SizedBox(height: 6),
-                            Text(
-                              subtitle!,
-                              style: HandsModalTokens.subtitleStyle,
-                            ),
+              const SizedBox(height: 10),
+            ],
+            if (title != null || isDismissible) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 2, 20, 16),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (title != null)
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(title!, style: HandsModalTokens.titleStyle),
+                            if (subtitle != null) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                subtitle!,
+                                style: HandsModalTokens.subtitleStyle,
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
+                      )
+                    else
+                      const Spacer(),
+                    if (isDismissible) ...[
+                      const SizedBox(width: 16),
+                      _HandsModalIconButton(
+                        icon: Icons.close_rounded,
+                        onPressed: () => Navigator.of(context).pop(),
+                        tooltip: 'Close',
                       ),
-                    )
-                  else
-                    const Spacer(),
-                  if (isDismissible) ...[
-                    const SizedBox(width: 16),
-                    _HandsModalIconButton(
-                      icon: Icons.close_rounded,
-                      onPressed: () => Navigator.of(context).pop(),
-                      tooltip: 'Close',
-                    ),
+                    ],
                   ],
-                ],
+                ),
+              ),
+              const Divider(color: HandsModalTokens.border, height: 1),
+            ],
+            Expanded(
+              child: Padding(
+                padding:
+                    contentPadding ?? const EdgeInsets.fromLTRB(20, 18, 20, 18),
+                child: child,
               ),
             ),
-            const Divider(color: HandsModalTokens.border, height: 1),
-          ],
-          Expanded(
-            child: Padding(
-              padding:
-                  contentPadding ?? const EdgeInsets.fromLTRB(20, 18, 20, 18),
-              child: child,
-            ),
-          ),
-          if (actions != null && actions!.isNotEmpty) ...[
-            const Divider(color: HandsModalTokens.border, height: 1),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
-              child: Wrap(
-                alignment: WrapAlignment.end,
-                spacing: 10,
-                runSpacing: 10,
-                children: actions!,
+            if (actions != null && actions!.isNotEmpty) ...[
+              const Divider(color: HandsModalTokens.border, height: 1),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
+                child: Wrap(
+                  alignment: WrapAlignment.end,
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: actions!,
+                ),
               ),
-            ),
+            ],
+            SizedBox(height: media.padding.bottom),
           ],
-          SizedBox(height: media.padding.bottom),
-        ],
+        ),
       ),
     );
 

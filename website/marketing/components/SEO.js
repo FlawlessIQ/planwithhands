@@ -2,7 +2,7 @@ import Head from 'next/head'
 
 export default function SEO({
   title = "Plan With Hands - Restaurant Operations Management Software",
-  description = "Transform restaurant operations with Hands - digital checklists, team messaging, training documents, and real-time insights. No hardware needed. Start your free trial today.",
+  description = "Run every restaurant shift with proof. Hands combines checklists, photo proof, training docs, team messages, dashboards, and daily summaries. Start your free trial today.",
   canonical = "https://planwithhands.com/",
   // Prefer a dedicated hands OG image sized for social previews (1200x630).
   // If you don't have this file deployed yet, create `/public/images/hands-og-1200x630.png`

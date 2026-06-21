@@ -4,16 +4,18 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hands_app/features/shared_mode/shared_mode_state.dart';
+import 'package:hands_app/services/push_notification_service.dart';
 import 'package:hands_app/services/location_selection_service.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-final sharedModeControllerProvider = StateNotifierProvider<SharedModeController, SharedModeState>((ref) {
-  final controller = SharedModeController(ref);
-  // Fire-and-forget init; controller exposes a synchronous default state.
-  controller.init();
-  return controller;
-});
+final sharedModeControllerProvider =
+    StateNotifierProvider<SharedModeController, SharedModeState>((ref) {
+      final controller = SharedModeController(ref);
+      // Fire-and-forget init; controller exposes a synchronous default state.
+      controller.init();
+      return controller;
+    });
 
 class SharedModeController extends StateNotifier<SharedModeState> {
   static const _prefsEnabled = 'sharedMode.enabled';
@@ -24,9 +26,15 @@ class SharedModeController extends StateNotifier<SharedModeState> {
   Timer? _autoLockTimer;
   DateTime _lastActivity = DateTime.fromMillisecondsSinceEpoch(0);
 
-  bool _userMatchesLocation({required Map<String, dynamic> userData, required String locationId}) {
+  bool _userMatchesLocation({
+    required Map<String, dynamic> userData,
+    required String locationId,
+  }) {
     final dynamic raw =
-        userData['locationIds'] ?? userData['locations'] ?? userData['locationId'] ?? userData['location'];
+        userData['locationIds'] ??
+        userData['locations'] ??
+        userData['locationId'] ??
+        userData['location'];
     if (raw == null) return false;
 
     final Iterable<dynamic> entries = (raw is Iterable) ? raw : <dynamic>[raw];
@@ -39,14 +47,17 @@ class SharedModeController extends StateNotifier<SharedModeState> {
         final v = entry.trim();
         if (v == locationId) return true;
         // Sometimes we store a path string (e.g. organizations/{orgId}/locations/{locationId}).
-        if (v.endsWith('/$locationId') || v.contains('/locations/$locationId')) return true;
+        if (v.endsWith('/$locationId') || v.contains('/locations/$locationId'))
+          return true;
         continue;
       }
 
       // Some data uses DocumentReference values.
       if (entry is DocumentReference) {
         if (entry.id == locationId) return true;
-        if (entry.path.endsWith('/$locationId') || entry.path.contains('/locations/$locationId')) return true;
+        if (entry.path.endsWith('/$locationId') ||
+            entry.path.contains('/locations/$locationId'))
+          return true;
         continue;
       }
 
@@ -60,7 +71,8 @@ class SharedModeController extends StateNotifier<SharedModeState> {
       // Last resort: try to match against a string representation.
       final s = entry.toString();
       if (s == locationId) return true;
-      if (s.contains('/locations/$locationId') || s.endsWith('/$locationId')) return true;
+      if (s.contains('/locations/$locationId') || s.endsWith('/$locationId'))
+        return true;
     }
 
     return false;
@@ -92,10 +104,15 @@ class SharedModeController extends StateNotifier<SharedModeState> {
     if (user == null) throw StateError('No authenticated user');
 
     // Resolve orgId from the users doc.
-    final userSnap = await FirestoreEnforcer.instance.collection('users').doc(user.uid).get();
+    final userSnap =
+        await FirestoreEnforcer.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
     final userData = userSnap.data();
     final orgId = userData?['organizationId']?.toString();
-    if (orgId == null || orgId.isEmpty) throw StateError('Missing organizationId');
+    if (orgId == null || orgId.isEmpty)
+      throw StateError('Missing organizationId');
 
     // Shared Mode requires the owner to have a PIN set.
     final hasPin = userData?['hasSharedModePin'] == true;
@@ -133,6 +150,9 @@ class SharedModeController extends StateNotifier<SharedModeState> {
 
   Future<void> signOutDevice() async {
     await disableSharedMode();
+    await PushNotificationService().detachCurrentDeviceFromUser(
+      context: 'shared_mode_sign_out',
+    );
     await FirebaseAuth.instance.signOut();
   }
 
@@ -172,21 +192,40 @@ class SharedModeController extends StateNotifier<SharedModeState> {
   }
 
   Future<void> setPin({required String pin}) async {
-    final callable = FirebaseFunctions.instance.httpsCallable('sharedModeSetPin');
+    final callable = FirebaseFunctions.instance.httpsCallable(
+      'sharedModeSetPin',
+    );
     await callable.call({'pin': pin});
   }
 
-  Future<void> verifyAndActivateUser({required String userId, required String pin}) async {
-    final locId = state.locationId ?? LocationSelectionService.instance.currentLocationId;
+  Future<void> verifyAndActivateUser({
+    required String userId,
+    required String pin,
+  }) async {
+    final locId =
+        state.locationId ?? LocationSelectionService.instance.currentLocationId;
     final orgId = state.ownerOrgId;
-    if (!state.enabled || locId == null || locId.isEmpty || orgId == null || orgId.isEmpty) {
+    if (!state.enabled ||
+        locId == null ||
+        locId.isEmpty ||
+        orgId == null ||
+        orgId.isEmpty) {
       throw StateError('Shared Mode not initialized');
     }
 
-    final callable = FirebaseFunctions.instance.httpsCallable('sharedModeVerifyPin');
-    final result = await callable.call({'targetUserId': userId, 'pin': pin, 'locationId': locId, 'orgId': orgId});
+    final callable = FirebaseFunctions.instance.httpsCallable(
+      'sharedModeVerifyPin',
+    );
+    final result = await callable.call({
+      'targetUserId': userId,
+      'pin': pin,
+      'locationId': locId,
+      'orgId': orgId,
+    });
 
-    final data = (result.data as Map?)?.cast<String, dynamic>() ?? const <String, dynamic>{};
+    final data =
+        (result.data as Map?)?.cast<String, dynamic>() ??
+        const <String, dynamic>{};
     if (data['ok'] != true) {
       throw StateError('Invalid PIN');
     }
@@ -207,20 +246,37 @@ class SharedModeController extends StateNotifier<SharedModeState> {
     final orgId = state.ownerOrgId;
     if (ownerId == null || locId == null || orgId == null) return false;
 
-    final callable = FirebaseFunctions.instance.httpsCallable('sharedModeVerifyPin');
-    final result = await callable.call({'targetUserId': ownerId, 'pin': pin, 'locationId': locId, 'orgId': orgId});
-    final data = (result.data as Map?)?.cast<String, dynamic>() ?? const <String, dynamic>{};
+    final callable = FirebaseFunctions.instance.httpsCallable(
+      'sharedModeVerifyPin',
+    );
+    final result = await callable.call({
+      'targetUserId': ownerId,
+      'pin': pin,
+      'locationId': locId,
+      'orgId': orgId,
+    });
+    final data =
+        (result.data as Map?)?.cast<String, dynamic>() ??
+        const <String, dynamic>{};
     return data['ok'] == true;
   }
 
   /// Best-effort helper for task attribution.
   Map<String, String?> completionActor() {
     if (state.enabled && !state.locked && state.activeUserId != null) {
-      return {'userId': state.activeUserId, 'name': state.activeUserName, 'email': state.activeUserEmail};
+      return {
+        'userId': state.activeUserId,
+        'name': state.activeUserName,
+        'email': state.activeUserEmail,
+      };
     }
 
     final user = FirebaseAuth.instance.currentUser;
-    return {'userId': user?.uid, 'name': user?.displayName, 'email': user?.email};
+    return {
+      'userId': user?.uid,
+      'name': user?.displayName,
+      'email': user?.email,
+    };
   }
 
   /// Loads users for the current location.
@@ -233,38 +289,52 @@ class SharedModeController extends StateNotifier<SharedModeState> {
       return const Stream.empty();
     }
 
-    return FirestoreEnforcer.instance.collection('users').where('organizationId', isEqualTo: orgId).snapshots().map((
-      snap,
-    ) {
-      final locId = state.locationId;
-      final out = <Map<String, dynamic>>[];
+    return FirestoreEnforcer.instance
+        .collection('users')
+        .where('organizationId', isEqualTo: orgId)
+        .snapshots()
+        .map((snap) {
+          final locId = state.locationId;
+          final out = <Map<String, dynamic>>[];
 
-      for (final doc in snap.docs) {
-        final data = doc.data();
-        if ((data['isActive'] ?? true) == false) continue;
+          for (final doc in snap.docs) {
+            final data = doc.data();
+            if ((data['isActive'] ?? true) == false) continue;
 
-        bool matchesLocation = true;
-        if (locId != null && locId.isNotEmpty) {
-          matchesLocation = _userMatchesLocation(userData: data, locationId: locId);
-        }
-        if (!matchesLocation) continue;
+            bool matchesLocation = true;
+            if (locId != null && locId.isNotEmpty) {
+              matchesLocation = _userMatchesLocation(
+                userData: data,
+                locationId: locId,
+              );
+            }
+            if (!matchesLocation) continue;
 
-        final hasPin = data['hasSharedModePin'] == true;
+            final hasPin = data['hasSharedModePin'] == true;
 
-        final first = (data['firstName'] ?? '').toString().trim();
-        final last = (data['lastName'] ?? '').toString().trim();
-        final displayName = ('$first $last').trim();
+            final first = (data['firstName'] ?? '').toString().trim();
+            final last = (data['lastName'] ?? '').toString().trim();
+            final displayName = ('$first $last').trim();
 
-        out.add({
-          'id': doc.id,
-          'displayName': displayName.isNotEmpty ? displayName : (data['name'] ?? data['emailAddress'] ?? 'User'),
-          'email': (data['emailAddress'] ?? data['email'] ?? data['userEmail'])?.toString(),
-          'hasPin': hasPin,
+            out.add({
+              'id': doc.id,
+              'displayName':
+                  displayName.isNotEmpty
+                      ? displayName
+                      : (data['name'] ?? data['emailAddress'] ?? 'User'),
+              'email':
+                  (data['emailAddress'] ?? data['email'] ?? data['userEmail'])
+                      ?.toString(),
+              'hasPin': hasPin,
+            });
+          }
+
+          out.sort(
+            (a, b) => a['displayName'].toString().compareTo(
+              b['displayName'].toString(),
+            ),
+          );
+          return out;
         });
-      }
-
-      out.sort((a, b) => a['displayName'].toString().compareTo(b['displayName'].toString()));
-      return out;
-    });
   }
 }

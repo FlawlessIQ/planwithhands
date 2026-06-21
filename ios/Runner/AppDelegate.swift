@@ -19,7 +19,12 @@ import UserNotifications
     _ application: UIApplication,
     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
   ) {
-    Messaging.messaging().apnsToken = deviceToken
+    if FirebaseApp.app() != nil {
+      Messaging.messaging().apnsToken = deviceToken
+    } else {
+      print("[PushNotification] Firebase not initialized yet; skipping APNs token assignment at app delegate")
+    }
+
     super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
   }
 

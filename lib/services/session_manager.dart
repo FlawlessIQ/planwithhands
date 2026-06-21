@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hands_app/core/logging/logger.dart';
+import 'package:hands_app/services/push_notification_service.dart';
 import 'package:hands_app/services/web_optimized_firestore_service.dart';
 import 'package:hands_app/services/session_notification_service.dart';
 import 'package:hands_app/services/local_storage_service.dart';
@@ -58,7 +59,9 @@ class SessionManager {
       final stored = LocalStorageService.getString('session_last_activity_at');
       if (stored != null && stored.isNotEmpty) {
         _lastActivity = DateTime.tryParse(stored);
-        logger.d('[SessionManager] Restored last activity from storage: $_lastActivity');
+        logger.d(
+          '[SessionManager] Restored last activity from storage: $_lastActivity',
+        );
       }
     } catch (e) {
       logger.w('[SessionManager] Failed to restore last activity: $e');
@@ -87,7 +90,9 @@ class SessionManager {
         final timeoutDuration = _getSessionTimeout();
         final elapsed = now.difference(_lastActivity!);
         if (elapsed >= timeoutDuration) {
-          logger.w('[SessionManager] Session expired on app launch, logging out');
+          logger.w(
+            '[SessionManager] Session expired on app launch, logging out',
+          );
           SessionNotificationService().showSessionTimeoutNotification();
           await _forceLogout();
           _isInitialized = true;
@@ -108,7 +113,10 @@ class SessionManager {
     _lastActivity = DateTime.now();
     // Persist to local storage so refresh respects inactivity window
     try {
-      LocalStorageService.saveString('session_last_activity_at', _lastActivity!.toIso8601String());
+      LocalStorageService.saveString(
+        'session_last_activity_at',
+        _lastActivity!.toIso8601String(),
+      );
     } catch (_) {}
     _resetSessionTimeout();
     logger.d('[SessionManager] Activity recorded, session timeout reset');
@@ -142,14 +150,20 @@ class SessionManager {
           final savedTimeout = data['sessionTimeout'] as String;
           if (sessionTimeoutOptions.containsKey(savedTimeout)) {
             _sessionTimeoutKey = savedTimeout;
-            logger.d('[SessionManager] Loaded user session timeout preference: $savedTimeout');
+            logger.d(
+              '[SessionManager] Loaded user session timeout preference: $savedTimeout',
+            );
           }
         }
       } else {
-        logger.d('[SessionManager] No saved session timeout preference, using default');
+        logger.d(
+          '[SessionManager] No saved session timeout preference, using default',
+        );
       }
     } catch (e) {
-      logger.w('[SessionManager] Failed to load session timeout preference: $e');
+      logger.w(
+        '[SessionManager] Failed to load session timeout preference: $e',
+      );
       // Continue with default timeout
     }
   }
@@ -187,14 +201,18 @@ class SessionManager {
       });
     }
 
-    logger.d('[SessionManager] Session timeout reset to ${timeoutDuration.inHours} hours');
+    logger.d(
+      '[SessionManager] Session timeout reset to ${timeoutDuration.inHours} hours',
+    );
   }
 
   /// Handle session warning (30 minutes before timeout)
   void _handleSessionWarning() {
     final remaining = timeUntilTimeout;
     if (remaining != null && remaining.inMinutes > 0) {
-      logger.d('[SessionManager] Showing session warning: ${remaining.inMinutes} minutes remaining');
+      logger.d(
+        '[SessionManager] Showing session warning: ${remaining.inMinutes} minutes remaining',
+      );
 
       // Show warning notification
       SessionNotificationService().showSessionWarning(timeRemaining: remaining);
@@ -223,6 +241,9 @@ class SessionManager {
   /// Force logout and cleanup
   Future<void> _forceLogout() async {
     try {
+      await PushNotificationService().detachCurrentDeviceFromUser(
+        context: 'session_force_logout',
+      );
       await _auth.signOut();
       _stopSessionMonitoring();
       WebOptimizedFirestoreService.clearCache();
@@ -279,10 +300,13 @@ class SessionManager {
       final inactiveDuration =
           _lastActivity != null
               ? DateTime.now().difference(_lastActivity!)
-              : const Duration(hours: 999); // Assume very long if no activity recorded
+              : const Duration(
+                hours: 999,
+              ); // Assume very long if no activity recorded
 
       // Force refresh after 1+ hour of inactivity OR if cooldown expired
-      final shouldForceRefresh = inactiveDuration >= const Duration(hours: 1) || _shouldRefreshToken();
+      final shouldForceRefresh =
+          inactiveDuration >= const Duration(hours: 1) || _shouldRefreshToken();
 
       if (shouldForceRefresh) {
         logger.d(
@@ -300,7 +324,9 @@ class SessionManager {
         // Just validate the current token
         final token = await user.getIdToken(false);
         if (token != null && token.isNotEmpty) {
-          logger.d('[SessionManager] Current token is valid (inactive: ${inactiveDuration.inMinutes}m)');
+          logger.d(
+            '[SessionManager] Current token is valid (inactive: ${inactiveDuration.inMinutes}m)',
+          );
           return true;
         }
       }
@@ -309,14 +335,19 @@ class SessionManager {
 
       // If token refresh fails, the user might need to re-authenticate
       // However, we don't force logout immediately - let the app handle this gracefully
-      if (e.toString().contains('network') || e.toString().contains('timeout')) {
+      if (e.toString().contains('network') ||
+          e.toString().contains('timeout')) {
         // Network issues - don't invalidate session
-        logger.d('[SessionManager] Network issue detected, keeping session valid');
+        logger.d(
+          '[SessionManager] Network issue detected, keeping session valid',
+        );
         return true;
       }
 
       // Token might be genuinely invalid
-      logger.w('[SessionManager] Session appears invalid, may need re-authentication');
+      logger.w(
+        '[SessionManager] Session appears invalid, may need re-authentication',
+      );
       return false;
     }
 
@@ -347,7 +378,9 @@ class SessionManager {
         logger.d('[SessionManager] Manual session validation successful');
         return SessionValidationResult.valid();
       } else {
-        logger.w('[SessionManager] Manual session validation failed - empty token');
+        logger.w(
+          '[SessionManager] Manual session validation failed - empty token',
+        );
         return SessionValidationResult.invalid('Empty authentication token');
       }
     } catch (e) {
@@ -370,7 +403,9 @@ class SessionManager {
 
     final result = await validateSession();
     if (!result.isValid) {
-      logger.w('[SessionManager] Session invalid on app resume: ${result.message}');
+      logger.w(
+        '[SessionManager] Session invalid on app resume: ${result.message}',
+      );
 
       // Clear any cached data that might be stale
       WebOptimizedFirestoreService.clearCache();
@@ -430,19 +465,35 @@ class SessionValidationResult {
   const SessionValidationResult._(this.isValid, this.message, this.status);
 
   factory SessionValidationResult.valid() {
-    return const SessionValidationResult._(true, null, SessionValidationStatus.valid);
+    return const SessionValidationResult._(
+      true,
+      null,
+      SessionValidationStatus.valid,
+    );
   }
 
   factory SessionValidationResult.invalid(String message) {
-    return SessionValidationResult._(false, message, SessionValidationStatus.invalid);
+    return SessionValidationResult._(
+      false,
+      message,
+      SessionValidationStatus.invalid,
+    );
   }
 
   factory SessionValidationResult.notAuthenticated() {
-    return const SessionValidationResult._(false, 'User not authenticated', SessionValidationStatus.notAuthenticated);
+    return const SessionValidationResult._(
+      false,
+      'User not authenticated',
+      SessionValidationStatus.notAuthenticated,
+    );
   }
 
   factory SessionValidationResult.networkError(String message) {
-    return SessionValidationResult._(false, message, SessionValidationStatus.networkError);
+    return SessionValidationResult._(
+      false,
+      message,
+      SessionValidationStatus.networkError,
+    );
   }
 }
 

@@ -93,14 +93,16 @@ export default function Pricing() {
   <div className="text-3xl sm:text-4xl font-bold mb-1">${price.toFixed(2)}</div>
   <div className="text-xs sm:text-sm text-white/60 mb-6">{suffix} for {locations} {locations>1?'locations':'location'}</div>
 
-        <button className="bg-accent text-primary px-6 py-3 rounded-xl font-semibold w-full hover:opacity-90 transition-colors duration-200 min-h-[48px] text-sm sm:text-base" onClick={() => window.location.href = 'https://plan-with-hands.web.app/create_account'}>Start 14-day trial</button>
+        <button className="bg-accent text-primary px-6 py-3 rounded-xl font-semibold w-full hover:opacity-90 transition-colors duration-200 min-h-[48px] text-sm sm:text-base" onClick={() => window.location.href = 'https://plan-with-hands.web.app/create_account?src=pricing_cta&ref=pricing_page'}>Start 14-day trial</button>
 
         <ul className="text-left text-white/90 mt-6 space-y-2 list-disc list-inside text-sm sm:text-base">
-          <li>Daily checklists with photos & notes</li>
+          <li>Daily checklists with photo proof and notes</li>
           <li>Documents & training library</li>
           <li>Team messaging with push notifications</li>
-          <li>Live metrics & missed task insights</li>
-          <li>Multi-location ready</li>
+          <li>Live dashboards, missed task insights, and daily summaries</li>
+          <li>English, Spanish, and Portuguese staff workflows</li>
+          <li>Shared-device mode for communal tablets</li>
+          <li>Multi-location rollout support</li>
         </ul>
       </div>
 
@@ -115,6 +117,10 @@ export default function Pricing() {
           <details className="bg-surface text-white rounded-xl p-4 sm:p-5">
             <summary className="font-semibold text-sm sm:text-base cursor-pointer">Is there a free trial?</summary>
             <p className="mt-2 text-sm sm:text-base text-white/90">Yes. Every account starts with a 14-day trial, and you can begin setup before adding a payment method.</p>
+          </details>
+          <details className="bg-surface text-white rounded-xl p-4 sm:p-5">
+            <summary className="font-semibold text-sm sm:text-base cursor-pointer">What if I have 5 or more locations?</summary>
+            <p className="mt-2 text-sm sm:text-base text-white/90">Start the trial and we will flag the account for rollout help so setup, billing, and launch planning are easier.</p>
           </details>
           <details className="bg-surface text-white rounded-xl p-4 sm:p-5">
             <summary className="font-semibold text-sm sm:text-base cursor-pointer">Can I add or remove locations any time?</summary>

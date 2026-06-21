@@ -60,6 +60,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
   bool passwordVisible = false;
   bool confirmPasswordVisible = false;
   String _preferredLanguageCode = 'en';
+  Map<String, dynamic> _signupAttribution = const {};
   // Pricing/state
   int _locations = 1; // min 1
   int? _approxEmployees; // optional
@@ -128,6 +129,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
     if (deviceLanguage == 'es' || deviceLanguage == 'pt') {
       _preferredLanguageCode = deviceLanguage;
     }
+    _signupAttribution = _readSignupAttribution();
 
     // Pre-fill email if provided from invitation
     if (widget.email != null) {
@@ -156,6 +158,37 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
   }
 
   // Removed legacy pricing UI helpers
+
+  Map<String, dynamic> _readSignupAttribution() {
+    if (!kIsWeb) return const {};
+    final uri = Uri.base;
+    final query = uri.queryParameters;
+    final attribution = <String, dynamic>{
+      'landingUrl': uri.toString(),
+      'path': uri.path,
+      'capturedAt': DateTime.now().toIso8601String(),
+    };
+
+    void addIfPresent(String outputKey, String queryKey) {
+      final value = query[queryKey]?.trim();
+      if (value != null && value.isNotEmpty) {
+        attribution[outputKey] =
+            value.length > 240 ? value.substring(0, 240) : value;
+      }
+    }
+
+    addIfPresent('source', 'src');
+    addIfPresent('source', 'source');
+    addIfPresent('referrer', 'ref');
+    addIfPresent('marketingLandingUrl', 'landing_url');
+    addIfPresent('utmSource', 'utm_source');
+    addIfPresent('utmMedium', 'utm_medium');
+    addIfPresent('utmCampaign', 'utm_campaign');
+    addIfPresent('utmTerm', 'utm_term');
+    addIfPresent('utmContent', 'utm_content');
+
+    return attribution;
+  }
 
   Future<void> _createAccount() async {
     if (_formKey.currentState?.validate() != true) {
@@ -324,6 +357,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
         'password': passwordController.text,
         'preferredLanguageCode': _preferredLanguageCode,
         'acceptedTerms': agreeTerms,
+        'signupAttribution': _signupAttribution,
       });
 
       final result = Map<String, dynamic>.from(response.data as Map);
@@ -358,6 +392,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
           'subscriptionType': 'Trial',
           'organizationId': orgId,
           'preferredLanguageCode': _preferredLanguageCode,
+          'signupAttribution': _signupAttribution,
           'salesAssisted': _locations >= 5,
           'createdAt': DateTime.now().toIso8601String(),
         });
@@ -517,6 +552,46 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                     Text(
                       'Start with a $kTrialDays-day trial. No card required to begin setup.',
                       style: const TextStyle(fontSize: 14, color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(16),
+                margin: const EdgeInsets.only(bottom: 24),
+                decoration: BoxDecoration(
+                  color: HandsColors.cardPrimary,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text(
+                      'What happens next',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                    SizedBox(height: 12),
+                    _SignupStepText(
+                      step: '1',
+                      text: 'Create your organization and choose locations.',
+                    ),
+                    _SignupStepText(
+                      step: '2',
+                      text: 'Build your first shift checklist and tasks.',
+                    ),
+                    _SignupStepText(
+                      step: '3',
+                      text: 'Invite managers and staff when you are ready.',
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'Billing can be added later from Settings.',
+                      style: TextStyle(color: Colors.white70, fontSize: 13),
                     ),
                   ],
                 ),
@@ -931,7 +1006,7 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                                   ? 'Complete Sign Up'
                                   : (_locations >= 5
                                       ? 'Create Trial + Request Rollout Help'
-                                      : 'Create Account'),
+                                      : 'Create Trial'),
                             ),
                   ),
                   const SizedBox(height: 24),
@@ -964,6 +1039,49 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _SignupStepText extends StatelessWidget {
+  final String step;
+  final String text;
+
+  const _SignupStepText({required this.step, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: HandsColors.handsOrange.withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              step,
+              style: TextStyle(
+                color: HandsColors.handsOrange,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+          ),
+        ],
       ),
     );
   }

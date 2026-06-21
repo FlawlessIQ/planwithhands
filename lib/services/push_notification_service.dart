@@ -77,8 +77,9 @@ class PushNotificationService {
     try {
       logger.d('[PushNotificationService] Initializing...');
 
-      // Initialize local notifications for Android
-      if (!kIsWeb && isAndroid) {
+      // Initialize local notifications on mobile so foreground notifications
+      // can be surfaced consistently on both Android and iOS.
+      if (!kIsWeb && (isAndroid || isIOS)) {
         await _initializeLocalNotifications();
       }
 
@@ -462,6 +463,84 @@ class PushNotificationService {
     }
   }
 
+  /// Detach the current device token from the currently signed-in user.
+  Future<void> detachCurrentDeviceFromUser({
+    String context = 'sign_out',
+    bool deleteFcmToken = true,
+  }) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final token =
+          _currentToken ??
+          await _resolveCurrentToken(context: 'detach_$context');
+      if (token == null || token.isEmpty) {
+        await _recordRegistrationState(
+          status: 'detach_skipped',
+          context: context,
+          detail: 'No current FCM token available to detach',
+        );
+        return;
+      }
+
+      final userRef = FirestoreEnforcer.instance
+          .collection('users')
+          .doc(user.uid);
+      final tokenSnapshot =
+          await userRef
+              .collection('deviceTokens')
+              .where('fcmToken', isEqualTo: token)
+              .get();
+
+      final batch = FirestoreEnforcer.instance.batch();
+      final invalidatedAt = FieldValue.serverTimestamp();
+
+      for (final doc in tokenSnapshot.docs) {
+        batch.set(doc.reference, {
+          'isActive': false,
+          'invalidatedAt': invalidatedAt,
+          'updatedAt': invalidatedAt,
+        }, SetOptions(merge: true));
+      }
+
+      batch.set(userRef, {
+        'lastFcmTokenInvalidatedAt': invalidatedAt,
+        'lastPushRegistrationStatus': 'detached',
+        'lastPushRegistrationContext': context,
+        'lastPushRegistrationUpdatedAt': invalidatedAt,
+        'lastPushRegistrationDetail':
+            deleteFcmToken
+                ? 'Detached token and requested FCM token deletion'
+                : 'Detached token without deleting FCM token',
+      }, SetOptions(merge: true));
+
+      await batch.commit();
+
+      if (deleteFcmToken) {
+        try {
+          await _firebaseMessaging.deleteToken();
+          _currentToken = null;
+          logger.d(
+            '[PushNotificationService] Deleted FCM token after detaching from user ${user.uid}',
+          );
+        } catch (e) {
+          logger.w(
+            '[PushNotificationService] Failed to delete FCM token during detach: $e',
+          );
+        }
+      }
+
+      logger.d(
+        '[PushNotificationService] Detached current device token from user ${user.uid} for $context',
+      );
+    } catch (e) {
+      logger.w(
+        '[PushNotificationService] Failed to detach token from user: $e',
+      );
+    }
+  }
+
   /// Clean up old or inactive tokens for the current user
   Future<void> _cleanupOldTokens() async {
     try {
@@ -620,6 +699,8 @@ class PushNotificationService {
     } else if (payload.startsWith('daily_summary:')) {
       final orgId = payload.substring('daily_summary:'.length);
       _openDailySummary(orgId);
+    } else if (payload.startsWith('broadcast:')) {
+      _openMessages();
     }
     // Add more payload handlers as needed
   }
@@ -645,6 +726,9 @@ class PushNotificationService {
         if (orgId != null) {
           _openDailySummary(orgId);
         }
+        break;
+      case 'broadcast':
+        _openMessages();
         break;
       default:
         // Handle general notifications
@@ -683,6 +767,20 @@ class PushNotificationService {
     final router = GoRouter.of(ctx);
     // Navigate to dashboard or specific daily summary page
     router.push('/dashboard');
+  }
+
+  /// Navigate to team inbox/broadcasts
+  void _openMessages() {
+    final ctx = navigatorKey.currentContext;
+    if (ctx == null) {
+      logger.w(
+        '[PushNotificationService] navigator context null; scheduling post-frame nav',
+      );
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openMessages());
+      return;
+    }
+    final router = GoRouter.of(ctx);
+    router.push('/messages');
   }
 
   /// Show local notification (Android/iOS)
@@ -741,6 +839,8 @@ class PushNotificationService {
         payload = 'thread:${message.data['threadId']}';
       } else if (type == 'daily_summary') {
         payload = 'daily_summary:${message.data['orgId'] ?? ''}';
+      } else if (type == 'broadcast') {
+        payload = 'broadcast:${message.data['orgId'] ?? ''}';
       } else {
         payload = message.messageId;
       }

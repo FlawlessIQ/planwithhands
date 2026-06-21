@@ -17,7 +17,7 @@ export default function Layout({ children }) {
 
   // Append forceApp=1 to ensure full Flutter app loads (bypasses mobile Safari fallback)
   const loginUrl = '/app-login';
-  const signupUrl = '/app-signup';
+  const signupUrl = '/app-signup?src=header_signup';
   const [showTransition, setShowTransition] = useState(false);
   const [nextHref, setNextHref] = useState(null);
 
@@ -38,8 +38,11 @@ export default function Layout({ children }) {
       // Match internal app-login/app-signup routes
       if (href.includes('/app-signup') || href.includes('/app-login')) {
         e.preventDefault();
-        // Use absolute URL if needed
-        const dest = href.startsWith('http') ? href : window.location.origin + href;
+        const destUrl = new URL(href.startsWith('http') ? href : window.location.origin + href);
+        if (destUrl.pathname.includes('/app-signup') && !destUrl.searchParams.get('ref')) {
+          destUrl.searchParams.set('ref', window.location.pathname);
+        }
+        const dest = destUrl.toString();
         startTransition(dest);
       }
     };
@@ -149,7 +152,7 @@ export default function Layout({ children }) {
               <Image src="/images/hands_icon.png" alt="Hands logo" width={28} height={28} className="w-6 h-6 sm:w-7 sm:h-7 rounded" />
               <span className="font-semibold">Plan With Hands</span>
             </div>
-            <p className="text-white/70 leading-relaxed">Get hands on every task — checklists, documents, insights, and messaging.</p>
+            <p className="text-white/70 leading-relaxed">Run every shift with proof: checklists, photo evidence, training, dashboards, and messaging.</p>
           </div>
           <div>
             <h4 className="font-semibold mb-3 text-white">Product</h4>
