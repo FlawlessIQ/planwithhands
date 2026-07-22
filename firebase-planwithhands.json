@@ -1,0 +1,124 @@
+{
+  "firestore": {
+    "database": "planwithhands",
+    "location": "nam5",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run build"
+      ]
+    }
+  ],
+  "hosting": [
+    {
+      "site": "planwithhands-marketing",
+      "public": "website/marketing/out",
+      "ignore": ["**/.*", "**/node_modules/**"],
+      "headers": [
+        {"source": "**/*.@(js|css)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]},
+        {"source": "**/*.@(jpg|jpeg|gif|png|svg|webp)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]},
+        {"source": "/index.html", "headers": [{"key": "Cache-Control", "value": "no-store"}]}
+      ],
+      "cleanUrls": true
+    },
+    {
+      "target": "hands-app", 
+      "public": "build/web",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "headers": [
+        {
+          "source": "/index.html",
+          "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+        },
+        {
+          "source": "/version.json",
+          "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+        },
+        {
+          "source": "**/*.{js,css,png,jpg,jpeg,gif,webp,svg,ico,woff,woff2}",
+          "headers": [{ "key": "Cache-Control", "value": "public,max-age=31536000,immutable" }]
+        },
+        {
+          "source": "/flutter_service_worker.js",
+          "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+        }
+      ],
+      "rewrites": [
+        { "source": "**", "destination": "/index.html" }
+      ]
+    }
+  ],
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "emulators": {
+    "functions": {
+      "host": "127.0.0.1",
+      "port": 5001
+    },
+    "storage": {
+      "host": "127.0.0.1",
+      "port": 9199
+    },
+    "firestore": {
+      "host": "127.0.0.1",
+      "port": 8080
+    },
+    "ui": {
+      "enabled": true,
+      "host": "127.0.0.1",
+      "port": 4001
+    }
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "plan-with-hands",
+          "appId": "1:948527720669:android:a94ba3a6a0036547ba9334",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "plan-with-hands",
+          "appId": "1:948527720669:ios:9b42e5a6ae865655ba9334",
+          "uploadDebugSymbols": true,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
+        }
+      },
+      "macos": {
+        "default": {
+          "projectId": "plan-with-hands",
+          "appId": "1:948527720669:ios:9b42e5a6ae865655ba9334",
+          "uploadDebugSymbols": true,
+          "fileOutput": "macos/Runner/GoogleService-Info.plist"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "plan-with-hands",
+          "configurations": {
+            "android": "1:948527720669:android:a94ba3a6a0036547ba9334",
+            "ios": "1:948527720669:ios:9b42e5a6ae865655ba9334",
+            "macos": "1:948527720669:ios:9b42e5a6ae865655ba9334",
+            "web": "1:948527720669:web:6c46317a79c64ea0ba9334",
+            "windows": "1:948527720669:web:5bd1ef5be8a88a0eba9334"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hands_app/l10n/l10n.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/services/push_notification_service.dart';
 import 'package:hands_app/core/logging/logger.dart';
 
@@ -42,12 +44,16 @@ class PushNotificationPermissionWidget extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<PushNotificationPermissionWidget> createState() => _PushNotificationPermissionWidgetState();
+  ConsumerState<PushNotificationPermissionWidget> createState() =>
+      _PushNotificationPermissionWidgetState();
 }
 
-class _PushNotificationPermissionWidgetState extends ConsumerState<PushNotificationPermissionWidget> {
-  final PushNotificationService _notificationService = PushNotificationService();
-  NotificationPermissionResult _permissionStatus = NotificationPermissionResult.notDetermined;
+class _PushNotificationPermissionWidgetState
+    extends ConsumerState<PushNotificationPermissionWidget> {
+  final PushNotificationService _notificationService =
+      PushNotificationService();
+  NotificationPermissionResult _permissionStatus =
+      NotificationPermissionResult.notDetermined;
   bool _isLoading = false;
 
   @override
@@ -85,24 +91,29 @@ class _PushNotificationPermissionWidgetState extends ConsumerState<PushNotificat
   }
 
   Future<bool> _showPermissionExplanationDialog() async {
+    final l10n = context.l10n;
     return await showDialog<bool>(
           context: context,
           barrierDismissible: false,
           builder: (BuildContext context) {
-            return AlertDialog(
-              title: Text(widget.title ?? 'Enable Notifications'),
-              content: Text(
-                widget.message ??
-                    'Stay updated with your schedule changes, shift reminders, and important announcements. '
-                        'We\'ll only send notifications that are relevant to your work.',
-              ),
+            return HandsDialog(
+              title: widget.title ?? l10n.notificationOnboardingEnableTitle,
+              isDismissible: false,
+              maxWidth: 440,
               actions: [
-                TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Not Now')),
-                FilledButton(
+                HandsSecondaryButton(
+                  text: l10n.pushPermissionNotNow,
+                  onPressed: () => Navigator.of(context).pop(false),
+                ),
+                HandsPrimaryButton(
+                  text: l10n.notificationOnboardingEnableTitle,
                   onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('Enable Notifications'),
                 ),
               ],
+              child: Text(
+                widget.message ?? l10n.pushPermissionExplanationBody,
+                style: HandsModalTokens.bodyStyle,
+              ),
             );
           },
         ) ??
@@ -115,7 +126,9 @@ class _PushNotificationPermissionWidgetState extends ConsumerState<PushNotificat
     });
 
     try {
-      final result = await _notificationService.requestPermissionWithContext(context: widget.context);
+      final result = await _notificationService.requestPermissionWithContext(
+        context: widget.context,
+      );
 
       if (mounted) {
         setState(() {
@@ -127,25 +140,36 @@ class _PushNotificationPermissionWidgetState extends ConsumerState<PushNotificat
           case NotificationPermissionResult.granted:
             widget.onPermissionGranted?.call();
             _showSuccessSnackBar();
-            logger.d('[PushNotificationPermissionWidget] Permission granted for context: ${widget.context}');
+            logger.d(
+              '[PushNotificationPermissionWidget] Permission granted for context: ${widget.context}',
+            );
             break;
           case NotificationPermissionResult.denied:
             widget.onPermissionDenied?.call();
             _showDeniedDialog();
-            logger.w('[PushNotificationPermissionWidget] Permission denied for context: ${widget.context}');
+            logger.w(
+              '[PushNotificationPermissionWidget] Permission denied for context: ${widget.context}',
+            );
             break;
           case NotificationPermissionResult.notDetermined:
             // User dismissed the dialog, try again later
-            logger.d('[PushNotificationPermissionWidget] Permission not determined for context: ${widget.context}');
+            logger.d(
+              '[PushNotificationPermissionWidget] Permission not determined for context: ${widget.context}',
+            );
             break;
           case NotificationPermissionResult.error:
             _showErrorSnackBar();
-            logger.e('[PushNotificationPermissionWidget] Permission error for context: ${widget.context}');
+            logger.e(
+              '[PushNotificationPermissionWidget] Permission error for context: ${widget.context}',
+            );
             break;
         }
       }
     } catch (e) {
-      logger.e('[PushNotificationPermissionWidget] Error requesting permission', e);
+      logger.e(
+        '[PushNotificationPermissionWidget] Error requesting permission',
+        e,
+      );
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -156,13 +180,14 @@ class _PushNotificationPermissionWidgetState extends ConsumerState<PushNotificat
   }
 
   void _showSuccessSnackBar() {
+    final l10n = context.l10n;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Row(
+        content: Row(
           children: [
-            Icon(Icons.check_circle, color: Colors.white),
-            SizedBox(width: 8),
-            Text('Notifications enabled successfully!'),
+            const Icon(Icons.check_circle, color: Colors.white),
+            const SizedBox(width: 8),
+            Text(l10n.pushPermissionEnabledSuccess),
           ],
         ),
         backgroundColor: Colors.green,
@@ -172,13 +197,14 @@ class _PushNotificationPermissionWidgetState extends ConsumerState<PushNotificat
   }
 
   void _showErrorSnackBar() {
+    final l10n = context.l10n;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Row(
+        content: Row(
           children: [
-            Icon(Icons.error, color: Colors.white),
-            SizedBox(width: 8),
-            Text('Error enabling notifications. Please try again.'),
+            const Icon(Icons.error, color: Colors.white),
+            const SizedBox(width: 8),
+            Text(l10n.pushPermissionError),
           ],
         ),
         backgroundColor: Colors.red,
@@ -188,28 +214,30 @@ class _PushNotificationPermissionWidgetState extends ConsumerState<PushNotificat
   }
 
   Future<void> _showDeniedDialog() async {
+    final l10n = context.l10n;
     await showDialog(
       context: context,
       builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Notifications Disabled'),
-          content: const Text(
-            'You can enable notifications anytime in your device settings:\n\n'
-            '1. Go to Settings\n'
-            '2. Find Hands app\n'
-            '3. Tap Notifications\n'
-            '4. Enable Allow Notifications',
-          ),
+        return HandsDialog(
+          title: l10n.pushPermissionDisabledTitle,
+          maxWidth: 440,
           actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Maybe Later')),
-            FilledButton(
+            HandsSecondaryButton(
+              text: l10n.pushPermissionMaybeLater,
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+            HandsPrimaryButton(
+              text: l10n.pushPermissionOpenSettings,
               onPressed: () {
                 Navigator.of(context).pop();
                 _notificationService.openAppSettings();
               },
-              child: const Text('Open Settings'),
             ),
           ],
+          child: Text(
+            l10n.pushPermissionDisabledBody,
+            style: HandsModalTokens.bodyStyle,
+          ),
         );
       },
     );
@@ -217,6 +245,7 @@ class _PushNotificationPermissionWidgetState extends ConsumerState<PushNotificat
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     if (_permissionStatus == NotificationPermissionResult.granted) {
       return const SizedBox.shrink(); // Hide widget when permission is granted
     }
@@ -231,22 +260,27 @@ class _PushNotificationPermissionWidgetState extends ConsumerState<PushNotificat
           children: [
             Row(
               children: [
-                Icon(Icons.notifications_outlined, color: Theme.of(context).colorScheme.primary, size: 24),
+                Icon(
+                  Icons.notifications_outlined,
+                  color: Theme.of(context).colorScheme.primary,
+                  size: 24,
+                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Stay Connected',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                        l10n.notificationOnboardingStayConnected,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Get notified about schedule updates and shift reminders',
-                        style: Theme.of(
-                          context,
-                        ).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        l10n.pushPermissionShortBody,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ],
                   ),
@@ -264,18 +298,24 @@ class _PushNotificationPermissionWidgetState extends ConsumerState<PushNotificat
                           : () {
                             // Hide the widget for this session
                             setState(() {
-                              _permissionStatus = NotificationPermissionResult.denied;
+                              _permissionStatus =
+                                  NotificationPermissionResult.denied;
                             });
                           },
-                  child: const Text('Not Now'),
+                  child: Text(l10n.pushPermissionNotNow),
                 ),
                 const SizedBox(width: 8),
                 FilledButton(
-                  onPressed: _isLoading ? null : _requestPermissionWithExplanation,
+                  onPressed:
+                      _isLoading ? null : _requestPermissionWithExplanation,
                   child:
                       _isLoading
-                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Text('Enable'),
+                          ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                          : Text(l10n.notificationEnable),
                 ),
               ],
             ),
@@ -302,11 +342,14 @@ class PushNotificationPermissionButton extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<PushNotificationPermissionButton> createState() => _PushNotificationPermissionButtonState();
+  ConsumerState<PushNotificationPermissionButton> createState() =>
+      _PushNotificationPermissionButtonState();
 }
 
-class _PushNotificationPermissionButtonState extends ConsumerState<PushNotificationPermissionButton> {
-  final PushNotificationService _notificationService = PushNotificationService();
+class _PushNotificationPermissionButtonState
+    extends ConsumerState<PushNotificationPermissionButton> {
+  final PushNotificationService _notificationService =
+      PushNotificationService();
   bool _isLoading = false;
 
   Future<void> _requestPermission() async {
@@ -340,14 +383,20 @@ class _PushNotificationPermissionButtonState extends ConsumerState<PushNotificat
                 content: Text(result.message),
                 backgroundColor: Colors.orange,
                 behavior: SnackBarBehavior.floating,
-                action: SnackBarAction(label: 'Settings', onPressed: () => _notificationService.openAppSettings()),
+                action: SnackBarAction(
+                  label: context.l10n.pushPermissionSettings,
+                  onPressed: () => _notificationService.openAppSettings(),
+                ),
               ),
             );
             break;
           default:
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text(result.message), behavior: SnackBarBehavior.floating));
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(result.message),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
         }
       }
     } catch (e) {
@@ -356,8 +405,8 @@ class _PushNotificationPermissionButtonState extends ConsumerState<PushNotificat
           _isLoading = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Error requesting notification permission'),
+          SnackBar(
+            content: Text(context.l10n.pushPermissionRequestError),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
           ),
@@ -368,13 +417,18 @@ class _PushNotificationPermissionButtonState extends ConsumerState<PushNotificat
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return FilledButton.icon(
       onPressed: _isLoading ? null : _requestPermission,
       icon:
           _isLoading
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+              ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
               : Icon(widget.icon ?? Icons.notifications),
-      label: Text(widget.label ?? 'Enable Notifications'),
+      label: Text(widget.label ?? l10n.notificationOnboardingEnableTitle),
     );
   }
 }

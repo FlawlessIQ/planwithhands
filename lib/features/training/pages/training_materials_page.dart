@@ -5,26 +5,105 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hands_app/state/user_state.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
 // Ensure userStateProvider is exported from user_state.dart
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
-import 'package:flutter_pdfview/flutter_pdfview.dart';
-import 'package:video_player/video_player.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:video_player/video_player.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/global_widgets/hands_icon.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/ui/UploadDocumentBottomSheet.dart';
+import 'package:hands_app/services/location_selection_service.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:hands_app/features/help/widgets/context_help_trigger.dart';
+import 'package:hands_app/features/crm/widgets/crm_scoped_bottom_nav.dart';
+import 'package:hands_app/l10n/l10n.dart';
+
+String localizedDocumentCategoryLabel(BuildContext context, String category) {
+  switch (category) {
+    case 'All':
+      return context.l10n.documentsCategoryAll;
+    case 'Safety Procedures':
+      return context.l10n.documentsCategorySafetyProcedures;
+    case 'Cleaning Protocols':
+      return context.l10n.documentsCategoryCleaningProtocols;
+    case 'Training Materials':
+      return context.l10n.documentsCategoryTrainingMaterials;
+    case 'Operating Procedures':
+      return context.l10n.documentsCategoryOperatingProcedures;
+    case 'Emergency Procedures':
+      return context.l10n.documentsCategoryEmergencyProcedures;
+    case 'Equipment Manuals':
+      return context.l10n.documentsCategoryEquipmentManuals;
+    case 'Policy Documents':
+      return context.l10n.documentsCategoryPolicyDocuments;
+    case 'Other':
+      return context.l10n.documentsCategoryOther;
+    default:
+      return category;
+  }
+}
+
+List<String> documentLocationIdsFromData(Map<String, dynamic> data) {
+  final rawList = data['locationIds'];
+  if (rawList is Iterable) {
+    final ids =
+        rawList
+            .map((value) => value?.toString().trim() ?? '')
+            .where((value) => value.isNotEmpty)
+            .toSet()
+            .toList();
+    if (ids.isNotEmpty) {
+      return ids;
+    }
+  }
+
+  final singleLocationId = (data['locationId'] as String?)?.trim();
+  if (singleLocationId != null && singleLocationId.isNotEmpty) {
+    return [singleLocationId];
+  }
+
+  return const [];
+}
+
+bool documentMatchesLocationScope(
+  Map<String, dynamic> data,
+  String? selectedLocationId,
+) {
+  if (selectedLocationId == null) {
+    return true;
+  }
+
+  final scopedLocationIds = documentLocationIdsFromData(data);
+  if (scopedLocationIds.isEmpty) {
+    return true;
+  }
+
+  return scopedLocationIds.contains(selectedLocationId);
+}
 
 class ViewDocumentsPage extends HookConsumerWidget {
-  const ViewDocumentsPage({super.key});
+  final String? organizationIdOverride;
+  final bool allowPlatformAccess;
+
+  const ViewDocumentsPage({
+    super.key,
+    this.organizationIdOverride,
+    this.allowPlatformAccess = false,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final userState = ref.watch(userStateProvider);
 
     // Get userRole from multiple sources with fallback
@@ -32,7 +111,8 @@ class ViewDocumentsPage extends HookConsumerWidget {
 
     // Check for GoRouter extra parameter (from bottom nav)
     final routeExtra = GoRouterState.of(context).extra;
-    if (routeExtra is Map<String, dynamic> && routeExtra.containsKey('userRole')) {
+    if (routeExtra is Map<String, dynamic> &&
+        routeExtra.containsKey('userRole')) {
       userRole = routeExtra['userRole'] as int? ?? userRole;
     }
 
@@ -43,23 +123,138 @@ class ViewDocumentsPage extends HookConsumerWidget {
     }
 
     final selectedCategory = useState<String>('All');
+    final searchQuery = useState<String>('');
     final organizationId = useState<String?>(null);
     final isLoadingOrgId = useState<bool>(true);
+    final availableLocations = useState<List<Map<String, dynamic>>>([]);
+
+    // Use LocationSelectionService instead of local state
+    final currentLocationId = useValueListenable(
+      LocationSelectionService.instance.listenable,
+    );
+
+    // Helper to get current location name
+    String getCurrentLocationName() {
+      if (currentLocationId == null) return l10n.documentsAllLocations;
+      try {
+        final match = availableLocations.value.firstWhere(
+          (l) => l['id'] == currentLocationId,
+          orElse: () => <String, dynamic>{},
+        );
+        return match.isNotEmpty
+            ? match['name'] as String
+            : l10n.commonNotSpecified;
+      } catch (_) {
+        return l10n.commonNotSpecified;
+      }
+    }
+
+    Future<void> showLocationSwitcher() async {
+      if (availableLocations.value.length <= 1) return;
+
+      final selection = await showModalBottomSheet<Map<String, String?>>(
+        context: context,
+        backgroundColor: HandsColors.primaryContainer,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        builder:
+            (sheetContext) => SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      l10n.dashboardSwitchLocationTitle,
+                      style: GoogleFonts.inter(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: HandsColors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      l10n.dashboardSwitchLocationBody,
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: HandsColors.white70,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    _LocationScopeOption(
+                      label: l10n.documentsAllLocations,
+                      icon: Icons.public_outlined,
+                      isSelected: currentLocationId == null,
+                      onTap:
+                          () => Navigator.of(sheetContext).pop({
+                            'id': null,
+                            'name': l10n.documentsAllLocations,
+                          }),
+                    ),
+                    const SizedBox(height: 10),
+                    ...availableLocations.value.map((location) {
+                      final locationId = (location['id'] ?? '').toString();
+                      final locationName =
+                          (location['name'] ?? l10n.commonNotSpecified)
+                              .toString();
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _LocationScopeOption(
+                          label: locationName,
+                          icon: Icons.location_on_outlined,
+                          isSelected: currentLocationId == locationId,
+                          onTap:
+                              () => Navigator.of(
+                                sheetContext,
+                              ).pop({'id': locationId, 'name': locationName}),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+            ),
+      );
+
+      if (selection == null) return;
+
+      await LocationSelectionService.instance.setLocationAsync(
+        selection['id'],
+        locationName: selection['name'],
+      );
+    }
 
     logger.d('DEBUG: userState: $userState');
     logger.d('DEBUG: userState.userData: ${userState.userData}');
-    logger.d('DEBUG: organizationId from userState: ${userState.userData?.organizationId}');
+    logger.d(
+      'DEBUG: organizationId from userState: ${userState.userData?.organizationId}',
+    );
     debugPrint('DEBUG: organizationId from useState: ${organizationId.value}');
 
     // Fallback mechanism to get organizationId directly from Firebase Auth/Firestore
     useEffect(() {
       Future<void> loadOrganizationId() async {
         try {
+          if (organizationIdOverride != null) {
+            organizationId.value = organizationIdOverride;
+            userRole = 2;
+            logger.d(
+              'DEBUG: Using CRM organizationId override: ${organizationId.value}',
+            );
+            return;
+          }
+
           // First try to use userState
           if (userState.userData?.organizationId != null) {
             organizationId.value = userState.userData!.organizationId;
             isLoadingOrgId.value = false;
-            logger.d('DEBUG: Using organizationId from userState: ${organizationId.value}');
+            logger.d(
+              'DEBUG: Using organizationId from userState: ${organizationId.value}',
+            );
             return;
           }
 
@@ -67,7 +262,11 @@ class ViewDocumentsPage extends HookConsumerWidget {
           final currentUser = FirebaseAuth.instance.currentUser;
           if (currentUser != null) {
             logger.d('DEBUG: Current user UID: ${currentUser.uid}');
-            final userDoc = await FirestoreEnforcer.instance.collection('users').doc(currentUser.uid).get();
+            final userDoc =
+                await FirestoreEnforcer.instance
+                    .collection('users')
+                    .doc(currentUser.uid)
+                    .get();
 
             if (userDoc.exists) {
               final userData = userDoc.data() as Map<String, dynamic>;
@@ -89,7 +288,38 @@ class ViewDocumentsPage extends HookConsumerWidget {
 
       loadOrganizationId();
       return null;
-    }, [userState.userData?.organizationId]);
+    }, [userState.userData?.organizationId, organizationIdOverride]);
+
+    // Load available locations
+    useEffect(() {
+      if (organizationId.value == null) return null;
+
+      Future<void> loadLocations() async {
+        try {
+          final locationsSnapshot =
+              await FirestoreEnforcer.instance
+                  .collection('organizations')
+                  .doc(organizationId.value!)
+                  .collection('locations')
+                  .get();
+
+          availableLocations.value =
+              locationsSnapshot.docs.map((doc) {
+                final data = doc.data();
+                return {
+                  'id': doc.id,
+                  'name':
+                      data['locationName'] ?? context.l10n.commonNotSpecified,
+                };
+              }).toList();
+        } catch (e) {
+          logger.e('Error loading locations: $e', e);
+        }
+      }
+
+      loadLocations();
+      return null;
+    }, [organizationId.value]);
 
     final categories = [
       'All',
@@ -108,15 +338,22 @@ class ViewDocumentsPage extends HookConsumerWidget {
       return Scaffold(
         appBar: AppBar(
           backgroundColor: Theme.of(context).primaryColor,
-          leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.pop()),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => context.pop(),
+          ),
           iconTheme: const IconThemeData(color: Colors.white),
           title: Row(
-            children: const [
+            children: [
               HandsIcon(size: 36, enableShadow: false),
-              SizedBox(width: 12),
+              const SizedBox(width: 12),
               Text(
-                'Training Materials',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20),
+                l10n.documentsTitle,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 20,
+                ),
               ),
             ],
           ),
@@ -124,7 +361,13 @@ class ViewDocumentsPage extends HookConsumerWidget {
           elevation: 0,
         ),
         body: const Center(child: CircularProgressIndicator()),
-        bottomNavigationBar: BottomNavBar(currentIndex: 4, userRole: userRole),
+        bottomNavigationBar:
+            allowPlatformAccess && organizationIdOverride != null
+                ? CrmScopedBottomNav(
+                  orgId: organizationIdOverride!,
+                  currentIndex: 3,
+                )
+                : BottomNavBar(currentIndex: 4, userRole: userRole),
       );
     }
 
@@ -133,23 +376,36 @@ class ViewDocumentsPage extends HookConsumerWidget {
       return Scaffold(
         appBar: AppBar(
           backgroundColor: Theme.of(context).primaryColor,
-          leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.pop()),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => context.pop(),
+          ),
           iconTheme: const IconThemeData(color: Colors.white),
           title: Row(
-            children: const [
+            children: [
               HandsIcon(size: 36, enableShadow: false),
-              SizedBox(width: 12),
+              const SizedBox(width: 12),
               Text(
-                'Training Materials',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20),
+                l10n.documentsTitle,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 20,
+                ),
               ),
             ],
           ),
           centerTitle: false,
           elevation: 0,
         ),
-        body: const Center(child: Text('No organization found. Please contact support.')),
-        bottomNavigationBar: BottomNavBar(currentIndex: 4, userRole: userRole),
+        body: Center(child: Text(l10n.documentsNoOrganization)),
+        bottomNavigationBar:
+            allowPlatformAccess && organizationIdOverride != null
+                ? CrmScopedBottomNav(
+                  orgId: organizationIdOverride!,
+                  currentIndex: 3,
+                )
+                : BottomNavBar(currentIndex: 4, userRole: userRole),
       );
     }
 
@@ -162,6 +418,8 @@ class ViewDocumentsPage extends HookConsumerWidget {
           return UploadDocumentBottomSheet(
             documentId: docId,
             documentData: docData,
+            locationId: currentLocationId,
+            availableLocations: availableLocations.value,
             onDocumentUploaded: () {
               // Close the sheet from the parent on the next frame to avoid Navigator lock.
               WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -169,9 +427,15 @@ class ViewDocumentsPage extends HookConsumerWidget {
                   Navigator.of(ctx).pop();
                 }
                 if (context.mounted) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text(docId == null ? 'Document uploaded' : 'Document updated')));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        docId == null
+                            ? l10n.documentsUploaded
+                            : l10n.documentsUpdated,
+                      ),
+                    ),
+                  );
                 }
               });
             },
@@ -186,17 +450,23 @@ class ViewDocumentsPage extends HookConsumerWidget {
       final confirmed = await showDialog<bool>(
         context: context,
         builder:
-            (ctx) => AlertDialog(
-              title: const Text('Delete Document'),
-              content: const Text('Are you sure you want to delete this document? This action cannot be undone.'),
+            (ctx) => HandsDialog(
+              title: l10n.documentsDeleteTitle,
+              maxWidth: 440,
               actions: [
-                TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
-                TextButton(
+                HandsSecondaryButton(
+                  text: l10n.commonCancel,
+                  onPressed: () => Navigator.of(ctx).pop(false),
+                ),
+                HandsPrimaryButton(
+                  text: l10n.commonDelete,
                   onPressed: () => Navigator.of(ctx).pop(true),
-                  style: TextButton.styleFrom(foregroundColor: Colors.red),
-                  child: const Text('Delete'),
                 ),
               ],
+              child: Text(
+                l10n.documentsDeleteBody,
+                style: HandsModalTokens.bodyStyle,
+              ),
             ),
       );
       if (confirmed != true) return;
@@ -210,10 +480,14 @@ class ViewDocumentsPage extends HookConsumerWidget {
             .doc(docId)
             .delete();
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Document deleted successfully')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(l10n.documentsDeletedSuccess)));
       } catch (e) {
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting document: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.documentsDeleteError(e.toString()))),
+        );
       }
     }
 
@@ -222,164 +496,549 @@ class ViewDocumentsPage extends HookConsumerWidget {
         backgroundColor: HandsColors.cardPrimary,
         elevation: 0,
         toolbarHeight: kToolbarHeight,
-        title: GenericAppBarContent(appBarTitle: 'Training Materials', userRole: userRole),
+        title:
+            allowPlatformAccess
+                ? Text(
+                  'CRM account documents',
+                  style: GoogleFonts.comfortaa(fontWeight: FontWeight.w800),
+                )
+                : GenericAppBarContent(
+                  appBarTitle: l10n.documentsTitle,
+                  userRole: userRole,
+                ),
         automaticallyImplyLeading: false,
-        actions: [UnifiedMenuButton(userRole: userRole)],
+        actions:
+            allowPlatformAccess
+                ? [
+                  TextButton.icon(
+                    onPressed: () => context.go('/crm'),
+                    icon: const Icon(Icons.dashboard_customize_outlined),
+                    label: const Text('Back to CRM'),
+                  ),
+                  const SizedBox(width: 12),
+                ]
+                : [
+                  UnifiedMenuButton(
+                    userRole: userRole,
+                    organizationId: organizationId.value,
+                  ),
+                ],
       ),
-      floatingActionButton:
-          userRole == 2
-              ? FloatingActionButton.extended(
-                onPressed: () => showUploadSheet(),
-                icon: const Icon(Icons.cloud_upload),
-                label: const Text('Upload'),
-              )
-              : null,
-      body: Column(
-        children: [
-          // Category Filter
-          SizedBox(
-            height: 50,
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              scrollDirection: Axis.horizontal,
-              itemCount: categories.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
-                final category = categories[index];
-                final isSelected = selectedCategory.value == category;
-
-                return ChoiceChip(
-                  label: Text(category),
-                  selected: isSelected,
-                  onSelected: (_) => selectedCategory.value = category,
-                );
-              },
-            ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF07090D), Color(0xFF0F131A)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
           ),
-          const SizedBox(height: 10),
-          // Documents List
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: _getDocumentsStream(organizationId.value!, selectedCategory.value),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error loading documents: ${snapshot.error}'));
-                }
-
-                if (!snapshot.hasData) {
-                  return _buildEmptyState(context, userRole, showUploadSheet);
-                }
-
-                final snapshotData = snapshot.data;
-                if (snapshotData == null || snapshotData.docs.isEmpty) {
-                  return _buildEmptyState(context, userRole, showUploadSheet);
-                }
-
-                final docs = snapshotData.docs;
-
-                return ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemCount: docs.length,
-                  itemBuilder: (context, index) {
-                    final doc = docs[index];
-                    final data = doc.data() as Map<String, dynamic>;
-
-                    final title = data['title'] ?? 'Untitled';
-                    final type = data['fileType'] ?? 'document';
-                    final url = data['fileUrl'] ?? '';
-                    final subtitle = data['category'] ?? '';
-                    final fileName = data['fileName'] ?? '';
-
-                    IconData icon;
-                    switch (type.toLowerCase()) {
-                      case 'document':
-                        icon = Icons.picture_as_pdf;
-                        break;
-                      case 'video':
-                        icon = Icons.videocam;
-                        break;
-                      case 'image':
-                        icon = Icons.image;
-                        break;
-                      default:
-                        icon = Icons.insert_drive_file;
-                        break;
-                    }
-
-                    return Card(
-                      child: ListTile(
-                        leading: Icon(icon, size: 36, color: Theme.of(context).primaryColor),
-                        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
-                        subtitle: Column(
+        ),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+              child: Column(
+                children: [
+                  HandsModalSection(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(subtitle),
-                            if (fileName.isNotEmpty)
-                              Text(fileName, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-                          ],
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (userRole == 2) ...[
-                              IconButton(
-                                icon: const Icon(Icons.edit),
-                                tooltip: 'Edit',
-                                onPressed: () => showUploadSheet(docId: doc.id, docData: data),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    l10n.documentsTitle,
+                                    style: GoogleFonts.inter(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.w800,
+                                      color: HandsColors.white,
+                                      letterSpacing: -0.6,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    userRole == 2
+                                        ? l10n.documentsAdminSubtitle
+                                        : l10n.documentsStaffSubtitle,
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.inter(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w500,
+                                      color: HandsColors.white70,
+                                      height: 1.32,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              IconButton(
-                                icon: const Icon(Icons.delete),
-                                tooltip: 'Delete',
-                                onPressed: () => deleteDocument(doc.id),
+                            ),
+                            const SizedBox(width: 10),
+                            ContextHelpTrigger(
+                              title: l10n.documentsTitle,
+                              subtitle: l10n.documentsHelpSubtitle,
+                              topicIds: [
+                                'staff-document-center',
+                                'admin-document-center',
+                              ],
+                            ),
+                            if (userRole == 2) ...[
+                              const SizedBox(width: 10),
+                              HandsPrimaryButton(
+                                text: l10n.documentsUpload,
+                                icon: Icons.cloud_upload_outlined,
+                                height: 46,
+                                onPressed: () => showUploadSheet(),
                               ),
                             ],
-                            const Icon(Icons.arrow_forward),
                           ],
                         ),
-                        onTap:
-                            url.isNotEmpty
-                                ? () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder:
-                                          (_) => DocumentViewerPage(
-                                            url: url,
-                                            title: title,
-                                            fileType: type,
-                                            userRole: userRole, // Pass userRole to viewer
-                                          ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          onChanged: (value) => searchQuery.value = value,
+                          style: GoogleFonts.inter(
+                            color: HandsColors.white,
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: l10n.documentsSearchHint,
+                            hintStyle: GoogleFonts.inter(
+                              color: HandsColors.white30,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            prefixIcon: const Icon(
+                              Icons.search_rounded,
+                              color: HandsColors.white70,
+                              size: 18,
+                            ),
+                            filled: true,
+                            fillColor: HandsModalTokens.surfaceMuted,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: const BorderSide(
+                                color: HandsModalTokens.border,
+                              ),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: const BorderSide(
+                                color: HandsModalTokens.border,
+                              ),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: const BorderSide(
+                                color: HandsModalTokens.accent,
+                                width: 1.2,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children:
+                                categories.map((category) {
+                                  final isSelected =
+                                      selectedCategory.value == category;
+                                  return Padding(
+                                    padding: const EdgeInsets.only(right: 8),
+                                    child: ChoiceChip(
+                                      label: Text(
+                                        localizedDocumentCategoryLabel(
+                                          context,
+                                          category,
+                                        ),
+                                        style: GoogleFonts.inter(
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w600,
+                                          color:
+                                              isSelected
+                                                  ? HandsColors.white
+                                                  : HandsColors.white70,
+                                        ),
+                                      ),
+                                      selected: isSelected,
+                                      onSelected:
+                                          (_) =>
+                                              selectedCategory.value = category,
+                                      backgroundColor:
+                                          HandsColors.secondaryContainer,
+                                      selectedColor: HandsColors.handsOrange,
+                                      side: BorderSide(
+                                        color:
+                                            isSelected
+                                                ? HandsColors.handsOrange
+                                                : HandsColors.white12,
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                      materialTapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
                                     ),
                                   );
-                                }
-                                : null,
+                                }).toList(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (availableLocations.value.length > 1) ...[
+                    const SizedBox(height: 12),
+                    HandsModalSection(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: HandsColors.handsOrange.withValues(
+                                alpha: 0.14,
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Icon(
+                              Icons.location_on_outlined,
+                              color: HandsColors.handsOrange,
+                              size: 18,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  l10n.documentsCurrentScope,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: HandsColors.white70,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  getCurrentLocationName(),
+                                  style: GoogleFonts.inter(
+                                    fontSize: 15.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: HandsColors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              HandsSecondaryButton(
+                                text: l10n.dashboardSwitch,
+                                icon: Icons.swap_horiz_rounded,
+                                height: 38,
+                                onPressed: showLocationSwitcher,
+                              ),
+                              const SizedBox(height: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 9,
+                                  vertical: 5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: HandsColors.secondaryContainer,
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(
+                                    color: HandsColors.white12,
+                                  ),
+                                ),
+                                child: Text(
+                                  l10n.documentsLocationsCount(
+                                    availableLocations.value.length,
+                                  ),
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: HandsColors.white70,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: _getDocumentsStream(
+                  organizationId.value!,
+                  selectedCategory.value,
+                  currentLocationId,
+                ),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Text(
+                        l10n.documentsErrorLoading(snapshot.error.toString()),
+                        style: GoogleFonts.inter(color: HandsColors.white70),
                       ),
                     );
-                  },
-                );
-              },
+                  }
+
+                  if (!snapshot.hasData) {
+                    return _buildEmptyState(context, userRole, showUploadSheet);
+                  }
+
+                  final snapshotData = snapshot.data;
+                  if (snapshotData == null || snapshotData.docs.isEmpty) {
+                    return _buildEmptyState(context, userRole, showUploadSheet);
+                  }
+
+                  final allDocs = snapshotData.docs;
+
+                  final locationScopedDocs =
+                      allDocs.where((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        return documentMatchesLocationScope(
+                          data,
+                          currentLocationId,
+                        );
+                      }).toList();
+
+                  final normalizedSearch =
+                      searchQuery.value.trim().toLowerCase();
+                  final docs =
+                      locationScopedDocs.where((doc) {
+                        if (normalizedSearch.isEmpty) return true;
+                        final data = doc.data() as Map<String, dynamic>;
+                        final title =
+                            (data['title'] as String? ?? '').toLowerCase();
+                        final category =
+                            (data['category'] as String? ?? '').toLowerCase();
+                        final fileName =
+                            (data['fileName'] as String? ?? '').toLowerCase();
+                        return title.contains(normalizedSearch) ||
+                            category.contains(normalizedSearch) ||
+                            fileName.contains(normalizedSearch);
+                      }).toList();
+
+                  if (kDebugMode) {
+                    print(
+                      '[TrainingMaterials] Visible documents: ${docs.length}',
+                    );
+                  }
+
+                  if (docs.isEmpty) {
+                    return _buildFilteredEmptyState(
+                      context,
+                      selectedCategory.value,
+                      searchQuery.value,
+                    );
+                  }
+
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                    child: Column(
+                      children: [
+                        Expanded(
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              final isWide = constraints.maxWidth >= 960;
+                              if (isWide) {
+                                return GridView.builder(
+                                  gridDelegate:
+                                      const SliverGridDelegateWithFixedCrossAxisCount(
+                                        crossAxisCount: 2,
+                                        crossAxisSpacing: 12,
+                                        mainAxisSpacing: 12,
+                                        childAspectRatio: 2.3,
+                                      ),
+                                  itemCount: docs.length,
+                                  itemBuilder: (context, index) {
+                                    final doc = docs[index];
+                                    final data =
+                                        doc.data() as Map<String, dynamic>;
+                                    return _DocumentCard(
+                                      data: data,
+                                      userRole: userRole,
+                                      onEdit:
+                                          userRole == 2
+                                              ? () => showUploadSheet(
+                                                docId: doc.id,
+                                                docData: data,
+                                              )
+                                              : null,
+                                      onDelete:
+                                          userRole == 2
+                                              ? () => deleteDocument(doc.id)
+                                              : null,
+                                      onOpen:
+                                          () => _openDocument(
+                                            context,
+                                            data,
+                                            userRole,
+                                          ),
+                                    );
+                                  },
+                                );
+                              }
+
+                              return ListView.separated(
+                                itemCount: docs.length,
+                                separatorBuilder:
+                                    (_, _) => const SizedBox(height: 8),
+                                itemBuilder: (context, index) {
+                                  final doc = docs[index];
+                                  final data =
+                                      doc.data() as Map<String, dynamic>;
+                                  return _DocumentCard(
+                                    data: data,
+                                    userRole: userRole,
+                                    onEdit:
+                                        userRole == 2
+                                            ? () => showUploadSheet(
+                                              docId: doc.id,
+                                              docData: data,
+                                            )
+                                            : null,
+                                    onDelete:
+                                        userRole == 2
+                                            ? () => deleteDocument(doc.id)
+                                            : null,
+                                    onOpen:
+                                        () => _openDocument(
+                                          context,
+                                          data,
+                                          userRole,
+                                        ),
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-      bottomNavigationBar: BottomNavBar(currentIndex: 4, userRole: userRole),
+      bottomNavigationBar:
+          allowPlatformAccess && organizationIdOverride != null
+              ? CrmScopedBottomNav(
+                orgId: organizationIdOverride!,
+                currentIndex: 3,
+              )
+              : BottomNavBar(currentIndex: 4, userRole: userRole),
     );
   }
 
-  Stream<QuerySnapshot> _getDocumentsStream(String organizationId, String category) {
-    logger.d('DEBUG: Getting documents for orgId: $organizationId, category: $category');
-    logger.d('DEBUG: Full path: organizations/$organizationId/training_documents');
+  Future<void> _openDocument(
+    BuildContext context,
+    Map<String, dynamic> data,
+    int userRole,
+  ) async {
+    final title = data['title'] ?? context.l10n.documentsUntitled;
+    final type = data['fileType'] ?? 'document';
+    final url = data['fileUrl'] ?? '';
+    final fileName = data['fileName'] ?? '';
+
+    if (url.isEmpty) return;
+
+    if (!kIsWeb &&
+        (fileName?.toLowerCase().endsWith('.pdf') == true ||
+            type.toLowerCase() == 'document')) {
+      try {
+        final uri = Uri.parse(url);
+        final success = await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
+        );
+
+        if (!success && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(context.l10n.documentsOpenError),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                context.l10n.documentsOpenErrorDetailed(e.toString()),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder:
+              (_) => DocumentViewerPage(
+                url: url,
+                title: title,
+                fileType: type,
+                fileName: fileName,
+                userRole: userRole,
+              ),
+        ),
+      );
+    }
+  }
+
+  Stream<QuerySnapshot> _getDocumentsStream(
+    String organizationId,
+    String category,
+    String? locationId,
+  ) {
+    logger.d(
+      'DEBUG: Getting documents for orgId: $organizationId, category: $category, locationId: $locationId',
+    );
+    logger.d(
+      'DEBUG: Full path: organizations/$organizationId/training_documents',
+    );
 
     // Updated path to match admin dashboard's nested path structure
     Query query = FirestoreEnforcer.instance
         .collection('organizations')
         .doc(organizationId)
         .collection('training_documents');
+
+    // Do NOT filter by location in Firestore so we can include global docs (missing/empty locationId) client-side
+    // Filtering by location here would exclude global documents from results.
 
     if (category != 'All') {
       logger.d('DEBUG: Filtering by category: $category');
@@ -399,7 +1058,9 @@ class ViewDocumentsPage extends HookConsumerWidget {
           logger.d('DEBUG: Found ${snapshot.docs.length} documents');
 
           if (snapshot.docs.isEmpty) {
-            logger.d('DEBUG: No documents found - checking if collection exists');
+            logger.d(
+              'DEBUG: No documents found - checking if collection exists',
+            );
           }
 
           for (var doc in snapshot.docs) {
@@ -413,51 +1074,412 @@ class ViewDocumentsPage extends HookConsumerWidget {
         });
   }
 
-  Widget _buildEmptyState(BuildContext context, int userRole, VoidCallback showUploadSheet) {
+  Widget _buildEmptyState(
+    BuildContext context,
+    int userRole,
+    VoidCallback showUploadSheet,
+  ) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Role-based icon and content
-            if (userRole != 2) ...[
-              // Regular users
-              const Icon(Icons.folder_open, size: 64, color: Colors.grey),
+        child: HandsModalSection(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 68,
+                height: 68,
+                decoration: BoxDecoration(
+                  color:
+                      userRole == 2
+                          ? HandsColors.handsOrange.withValues(alpha: 0.14)
+                          : HandsColors.secondaryContainer,
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                child: Icon(
+                  userRole == 2
+                      ? Icons.cloud_upload_outlined
+                      : Icons.menu_book_outlined,
+                  size: 30,
+                  color:
+                      userRole == 2
+                          ? HandsColors.handsOrange
+                          : HandsColors.white70,
+                ),
+              ),
               const SizedBox(height: 16),
               Text(
-                "No training materials available yet.",
-                style: Theme.of(context).textTheme.titleMedium,
+                userRole == 2
+                    ? context.l10n.documentsBuildLibraryTitle
+                    : context.l10n.documentsNoDocumentsTitle,
+                style: GoogleFonts.inter(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: HandsColors.white,
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
-              const Text(
-                "Your manager or admin will upload training guides, checklists, and helpful documents here.",
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey),
-              ),
-            ] else ...[
-              // Admin users (userRole == 2)
-              const Icon(Icons.upload_file, size: 64, color: Colors.blueGrey),
-              const SizedBox(height: 16),
               Text(
-                "No training or documents uploaded yet.",
-                style: Theme.of(context).textTheme.titleMedium,
+                userRole == 2
+                    ? context.l10n.documentsBuildLibraryBody
+                    : context.l10n.documentsNoDocumentsBody,
                 textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w500,
+                  color: HandsColors.white70,
+                  height: 1.45,
+                ),
+              ),
+              if (userRole == 2) ...[
+                const SizedBox(height: 18),
+                HandsPrimaryButton(
+                  text: context.l10n.documentsUploadFirst,
+                  icon: Icons.add,
+                  onPressed: showUploadSheet,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilteredEmptyState(
+    BuildContext context,
+    String category,
+    String query,
+  ) {
+    final hasSearch = query.trim().isNotEmpty;
+    final message =
+        hasSearch
+            ? context.l10n.documentsNoMatches(query)
+            : category == 'All'
+            ? context.l10n.documentsNoLocationDocs
+            : context.l10n.documentsNoCategoryDocs(
+              localizedDocumentCategoryLabel(context, category),
+            );
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: HandsModalSection(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.find_in_page_outlined,
+                size: 34,
+                color: HandsColors.white70,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                context.l10n.documentsNothingToShow,
+                style: GoogleFonts.inter(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: HandsColors.white,
+                ),
               ),
               const SizedBox(height: 8),
-              const Text(
-                "Get started by uploading materials your team needs:\n• Step-by-step training guides\n• Safety procedures and compliance documents\n• Operations manuals and checklists\n• Quick reference files for new hires",
+              Text(
+                message,
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: showUploadSheet,
-                icon: const Icon(Icons.add),
-                label: const Text("Add New"),
+                style: GoogleFonts.inter(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w500,
+                  color: HandsColors.white70,
+                ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DocumentCard extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final int userRole;
+  final VoidCallback onOpen;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
+
+  const _DocumentCard({
+    required this.data,
+    required this.userRole,
+    required this.onOpen,
+    this.onEdit,
+    this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final title = (data['title'] as String?) ?? context.l10n.documentsUntitled;
+    final type = (data['fileType'] as String?) ?? 'document';
+    final category = (data['category'] as String?) ?? 'Other';
+    final fileName = (data['fileName'] as String?) ?? '';
+    final locationIds = documentLocationIdsFromData(data);
+    final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
+
+    final icon = switch (type.toLowerCase()) {
+      'video' => Icons.videocam_outlined,
+      'image' => Icons.image_outlined,
+      _ => Icons.description_outlined,
+    };
+
+    final typeLabel = switch (type.toLowerCase()) {
+      'video' => context.l10n.documentsTypeVideo,
+      'image' => context.l10n.documentsTypeImage,
+      _ => context.l10n.documentsTypeDoc,
+    };
+
+    final accent = switch (type.toLowerCase()) {
+      'video' => const Color(0xFF57B7FF),
+      'image' => HandsColors.sageGreen,
+      _ => HandsColors.handsOrange,
+    };
+
+    final isCompactPhone = MediaQuery.sizeOf(context).width < 430;
+
+    return HandsModalSection(
+      padding: EdgeInsets.symmetric(
+        horizontal: isCompactPhone ? 12 : 16,
+        vertical: isCompactPhone ? 12 : 14,
+      ),
+      child: InkWell(
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: isCompactPhone ? 36 : 42,
+                  height: isCompactPhone ? 36 : 42,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    icon,
+                    color: accent,
+                    size: isCompactPhone ? 18 : 20,
+                  ),
+                ),
+                SizedBox(width: isCompactPhone ? 10 : 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(
+                          fontSize: isCompactPhone ? 14.5 : 16,
+                          fontWeight: FontWeight.w700,
+                          color: HandsColors.white,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: [
+                          _DocumentTag(
+                            label: localizedDocumentCategoryLabel(
+                              context,
+                              category,
+                            ),
+                          ),
+                          _DocumentTag(label: typeLabel, accent: accent),
+                          _DocumentTag(
+                            label:
+                                locationIds.isEmpty
+                                    ? context.l10n.documentsAllLocations
+                                    : locationIds.length == 1
+                                    ? context.l10n.documentsLocation
+                                    : context.l10n.documentsLocationsCount(
+                                      locationIds.length,
+                                    ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                if (userRole == 2) ...[
+                  IconButton(
+                    onPressed: onEdit,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 30,
+                      height: 30,
+                    ),
+                    icon: const Icon(
+                      Icons.edit_outlined,
+                      size: 17,
+                      color: HandsColors.white70,
+                    ),
+                    tooltip: context.l10n.documentsEditTooltip,
+                  ),
+                  IconButton(
+                    onPressed: onDelete,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 30,
+                      height: 30,
+                    ),
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      size: 17,
+                      color: HandsColors.error,
+                    ),
+                    tooltip: context.l10n.documentsDeleteTooltip,
+                  ),
+                ] else
+                  const Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 15,
+                    color: HandsColors.white30,
+                  ),
+              ],
+            ),
+            if (fileName.isNotEmpty || createdAt != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                fileName.isNotEmpty
+                    ? fileName
+                    : context.l10n.documentsAddedDate(
+                      MaterialLocalizations.of(
+                        context,
+                      ).formatShortDate(createdAt!),
+                    ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.inter(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w500,
+                  color: HandsColors.white70,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DocumentTag extends StatelessWidget {
+  final String label;
+  final Color? accent;
+
+  const _DocumentTag({required this.label, this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = accent ?? HandsColors.white70;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        color:
+            accent == null
+                ? HandsColors.secondaryContainer
+                : color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color:
+              accent == null
+                  ? HandsColors.white12
+                  : color.withValues(alpha: 0.28),
+        ),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: GoogleFonts.inter(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
+      ),
+    );
+  }
+}
+
+class _LocationScopeOption extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _LocationScopeOption({
+    required this.label,
+    required this.icon,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color:
+              isSelected
+                  ? HandsColors.handsOrange.withValues(alpha: 0.12)
+                  : HandsColors.secondaryContainer,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color:
+                isSelected
+                    ? HandsColors.handsOrange.withValues(alpha: 0.38)
+                    : HandsColors.white12,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color:
+                    isSelected
+                        ? HandsColors.handsOrange.withValues(alpha: 0.18)
+                        : HandsColors.white.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: HandsColors.white, size: 18),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w700,
+                  color: HandsColors.white,
+                ),
+              ),
+            ),
+            if (isSelected)
+              const Icon(
+                Icons.check_circle_rounded,
+                color: HandsColors.handsOrange,
+                size: 18,
+              ),
           ],
         ),
       ),
@@ -470,6 +1492,7 @@ class DocumentViewerPage extends HookWidget {
   final String title;
   final String fileType;
   final int userRole;
+  final String? fileName;
 
   const DocumentViewerPage({
     super.key,
@@ -477,38 +1500,58 @@ class DocumentViewerPage extends HookWidget {
     required this.title,
     required this.fileType,
     required this.userRole,
+    this.fileName,
   });
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final isLoading = useState(true);
     final errorMessage = useState<String?>(null);
     final localPath = useState<String?>(null);
 
     Future<String?> downloadAndCacheFile() async {
       try {
-        // For web platform or any file type, just return URL directly
+        // Validate URL first
+        if (url.isEmpty) {
+          throw Exception(l10n.documentsViewerNoPath);
+        }
+
+        final uri = Uri.tryParse(url);
+        if (uri == null) {
+          throw Exception(l10n.documentsViewerInvalidUrl);
+        }
+
+        debugPrint('[DocumentViewer] Processing URL: $url');
+        debugPrint(
+          '[DocumentViewer] File type: $fileType, Platform: ${kIsWeb ? 'web' : 'mobile'}',
+        );
+
+        // For web platform, we just return the URL for direct access
         if (kIsWeb) {
           return url;
         }
 
-        // For images and videos, we can use the URL directly
-        if (fileType.toLowerCase() == 'image') {
-          return url;
+        // For mobile platforms, download and cache the file locally for native viewing
+        final response = await http.get(uri);
+        if (response.statusCode != 200) {
+          throw Exception(l10n.documentsViewerDownloadFailed);
         }
 
-        // For videos, return the URL directly
-        if (fileType.toLowerCase() == 'video') {
-          return url;
-        }
+        final documentsDir = await getApplicationDocumentsDirectory();
+        final filename =
+            fileName?.isNotEmpty == true
+                ? fileName!.replaceAll(RegExp(r'[^\w\s\-_\.]'), '_')
+                : 'document_${DateTime.now().millisecondsSinceEpoch}.pdf';
 
-        // For PDFs on mobile, we'll also just use the URL for now
-        // TODO: Implement proper mobile file caching if needed
-        return url;
+        final localFile = File('${documentsDir.path}/$filename');
+        await localFile.writeAsBytes(response.bodyBytes);
+
+        debugPrint('[DocumentViewer] Downloaded to: ${localFile.path}');
+        return localFile.path;
       } catch (e) {
         debugPrint('Error in downloadAndCacheFile: $e');
-        // Fallback to direct URL
-        return url;
+        throw Exception(e.toString());
       }
     }
 
@@ -541,16 +1584,28 @@ class DocumentViewerPage extends HookWidget {
           IconButton(
             icon: const Icon(Icons.open_in_browser),
             onPressed: openInBrowser,
-            tooltip: 'Open in external app',
+            tooltip: context.l10n.documentsViewerOpenExternalTooltip,
+          ),
+          IconButton(
+            icon: const Icon(Icons.download),
+            onPressed: () async {
+              final uri = Uri.parse(url);
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            },
+            tooltip: context.l10n.documentsViewerDownloadTooltip,
           ),
         ],
       ),
       body:
           isLoading.value
-              ? const Center(
+              ? Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  children: [CircularProgressIndicator(), SizedBox(height: 16), Text('Loading document...')],
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 16),
+                    Text(context.l10n.documentsViewerLoading),
+                  ],
                 ),
               )
               : errorMessage.value != null
@@ -558,20 +1613,63 @@ class DocumentViewerPage extends HookWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                    const Icon(
+                      Icons.error_outline,
+                      size: 64,
+                      color: Colors.red,
+                    ),
                     const SizedBox(height: 16),
-                    Text('Error loading document', style: Theme.of(context).textTheme.headlineSmall),
+                    Text(
+                      context.l10n.documentsViewerErrorTitle,
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
                     const SizedBox(height: 8),
                     Text(
                       errorMessage.value!,
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Colors.grey.shade600,
+                      ),
                     ),
-                    const SizedBox(height: 24),
-                    ElevatedButton.icon(
-                      onPressed: openInBrowser,
-                      icon: const Icon(Icons.open_in_browser),
-                      label: const Text('Open in Browser'),
+                    const SizedBox(height: 8),
+                    if (url.isNotEmpty) ...[
+                      Text(
+                        '${context.l10n.documentsViewerDocumentUrl} ${url.length > 100 ? '${url.substring(0, 100)}...' : url}',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.grey.shade500,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    Wrap(
+                      spacing: 12,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: openInBrowser,
+                          icon: const Icon(Icons.open_in_browser),
+                          label: Text(context.l10n.documentsViewerTestBrowser),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            // Retry loading
+                            isLoading.value = true;
+                            errorMessage.value = null;
+                            downloadAndCacheFile()
+                                .then((path) {
+                                  localPath.value = path;
+                                  isLoading.value = false;
+                                })
+                                .catchError((error) {
+                                  errorMessage.value = error.toString();
+                                  isLoading.value = false;
+                                });
+                          },
+                          icon: const Icon(Icons.refresh),
+                          label: Text(context.l10n.documentsViewerRetry),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -584,11 +1682,21 @@ class DocumentViewerPage extends HookWidget {
 
   Widget _buildDocumentViewer(BuildContext context, String? path) {
     if (path == null) {
-      return const Center(child: Text('No document path available'));
+      return Center(child: Text(context.l10n.documentsViewerNoPath));
     }
 
-    switch (fileType.toLowerCase()) {
+    final lowerType = fileType.toLowerCase();
+    final ext = _inferExtension();
+    final isPdf = ext == 'pdf';
+    final isDoc = ext == 'doc' || ext == 'docx';
+    debugPrint(
+      '[DocumentViewer] type=$lowerType, ext=$ext, isWeb=$kIsWeb, isDoc=$isDoc, isPdf=$isPdf',
+    );
+    switch (lowerType) {
       case 'document':
+        if (kIsWeb && isDoc) {
+          return _buildOfficeDocViewerWeb(context, path);
+        }
         return _buildPDFViewer(context, path);
       case 'image':
         return _buildImageViewer(path);
@@ -599,57 +1707,491 @@ class DocumentViewerPage extends HookWidget {
     }
   }
 
+  String _inferExtension() {
+    // Prefer explicit fileName when present
+    if ((fileName != null) && fileName!.contains('.')) {
+      final parts = fileName!.split('.');
+      return parts.isNotEmpty ? parts.last.toLowerCase() : '';
+    }
+    // Fallback: try to parse from URL path (Firebase Storage keeps original name in path)
+    try {
+      final uri = Uri.parse(url);
+      if (uri.pathSegments.isNotEmpty) {
+        final lastSeg = Uri.decodeComponent(uri.pathSegments.last);
+        if (lastSeg.contains('.')) {
+          return lastSeg.split('.').last.toLowerCase();
+        }
+      }
+    } catch (_) {}
+    return '';
+  }
+
   Widget _buildPDFViewer(BuildContext context, String path) {
-    // For web, use an iframe or redirect to external viewer
-    if (kIsWeb) {
-      return Center(
+    // For mobile platforms, use native system viewer directly
+    if (!kIsWeb) {
+      return Padding(
+        padding: const EdgeInsets.all(24.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.picture_as_pdf, size: 64, color: Colors.blue),
-            const SizedBox(height: 16),
-            Text('PDF Preview', style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 8),
-            Text(
-              'Click below to open the PDF in a new tab',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
+            // Document icon
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.red.shade100,
+                borderRadius: BorderRadius.circular(50),
+              ),
+              child: Icon(
+                Icons.picture_as_pdf,
+                size: 80,
+                color: Colors.red.shade600,
+              ),
             ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () async {
-                final uri = Uri.parse(path);
-                if (await canLaunchUrl(uri)) {
-                  await launchUrl(uri, mode: LaunchMode.externalApplication);
-                }
-              },
-              icon: const Icon(Icons.open_in_new),
-              label: const Text('Open PDF'),
+            const SizedBox(height: 32),
+
+            // Title
+            Text(
+              context.l10n.documentsViewerTrainingDocument,
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+
+            // Description
+            Text(
+              context.l10n.documentsViewerNativeBody,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 48),
+
+            // Primary action button
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  try {
+                    final uri = Uri.parse(path);
+                    final success = await launchUrl(
+                      uri,
+                      mode: LaunchMode.externalApplication,
+                    );
+
+                    if (!success && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(context.l10n.documentsOpenError),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            context.l10n.documentsOpenErrorDetailed(
+                              e.toString(),
+                            ),
+                          ),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
+                },
+                icon: const Icon(Icons.open_in_new, size: 24),
+                label: Text(
+                  context.l10n.documentsViewerOpenDocument,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 2,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 32),
+
+            // Help text
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.blue.shade600),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      context.l10n.documentsViewerNativeHelp,
+                      style: TextStyle(
+                        color: Colors.blue.shade700,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
       );
     }
 
-    // For mobile platforms, use the PDFView widget
-    return PDFView(
-      filePath: path,
-      enableSwipe: true,
-      swipeHorizontal: false,
-      autoSpacing: false,
-      pageFling: true,
-      pageSnap: true,
-      defaultPage: 0,
-      fitPolicy: FitPolicy.BOTH,
-      preventLinkNavigation: false,
-      onRender: (pages) {
-        debugPrint('PDF rendered with $pages pages');
-      },
-      onError: (error) {
-        debugPrint('PDF error: $error');
-      },
-      onPageError: (page, error) {
-        debugPrint('PDF page $page error: $error');
-      },
+    // For web, use the existing web approach
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        children: [
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Document icon
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade100,
+                      borderRadius: BorderRadius.circular(50),
+                    ),
+                    child: Icon(
+                      Icons.picture_as_pdf,
+                      size: 80,
+                      color: Colors.red.shade600,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Document title
+                  Text(
+                    context.l10n.documentsViewerPdfTitle,
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Info text
+                  Text(
+                    context.l10n.documentsViewerWebBody,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.grey.shade600,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 32),
+
+                  // Action buttons
+                  Column(
+                    children: [
+                      // Primary action - View in new tab
+                      SizedBox(
+                        width: 250,
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            final uri = Uri.parse(path);
+                            if (await canLaunchUrl(uri)) {
+                              await launchUrl(
+                                uri,
+                                mode: LaunchMode.externalApplication,
+                              );
+                            }
+                          },
+                          icon: const Icon(Icons.open_in_new, size: 20),
+                          label: Text(context.l10n.documentsViewerViewDocument),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Theme.of(context).primaryColor,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Secondary actions
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () => _copyUrlToClipboard(context, path),
+                            icon: const Icon(Icons.copy, size: 18),
+                            label: Text(context.l10n.documentsViewerCopyLink),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          OutlinedButton.icon(
+                            onPressed: () async {
+                              final uri = Uri.parse(path);
+                              if (await canLaunchUrl(uri)) {
+                                await launchUrl(
+                                  uri,
+                                  mode: LaunchMode.externalApplication,
+                                );
+                              }
+                            },
+                            icon: const Icon(Icons.download, size: 18),
+                            label: Text(
+                              context.l10n.documentsViewerDownloadTooltip,
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+
+                  // Technical info for troubleshooting
+                  const SizedBox(height: 32),
+                  ExpansionTile(
+                    title: Text(
+                      context.l10n.documentsViewerTechnicalInfo,
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              context.l10n.documentsViewerDocumentUrl,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            SelectableText(
+                              path,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              context.l10n.documentsViewerNewTabNote,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOfficeDocViewerWeb(BuildContext context, String path) {
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        children: [
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Document icon
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade100,
+                      borderRadius: BorderRadius.circular(50),
+                    ),
+                    child: Icon(
+                      Icons.description,
+                      size: 80,
+                      color: Colors.blue.shade600,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Document title
+                  Text(
+                    context.l10n.documentsViewerOfficeTitle,
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Info text
+                  Text(
+                    context.l10n.documentsViewerWebBody,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.grey.shade600,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 32),
+
+                  // Action buttons
+                  Column(
+                    children: [
+                      // Primary action - View in new tab
+                      SizedBox(
+                        width: 250,
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            final uri = Uri.parse(path);
+                            if (await canLaunchUrl(uri)) {
+                              await launchUrl(
+                                uri,
+                                mode: LaunchMode.externalApplication,
+                              );
+                            }
+                          },
+                          icon: const Icon(Icons.open_in_new, size: 20),
+                          label: Text(context.l10n.documentsViewerViewDocument),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Theme.of(context).primaryColor,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Secondary actions
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () => _copyUrlToClipboard(context, path),
+                            icon: const Icon(Icons.copy, size: 18),
+                            label: Text(context.l10n.documentsViewerCopyLink),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          OutlinedButton.icon(
+                            onPressed: () async {
+                              final uri = Uri.parse(path);
+                              if (await canLaunchUrl(uri)) {
+                                await launchUrl(
+                                  uri,
+                                  mode: LaunchMode.externalApplication,
+                                );
+                              }
+                            },
+                            icon: const Icon(Icons.download, size: 18),
+                            label: Text(
+                              context.l10n.documentsViewerDownloadTooltip,
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+
+                  // Technical info for troubleshooting
+                  const SizedBox(height: 32),
+                  ExpansionTile(
+                    title: Text(
+                      context.l10n.documentsViewerTechnicalInfo,
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              context.l10n.documentsViewerDocumentUrl,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            SelectableText(
+                              path,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              context.l10n.documentsViewerNewTabNote,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -669,19 +2211,20 @@ class DocumentViewerPage extends HookWidget {
               child: CircularProgressIndicator(
                 value:
                     loadingProgress.expectedTotalBytes != null
-                        ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                        ? loadingProgress.cumulativeBytesLoaded /
+                            loadingProgress.expectedTotalBytes!
                         : null,
               ),
             );
           },
           errorBuilder: (context, error, stackTrace) {
-            return const Center(
+            return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.error_outline, size: 64, color: Colors.red),
-                  SizedBox(height: 16),
-                  Text('Failed to load image'),
+                  const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text(context.l10n.documentsViewerImageFailed),
                 ],
               ),
             );
@@ -692,67 +2235,7 @@ class DocumentViewerPage extends HookWidget {
   }
 
   Widget _buildVideoViewer(BuildContext context, String url) {
-    // For web, use HTML5 video element which is more reliable
-    if (kIsWeb) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Expanded(
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 800),
-                child: AspectRatio(
-                  aspectRatio: 16 / 9, // Default aspect ratio
-                  child: Container(
-                    decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(8)),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: HtmlElementView(
-                        viewType: 'video-${url.hashCode}',
-                        onPlatformViewCreated: (id) {
-                          // Web video element will be created
-                        },
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ElevatedButton.icon(
-                  onPressed: () async {
-                    final uri = Uri.parse(url);
-                    if (await canLaunchUrl(uri)) {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
-                    }
-                  },
-                  icon: const Icon(Icons.open_in_new),
-                  label: const Text('Open in New Tab'),
-                ),
-                const SizedBox(width: 16),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    await Clipboard.setData(ClipboardData(text: url));
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(
-                        context,
-                      ).showSnackBar(const SnackBar(content: Text('Video URL copied to clipboard')));
-                    }
-                  },
-                  icon: const Icon(Icons.copy),
-                  label: const Text('Copy URL'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      );
-    }
-
-    // For mobile, use the existing VideoPlayerWidget
+    // Use the existing VideoPlayerWidget for all platforms to keep UI consistent.
     return VideoPlayerWidget(url: url);
   }
 
@@ -763,29 +2246,59 @@ class DocumentViewerPage extends HookWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.insert_drive_file, size: 64, color: Colors.grey),
+                const Icon(
+                  Icons.insert_drive_file,
+                  size: 64,
+                  color: Colors.grey,
+                ),
                 const SizedBox(height: 16),
-                Text('Preview not available', style: Theme.of(context).textTheme.headlineSmall),
+                Text(
+                  context.l10n.documentsViewerPreviewUnavailable,
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
                 const SizedBox(height: 8),
                 Text(
-                  'This file type is not supported for preview',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
+                  context.l10n.documentsViewerUnsupportedPreview,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
                 ),
                 const SizedBox(height: 24),
                 ElevatedButton.icon(
                   onPressed: () async {
                     final uri = Uri.parse(url);
                     if (await canLaunchUrl(uri)) {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      await launchUrl(
+                        uri,
+                        mode: LaunchMode.externalApplication,
+                      );
                     }
                   },
                   icon: const Icon(Icons.open_in_browser),
-                  label: const Text('Open in External App'),
+                  label: Text(context.l10n.documentsViewerOpenExternal),
                 ),
               ],
             ),
           ),
     );
+  }
+
+  void _copyUrlToClipboard(BuildContext context, String url) async {
+    try {
+      // Use Flutter's universal Clipboard for all platforms
+      await Clipboard.setData(ClipboardData(text: url));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.documentsViewerUrlCopied)),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.documentsViewerCopyFailed)),
+        );
+      }
+    }
   }
 }
 
@@ -831,7 +2344,7 @@ class VideoPlayerWidget extends HookWidget {
           children: [
             const Icon(Icons.error_outline, size: 64, color: Colors.red),
             const SizedBox(height: 16),
-            const Text('Failed to load video'),
+            Text(context.l10n.documentsViewerVideoFailed),
             const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: () async {
@@ -841,7 +2354,7 @@ class VideoPlayerWidget extends HookWidget {
                 }
               },
               icon: const Icon(Icons.open_in_browser),
-              label: const Text('Open in External App'),
+              label: Text(context.l10n.documentsViewerOpenExternal),
             ),
           ],
         ),
@@ -849,10 +2362,14 @@ class VideoPlayerWidget extends HookWidget {
     }
 
     if (!isInitialized.value || videoController.value == null) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: [CircularProgressIndicator(), SizedBox(height: 16), Text('Loading video...')],
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Text(context.l10n.documentsViewerLoadingVideo),
+          ],
         ),
       );
     }
@@ -880,7 +2397,10 @@ class VideoPlayerWidget extends HookWidget {
                     videoController.value!.play();
                   }
                 },
-                icon: Icon(isPlaying.value ? Icons.pause : Icons.play_arrow, size: 32),
+                icon: Icon(
+                  isPlaying.value ? Icons.pause : Icons.play_arrow,
+                  size: 32,
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(

@@ -1,21 +1,43 @@
 /// Global feature flags for Hands App vNEXT
 const bool enableScheduling = true;
+const bool enableStaffSpanish = true;
 
 /// Billing flags and constants
 const bool kPerLocationBilling = true;
+const int kTrialDays = 14;
 
-/// Tiered pricing constants
-const double kFirstLocationPrice = 69.99;
-const double kAdditionalLocationPrice = 49.99;
+/// Pricing constants (legacy compatibility)
+/// Current model: flat $49.99 per location monthly, 10% off annual
+const double kFirstLocationPrice = 49.99; // legacy callers use this
+const double kAdditionalLocationPrice = 49.99; // legacy callers use this
 
 @Deprecated('Use PricingService.calcMonthly() for tiered pricing calculations')
 const double kLocationPrice = 49.99;
 
-/// Live Stripe Price IDs for tiered per-location billing
-/// Monthly: $69.99 for first location, $49.99 for additional
-/// Annual: $755.90 for first location, $539.90 for additional
-const String kStripePriceMonthly = 'price_1S2zhQFzroJ5o7DAEj914UgN';
-const String kStripePriceAnnual = 'price_1S2ziQFzroJ5o7DANERaDZ9r';
+/// Live Stripe Price IDs (Stripe tiers should be configured flat per location)
+/// Monthly: $49.99 per location
+/// Annual: 10% off the yearly total
+///
+/// These can be overridden at build/run time using Dart defines:
+///   -DSTRIPE_PRICE_MONTHLY=price_XXXX  -DSTRIPE_PRICE_ANNUAL=price_YYYY
+/// Example (web):
+/// flutter run -d chrome --web-renderer html \
+///   --dart-define=STRIPE_PUBLISHABLE_KEY=pk_test_xxx \
+///   --dart-define=STRIPE_PRICE_MONTHLY=price_XXXX \
+///   --dart-define=STRIPE_PRICE_ANNUAL=price_YYYY
+// Live defaults as of 2025-09-17 (prod_SpVvLXHRcgZ0yg)
+const String kStripePriceMonthlyDefault =
+    'price_1RtqtYFzroJ5o7DAeT4jin9n'; // $49.99 monthly per location
+const String kStripePriceAnnualDefault =
+    'price_1RtqtYFzroJ5o7DAqjkZzsDk'; // $539.98 annual per location (10% off)
+const String kStripePriceMonthly = String.fromEnvironment(
+  'STRIPE_PRICE_MONTHLY',
+  defaultValue: kStripePriceMonthlyDefault,
+);
+const String kStripePriceAnnual = String.fromEnvironment(
+  'STRIPE_PRICE_ANNUAL',
+  defaultValue: kStripePriceAnnualDefault,
+);
 
 /// Back-compat alias used in existing code paths; defaults to monthly
 const String kPricePerLocation = kStripePriceMonthly;

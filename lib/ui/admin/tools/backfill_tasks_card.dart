@@ -72,10 +72,7 @@ class _BackfillTasksCardState extends State<BackfillTasksCard> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('TaskBackfillService not yet implemented'),
-            backgroundColor: Colors.orange,
-          ),
+          const SnackBar(content: Text('TaskBackfillService not yet implemented'), backgroundColor: Colors.orange),
         );
       }
     } catch (e) {
@@ -100,24 +97,25 @@ class _BackfillTasksCardState extends State<BackfillTasksCard> {
 
       showDialog(
         context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Task Metadata Verification'),
-          content: const SizedBox(
-            width: double.maxFinite,
-            height: 400,
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.info, color: Colors.blue, size: 64),
-                  SizedBox(height: 16),
-                  Text('TaskBackfillService not yet implemented.', style: TextStyle(fontSize: 16)),
-                ],
+        builder:
+            (context) => AlertDialog(
+              title: const Text('Task Metadata Verification'),
+              content: const SizedBox(
+                width: double.maxFinite,
+                height: 400,
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.info, color: Colors.blue, size: 64),
+                      SizedBox(height: 16),
+                      Text('TaskBackfillService not yet implemented.', style: TextStyle(fontSize: 16)),
+                    ],
+                  ),
+                ),
               ),
+              actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close'))],
             ),
-          ),
-          actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close'))],
-        ),
       );
     } catch (e) {
       if (mounted) {

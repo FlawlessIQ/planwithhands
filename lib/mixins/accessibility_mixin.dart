@@ -49,7 +49,10 @@ mixin AccessibilityMixin<T extends StatefulWidget> on State<T> {
             }
             return action;
           }).toList(),
-      leading: leading != null ? AccessibilityHelper.ensureMinTouchTarget(child: leading) : null,
+      leading:
+          leading != null
+              ? AccessibilityHelper.ensureMinTouchTarget(child: leading)
+              : null,
       automaticallyImplyLeading: automaticallyImplyLeading,
     );
   }
@@ -65,20 +68,29 @@ mixin AccessibilityMixin<T extends StatefulWidget> on State<T> {
       child: Form(
         key: formKey,
         child: Padding(
-          padding: padding ?? context.getResponsivePadding(const EdgeInsets.all(16)),
+          padding:
+              padding ?? context.getResponsivePadding(const EdgeInsets.all(16)),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (sectionTitle != null) ...[
                 AccessibilityHelper.wrapWithHeaderSemantics(
                   label: sectionTitle,
-                  child: Text(sectionTitle, style: Theme.of(context).textTheme.headlineSmall),
+                  child: Text(
+                    sectionTitle,
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
                 ),
                 SizedBox(height: context.getResponsiveSpacing(16)),
               ],
               ...children.map((child) {
                 // Add responsive spacing between form elements
-                return Padding(padding: EdgeInsets.only(bottom: context.getResponsiveSpacing(12)), child: child);
+                return Padding(
+                  padding: EdgeInsets.only(
+                    bottom: context.getResponsiveSpacing(12),
+                  ),
+                  child: child,
+                );
               }),
             ],
           ),
@@ -129,8 +141,17 @@ mixin AccessibilityMixin<T extends StatefulWidget> on State<T> {
   }) {
     final button =
         icon != null
-            ? ElevatedButton.icon(onPressed: onPressed, icon: icon, label: Text(text), style: style)
-            : ElevatedButton(onPressed: onPressed, style: style, child: Text(text));
+            ? ElevatedButton.icon(
+              onPressed: onPressed,
+              icon: icon,
+              label: Text(text),
+              style: style,
+            )
+            : ElevatedButton(
+              onPressed: onPressed,
+              style: style,
+              child: Text(text),
+            );
 
     return AccessibilityHelper.wrapWithButtonSemantics(
       label: semanticLabel,
@@ -153,7 +174,11 @@ mixin AccessibilityMixin<T extends StatefulWidget> on State<T> {
       margin: margin,
       child: InkWell(
         onTap: onTap,
-        child: Padding(padding: padding ?? context.getResponsivePadding(const EdgeInsets.all(16)), child: child),
+        child: Padding(
+          padding:
+              padding ?? context.getResponsivePadding(const EdgeInsets.all(16)),
+          child: child,
+        ),
       ),
     );
 
@@ -179,7 +204,13 @@ mixin AccessibilityMixin<T extends StatefulWidget> on State<T> {
     String? semanticLabel,
     String? semanticHint,
   }) {
-    final listTile = ListTile(leading: leading, title: title, subtitle: subtitle, trailing: trailing, onTap: onTap);
+    final listTile = ListTile(
+      leading: leading,
+      title: title,
+      subtitle: subtitle,
+      trailing: trailing,
+      onTap: onTap,
+    );
 
     if (onTap != null && semanticLabel != null) {
       return AccessibilityHelper.wrapWithButtonSemantics(
@@ -199,8 +230,14 @@ mixin AccessibilityMixin<T extends StatefulWidget> on State<T> {
   }
 
   /// Creates accessible padding that responds to text scale factor
-  Widget buildResponsivePadding({required Widget child, required EdgeInsets basePadding}) {
-    return Padding(padding: context.getResponsivePadding(basePadding), child: child);
+  Widget buildResponsivePadding({
+    required Widget child,
+    required EdgeInsets basePadding,
+  }) {
+    return Padding(
+      padding: context.getResponsivePadding(basePadding),
+      child: child,
+    );
   }
 
   /// Creates an accessible image with proper semantics
@@ -212,7 +249,12 @@ mixin AccessibilityMixin<T extends StatefulWidget> on State<T> {
     double? height,
     BoxFit? fit,
   }) {
-    final imageWidget = Image(image: image, width: width, height: height, fit: fit);
+    final imageWidget = Image(
+      image: image,
+      width: width,
+      height: height,
+      fit: fit,
+    );
 
     return AccessibilityHelper.wrapWithImageSemantics(
       label: semanticLabel,
@@ -259,10 +301,14 @@ mixin AccessibilityMixin<T extends StatefulWidget> on State<T> {
       hint: hint,
       isRequired: isRequired,
       child: DropdownButtonFormField<T>(
-        value: value,
+        initialValue: value,
+        isExpanded: true,
         items: items,
         onChanged: onChanged,
-        decoration: InputDecoration(labelText: isRequired ? '$label *' : label, hintText: hint),
+        decoration: InputDecoration(
+          labelText: isRequired ? '$label *' : label,
+          hintText: hint,
+        ),
       ),
     );
   }

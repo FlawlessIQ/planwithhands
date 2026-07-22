@@ -1,0 +1,18 @@
+{
+  "hosting": [
+    {
+      "site": "plan-with-hands-staging",
+      "public": "build/web",
+      "ignore": ["**/.*", "**/node_modules/**"],
+      "headers": [
+        {"source": "/index.html", "headers": [{"key": "Cache-Control", "value": "no-store"}]},
+        {"source": "/flutter_bootstrap.js", "headers": [{"key": "Cache-Control", "value": "no-store"}]},
+        {"source": "/main.dart.js", "headers": [{"key": "Cache-Control", "value": "no-store"}]},
+        {"source": "**/*.@(js|wasm)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]}
+      ],
+      "rewrites": [
+        {"source": "**", "destination": "/index.html"}
+      ]
+    }
+  ]
+}

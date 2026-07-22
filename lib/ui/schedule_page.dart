@@ -12,6 +12,7 @@ import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/core/logging/logger.dart';
+import 'package:hands_app/l10n/l10n.dart';
 
 class SchedulePage extends StatefulWidget {
   const SchedulePage({super.key});
@@ -19,8 +20,6 @@ class SchedulePage extends StatefulWidget {
   @override
   State<SchedulePage> createState() => _SchedulePageState();
 }
-
-enum ViewMode { Editor, DayByHour }
 
 class _SchedulePageState extends State<SchedulePage> {
   // Scheduling UI state
@@ -51,7 +50,11 @@ class _SchedulePageState extends State<SchedulePage> {
     _userId = user.uid;
     // Get the user's organization ID and role from their user document
     try {
-      final userDoc = await FirestoreEnforcer.instance.collection('users').doc(user.uid).get();
+      final userDoc =
+          await FirestoreEnforcer.instance
+              .collection('users')
+              .doc(user.uid)
+              .get();
       if (userDoc.exists) {
         final userData = userDoc.data()!;
         _orgId = userData['organizationId'] as String?;
@@ -72,23 +75,34 @@ class _SchedulePageState extends State<SchedulePage> {
     // Fetch locations for this organization
     try {
       final locSnap =
-          await FirestoreEnforcer.instance.collection('organizations').doc(_orgId).collection('locations').get();
+          await FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(_orgId)
+              .collection('locations')
+              .get();
 
       // Map each doc to id and name
       _locations =
           locSnap.docs.map((d) {
             final data = d.data();
-            return {'id': d.id, 'name': data['locationName'] ?? data['name'] ?? d.id};
+            return {
+              'id': d.id,
+              'name': data['locationName'] ?? data['name'] ?? d.id,
+            };
           }).toList();
 
-      _selectedLocation = _locations.isNotEmpty ? _locations.first['id'] as String : null;
+      _selectedLocation =
+          _locations.isNotEmpty ? _locations.first['id'] as String : null;
     } catch (e) {
       logger.e('Error loading locations: $e', e);
     }
 
     // Default date range: next 7 days
     final today = DateTime.now();
-    _selectedDateRange = DateTimeRange(start: today, end: today.add(const Duration(days: 6)));
+    _selectedDateRange = DateTimeRange(
+      start: today,
+      end: today.add(const Duration(days: 6)),
+    );
     _visibleDays = List.generate(7, (i) => today.add(Duration(days: i)));
 
     setState(() => _loadingSetup = false);
@@ -104,7 +118,10 @@ class _SchedulePageState extends State<SchedulePage> {
     if (picked != null && picked != _selectedDateRange) {
       setState(() {
         _selectedDateRange = picked;
-        _visibleDays = List.generate(picked.duration.inDays + 1, (i) => picked.start.add(Duration(days: i)));
+        _visibleDays = List.generate(
+          picked.duration.inDays + 1,
+          (i) => picked.start.add(Duration(days: i)),
+        );
       });
     }
   }
@@ -113,11 +130,17 @@ class _SchedulePageState extends State<SchedulePage> {
     final today = DateTime.now();
     _visibleDays.clear();
     for (var i = 0; i < 7; i++) {
-      _visibleDays.add(DateTime(today.year, today.month, today.day).add(Duration(days: i)));
+      _visibleDays.add(
+        DateTime(today.year, today.month, today.day).add(Duration(days: i)),
+      );
     }
   }
 
-  Future<void> _addOrEditShift([ScheduleEntryData? scheduleEntry, ShiftData? template]) async {
+  Future<void> _addOrEditShift([
+    ScheduleEntryData? scheduleEntry,
+    ShiftData? template,
+  ]) async {
+    final l10n = context.l10n;
     logger.d(
       '_addOrEditShift called with scheduleEntry: ${scheduleEntry?.toString()}, template: ${template?.shiftName}',
     );
@@ -141,8 +164,11 @@ class _SchedulePageState extends State<SchedulePage> {
     if (scheduleEntry != null) {
       // Editing existing schedule entry
       shiftId = scheduleEntry.shiftId;
-      final matchingTemplates = templates.where((doc) => doc.id == scheduleEntry.shiftId).toList();
-      logger.d('Found ${matchingTemplates.length} matching templates for shiftId: ${scheduleEntry.shiftId}');
+      final matchingTemplates =
+          templates.where((doc) => doc.id == scheduleEntry.shiftId).toList();
+      logger.d(
+        'Found ${matchingTemplates.length} matching templates for shiftId: ${scheduleEntry.shiftId}',
+      );
       if (matchingTemplates.isNotEmpty) {
         templateData = matchingTemplates.first.data();
         debugPrint("Template data found: ${templateData.keys}");
@@ -150,21 +176,32 @@ class _SchedulePageState extends State<SchedulePage> {
     } else if (template != null) {
       // Creating new schedule entry from template
       shiftId = template.shiftId;
-      final matchingTemplates = templates.where((doc) => doc.id == template.shiftId).toList();
-      logger.d('Found ${matchingTemplates.length} matching templates for template shiftId: ${template.shiftId}');
+      final matchingTemplates =
+          templates.where((doc) => doc.id == template.shiftId).toList();
+      logger.d(
+        'Found ${matchingTemplates.length} matching templates for template shiftId: ${template.shiftId}',
+      );
       if (matchingTemplates.isNotEmpty) {
         templateData = matchingTemplates.first.data();
         debugPrint("Template data found for new entry: ${templateData.keys}");
       }
     }
 
-    if ((scheduleEntry != null || template != null) && templateData != null && shiftId != null) {
+    if ((scheduleEntry != null || template != null) &&
+        templateData != null &&
+        shiftId != null) {
       logger.d('Opening ShiftBottomSheet for shiftId: $shiftId');
-      final shiftName = templateData['shiftName'] ?? 'Unnamed Shift';
-      final defaultParLevels = Map<String, int>.from(templateData['staffingLevels'] ?? {});
-      final dayShiftKey = scheduleEntry?.dayShiftKey ?? '${DateFormat('yyyy-MM-dd').format(_selectedDate)}_$shiftId';
+      if (!mounted) return;
+      final shiftName = templateData['shiftName'] ?? l10n.scheduleUnnamedShift;
+      final defaultParLevels = Map<String, int>.from(
+        templateData['staffingLevels'] ?? {},
+      );
+      final dayShiftKey =
+          scheduleEntry?.dayShiftKey ??
+          '${DateFormat('yyyy-MM-dd').format(_selectedDate)}_$shiftId';
       final scheduleId =
-          scheduleEntry?.scheduleId ?? 'schedule_${DateFormat('yyyy-MM-dd').format(_selectedDate)}_$_selectedLocation';
+          scheduleEntry?.scheduleId ??
+          'schedule_${DateFormat('yyyy-MM-dd').format(_selectedDate)}_$_selectedLocation';
       final locationId = _selectedLocation ?? '';
 
       await showModalBottomSheet(
@@ -193,16 +230,19 @@ class _SchedulePageState extends State<SchedulePage> {
       if (templateData == null) {
         logger.d('templateData is null for shiftId: $shiftId');
       }
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Please create shift template first from admin dashboard')));
+      ).showSnackBar(SnackBar(content: Text(l10n.scheduleCreateTemplateFirst)));
     }
   }
 
   Future<void> _publishAll() async {
     if (_orgId == null || _selectedLocation == null) return;
+    final l10n = context.l10n;
 
     try {
+      final localeTag = Localizations.localeOf(context).toLanguageTag();
       final batch = FirestoreEnforcer.instance.batch();
       Map<String, List<Map<String, String>>> userAssignments = {};
       DateTime startDate = _visibleDays.first;
@@ -220,8 +260,12 @@ class _SchedulePageState extends State<SchedulePage> {
         batch.set(scheduleRef, {
           'id': scheduleId,
           'date': dayKey,
-          'startDate': Timestamp.fromDate(DateTime(day.year, day.month, day.day)),
-          'endDate': Timestamp.fromDate(DateTime(day.year, day.month, day.day, 23, 59, 59)),
+          'startDate': Timestamp.fromDate(
+            DateTime(day.year, day.month, day.day),
+          ),
+          'endDate': Timestamp.fromDate(
+            DateTime(day.year, day.month, day.day, 23, 59, 59),
+          ),
           'published': true,
           'organizationId': _orgId,
           'locationId': _selectedLocation,
@@ -246,8 +290,8 @@ class _SchedulePageState extends State<SchedulePage> {
             for (final userId in assignedUserIds) {
               userAssignments.putIfAbsent(userId, () => []);
               userAssignments[userId]!.add({
-                'date': DateFormat('MMM d, yyyy').format(day),
-                'shiftName': entry['shiftName'] ?? 'Unnamed Shift',
+                'date': DateFormat('MMM d, yyyy', localeTag).format(day),
+                'shiftName': entry['shiftName'] ?? l10n.scheduleUnnamedShift,
                 'startTime': entry['startTime'] ?? '',
                 'endTime': entry['endTime'] ?? '',
               });
@@ -259,38 +303,59 @@ class _SchedulePageState extends State<SchedulePage> {
       // Send in-app messages to users
       for (final userId in userAssignments.keys) {
         final assignments = userAssignments[userId]!;
-        final title =
-            'Your Schedule ${DateFormat('M/d/yy').format(startDate)} to ${DateFormat('M/d/yy').format(endDate)}';
-        final content = assignments
-            .map((a) => '${a['date']}: ${a['shiftName']} (${a['startTime']} - ${a['endTime']})')
-            .join('\n');
-        await FirestoreEnforcer.instance.collection('users').doc(userId).collection('messages').add({
-          'title': title,
-          'content': content,
-          'type': 'schedule',
-          'createdAt': FieldValue.serverTimestamp(),
-          'dismissed': false,
-          'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
-        });
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('All schedules published successfully!'), backgroundColor: Colors.green),
+        final title = l10n.scheduleMessageTitle(
+          DateFormat('M/d/yy', localeTag).format(startDate),
+          DateFormat('M/d/yy', localeTag).format(endDate),
         );
+        final content = assignments
+            .map(
+              (a) => l10n.scheduleMessageLine(
+                a['date'] ?? '',
+                a['shiftName'] ?? l10n.scheduleUnnamedShift,
+                a['startTime'] ?? '',
+                a['endTime'] ?? '',
+              ),
+            )
+            .join('\n');
+        await FirestoreEnforcer.instance
+            .collection('users')
+            .doc(userId)
+            .collection('messages')
+            .add({
+              'title': title,
+              'content': content,
+              'type': 'schedule',
+              'createdAt': FieldValue.serverTimestamp(),
+              'dismissed': false,
+              'expiresAt': Timestamp.fromDate(
+                DateTime.now().add(const Duration(days: 30)),
+              ),
+            });
       }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(l10n.schedulePublishAllSuccess),
+          backgroundColor: Colors.green,
+        ),
+      );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error publishing schedules: $e'), backgroundColor: Colors.red));
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(l10n.schedulePublishError(e.toString())),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
   Future<void> _publishDay(DateTime day) async {
     if (_orgId == null || _selectedLocation == null) return;
+    final l10n = context.l10n;
 
     try {
+      final localeTag = Localizations.localeOf(context).toLanguageTag();
       final dayKey = DateFormat('yyyy-MM-dd').format(day);
       final scheduleId = 'schedule_${dayKey}_$_selectedLocation';
 
@@ -304,8 +369,12 @@ class _SchedulePageState extends State<SchedulePage> {
           .set({
             'id': scheduleId,
             'date': dayKey,
-            'startDate': Timestamp.fromDate(DateTime(day.year, day.month, day.day)),
-            'endDate': Timestamp.fromDate(DateTime(day.year, day.month, day.day, 23, 59, 59)),
+            'startDate': Timestamp.fromDate(
+              DateTime(day.year, day.month, day.day),
+            ),
+            'endDate': Timestamp.fromDate(
+              DateTime(day.year, day.month, day.day, 23, 59, 59),
+            ),
             'published': true,
             'organizationId': _orgId,
             'locationId': _selectedLocation,
@@ -313,20 +382,25 @@ class _SchedulePageState extends State<SchedulePage> {
             'updatedAt': FieldValue.serverTimestamp(),
           }, SetOptions(merge: true));
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${DateFormat('MMM d').format(day)} schedule published!'),
-            backgroundColor: Colors.green,
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            l10n.scheduleDayPublished(
+              DateFormat('MMM d', localeTag).format(day),
+            ),
           ),
-        );
-      }
+          backgroundColor: Colors.green,
+        ),
+      );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error publishing schedule: $e'), backgroundColor: Colors.red));
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(l10n.scheduleDayPublishError(e.toString())),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -350,7 +424,12 @@ class _SchedulePageState extends State<SchedulePage> {
         .doc(scheduleId)
         .collection('entries')
         .snapshots()
-        .map((snap) => snap.docs.map((doc) => ScheduleEntryData.fromMap(doc.data(), doc.id)).toList());
+        .map(
+          (snap) =>
+              snap.docs
+                  .map((doc) => ScheduleEntryData.fromMap(doc.data(), doc.id))
+                  .toList(),
+        );
   }
 
   Stream<bool> _schedulePublishedStream(DateTime day) {
@@ -386,10 +465,16 @@ class _SchedulePageState extends State<SchedulePage> {
 
     // First try to get from entry's required roles
     if (entry.requiredRoles.isNotEmpty) {
-      recommendedTotal = entry.requiredRoles.values.fold<int>(0, (acc, val) => acc + val);
+      recommendedTotal = entry.requiredRoles.values.fold<int>(
+        0,
+        (acc, val) => acc + val,
+      );
     } else {
       // Fallback to shift template staffing levels
-      recommendedTotal = shift.staffingLevels.values.fold<int>(0, (acc, val) => acc + val);
+      recommendedTotal = shift.staffingLevels.values.fold<int>(
+        0,
+        (acc, val) => acc + val,
+      );
     }
 
     // If no staffing levels defined, default to basic logic
@@ -420,9 +505,15 @@ class _SchedulePageState extends State<SchedulePage> {
     int recommendedTotal = 0;
 
     if (entry.requiredRoles.isNotEmpty) {
-      recommendedTotal = entry.requiredRoles.values.fold<int>(0, (acc, val) => acc + val);
+      recommendedTotal = entry.requiredRoles.values.fold<int>(
+        0,
+        (acc, val) => acc + val,
+      );
     } else {
-      recommendedTotal = shift.staffingLevels.values.fold<int>(0, (acc, val) => acc + val);
+      recommendedTotal = shift.staffingLevels.values.fold<int>(
+        0,
+        (acc, val) => acc + val,
+      );
     }
 
     if (recommendedTotal == 0) {
@@ -445,9 +536,15 @@ class _SchedulePageState extends State<SchedulePage> {
     int recommendedTotal = 0;
 
     if (entry.requiredRoles.isNotEmpty) {
-      recommendedTotal = entry.requiredRoles.values.fold<int>(0, (acc, val) => acc + val);
+      recommendedTotal = entry.requiredRoles.values.fold<int>(
+        0,
+        (acc, val) => acc + val,
+      );
     } else {
-      recommendedTotal = shift.staffingLevels.values.fold<int>(0, (acc, val) => acc + val);
+      recommendedTotal = shift.staffingLevels.values.fold<int>(
+        0,
+        (acc, val) => acc + val,
+      );
     }
 
     if (recommendedTotal == 0) {
@@ -485,20 +582,28 @@ class _SchedulePageState extends State<SchedulePage> {
     }
 
     if (_orgId == null) {
-      return const Scaffold(body: Center(child: Text('Organization not found')));
+      return Scaffold(
+        body: Center(child: Text(context.l10n.scheduleOrganizationNotFound)),
+      );
     }
 
+    final localeTag = Localizations.localeOf(context).toLanguageTag();
     final isMobile = MediaQuery.of(context).size.width < 600;
     // Calculate day window for mobile
     final maxDays = 3;
     final totalDays = _visibleDays.length;
     int startIdx = _currentDayPage * maxDays;
-    int endIdx = (startIdx + maxDays) > totalDays ? totalDays : (startIdx + maxDays);
-    final daysToShow = isMobile ? _visibleDays.sublist(startIdx, endIdx) : _visibleDays;
+    int endIdx =
+        (startIdx + maxDays) > totalDays ? totalDays : (startIdx + maxDays);
+    final daysToShow =
+        isMobile ? _visibleDays.sublist(startIdx, endIdx) : _visibleDays;
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).primaryColor,
-        title: GenericAppBarContent(appBarTitle: 'Schedule Editor', userRole: _userRole),
+        title: GenericAppBarContent(
+          appBarTitle: context.l10n.scheduleEditorTitle,
+          userRole: _userRole,
+        ),
         automaticallyImplyLeading: false,
         iconTheme: const IconThemeData(color: Colors.white),
         // Removed Publish button from actions
@@ -511,11 +616,14 @@ class _SchedulePageState extends State<SchedulePage> {
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
-                // Location Selector
-                if (_locations.isNotEmpty)
+                // Location Selector - only show if multiple locations
+                if (_locations.length > 1)
                   DropdownButtonFormField<String>(
-                    value: _selectedLocation,
-                    decoration: const InputDecoration(labelText: 'Location', border: OutlineInputBorder()),
+                    initialValue: _selectedLocation,
+                    decoration: InputDecoration(
+                      labelText: context.l10n.scheduleLocationLabel,
+                      border: const OutlineInputBorder(),
+                    ),
                     items:
                         _locations.map((loc) {
                           return DropdownMenuItem<String>(
@@ -531,9 +639,13 @@ class _SchedulePageState extends State<SchedulePage> {
                   ),
                 const SizedBox(height: 16),
                 // Date Range Controls
-                const Text(
-                  'Pick a date range',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.grey),
+                Text(
+                  context.l10n.schedulePickDateRange,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Row(
@@ -543,8 +655,8 @@ class _SchedulePageState extends State<SchedulePage> {
                         icon: const Icon(Icons.calendar_today),
                         label: Text(
                           _selectedDateRange != null
-                              ? '${DateFormat('MMM d').format(_selectedDateRange!.start)} - ${DateFormat('MMM d').format(_selectedDateRange!.end)}'
-                              : 'Select Date Range',
+                              ? '${DateFormat('MMM d', localeTag).format(_selectedDateRange!.start)} - ${DateFormat('MMM d', localeTag).format(_selectedDateRange!.end)}'
+                              : context.l10n.scheduleSelectDateRange,
                         ),
                         onPressed: () => _selectDateRange(context),
                       ),
@@ -555,10 +667,13 @@ class _SchedulePageState extends State<SchedulePage> {
                         _buildNextSevenDays();
                         setState(() {
                           final today = DateTime.now();
-                          _selectedDateRange = DateTimeRange(start: today, end: today.add(const Duration(days: 6)));
+                          _selectedDateRange = DateTimeRange(
+                            start: today,
+                            end: today.add(const Duration(days: 6)),
+                          );
                         });
                       },
-                      child: const Text('Next 7 Days'),
+                      child: Text(context.l10n.scheduleNext7Days),
                     ),
                   ],
                 ),
@@ -578,7 +693,9 @@ class _SchedulePageState extends State<SchedulePage> {
                                 }
                                 : null,
                       ),
-                      Text('Days ${startIdx + 1}-$endIdx'),
+                      Text(
+                        context.l10n.scheduleDaysWindow(startIdx + 1, endIdx),
+                      ),
                       IconButton(
                         icon: const Icon(Icons.chevron_right),
                         onPressed:
@@ -599,7 +716,11 @@ class _SchedulePageState extends State<SchedulePage> {
           if (_selectedLocation != null && _visibleDays.isNotEmpty)
             Expanded(child: _buildScheduleGrid(daysToShow))
           else
-            const Expanded(child: Center(child: Text('Select a location and date range to view schedule'))),
+            Expanded(
+              child: Center(
+                child: Text(context.l10n.scheduleSelectLocationAndDateRange),
+              ),
+            ),
         ],
       ),
       floatingActionButton:
@@ -607,7 +728,7 @@ class _SchedulePageState extends State<SchedulePage> {
               ? FloatingActionButton.extended(
                 onPressed: _publishAll,
                 icon: const Icon(Icons.publish),
-                label: const Text('Publish Schedule'),
+                label: Text(context.l10n.schedulePublishSchedule),
               )
               : null,
     );
@@ -620,14 +741,22 @@ class _SchedulePageState extends State<SchedulePage> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     if (_orgId == null || _selectedLocation == null) {
-      return const Scaffold(body: Center(child: Text('Organization or location not set.')));
+      return Scaffold(
+        body: Center(
+          child: Text(context.l10n.scheduleOrganizationLocationMissing),
+        ),
+      );
     }
+    final localeTag = Localizations.localeOf(context).toLanguageTag();
     final userId = _userId;
     final days = _visibleDays;
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).primaryColor,
-        title: GenericAppBarContent(appBarTitle: 'My Schedule', userRole: _userRole),
+        title: GenericAppBarContent(
+          appBarTitle: context.l10n.scheduleMyTitle,
+          userRole: _userRole,
+        ),
         automaticallyImplyLeading: false,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
@@ -651,7 +780,10 @@ class _SchedulePageState extends State<SchedulePage> {
                     .get(),
             builder: (context, entrySnap) {
               if (entrySnap.connectionState == ConnectionState.waiting) {
-                return const Padding(padding: EdgeInsets.all(16.0), child: Center(child: CircularProgressIndicator()));
+                return const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Center(child: CircularProgressIndicator()),
+                );
               }
               final entries = entrySnap.data?.docs ?? [];
               final publishedEntries =
@@ -661,29 +793,42 @@ class _SchedulePageState extends State<SchedulePage> {
                   }).toList();
               if (publishedEntries.isEmpty) {
                 return ListTile(
-                  title: Text(DateFormat('EEE, MMM d').format(day)),
-                  subtitle: const Text('No published shifts.'),
+                  title: Text(DateFormat('EEE, MMM d', localeTag).format(day)),
+                  subtitle: Text(context.l10n.scheduleNoPublishedShifts),
                 );
               }
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 8.0,
+                      horizontal: 16.0,
+                    ),
                     child: Text(
-                      DateFormat('EEE, MMM d').format(day),
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      DateFormat('EEE, MMM d', localeTag).format(day),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
                     ),
                   ),
                   ...publishedEntries.map((doc) {
                     final data = doc.data() as Map<String, dynamic>;
-                    final shiftName = data['shiftName'] ?? 'Unnamed Shift';
+                    final shiftName =
+                        data['shiftName'] ?? context.l10n.scheduleUnnamedShift;
                     final startTime = data['startTime'] ?? '';
                     final endTime = data['endTime'] ?? '';
-                    final assignedUserIds = List<String>.from(data['assignedUserIds'] ?? []);
-                    final isAssigned = userId != null && assignedUserIds.contains(userId);
+                    final assignedUserIds = List<String>.from(
+                      data['assignedUserIds'] ?? [],
+                    );
+                    final isAssigned =
+                        userId != null && assignedUserIds.contains(userId);
                     return Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 4,
+                      ),
                       child: ListTile(
                         leading: Icon(
                           isAssigned ? Icons.check_circle : Icons.group,
@@ -694,15 +839,28 @@ class _SchedulePageState extends State<SchedulePage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text('$startTime - $endTime'),
-                            if (assignedUserIds.isNotEmpty) Text('Assigned: ${assignedUserIds.length}'),
-                            if (assignedUserIds.isNotEmpty) Text('Users: ${assignedUserIds.join(", ")}'),
+                            if (assignedUserIds.isNotEmpty)
+                              Text(
+                                context.l10n.scheduleAssignedCount(
+                                  assignedUserIds.length,
+                                ),
+                              ),
+                            if (assignedUserIds.isNotEmpty)
+                              Text(
+                                context.l10n.scheduleUsersLabel(
+                                  assignedUserIds.join(", "),
+                                ),
+                              ),
                           ],
                         ),
                         trailing:
                             isAssigned
-                                ? const Text(
-                                  'Assigned',
-                                  style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                                ? Text(
+                                  context.l10n.scheduleAssignedStatus,
+                                  style: TextStyle(
+                                    color: Colors.green,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 )
                                 : null,
                       ),
@@ -718,6 +876,7 @@ class _SchedulePageState extends State<SchedulePage> {
   }
 
   Widget _buildScheduleGrid([List<DateTime>? daysToDisplay]) {
+    final localeTag = Localizations.localeOf(context).toLanguageTag();
     final days = daysToDisplay ?? _visibleDays;
     return SingleChildScrollView(
       child: Column(
@@ -731,19 +890,24 @@ class _SchedulePageState extends State<SchedulePage> {
                 Container(
                   width: 120,
                   padding: const EdgeInsets.all(8),
-                  child: const Text('Shifts', style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: Text(
+                    context.l10n.scheduleShiftsHeader,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ),
                 // Day headers
                 ...days.map((day) {
                   return Expanded(
                     child: Container(
                       padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300)),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Text(
-                            DateFormat.E().format(day),
+                            DateFormat.E(localeTag).format(day),
                             style: GoogleFonts.comfortaa(
                               fontWeight: FontWeight.w700,
                               fontSize: 12,
@@ -751,8 +915,11 @@ class _SchedulePageState extends State<SchedulePage> {
                             ),
                           ),
                           Text(
-                            DateFormat.MMMd().format(day),
-                            style: GoogleFonts.comfortaa(fontSize: 10, color: HandsColors.white70),
+                            DateFormat.MMMd(localeTag).format(day),
+                            style: GoogleFonts.comfortaa(
+                              fontSize: 10,
+                              color: HandsColors.white70,
+                            ),
                           ),
                           // Publish status indicator
                           StreamBuilder<bool>(
@@ -763,15 +930,24 @@ class _SchedulePageState extends State<SchedulePage> {
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Icon(
-                                    isPublished ? Icons.check_circle : Icons.radio_button_unchecked,
+                                    isPublished
+                                        ? Icons.check_circle
+                                        : Icons.radio_button_unchecked,
                                     size: 12,
-                                    color: isPublished ? Colors.green : Colors.grey,
+                                    color:
+                                        isPublished
+                                            ? Colors.green
+                                            : Colors.grey,
                                   ),
                                   const SizedBox(width: 2),
                                   if (_isAdmin)
                                     GestureDetector(
                                       onTap: () => _publishDay(day),
-                                      child: Icon(Icons.publish, size: 12, color: Colors.blue.shade600),
+                                      child: Icon(
+                                        Icons.publish,
+                                        size: 12,
+                                        color: Colors.blue.shade600,
+                                      ),
                                     ),
                                 ],
                               );
@@ -788,21 +964,32 @@ class _SchedulePageState extends State<SchedulePage> {
           // Shifts Grid
           // Shift templates list with live updates (client-side filter)
           StreamBuilder<QuerySnapshot>(
-            stream: FirestoreEnforcer.instance.collection('organizations').doc(_orgId).collection('shifts').snapshots(),
+            stream:
+                FirestoreEnforcer.instance
+                    .collection('organizations')
+                    .doc(_orgId)
+                    .collection('shifts')
+                    .snapshots(),
             builder: (context, shiftSnapshot) {
               if (shiftSnapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
               if (shiftSnapshot.hasError) {
-                return Center(child: Text('Error loading shifts: ${shiftSnapshot.error}'));
+                return Center(
+                  child: Text(
+                    context.l10n.scheduleShiftTemplatesError(
+                      shiftSnapshot.error.toString(),
+                    ),
+                  ),
+                );
               }
               final snap = shiftSnapshot.data;
               if (snap == null || snap.docs.isEmpty) {
-                return const Center(
+                return Center(
                   child: Padding(
-                    padding: EdgeInsets.all(32),
+                    padding: const EdgeInsets.all(32),
                     child: Text(
-                      'No shift templates found for this location.\nCreate shift templates from the Admin Dashboard first.',
+                      context.l10n.scheduleNoShiftTemplates,
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -813,9 +1000,12 @@ class _SchedulePageState extends State<SchedulePage> {
                   snap.docs.map((doc) {
                     final data = (doc.data() ?? {}) as Map<String, dynamic>;
                     // Build activeDays list: prefer non-empty activeDays, otherwise fallback to days strings
-                    final List<dynamic> storedActive = data['activeDays'] as List<dynamic>? ?? [];
+                    final List<dynamic> storedActive =
+                        data['activeDays'] as List<dynamic>? ?? [];
                     final rawDays =
-                        storedActive.isNotEmpty ? storedActive : (data['days'] as List<dynamic>? ?? <dynamic>[]);
+                        storedActive.isNotEmpty
+                            ? storedActive
+                            : (data['days'] as List<dynamic>? ?? <dynamic>[]);
                     const nameMap = {
                       'Monday': DateTime.monday,
                       'Tuesday': DateTime.tuesday,
@@ -829,10 +1019,15 @@ class _SchedulePageState extends State<SchedulePage> {
                         rawDays
                             .map<int>((e) {
                               if (e is int) return e;
-                              if (e is String && nameMap.containsKey(e)) return nameMap[e]!;
+                              if (e is String && nameMap.containsKey(e)) {
+                                return nameMap[e]!;
+                              }
                               return int.tryParse(e.toString()) ?? 0;
                             })
-                            .where((d) => d >= DateTime.monday && d <= DateTime.sunday)
+                            .where(
+                              (d) =>
+                                  d >= DateTime.monday && d <= DateTime.sunday,
+                            )
                             .toList();
                     final raw =
                         Map<String, dynamic>.from(data)
@@ -861,13 +1056,19 @@ class _SchedulePageState extends State<SchedulePage> {
                                 children: [
                                   Text(
                                     shift.shiftName,
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   Text(
                                     '${shift.startTime} - ${shift.endTime}',
-                                    style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.grey.shade600,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -887,11 +1088,18 @@ class _SchedulePageState extends State<SchedulePage> {
                                   child: Container(
                                     margin: const EdgeInsets.all(2),
                                     decoration: BoxDecoration(
-                                      border: Border.all(color: Colors.grey.shade300),
+                                      border: Border.all(
+                                        color: Colors.grey.shade300,
+                                      ),
                                       color: Colors.grey.shade200,
                                       borderRadius: BorderRadius.circular(4),
                                     ),
-                                    child: const Center(child: Icon(Icons.block, color: Colors.grey)),
+                                    child: const Center(
+                                      child: Icon(
+                                        Icons.block,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
                                   ),
                                 );
                               }
@@ -900,8 +1108,13 @@ class _SchedulePageState extends State<SchedulePage> {
                                   stream: _shiftsForDayStream(day),
                                   builder: (context, snapshot) {
                                     final entries = snapshot.data ?? [];
-                                    final matchingEntries = entries.where((e) => e.shiftId == shift.shiftId);
-                                    final entry = matchingEntries.isNotEmpty ? matchingEntries.first : null;
+                                    final matchingEntries = entries.where(
+                                      (e) => e.shiftId == shift.shiftId,
+                                    );
+                                    final entry =
+                                        matchingEntries.isNotEmpty
+                                            ? matchingEntries.first
+                                            : null;
                                     return GestureDetector(
                                       onTap: () {
                                         if (entry != null) {
@@ -916,40 +1129,70 @@ class _SchedulePageState extends State<SchedulePage> {
                                       child: Container(
                                         margin: const EdgeInsets.all(2),
                                         decoration: BoxDecoration(
-                                          border: Border.all(color: Colors.grey.shade300),
-                                          color: _getShiftCardColor(entry, shift),
-                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: Colors.grey.shade300,
+                                          ),
+                                          color: _getShiftCardColor(
+                                            entry,
+                                            shift,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            4,
+                                          ),
                                         ),
                                         child: Center(
                                           child:
                                               entry != null
                                                   ? Column(
-                                                    mainAxisAlignment: MainAxisAlignment.center,
+                                                    mainAxisAlignment:
+                                                        MainAxisAlignment
+                                                            .center,
                                                     children: [
                                                       Row(
-                                                        mainAxisAlignment: MainAxisAlignment.center,
+                                                        mainAxisAlignment:
+                                                            MainAxisAlignment
+                                                                .center,
                                                         children: [
                                                           Text(
                                                             '${entry.assignedUserIds.length}',
                                                             style: TextStyle(
-                                                              fontWeight: FontWeight.bold,
-                                                              color: _getTextColor(entry, shift),
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold,
+                                                              color:
+                                                                  _getTextColor(
+                                                                    entry,
+                                                                    shift,
+                                                                  ),
                                                             ),
                                                           ),
-                                                          const SizedBox(width: 2),
-                                                          _getStaffingIcon(entry, shift),
+                                                          const SizedBox(
+                                                            width: 2,
+                                                          ),
+                                                          _getStaffingIcon(
+                                                            entry,
+                                                            shift,
+                                                          ),
                                                         ],
                                                       ),
                                                       Text(
-                                                        'assigned',
+                                                        context
+                                                            .l10n
+                                                            .scheduleAssignedCell,
                                                         style: TextStyle(
                                                           fontSize: 10,
-                                                          color: _getTextColor(entry, shift),
+                                                          color: _getTextColor(
+                                                            entry,
+                                                            shift,
+                                                          ),
                                                         ),
                                                       ),
                                                     ],
                                                   )
-                                                  : Icon(Icons.add, color: Colors.grey.shade400),
+                                                  : Icon(
+                                                    Icons.add,
+                                                    color: Colors.grey.shade400,
+                                                  ),
                                         ),
                                       ),
                                     );

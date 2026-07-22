@@ -2,142 +2,281 @@
 <html>
 <head>
   <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
+    The value below is injected by flutter build, do not touch.
   -->
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
-
-  <!-- Renderer: default (auto). Use ?r=html or ?r=ck to force. -->
-  <script>
-    (function(){
-      var params = new URLSearchParams(location.search);
-      var r = params.get('r');
-      if (r === 'html' || r === 'ck' || r === 'canvaskit') {
-        var m = document.createElement('meta');
-        m.name = 'flutter-renderer';
-        m.content = (r === 'ck' ? 'canvaskit' : r);
-        document.head.appendChild(m);
-        console.log('[BOOT] Forcing renderer = '+m.content);
-      } else {
-        console.log('[BOOT] Renderer auto');
-      }
-    })();
-  </script>
+  <meta name="description" content="Plan with Hands - Task management made simple">
+  <meta name="flutter-web-renderer" content="html" />
+  
+  <!-- Content Security Policy for Stripe, Firebase, and Flutter Web -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://js.stripe.com https://www.gstatic.com 'unsafe-inline' 'unsafe-eval'; frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://firebasestorage.googleapis.com https://view.officeapps.live.com; child-src 'self' https://firebasestorage.googleapis.com https://view.officeapps.live.com; connect-src 'self' blob: https://api.stripe.com https://r.stripe.com https://m.stripe.network https://fonts.gstatic.com https://www.gstatic.com https://firebase.googleapis.com https://firestore.googleapis.com https://firebaseinstallations.googleapis.com https://firebaseremoteconfig.googleapis.com https://firebasestorage.googleapis.com https://fcm.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://us-central1-plan-with-hands.cloudfunctions.net https://us-central1-planwithhands.cloudfunctions.net https://fcmregistrations.googleapis.com; img-src 'self' data: blob: https://q.stripe.com https://m.stripe.network https://firebasestorage.googleapis.com; style-src 'self' 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com;">
 
   <!-- iOS meta tags & icons -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="hands_clean">
+  <meta name="apple-mobile-web-app-title" content="Plan with Hands">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
+  <!-- Favicon - Multiple formats for better browser support -->
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/Icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="icons/Icon-512.png">
+  
+  <title>Plan with Hands — Run every shift with confidence</title>
 
-  <title>hands_clean</title>
+  <!-- Canonical -->
+  <link rel="canonical" href="https://planwithhands.com/" />
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Plan with Hands" />
+  <meta property="og:title" content="Plan with Hands — Run every shift with confidence" />
+  <meta property="og:description" content="Digital checklists, team comms, and training docs in one place." />
+  <meta property="og:url" content="https://planwithhands.com/" />
+  <meta property="og:image" content="/assets/images/20250930_0853_Minimalist Branding Design_remix_01k6dasfh1eayaax64vy5hmgsb.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Plan with Hands — Run every shift with confidence" />
+
+  <!-- Square fallback for platforms that prefer 1:1 -->
+  <meta property="og:image" content="/assets/images/20250930_0853_SquarePreview.png" />
+  <meta property="og:image:width" content="1080" />
+  <meta property="og:image:height" content="1080" />
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Plan with Hands — Run every shift with confidence" />
+  <meta name="twitter:description" content="Digital checklists, team comms, and training docs in one place." />
+  <meta name="twitter:image" content="/assets/images/20250930_0853_Minimalist Branding Design_remix_01k6dasfh1eayaax64vy5hmgsb.png" />
+
+  <!-- Theme color -->
+  <meta name="theme-color" content="#0F1113" />
   <link rel="manifest" href="manifest.json">
-</head>
-<body>
-  <!-- Removed always-on env probe box (was here) to clean up UI -->
-  <!-- Diagnostic instrumentation: logs progress & surfaces errors directly on page.
-       Opt-in with ?diag=1 so normal users are unaffected. -->
+
+  <!-- Stripe.js -->
+  <script src="https://js.stripe.com/v3/"></script>
+
+  <!-- Firebase module preloader with compat fallback for environments where dynamic import fails -->
   <script>
-    (function(){
-      // Opt-in: only run the diagnostic pane when the query param diag=1 is present.
-      if (!window.location.search || window.location.search.indexOf('diag=1') === -1) {
-        return;
+    (function() {
+      // Attempt to dynamic-import the modern firebase modules used by the app.
+      // If this fails (CSP or network), fall back to loading the compat CDN bundles.
+      var tried = false;
+      function loadCompat() {
+        if (tried) return; tried = true;
+        var s1 = document.createElement('script');
+        s1.src = 'https://www.gstatic.com/firebasejs/11.9.1/firebase-app-compat.js';
+        s1.async = false;
+        document.head.appendChild(s1);
+        var libs = ['auth', 'firestore', 'functions', 'messaging', 'storage'];
+        libs.forEach(function(lib) {
+          var s = document.createElement('script');
+          s.src = 'https://www.gstatic.com/firebasejs/11.9.1/firebase-' + lib + '-compat.js';
+          s.async = false;
+          document.head.appendChild(s);
+        });
       }
-      function ensurePane(){
-        if(!document.getElementById('diag')){
-          const pre=document.createElement('pre');
-          pre.id='diag';
-          pre.style.cssText='font:12px monospace;white-space:pre-wrap;padding:8px;margin:0;background:#111;color:#0f0;max-height:50vh;overflow:auto';
-          document.body.prepend(pre);
-        }
-        return document.getElementById('diag');
+
+      // Try a module import to warm the cache. Some browsers/environments block module fetches.
+      try {
+        import('https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js')
+          .then(function() {
+            // good — modules available
+          })
+          .catch(function(e) {
+            // dynamic import failed; fallback to compat bundle
+            console.warn('Firebase module import failed, falling back to compat:', e);
+            loadCompat();
+          });
+      } catch (e) {
+        // synchronous failures (older browsers) — use compat
+        console.warn('Firebase module import threw, loading compat bundle:', e);
+        loadCompat();
       }
-      function log(msg){
-        const el=ensurePane();
-        const ts=new Date().toISOString().split('T')[1].replace('Z','');
-        el.textContent += '['+ts+'] '+msg+'\n';
-        console.log('[DIAG]',msg);
-      }
-      // Expose for Dart code (optional) and mirror selected console logs.
-      window.__pushDiag = log;
-      (function wrapConsole(){
-        const orig = console.log;
-        console.log = function(){
-          try {
-            const msg = Array.from(arguments).join(' ');
-            if (/\[(APP|FirebaseInitializer)/.test(msg)) { log(msg); }
-          } catch(_) {}
-          return orig.apply(this, arguments);
-        };
-      })();
-      window.onerror=function(m,src,l,c,e){
-        log('ERROR: '+m+' @'+src+':'+l+':'+c+'\n'+(e&&e.stack||''));
-      };
-      window.addEventListener('unhandledrejection',e=>{log('UNHANDLED PROMISE: '+e.reason);});
-      log('Inline diagnostic start');
-      log('UserAgent: '+navigator.userAgent);
-      log('Platform: '+navigator.platform+' | Vendor: '+navigator.vendor);
-      log('CookiesEnabled: '+navigator.cookieEnabled+' | SW: '+('serviceWorker' in navigator));
-      // Periodically check for Flutter attaching a glass pane
-      let checks=0; const iv=setInterval(()=>{
-        checks++;
-  // Fixed selector (removed stray closing parenthesis) and narrowed canvas match to avoid SyntaxError spam on Safari.
-  const pane=document.querySelector('flt-glass-pane,#flt-glass-pane,meta[name=flutter],body > canvas');
-        if(pane){
-          log('Detected Flutter root element: '+pane.tagName);
-          clearInterval(iv);
-        } else if(checks===10){
-          log('Still no Flutter root after ~5s');
-        } else if(checks===30){
-          log('No Flutter root after ~15s — likely renderer/init failure');
-          clearInterval(iv);
-        }
-      },500);
     })();
   </script>
-  <!-- Cache-busting query param to defeat any stale intermediate caches -->
-  <script src="flutter_bootstrap.js?v=diag1" async></script>
+
+  <!-- Custom CSS to force white background for Stripe Elements -->
+  <style>
+    /* Force white background and black text for all Stripe elements */
+    :root {
+      /* Tune this to scale card input text and tap targets */
+      --stripe-scale: 1.25;
+    }
+    iframe[name^="__privateStripeFrame"],
+    iframe[src*="js.stripe.com"],
+    .__PrivateStripeElement,
+    .__PrivateStripeElement iframe,
+    .ElementsApp,
+    .ElementsApp input,
+    .PaymentElement,
+    .CardNumberField-input-wrapper,
+    .CardField,
+    .CardField-input-wrapper {
+      background-color: #ffffff !important;
+      color: #000000 !important;
+      border: none !important;
+      outline: none !important;
+      box-shadow: none !important;
+    }
+    
+    /* Stripe Elements styling overrides */
+    .StripeElement {
+      background-color: white !important;
+      color: black !important;
+      border: none !important;
+      padding: 0 !important;
+      font-size: calc(16px * var(--stripe-scale)) !important;
+      line-height: 1.4 !important;
+    }
+    
+    .StripeElement--focus {
+      background-color: white !important;
+      color: black !important;
+    }
+    
+    .StripeElement--invalid {
+      background-color: white !important;
+      color: #dc3545 !important;
+    }
+    
+    /* Platform view container styling */
+    flt-platform-view {
+      background-color: white !important;
+    }
+    
+    /* Flutter CardField specific styling */
+    div[data-testid="card-number-element"],
+    div[data-testid="card-expiry-element"], 
+    div[data-testid="card-cvc-element"] {
+      background-color: white !important;
+      color: black !important;
+      transform-origin: left center !important;
+      transform: scale(var(--stripe-scale)) !important;
+    }
+
+    /* Reduce any default vertical paddings that may render as bars */
+    .__PrivateStripeElement, .__PrivateStripeElement iframe {
+      padding-top: 0 !important;
+      padding-bottom: 0 !important;
+      margin-top: 0 !important;
+      margin-bottom: 0 !important;
+    }
+
+    /* Ensure inner inputs scale as well */
+    .ElementsApp input, .ElementsApp select, .ElementsApp textarea {
+      font-size: calc(16px * var(--stripe-scale)) !important;
+      line-height: 1.4 !important;
+    }
+
+    /* Optional: dark appearance (not enabled by default)
+    .StripeElement, .ElementsApp, .CardField, .CardField-input-wrapper, div[data-testid="card-number-element"],
+    div[data-testid="card-expiry-element"], div[data-testid="card-cvc-element"] {
+      background-color: #1a1a1a !important;
+      color: #ffffff !important;
+    }
+    */
+  </style>
+
+</head>
+<body>
+  <script src="flutter_bootstrap.js" async></script>
+
+  <!-- Service Worker Unregistration Script -->
+  <!-- Version check: show reload banner when a new version is deployed -->
   <script>
-    // Watchdog: if Flutter hasn't added a root element within 20s, inject a minimal fallback UI.
-    (function(){
-      var start = Date.now();
-      var fired = false;
-      function hasFlutter(){
-        return document.querySelector('flt-glass-pane,#flt-glass-pane,body > canvas');
+    (function() {
+      var currentVersion = null;
+      var checkIntervalMs = 1000 * 60; // 60s
+
+      function fetchVersion() {
+        fetch('/version.json', {cache: 'no-store'})
+          .then(function(resp) { if (!resp.ok) throw new Error('no version'); return resp.json(); })
+          .then(function(data) {
+            if (!currentVersion) {
+              currentVersion = data.version || data.timestamp || JSON.stringify(data);
+              return;
+            }
+            var newVersion = data.version || data.timestamp || JSON.stringify(data);
+            if (newVersion !== currentVersion) {
+              showReloadBanner();
+            }
+          })
+          .catch(function() {
+            // Ignore fetch errors; will retry on next interval
+          });
       }
-      function tick(){
-        if (fired) return;
-        if (hasFlutter()) { fired = true; return; }
-        if (Date.now() - start > 20000) {
-          fired = true;
-          var div = document.createElement('div');
-          div.style.cssText='position:fixed;top:0;left:0;right:0;padding:12px;background:#600;color:#fff;font:14px sans-serif;z-index:9998';
-          div.innerHTML = 'App failed to load (startup watchdog). Tap to retry.';
-          div.onclick = function(){ location.reload(); };
-          document.body.appendChild(div);
-          console.log('[WATCHDOG] Injected fallback banner');
-        } else {
-          setTimeout(tick, 500);
-        }
+
+      function showReloadBanner() {
+        if (document.getElementById('hands-reload-banner')) return;
+        var div = document.createElement('div');
+        div.id = 'hands-reload-banner';
+        div.style.position = 'fixed';
+        div.style.left = '0';
+        div.style.right = '0';
+        div.style.bottom = '0';
+        div.style.background = '#323232';
+        div.style.color = 'white';
+        div.style.padding = '12px 16px';
+        div.style.display = 'flex';
+        div.style.justifyContent = 'space-between';
+        div.style.alignItems = 'center';
+        div.style.zIndex = '999999';
+        div.style.boxShadow = '0 -2px 10px rgba(0,0,0,0.2)';
+
+        var text = document.createElement('div');
+        text.innerText = 'A new version of the app is available.';
+        div.appendChild(text);
+
+        var btns = document.createElement('div');
+        var reloadBtn = document.createElement('button');
+        reloadBtn.innerText = 'Reload';
+        reloadBtn.style.marginRight = '8px';
+        reloadBtn.style.background = '#ff7043';
+        reloadBtn.style.border = 'none';
+        reloadBtn.style.color = 'white';
+        reloadBtn.style.padding = '8px 12px';
+        reloadBtn.style.borderRadius = '6px';
+        reloadBtn.onclick = function() { window.location.reload(true); };
+
+        var dismissBtn = document.createElement('button');
+        dismissBtn.innerText = 'Dismiss';
+        dismissBtn.style.background = 'transparent';
+        dismissBtn.style.border = '1px solid rgba(255,255,255,0.2)';
+        dismissBtn.style.color = 'white';
+        dismissBtn.style.padding = '8px 12px';
+        dismissBtn.style.borderRadius = '6px';
+        dismissBtn.onclick = function() { document.body.removeChild(div); };
+
+        btns.appendChild(reloadBtn);
+        btns.appendChild(dismissBtn);
+        div.appendChild(btns);
+
+        document.body.appendChild(div);
       }
-      setTimeout(tick, 500);
+
+      // Initial fetch and periodic polling
+      fetchVersion();
+      setInterval(fetchVersion, checkIntervalMs);
     })();
+  </script>
+  <script>
+    // Do NOT register any service worker
+    if ('serviceWorker' in navigator) {
+      // Unregister any previously installed SW so users get fresh files
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        regs.forEach(reg => reg.unregister());
+      }).catch(()=>{});
+      // Optional: clear old caches created by prior SWs
+      if (window.caches && caches.keys) {
+        caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
+      }
+    }
   </script>
 </body>
 </html>

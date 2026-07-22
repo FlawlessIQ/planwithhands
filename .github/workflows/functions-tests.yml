@@ -9,23 +9,28 @@ on:
 jobs:
   functions-tests:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: functions
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Use Node.js 18
+      - name: Use Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
 
-      - name: Install root dependencies
-        run: |
-          cd functions
-          npm ci
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Run functions tests under Firestore emulator
-        run: |
-          cd functions
-          npx firebase emulators:exec --only firestore "npm test"
+        run: npm run test:emulator
         env:
-          FIREBASE_PROJSCT: 'demo'
+          FIREBASE_PROJECT: demo

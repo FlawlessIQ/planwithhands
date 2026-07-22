@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../theme/theme.dart';
+import 'hands_bottom_sheet.dart';
 
 class HandsPrimaryButton extends StatelessWidget {
   final String text;
@@ -26,55 +27,69 @@ class HandsPrimaryButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: width,
-      height: height ?? 48,
+      height: height ?? 42,
       child: ElevatedButton(
         onPressed: isLoading ? null : onPressed,
         style: ButtonStyle(
-          backgroundColor: WidgetStateProperty.resolveWith<Color>((Set<WidgetState> states) {
+          backgroundColor: WidgetStateProperty.resolveWith<Color>((states) {
             if (states.contains(WidgetState.disabled)) {
-              return HandsColors.white30;
+              return HandsModalTokens.border;
             }
             return HandsColors.handsOrange;
           }),
           foregroundColor: WidgetStateProperty.all<Color>(HandsColors.white),
           shape: WidgetStateProperty.all<RoundedRectangleBorder>(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(
+                HandsModalTokens.compactControlRadius,
+              ),
+            ),
           ),
-          overlayColor: WidgetStateProperty.all<Color>(HandsColors.white.withOpacity(0.1)),
+          overlayColor: WidgetStateProperty.all<Color>(
+            Colors.white.withValues(alpha: 0.08),
+          ),
           padding: WidgetStateProperty.all<EdgeInsets>(
-            padding ?? const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+            padding ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           ),
           textStyle: WidgetStateProperty.all<TextStyle>(
-            GoogleFonts.comfortaa(fontWeight: FontWeight.bold, fontSize: 14, letterSpacing: 1.5),
+            GoogleFonts.inter(
+              fontWeight: FontWeight.w600,
+              fontSize: 13.5,
+              letterSpacing: -0.1,
+            ),
           ),
-          elevation: WidgetStateProperty.resolveWith<double>((Set<WidgetState> states) {
-            if (states.contains(WidgetState.pressed)) return 8;
-            if (states.contains(WidgetState.hovered)) return 6;
-            return 4;
-          }),
-          shadowColor: WidgetStateProperty.all<Color>(Colors.black.withOpacity(0.3)),
+          elevation: WidgetStateProperty.all<double>(0),
         ),
         child:
             isLoading
                 ? const SizedBox(
-                  height: 20,
-                  width: 20,
+                  height: 16,
+                  width: 16,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(HandsColors.white),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      HandsColors.white,
+                    ),
                   ),
                 )
                 : Row(
                   mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    if (icon != null) ...[Icon(icon, size: 18), const SizedBox(width: 8)],
+                    if (icon != null) ...[
+                      Icon(icon, size: 16),
+                      const SizedBox(width: 8),
+                    ],
                     Flexible(
                       child: Text(
-                        text.toUpperCase(),
-                        style: GoogleFonts.comfortaa(fontWeight: FontWeight.bold, fontSize: 14, letterSpacing: 1.5),
+                        text,
+                        style: GoogleFonts.inter(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13.5,
+                          letterSpacing: -0.1,
+                        ),
                         textAlign: TextAlign.center,
-                        maxLines: 2,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -109,43 +124,56 @@ class HandsSecondaryButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: width,
-      height: height ?? 48,
+      height: height ?? 42,
       child: OutlinedButton(
         onPressed: isLoading ? null : onPressed,
         style: ButtonStyle(
-          backgroundColor: WidgetStateProperty.all<Color>(Colors.transparent),
-          foregroundColor: WidgetStateProperty.resolveWith<Color>((Set<WidgetState> states) {
+          backgroundColor: WidgetStateProperty.all<Color>(
+            HandsModalTokens.surfaceMuted,
+          ),
+          foregroundColor: WidgetStateProperty.resolveWith<Color>((states) {
             if (states.contains(WidgetState.disabled)) {
-              return HandsColors.white30;
+              return HandsModalTokens.textSubtle;
             }
-            return HandsColors.handsOrange;
+            return HandsModalTokens.text;
           }),
-          side: WidgetStateProperty.resolveWith<BorderSide>((Set<WidgetState> states) {
+          side: WidgetStateProperty.resolveWith<BorderSide>((states) {
             if (states.contains(WidgetState.disabled)) {
-              return const BorderSide(color: HandsColors.white30, width: 2);
+              return const BorderSide(color: HandsModalTokens.border);
             }
-            return const BorderSide(color: HandsColors.handsOrange, width: 2);
+            return const BorderSide(color: HandsModalTokens.border);
           }),
           shape: WidgetStateProperty.all<RoundedRectangleBorder>(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(
+                HandsModalTokens.compactControlRadius,
+              ),
+            ),
           ),
-          overlayColor: WidgetStateProperty.all<Color>(HandsColors.handsOrange.withOpacity(0.1)),
+          overlayColor: WidgetStateProperty.all<Color>(
+            HandsColors.handsOrange.withValues(alpha: 0.08),
+          ),
           padding: WidgetStateProperty.all<EdgeInsets>(
-            padding ?? const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+            padding ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           ),
           textStyle: WidgetStateProperty.all<TextStyle>(
-            GoogleFonts.comfortaa(fontWeight: FontWeight.bold, fontSize: 14, letterSpacing: 1.5),
+            GoogleFonts.inter(
+              fontWeight: FontWeight.w600,
+              fontSize: 13.5,
+              letterSpacing: -0.1,
+            ),
           ),
+          elevation: WidgetStateProperty.all<double>(0),
         ),
         child:
             isLoading
-                ? SizedBox(
-                  height: 20,
-                  width: 20,
+                ? const SizedBox(
+                  height: 16,
+                  width: 16,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
                     valueColor: AlwaysStoppedAnimation<Color>(
-                      onPressed != null ? HandsColors.handsOrange : HandsColors.white30,
+                      HandsColors.white,
                     ),
                   ),
                 )
@@ -153,10 +181,20 @@ class HandsSecondaryButton extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    if (icon != null) ...[Icon(icon, size: 18), const SizedBox(width: 8)],
-                    Text(
-                      text.toUpperCase(),
-                      style: GoogleFonts.comfortaa(fontWeight: FontWeight.bold, fontSize: 14, letterSpacing: 1.5),
+                    if (icon != null) ...[
+                      Icon(icon, size: 16),
+                      const SizedBox(width: 8),
+                    ],
+                    Flexible(
+                      child: Text(
+                        text,
+                        style: GoogleFonts.inter(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13.5,
+                          letterSpacing: -0.1,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ],
                 ),
@@ -183,40 +221,55 @@ class HandsTextButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final resolvedColor = textColor ?? HandsColors.handsOrange;
     return TextButton(
       onPressed: isLoading ? null : onPressed,
       style: ButtonStyle(
-        foregroundColor: WidgetStateProperty.resolveWith<Color>((Set<WidgetState> states) {
+        foregroundColor: WidgetStateProperty.resolveWith<Color>((states) {
           if (states.contains(WidgetState.disabled)) {
-            return HandsColors.white30;
+            return HandsModalTokens.textSubtle;
           }
-          return textColor ?? HandsColors.handsOrange;
+          return resolvedColor;
         }),
-        overlayColor: WidgetStateProperty.all<Color>((textColor ?? HandsColors.handsOrange).withOpacity(0.1)),
+        overlayColor: WidgetStateProperty.all<Color>(
+          resolvedColor.withValues(alpha: 0.08),
+        ),
         textStyle: WidgetStateProperty.all<TextStyle>(
-          GoogleFonts.comfortaa(fontWeight: FontWeight.w600, fontSize: 14, letterSpacing: 1.0),
+          GoogleFonts.inter(
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            letterSpacing: -0.05,
+          ),
+        ),
+        padding: WidgetStateProperty.all<EdgeInsets>(
+          const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         ),
       ),
       child:
           isLoading
               ? SizedBox(
-                height: 20,
-                width: 20,
+                height: 16,
+                width: 16,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    onPressed != null ? (textColor ?? HandsColors.handsOrange) : HandsColors.white30,
-                  ),
+                  valueColor: AlwaysStoppedAnimation<Color>(resolvedColor),
                 ),
               )
               : Row(
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  if (icon != null) ...[Icon(icon, size: 18), const SizedBox(width: 8)],
+                  if (icon != null) ...[
+                    Icon(icon, size: 16),
+                    const SizedBox(width: 8),
+                  ],
                   Text(
-                    text.toUpperCase(),
-                    style: GoogleFonts.comfortaa(fontWeight: FontWeight.w600, fontSize: 14, letterSpacing: 1.0),
+                    text,
+                    style: GoogleFonts.inter(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      letterSpacing: -0.05,
+                    ),
                   ),
                 ],
               ),

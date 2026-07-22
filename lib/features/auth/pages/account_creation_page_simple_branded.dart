@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hands_app/routing/routes.dart';
-import 'package:hands_app/services/stripe_service.dart';
-import 'package:hands_app/services/pricing_service.dart';
 import 'package:hands_app/config/feature_flags.dart';
 import 'package:flutter/services.dart';
 import 'package:hands_app/global_widgets/hands_icon.dart';
@@ -13,14 +12,22 @@ import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'dart:io';
+import 'package:hands_app/utils/app_platform.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
+import 'package:hands_app/widgets/hands_text_field.dart';
+import 'package:hands_app/services/invite_service.dart';
 
 class SimpleSignUpPage extends StatefulWidget {
   final String? email;
   final String? organizationId;
   final String? token;
 
-  const SimpleSignUpPage({super.key, this.email, this.organizationId, this.token});
+  const SimpleSignUpPage({
+    super.key,
+    this.email,
+    this.organizationId,
+    this.token,
+  });
 
   @override
   SimpleSignUpPageState createState() => SimpleSignUpPageState();
@@ -36,30 +43,27 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
 
   // Form controllers
   final TextEditingController businessNameController = TextEditingController();
-  final TextEditingController numberOfEmployeesController = TextEditingController();
+  final TextEditingController numberOfEmployeesController =
+      TextEditingController();
   // New: locations input controller
   final TextEditingController _locCtrl = TextEditingController(text: '1');
   final TextEditingController firstNameController = TextEditingController();
   final TextEditingController lastNameController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
-  final TextEditingController confirmPasswordController = TextEditingController();
+  final TextEditingController confirmPasswordController =
+      TextEditingController();
 
   // Form state
   String? businessType;
-  String? userRole;
   bool agreeTerms = false;
   bool passwordVisible = false;
+  bool confirmPasswordVisible = false;
+  String _preferredLanguageCode = 'en';
+  Map<String, dynamic> _signupAttribution = const {};
   // Pricing/state
   int _locations = 1; // min 1
   int? _approxEmployees; // optional
-  bool _isAnnual = false; // billing period
-
-  // Convert string role to integer for storage
-  int _getRoleAsInt() {
-    // Always return 2 (Admin) for full access since they are paying customers
-    return 2; // Admin - full access to all features
-  }
 
   // Removed legacy tiered pricing mapping
 
@@ -120,6 +124,13 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
   @override
   void initState() {
     super.initState();
+    final deviceLanguage =
+        WidgetsBinding.instance.platformDispatcher.locale.languageCode;
+    if (deviceLanguage == 'es' || deviceLanguage == 'pt') {
+      _preferredLanguageCode = deviceLanguage;
+    }
+    _signupAttribution = _readSignupAttribution();
+
     // Pre-fill email if provided from invitation
     if (widget.email != null) {
       emailController.text = widget.email ?? '';
@@ -148,15 +159,79 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
 
   // Removed legacy pricing UI helpers
 
+  Map<String, dynamic> _readSignupAttribution() {
+    if (!kIsWeb) return const {};
+    final uri = Uri.base;
+    final query = uri.queryParameters;
+    final attribution = <String, dynamic>{
+      'landingUrl': uri.toString(),
+      'path': uri.path,
+      'capturedAt': DateTime.now().toIso8601String(),
+    };
+
+    void addIfPresent(String outputKey, String queryKey) {
+      final value = query[queryKey]?.trim();
+      if (value != null && value.isNotEmpty) {
+        attribution[outputKey] =
+            value.length > 240 ? value.substring(0, 240) : value;
+      }
+    }
+
+    addIfPresent('source', 'src');
+    addIfPresent('source', 'source');
+    addIfPresent('referrer', 'ref');
+    addIfPresent('marketingLandingUrl', 'landing_url');
+    addIfPresent('utmSource', 'utm_source');
+    addIfPresent('utmMedium', 'utm_medium');
+    addIfPresent('utmCampaign', 'utm_campaign');
+    addIfPresent('utmTerm', 'utm_term');
+    addIfPresent('utmContent', 'utm_content');
+
+    return attribution;
+  }
+
   Future<void> _createAccount() async {
     if (_formKey.currentState?.validate() != true) {
       return;
     }
 
+    if (widget.organizationId == null) {
+      try {
+        final inviteLookup = await InviteService.lookupInviteByEmail(
+          emailController.text.trim(),
+          logMatchEvent: true,
+          source: 'signup_create_account',
+        );
+        if (inviteLookup['hasActiveInvite'] == true) {
+          if (!mounted) return;
+          final inviteId = inviteLookup['inviteId']?.toString();
+          final orgName = inviteLookup['orgName']?.toString() ?? 'your team';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'This email already has an invite for $orgName. Finish that invite instead of creating a new account.',
+              ),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          if (inviteId != null && inviteId.isNotEmpty) {
+            context.go('${AppRoutes.welcomePage.path}?inviteId=$inviteId');
+          }
+          return;
+        }
+      } catch (e) {
+        logger.w('Invite lookup failed during signup; continuing: $e');
+      }
+    }
+
     // If it's a new organization sign-up, check for terms agreement
     if (widget.organizationId == null && !agreeTerms) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('You must agree to the terms and conditions.'), backgroundColor: Colors.red),
+        const SnackBar(
+          content: Text('You must agree to the terms and conditions.'),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
@@ -174,9 +249,12 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
     } catch (e) {
       logger.e('Error creating account: $e', e);
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error: ${e.toString()}'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_friendlySignupError(e)),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     } finally {
       if (mounted) {
@@ -185,23 +263,40 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
     }
   }
 
+  String _friendlySignupError(Object error) {
+    if (error is FirebaseFunctionsException) {
+      return error.message ??
+          'We could not create the account. Please try again.';
+    }
+    if (error is FirebaseAuthException) {
+      return error.message ?? 'We could not sign you in. Please try again.';
+    }
+    return 'We could not finish setup: $error';
+  }
+
   Future<void> _joinExistingOrganization() async {
     // Create user with Firebase Auth
-    final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-      email: emailController.text.trim(),
-      password: passwordController.text,
-    );
+    final credential = await FirebaseAuth.instance
+        .createUserWithEmailAndPassword(
+          email: emailController.text.trim(),
+          password: passwordController.text,
+        );
     final user = credential.user;
     if (user == null) throw Exception('Failed to create user');
 
     // Update user profile
-    await user.updateDisplayName('${firstNameController.text} ${lastNameController.text}');
+    await user.updateDisplayName(
+      '${firstNameController.text} ${lastNameController.text}',
+    );
 
     // Find the user document created by the admin
     final userQuery =
         await FirestoreEnforcer.instance
             .collection('users')
-            .where('email', isEqualTo: emailController.text.trim().toLowerCase())
+            .where(
+              'email',
+              isEqualTo: emailController.text.trim().toLowerCase(),
+            )
             .where('organizationId', isEqualTo: widget.organizationId)
             .limit(1)
             .get();
@@ -211,6 +306,9 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
     }
 
     final userDocRef = userQuery.docs.first.reference;
+    final pendingUserData = userQuery.docs.first.data();
+    final invitedRole =
+        int.tryParse(pendingUserData['userRole']?.toString() ?? '') ?? 0;
 
     // Update the user document with the new UID and set as active
     await userDocRef.update({
@@ -222,95 +320,108 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
     });
 
     // Invalidate the invitation token
-    await FirestoreEnforcer.instance.collection('invites').doc(widget.token).delete();
+    await FirestoreEnforcer.instance
+        .collection('invites')
+        .doc(widget.token)
+        .delete();
 
     // Navigate to user dashboard
     if (mounted) {
-      context.go(AppRoutes.userDashboardPage.path);
+      context.go(_dashboardPathForRole(invitedRole));
     }
+  }
+
+  String _dashboardPathForRole(int userRole) {
+    if (userRole == 2) return AppRoutes.adminDashboardPage.path;
+    if (userRole == 1) return AppRoutes.managerDashboardPage.path;
+    return AppRoutes.userDashboardPage.path;
   }
 
   Future<void> _createNewOrganization() async {
     try {
       logger.d('Starting new organization creation...');
 
-      // Create user with Firebase Auth
-      final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: emailController.text.trim(),
-        password: passwordController.text,
-      );
-
-      final user = credential.user;
-      if (user == null) throw Exception('Failed to create user');
-      logger.d('Firebase Auth user created: ${user.uid}');
-
-      // Update user profile
-      await user.updateDisplayName('${firstNameController.text} ${lastNameController.text}');
-
-      // Generate organization ID
-      final orgId = FirestoreEnforcer.instance.collection('organizations').doc().id;
-      logger.d('Generated organization ID: $orgId');
-
-      // Create organization document
-      await FirestoreEnforcer.instance.collection('organizations').doc(orgId).set({
-        'name': businessNameController.text.trim(),
+      final functions = FirebaseFunctions.instanceFor(region: 'us-central1');
+      final callable = functions.httpsCallable('createOrganizationSignup');
+      final response = await callable.call(<String, dynamic>{
+        'organizationName': businessNameController.text.trim(),
         'businessType': businessType,
-        // Store approx employees if provided; default to 0
-        'numberOfEmployees': _approxEmployees ?? int.tryParse(numberOfEmployeesController.text) ?? 0,
-        'createdAt': FieldValue.serverTimestamp(),
-        'createdBy': user.uid,
-        'isActive': true,
-        'subscriptionStatus': 'trial',
-        'trialEndsAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
-        'settings': {'allowUserRegistration': true, 'requireLocationSelection': true, 'defaultShiftLength': 8},
-      });
-      logger.i('Organization document created');
-
-      // Create user document
-      await FirestoreEnforcer.instance.collection('users').doc(user.uid).set({
+        'numberOfEmployees':
+            _approxEmployees ??
+            int.tryParse(numberOfEmployeesController.text) ??
+            0,
+        'numberOfLocations': _locations,
         'firstName': firstNameController.text.trim(),
         'lastName': lastNameController.text.trim(),
         'email': emailController.text.trim(),
-        'userRole': _getRoleAsInt(), // Use integer role instead of string
-        'organizationId': orgId,
-        'locationIds': [], // Empty initially, will be populated when locations are added
-        'isAdmin': _getRoleAsInt() == 2, // Set admin flag for role 2
-        'isActive': true,
-        'createdAt': FieldValue.serverTimestamp(),
-        'permissions': {
-          'canManageUsers': true,
-          'canManageLocations': true,
-          'canManageShifts': true,
-          'canViewReports': true,
-          'canManageSettings': true,
-        },
+        'password': passwordController.text,
+        'preferredLanguageCode': _preferredLanguageCode,
+        'acceptedTerms': agreeTerms,
+        'signupAttribution': _signupAttribution,
       });
-      logger.i('User document created successfully');
+
+      final result = Map<String, dynamic>.from(response.data as Map);
+      final orgId = result['organizationId']?.toString();
+      if (orgId == null || orgId.isEmpty) {
+        throw Exception('Account created but organization was not returned.');
+      }
+
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: emailController.text.trim(),
+        password: passwordController.text,
+      );
+      logger.i('Organization and owner user created via callable: $orgId');
+
+      // Send organization signup notification to admin
+      try {
+        final notificationCallable = functions.httpsCallable(
+          'sendOrganizationSignupNotification',
+        );
+
+        await notificationCallable.call({
+          'organizationName': businessNameController.text.trim(),
+          'adminFirstName': firstNameController.text.trim(),
+          'adminLastName': lastNameController.text.trim(),
+          'adminEmail': emailController.text.trim(),
+          'businessType': businessType,
+          'numberOfEmployees':
+              _approxEmployees ??
+              int.tryParse(numberOfEmployeesController.text) ??
+              0,
+          'numberOfLocations': _locations,
+          'subscriptionType': 'Trial',
+          'organizationId': orgId,
+          'preferredLanguageCode': _preferredLanguageCode,
+          'signupAttribution': _signupAttribution,
+          'salesAssisted': _locations >= 5,
+          'createdAt': DateTime.now().toIso8601String(),
+        });
+
+        logger.i('Organization signup notification sent successfully');
+      } catch (emailError) {
+        logger.w(
+          'Failed to send organization signup notification (non-critical): $emailError',
+        );
+        // Don't fail the signup process if the notification email fails
+      }
 
       // Show success message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Account created successfully! Redirecting to Stripe...'),
+            content: Text(
+              'Account created successfully! Let\'s finish your setup.',
+            ),
             backgroundColor: Colors.green,
           ),
         );
       }
 
-      // Large-account rule: 5+ locations requires contacting sales
-      if (_locations >= 5) {
-        await showDialog(context: context, builder: (_) => const ContactSalesDialog());
-        // Block checkout
-        return;
+      if (mounted) {
+        context.go(
+          '${AppRoutes.adminDashboardPage.path}?setup=true&tab=locations',
+        );
       }
-
-      // Proceed to Stripe Checkout: per-location pricing and billing period
-      await StripeService.startCheckoutAndLaunch(
-        orgId: orgId,
-        email: emailController.text.trim(),
-        priceId: _isAnnual ? kStripePriceAnnual : kStripePriceMonthly,
-        quantity: _locations,
-      );
     } catch (e) {
       logger.e('Error in _createNewOrganization: $e', e);
       rethrow;
@@ -323,13 +434,16 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
 
     // iOS platform check: Prevent account creation for Apple Store compliance
     // Apple doesn't allow Stripe checkout for new account signups on iOS apps
-    if (!kIsWeb && Platform.isIOS && !isInvitedUser) {
+    if (!kIsWeb && isIOS && !isInvitedUser) {
       return Scaffold(
         appBar: AppBar(
           backgroundColor: HandsColors.cardPrimary,
           elevation: 0,
           toolbarHeight: kToolbarHeight,
-          title: GenericAppBarContent(appBarTitle: 'Account Creation', userRole: 0),
+          title: GenericAppBarContent(
+            appBarTitle: 'Account Creation',
+            userRole: 0,
+          ),
           automaticallyImplyLeading: false,
         ),
         body: Center(
@@ -342,13 +456,21 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                 const SizedBox(height: 24),
                 Text(
                   'Create Account on Web',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: HandsColors.white),
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: HandsColors.white,
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'To create a new account and set up subscription billing, please visit our website at planwithhands.com and click "Sign up" from any web browser.\n\nDue to Apple Store policies, new account creation with subscription setup must be done via our web portal.',
-                  style: TextStyle(fontSize: 16, color: HandsColors.white70, height: 1.5),
+                  'To create a new account, please visit planwithhands.com and click "Sign up" from any web browser.\n\nBilling is still managed through our web portal.',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: HandsColors.white70,
+                    height: 1.5,
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 32),
@@ -362,7 +484,9 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                     backgroundColor: HandsColors.handsOrange,
                     foregroundColor: HandsColors.cardPrimary,
                     minimumSize: const Size(200, 48),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                 ),
               ],
@@ -377,7 +501,10 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
         backgroundColor: HandsColors.cardPrimary,
         elevation: 0,
         toolbarHeight: kToolbarHeight,
-        title: GenericAppBarContent(appBarTitle: isInvitedUser ? 'Complete Account Setup' : 'Join Hands', userRole: 0),
+        title: GenericAppBarContent(
+          appBarTitle: isInvitedUser ? 'Complete Account Setup' : 'Join Hands',
+          userRole: 0,
+        ),
         automaticallyImplyLeading: false,
       ),
       body: SingleChildScrollView(
@@ -408,19 +535,63 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                         const SizedBox(width: 12),
                         const Text(
                           'Welcome to Hands',
-                          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'The complete workforce management solution for your business',
+                      'Run cleaner shifts with checklists, team communication, and live operational visibility.',
                       style: TextStyle(fontSize: 16, color: Colors.white70),
                     ),
                     const SizedBox(height: 12),
-                    const Text(
-                      '✓ Task management\n✓ Time tracking\n✓ Team communication\n✓ Shift planning',
-                      style: TextStyle(fontSize: 14, color: Colors.white),
+                    Text(
+                      'Start with a $kTrialDays-day trial. No card required to begin setup.',
+                      style: const TextStyle(fontSize: 14, color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(16),
+                margin: const EdgeInsets.only(bottom: 24),
+                decoration: BoxDecoration(
+                  color: HandsColors.cardPrimary,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text(
+                      'What happens next',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                    SizedBox(height: 12),
+                    _SignupStepText(
+                      step: '1',
+                      text: 'Create your organization and choose locations.',
+                    ),
+                    _SignupStepText(
+                      step: '2',
+                      text: 'Build your first shift checklist and tasks.',
+                    ),
+                    _SignupStepText(
+                      step: '3',
+                      text: 'Invite managers and staff when you are ready.',
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'Billing can be added later from Settings.',
+                      style: TextStyle(color: Colors.white70, fontSize: 13),
                     ),
                   ],
                 ),
@@ -439,10 +610,17 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                   children: [
                     Text(
                       '🎉 You\'re Invited!',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green),
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green,
+                      ),
                     ),
                     SizedBox(height: 8),
-                    Text('Complete your account setup to join your team on Hands.', style: TextStyle(fontSize: 16)),
+                    Text(
+                      'Complete your account setup to join your team on Hands.',
+                      style: TextStyle(fontSize: 16),
+                    ),
                   ],
                 ),
               ),
@@ -455,20 +633,55 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                 children: [
                   // Show organization-related fields only for new org sign-up
                   if (!isInvitedUser) ...[
-                    TextFormField(
+                    DropdownButtonFormField<String>(
+                      initialValue: _preferredLanguageCode,
+                      decoration: const InputDecoration(
+                        labelText: 'Language',
+                        helperText:
+                            'Choose the setup language. Staff can still choose their own language later.',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'en', child: Text('English')),
+                        DropdownMenuItem(value: 'es', child: Text('Spanish')),
+                        DropdownMenuItem(
+                          value: 'pt',
+                          child: Text('Portuguese'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setState(() => _preferredLanguageCode = value);
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
+                    HandsTextFormField(
                       controller: businessNameController,
-                      decoration: const InputDecoration(labelText: 'Business/LLC Name', border: OutlineInputBorder()),
-                      textCapitalization: TextCapitalization.words,
-                      validator: (v) => (v?.isEmpty ?? true) ? 'Enter business name' : null,
+                      decoration: const InputDecoration(
+                        labelText: 'Business/LLC Name',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator:
+                          (v) =>
+                              (v?.isEmpty ?? true)
+                                  ? 'Enter business name'
+                                  : null,
                     ),
                     const SizedBox(height: 16),
 
                     // Approx. Employees (optional)
-                    TextFormField(
+                    HandsTextFormField(
                       controller: numberOfEmployeesController,
                       keyboardType: TextInputType.number,
+                      textCapitalization:
+                          TextCapitalization
+                              .none, // Numbers don't need capitalization
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      decoration: const InputDecoration(labelText: 'Approx. Employees', border: OutlineInputBorder()),
+                      decoration: const InputDecoration(
+                        labelText: 'Approx. Employees',
+                        border: OutlineInputBorder(),
+                      ),
                       onChanged: (v) {
                         _approxEmployees = int.tryParse(v);
                       },
@@ -476,11 +689,17 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                     const SizedBox(height: 16),
 
                     // Number of Locations (required, min 1)
-                    TextFormField(
+                    HandsTextFormField(
                       controller: _locCtrl,
                       keyboardType: TextInputType.number,
+                      textCapitalization:
+                          TextCapitalization
+                              .none, // Numbers don't need capitalization
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      decoration: const InputDecoration(labelText: 'Locations', border: OutlineInputBorder()),
+                      decoration: const InputDecoration(
+                        labelText: 'Locations',
+                        border: OutlineInputBorder(),
+                      ),
                       onChanged: (value) {
                         setState(() {
                           _locations = int.tryParse(value) ?? 1;
@@ -497,96 +716,92 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Billing Period selection
-                    DropdownButtonFormField<String>(
-                      value: _isAnnual ? 'Annual' : 'Monthly',
-                      decoration: const InputDecoration(labelText: 'Billing Period', border: OutlineInputBorder()),
-                      items: const [
-                        DropdownMenuItem(value: 'Monthly', child: Text('Monthly')),
-                        DropdownMenuItem(value: 'Annual', child: Text('Annual')),
-                      ],
-                      onChanged: (value) => setState(() => _isAnnual = value == 'Annual'),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Live pricing tile based on number of locations and billing period
-                    Builder(
-                      builder: (_) {
-                        final monthly = PricingService.calcMonthly(_locations);
-                        final annual = PricingService.calcAnnual(_locations);
-                        final displayPrice = _isAnnual ? annual : monthly;
-                        final period = _isAnnual ? 'year' : 'month';
-
-                        return Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: HandsColors.cardPrimary,
-                            border: Border.all(color: Colors.white24),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  const Text(
-                                    'Estimated Charge',
-                                    style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-                                  ),
-                                  Text(
-                                    '\$${displayPrice.toStringAsFixed(2)} / $period',
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.green,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                _locations == 1
-                                    ? '\$69.99 for the first location'
-                                    : '\$69.99 for the first location, \$49.99 for ${_locations - 1} additional location${_locations > 2 ? 's' : ''}',
-                                style: TextStyle(fontSize: 12, color: Colors.white70),
-                              ),
-                              if (_isAnnual) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Annual billing selected — billed annually at checkout',
-                                  style: TextStyle(fontSize: 12, color: Colors.white70),
-                                ),
-                              ],
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 16),
-
                     // Restaurant/Service industry focused business types
                     DropdownButtonFormField<String>(
-                      value: businessType,
-                      decoration: const InputDecoration(labelText: 'Business Type', border: OutlineInputBorder()),
+                      initialValue: businessType,
+                      decoration: const InputDecoration(
+                        labelText: 'Business Type (Optional)',
+                        border: OutlineInputBorder(),
+                      ),
                       items: const [
-                        DropdownMenuItem(value: 'Restaurant', child: Text('Restaurant')),
-                        DropdownMenuItem(value: 'Fast Food', child: Text('Fast Food')),
-                        DropdownMenuItem(value: 'Cafe / Coffee Shop', child: Text('Cafe / Coffee Shop')),
-                        DropdownMenuItem(value: 'Bar / Brewery', child: Text('Bar / Brewery')),
-                        DropdownMenuItem(value: 'Catering', child: Text('Catering')),
-                        DropdownMenuItem(value: 'Food Truck', child: Text('Food Truck')),
-                        DropdownMenuItem(value: 'Hotel / Hospitality', child: Text('Hotel / Hospitality')),
-                        DropdownMenuItem(value: 'Retail / Store', child: Text('Retail / Store')),
-                        DropdownMenuItem(value: 'Salon / Spa', child: Text('Salon / Spa')),
-                        DropdownMenuItem(value: 'Fitness / Gym', child: Text('Fitness / Gym')),
-                        DropdownMenuItem(value: 'Healthcare', child: Text('Healthcare')),
-                        DropdownMenuItem(value: 'Cleaning Services', child: Text('Cleaning Services')),
-                        DropdownMenuItem(value: 'Event Services', child: Text('Event Services')),
-                        DropdownMenuItem(value: 'Other Service', child: Text('Other Service')),
+                        DropdownMenuItem(
+                          value: 'Restaurant',
+                          child: Text('Restaurant'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Fast Food',
+                          child: Text('Fast Food'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Cafe / Coffee Shop',
+                          child: Text('Cafe / Coffee Shop'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Bar / Brewery',
+                          child: Text('Bar / Brewery'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Catering',
+                          child: Text('Catering'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Food Truck',
+                          child: Text('Food Truck'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Hotel / Hospitality',
+                          child: Text('Hotel / Hospitality'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Retail / Store',
+                          child: Text('Retail / Store'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Salon / Spa',
+                          child: Text('Salon / Spa'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Fitness / Gym',
+                          child: Text('Fitness / Gym'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Healthcare',
+                          child: Text('Healthcare'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Cleaning Services',
+                          child: Text('Cleaning Services'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Event Services',
+                          child: Text('Event Services'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Other Service',
+                          child: Text('Other Service'),
+                        ),
                       ],
-                      onChanged: (value) => setState(() => businessType = value),
-                      validator: (v) => v == null ? 'Select business type' : null,
+                      onChanged:
+                          (value) => setState(() => businessType = value),
+                    ),
+                    const SizedBox(height: 16),
+
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: HandsColors.cardPrimary,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.white12),
+                      ),
+                      child: Text(
+                        _locations >= 5
+                            ? 'Create your trial now. We\'ll flag this as a multi-location rollout so our team can help with billing and launch planning.'
+                            : 'You can add billing later from Settings when you\'re ready to launch across your team.',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 16),
                   ],
@@ -595,34 +810,49 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                   Row(
                     children: [
                       Expanded(
-                        child: TextFormField(
+                        child: HandsTextFormField(
                           controller: firstNameController,
-                          decoration: const InputDecoration(labelText: 'First Name', border: OutlineInputBorder()),
-                          textCapitalization: TextCapitalization.words,
-                          validator: (v) => (v?.isEmpty ?? true) ? 'Enter first name' : null,
+                          decoration: const InputDecoration(
+                            labelText: 'First Name',
+                            border: OutlineInputBorder(),
+                          ),
+                          validator:
+                              (v) =>
+                                  (v?.isEmpty ?? true)
+                                      ? 'Enter first name'
+                                      : null,
                         ),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
-                        child: TextFormField(
+                        child: HandsTextFormField(
                           controller: lastNameController,
-                          decoration: const InputDecoration(labelText: 'Last Name', border: OutlineInputBorder()),
-                          textCapitalization: TextCapitalization.words,
-                          validator: (v) => (v?.isEmpty ?? true) ? 'Enter last name' : null,
+                          decoration: const InputDecoration(
+                            labelText: 'Last Name',
+                            border: OutlineInputBorder(),
+                          ),
+                          validator:
+                              (v) =>
+                                  (v?.isEmpty ?? true)
+                                      ? 'Enter last name'
+                                      : null,
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
 
-                  TextFormField(
+                  HandsTextFormField(
                     controller: emailController,
-                    decoration: const InputDecoration(labelText: 'Email Address', border: OutlineInputBorder()),
+                    decoration: const InputDecoration(
+                      labelText: 'Email Address',
+                      border: OutlineInputBorder(),
+                    ),
                     keyboardType: TextInputType.emailAddress,
                     enabled: !isInvitedUser,
                     validator: (v) {
                       if (v?.isEmpty ?? true) return 'Enter email address';
-                      if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(v!)) {
+                      if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v!)) {
                         return 'Enter valid email address';
                       }
                       return null;
@@ -630,45 +860,60 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                   ),
                   const SizedBox(height: 16),
 
-                  if (!isInvitedUser) ...[
-                    DropdownButtonFormField<String>(
-                      value: userRole,
-                      decoration: const InputDecoration(labelText: 'Your Role', border: OutlineInputBorder()),
-                      items: const [
-                        DropdownMenuItem(value: 'Owner', child: Text('Owner')),
-                        DropdownMenuItem(value: 'Management', child: Text('Management')),
-                      ],
-                      onChanged: (value) => setState(() => userRole = value),
-                      validator: (v) => v == null ? 'Select your role' : null,
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-
-                  TextFormField(
+                  HandsTextFormField(
                     controller: passwordController,
+                    textCapitalization:
+                        TextCapitalization
+                            .none, // Passwords don't need capitalization
                     decoration: InputDecoration(
                       labelText: 'Password',
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
-                        icon: Icon(passwordVisible ? Icons.visibility : Icons.visibility_off),
-                        onPressed: () => setState(() => passwordVisible = !passwordVisible),
+                        icon: Icon(
+                          passwordVisible
+                              ? Icons.visibility
+                              : Icons.visibility_off,
+                        ),
+                        onPressed:
+                            () => setState(
+                              () => passwordVisible = !passwordVisible,
+                            ),
                       ),
                     ),
                     obscureText: !passwordVisible,
                     validator: (v) {
                       if (v?.isEmpty ?? true) return 'Enter password';
-                      if (v!.length < 6) {
-                        return 'Password must be at least 6 characters';
+                      if (v!.length < 8) {
+                        return 'Password must be at least 8 characters';
                       }
                       return null;
                     },
                   ),
                   const SizedBox(height: 16),
 
-                  TextFormField(
+                  HandsTextFormField(
                     controller: confirmPasswordController,
-                    decoration: const InputDecoration(labelText: 'Confirm Password', border: OutlineInputBorder()),
-                    obscureText: true,
+                    textCapitalization:
+                        TextCapitalization
+                            .none, // Passwords don't need capitalization
+                    decoration: InputDecoration(
+                      labelText: 'Confirm Password',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          confirmPasswordVisible
+                              ? Icons.visibility
+                              : Icons.visibility_off,
+                        ),
+                        onPressed:
+                            () => setState(
+                              () =>
+                                  confirmPasswordVisible =
+                                      !confirmPasswordVisible,
+                            ),
+                      ),
+                    ),
+                    obscureText: !confirmPasswordVisible,
                     validator: (v) {
                       if (v != passwordController.text) {
                         return 'Passwords do not match';
@@ -681,7 +926,12 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                   if (!isInvitedUser)
                     Row(
                       children: [
-                        Checkbox(value: agreeTerms, onChanged: (value) => setState(() => agreeTerms = value ?? false)),
+                        Checkbox(
+                          value: agreeTerms,
+                          onChanged:
+                              (value) =>
+                                  setState(() => agreeTerms = value ?? false),
+                        ),
                         Expanded(
                           child: Wrap(
                             crossAxisAlignment: WrapCrossAlignment.center,
@@ -691,12 +941,19 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                                 style: TextButton.styleFrom(
                                   padding: EdgeInsets.zero,
                                   minimumSize: const Size(0, 0),
-                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
                                 ),
-                                onPressed: () => showDialog(context: context, builder: (_) => const TermsDialog()),
+                                onPressed:
+                                    () => showDialog(
+                                      context: context,
+                                      builder: (_) => const TermsDialog(),
+                                    ),
                                 child: const Text(
                                   'Terms of Service',
-                                  style: TextStyle(decoration: TextDecoration.underline),
+                                  style: TextStyle(
+                                    decoration: TextDecoration.underline,
+                                  ),
                                 ),
                               ),
                               const Text(' and '),
@@ -704,12 +961,19 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                                 style: TextButton.styleFrom(
                                   padding: EdgeInsets.zero,
                                   minimumSize: const Size(0, 0),
-                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
                                 ),
-                                onPressed: () => showDialog(context: context, builder: (_) => const PrivacyDialog()),
+                                onPressed:
+                                    () => showDialog(
+                                      context: context,
+                                      builder: (_) => const PrivacyDialog(),
+                                    ),
                                 child: const Text(
                                   'Privacy Policy',
-                                  style: TextStyle(decoration: TextDecoration.underline),
+                                  style: TextStyle(
+                                    decoration: TextDecoration.underline,
+                                  ),
                                 ),
                               ),
                               const Text('.'),
@@ -726,22 +990,47 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
                       backgroundColor: primaryColor,
                       foregroundColor: Colors.white,
                       minimumSize: const Size(double.infinity, 50),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                     child:
                         _isLoading
-                            ? const CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Colors.white))
-                            : Text(isInvitedUser ? 'Complete Sign Up' : 'Create Account'),
+                            ? const CircularProgressIndicator(
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                            )
+                            : Text(
+                              isInvitedUser
+                                  ? 'Complete Sign Up'
+                                  : (_locations >= 5
+                                      ? 'Create Trial + Request Rollout Help'
+                                      : 'Create Trial'),
+                            ),
                   ),
                   const SizedBox(height: 24),
                   Center(
                     child: TextButton(
                       onPressed: () {
-                        context.go(AppRoutes.loginPage.path);
+                        debugPrint(
+                          '[ACCOUNT_CREATION] Navigating to login page: ${AppRoutes.loginPage.path}',
+                        );
+                        try {
+                          context.go(AppRoutes.loginPage.path);
+                          debugPrint(
+                            '[ACCOUNT_CREATION] Navigation triggered successfully',
+                          );
+                        } catch (e) {
+                          debugPrint('[ACCOUNT_CREATION] Navigation error: $e');
+                        }
                       },
                       child: const Text(
                         'Already have an account? Sign in',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
                   ),
@@ -755,18 +1044,68 @@ class SimpleSignUpPageState extends State<SimpleSignUpPage> {
   }
 }
 
+class _SignupStepText extends StatelessWidget {
+  final String step;
+  final String text;
+
+  const _SignupStepText({required this.step, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: HandsColors.handsOrange.withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              step,
+              style: TextStyle(
+                color: HandsColors.handsOrange,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Simple Contact Sales dialog for large accounts (5+ locations)
 class ContactSalesDialog extends StatelessWidget {
   const ContactSalesDialog({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Contact Sales'),
-      content: const Text(
-        'For organizations with 5 or more locations, please contact our sales team to set up a custom plan.',
+    return HandsDialog(
+      title: 'Contact Sales',
+      maxWidth: 440,
+      actions: [
+        HandsSecondaryButton(
+          text: 'Close',
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ],
+      child: Text(
+        'For organizations with 5 or more locations, please contact our sales team so we can help with rollout planning and billing setup.',
+        style: HandsModalTokens.bodyStyle,
       ),
-      actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close'))],
     );
   }
 }
@@ -777,62 +1116,71 @@ class TermsDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Terms of Service'),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Text(
-                'Welcome to Plan With Hands ("Hands"). By accessing or using our website, mobile applications, or services, you agree to these Terms of Service.',
-              ),
-              SizedBox(height: 12),
-              Text('Use of Services', style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 6),
-              Text(
-                'You may use Hands only in compliance with applicable laws and these Terms. You are responsible for the activities of your organization and users you invite.',
-              ),
-              SizedBox(height: 12),
-              Text('Accounts', style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 6),
-              Text(
-                'You must provide accurate information when creating an account. You are responsible for maintaining the confidentiality of your login credentials.',
-              ),
-              SizedBox(height: 12),
-              Text('Subscriptions & Payments', style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 6),
-              Text(
-                'Hands is offered on a subscription basis. Pricing is published on our website and may change from time to time. Payments are billed in advance per billing cycle. Annual billing includes a discount as specified in our pricing page.',
-              ),
-              SizedBox(height: 12),
-              Text('Termination', style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 6),
-              Text(
-                'We may suspend or terminate accounts that violate these Terms or are used for unlawful purposes. You may cancel your subscription at any time.',
-              ),
-              SizedBox(height: 12),
-              Text('Liability', style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 6),
-              Text(
-                'To the fullest extent permitted by law, Hands is not liable for indirect, incidental, or consequential damages. Our total liability is limited to the subscription fees you have paid for the service.',
-              ),
-              SizedBox(height: 12),
-              Text('Changes', style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 6),
-              Text(
-                'We may update these Terms periodically. Continued use of the service after changes indicates your acceptance of the updated Terms.',
-              ),
-              SizedBox(height: 12),
-              Text('Contact Us', style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 6),
-              Text('If you have any questions about these Terms, please contact us at support@planwithhands.com.'),
-            ],
-          ),
+    return HandsDialog(
+      title: 'Terms of Service',
+      maxWidth: 620,
+      actions: [
+        HandsSecondaryButton(
+          text: 'Close',
+          onPressed: () => Navigator.of(context).pop(),
         ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: const [
+          Text(
+            'Welcome to Plan With Hands ("Hands"). By accessing or using our website, mobile applications, or services, you agree to these Terms of Service.',
+          ),
+          SizedBox(height: 12),
+          Text(
+            'Use of Services',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 6),
+          Text(
+            'You may use Hands only in compliance with applicable laws and these Terms. You are responsible for the activities of your organization and users you invite.',
+          ),
+          SizedBox(height: 12),
+          Text('Accounts', style: TextStyle(fontWeight: FontWeight.bold)),
+          SizedBox(height: 6),
+          Text(
+            'You must provide accurate information when creating an account. You are responsible for maintaining the confidentiality of your login credentials.',
+          ),
+          SizedBox(height: 12),
+          Text(
+            'Subscriptions & Payments',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 6),
+          Text(
+            'Hands is offered on a subscription basis. Pricing is published on our website and may change from time to time. Payments are billed in advance per billing cycle. Annual billing includes a discount as specified in our pricing page.',
+          ),
+          SizedBox(height: 12),
+          Text('Termination', style: TextStyle(fontWeight: FontWeight.bold)),
+          SizedBox(height: 6),
+          Text(
+            'We may suspend or terminate accounts that violate these Terms or are used for unlawful purposes. You may cancel your subscription at any time.',
+          ),
+          SizedBox(height: 12),
+          Text('Liability', style: TextStyle(fontWeight: FontWeight.bold)),
+          SizedBox(height: 6),
+          Text(
+            'To the fullest extent permitted by law, Hands is not liable for indirect, incidental, or consequential damages. Our total liability is limited to the subscription fees you have paid for the service.',
+          ),
+          SizedBox(height: 12),
+          Text('Changes', style: TextStyle(fontWeight: FontWeight.bold)),
+          SizedBox(height: 6),
+          Text(
+            'We may update these Terms periodically. Continued use of the service after changes indicates your acceptance of the updated Terms.',
+          ),
+          SizedBox(height: 12),
+          Text('Contact Us', style: TextStyle(fontWeight: FontWeight.bold)),
+          SizedBox(height: 6),
+          Text(
+            'If you have any questions about these Terms, please contact us at support@planwithhands.com.',
+          ),
+        ],
       ),
-      actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close'))],
     );
   }
 }
@@ -843,52 +1191,62 @@ class PrivacyDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Privacy Policy'),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Text(
-                'At Plan With Hands ("Hands"), your privacy is important to us. This Privacy Policy explains how we collect, use, and protect your information when you use our website, mobile applications, and services.',
-              ),
-              SizedBox(height: 12),
-              Text('Information We Collect', style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 6),
-              Text(
-                '• Personal information you provide (such as name, email, role, organization).\n• Information about how you use the app, including checklists, tasks, and uploads.\n• Device and log information to help us improve performance and security.',
-              ),
-              SizedBox(height: 12),
-              Text('How We Use Information', style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 6),
-              Text(
-                '• To provide and improve our services.\n• To communicate with you about product updates, changes, or support.\n• To maintain security and prevent misuse of the platform.',
-              ),
-              SizedBox(height: 12),
-              Text('Sharing of Information', style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 6),
-              Text(
-                'We do not sell your personal data. We may share limited information with trusted service providers (e.g., cloud hosting, analytics) to operate our services.',
-              ),
-              SizedBox(height: 12),
-              Text('Your Choices', style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 6),
-              Text(
-                'You may request access, updates, or deletion of your personal information at any time by contacting support@planwithhands.com.',
-              ),
-              SizedBox(height: 12),
-              Text('Contact Us', style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 6),
-              Text(
-                'If you have any questions about this Privacy Policy, please reach out to us at support@planwithhands.com.',
-              ),
-            ],
-          ),
+    return HandsDialog(
+      title: 'Privacy Policy',
+      maxWidth: 620,
+      actions: [
+        HandsSecondaryButton(
+          text: 'Close',
+          onPressed: () => Navigator.of(context).pop(),
         ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: const [
+          Text(
+            'At Plan With Hands ("Hands"), your privacy is important to us. This Privacy Policy explains how we collect, use, and protect your information when you use our website, mobile applications, and services.',
+          ),
+          SizedBox(height: 12),
+          Text(
+            'Information We Collect',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 6),
+          Text(
+            '• Personal information you provide (such as name, email, role, organization).\n• Information about how you use the app, including checklists, tasks, and uploads.\n• Device and log information to help us improve performance and security.',
+          ),
+          SizedBox(height: 12),
+          Text(
+            'How We Use Information',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 6),
+          Text(
+            '• To provide and improve our services.\n• To communicate with you about product updates, changes, or support.\n• To maintain security and prevent misuse of the platform.',
+          ),
+          SizedBox(height: 12),
+          Text(
+            'Sharing of Information',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 6),
+          Text(
+            'We do not sell your personal data. We may share limited information with trusted service providers (e.g., cloud hosting, analytics) to operate our services.',
+          ),
+          SizedBox(height: 12),
+          Text('Your Choices', style: TextStyle(fontWeight: FontWeight.bold)),
+          SizedBox(height: 6),
+          Text(
+            'You may request access, updates, or deletion of your personal information at any time by contacting support@planwithhands.com.',
+          ),
+          SizedBox(height: 12),
+          Text('Contact Us', style: TextStyle(fontWeight: FontWeight.bold)),
+          SizedBox(height: 6),
+          Text(
+            'If you have any questions about this Privacy Policy, please reach out to us at support@planwithhands.com.',
+          ),
+        ],
       ),
-      actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close'))],
     );
   }
 }

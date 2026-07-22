@@ -40,7 +40,7 @@ android {
         applicationId = "com.planwithhands.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = 23
+        minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -58,8 +58,21 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")
-            isMinifyEnabled = false
-            isShrinkResources = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            
+            // Firebase Crashlytics configuration
+            configure<com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension> {
+                // Disable automatic upload - Google Play Console will handle mapping files
+                mappingFileUploadEnabled = false
+                
+                // Don't strip native debug symbols (useful for native crashes)
+                nativeSymbolUploadEnabled = true
+                
+                // Ensure unstripped native libraries are uploaded
+                unstrippedNativeLibsDir = "build/intermediates/merged_native_libs/release/out/lib"
+            }
         }
     }
 }

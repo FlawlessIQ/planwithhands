@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hands_app/l10n/l10n.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/services/push_notification_service.dart';
 
 /// Widget for managing notification settings and preferences
@@ -8,17 +10,25 @@ class NotificationSettingsWidget extends ConsumerStatefulWidget {
   final Map<String, bool>? initialSettings;
   final Function(Map<String, bool>)? onSettingsChanged;
 
-  const NotificationSettingsWidget({super.key, this.initialSettings, this.onSettingsChanged});
+  const NotificationSettingsWidget({
+    super.key,
+    this.initialSettings,
+    this.onSettingsChanged,
+  });
 
   @override
-  ConsumerState<NotificationSettingsWidget> createState() => _NotificationSettingsWidgetState();
+  ConsumerState<NotificationSettingsWidget> createState() =>
+      _NotificationSettingsWidgetState();
 }
 
-class _NotificationSettingsWidgetState extends ConsumerState<NotificationSettingsWidget> {
-  final PushNotificationService _notificationService = PushNotificationService();
+class _NotificationSettingsWidgetState
+    extends ConsumerState<NotificationSettingsWidget> {
+  final PushNotificationService _notificationService =
+      PushNotificationService();
 
   late Map<String, bool> _settings;
-  NotificationPermissionResult _permissionStatus = NotificationPermissionResult.notDetermined;
+  NotificationPermissionResult _permissionStatus =
+      NotificationPermissionResult.notDetermined;
   bool _isLoading = false;
 
   @override
@@ -81,23 +91,42 @@ class _NotificationSettingsWidgetState extends ConsumerState<NotificationSetting
   }
 
   Future<void> _showTopicManagementDialog() async {
+    final l10n = context.l10n;
     await showDialog(
       context: context,
       builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Notification Topics'),
-          content: const Column(
+        return HandsDialog(
+          title: l10n.notificationTopicsTitle,
+          maxWidth: 440,
+          actions: [
+            HandsSecondaryButton(
+              text: l10n.notificationTopicsGotIt,
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ],
+          child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('You can subscribe to different types of notifications:'),
-              SizedBox(height: 16),
-              Text('• Schedule Updates - When your schedule is published or updated'),
-              Text('• Shift Reminders - Reminders before your shifts start'),
-              Text('• General Announcements - Important company-wide messages'),
+              Text(
+                l10n.notificationTopicsIntro,
+                style: HandsModalTokens.bodyStyle,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                l10n.notificationTopicsScheduleUpdates,
+                style: HandsModalTokens.bodyStyle,
+              ),
+              Text(
+                l10n.notificationTopicsShiftReminders,
+                style: HandsModalTokens.bodyStyle,
+              ),
+              Text(
+                l10n.notificationTopicsGeneralAnnouncements,
+                style: HandsModalTokens.bodyStyle,
+              ),
             ],
           ),
-          actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Got it'))],
         );
       },
     );
@@ -105,6 +134,7 @@ class _NotificationSettingsWidgetState extends ConsumerState<NotificationSetting
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -113,17 +143,22 @@ class _NotificationSettingsWidgetState extends ConsumerState<NotificationSetting
           children: [
             Row(
               children: [
-                Icon(Icons.notifications_outlined, color: Theme.of(context).colorScheme.primary),
+                Icon(
+                  Icons.notifications_outlined,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
                 const SizedBox(width: 12),
                 Text(
-                  'Notification Settings',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                  l10n.notificationSettingsTitle,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const Spacer(),
                 IconButton(
                   onPressed: _showTopicManagementDialog,
                   icon: const Icon(Icons.info_outline),
-                  tooltip: 'Learn about notification types',
+                  tooltip: l10n.notificationTypesLearnMore,
                 ),
               ],
             ),
@@ -142,7 +177,9 @@ class _NotificationSettingsWidgetState extends ConsumerState<NotificationSetting
               child: Row(
                 children: [
                   Icon(
-                    _permissionStatus.isGranted ? Icons.notifications_active : Icons.notifications_off,
+                    _permissionStatus.isGranted
+                        ? Icons.notifications_active
+                        : Icons.notifications_off,
                     color:
                         _permissionStatus.isGranted
                             ? Theme.of(context).colorScheme.onPrimaryContainer
@@ -154,22 +191,32 @@ class _NotificationSettingsWidgetState extends ConsumerState<NotificationSetting
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Push Notifications',
+                          l10n.notificationPushTitle,
                           style: TextStyle(
                             color:
                                 _permissionStatus.isGranted
-                                    ? Theme.of(context).colorScheme.onPrimaryContainer
-                                    : Theme.of(context).colorScheme.onErrorContainer,
+                                    ? Theme.of(
+                                      context,
+                                    ).colorScheme.onPrimaryContainer
+                                    : Theme.of(
+                                      context,
+                                    ).colorScheme.onErrorContainer,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
                         Text(
-                          _permissionStatus.isGranted ? 'Notifications are enabled' : 'Tap to enable notifications',
+                          _permissionStatus.isGranted
+                              ? l10n.notificationPushEnabled
+                              : l10n.notificationPushTapToEnable,
                           style: TextStyle(
                             color:
                                 _permissionStatus.isGranted
-                                    ? Theme.of(context).colorScheme.onPrimaryContainer
-                                    : Theme.of(context).colorScheme.onErrorContainer,
+                                    ? Theme.of(
+                                      context,
+                                    ).colorScheme.onPrimaryContainer
+                                    : Theme.of(
+                                      context,
+                                    ).colorScheme.onErrorContainer,
                             fontSize: 12,
                           ),
                         ),
@@ -178,12 +225,20 @@ class _NotificationSettingsWidgetState extends ConsumerState<NotificationSetting
                   ),
                   if (!_permissionStatus.isGranted)
                     _isLoading
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                        : FilledButton(onPressed: _requestPermission, child: const Text('Enable'))
+                        ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                        : FilledButton(
+                          onPressed: _requestPermission,
+                          child: Text(l10n.notificationEnable),
+                        )
                   else
                     Switch(
                       value: _settings['pushNotifications'] ?? false,
-                      onChanged: (value) => _updateSetting('pushNotifications', value),
+                      onChanged:
+                          (value) => _updateSetting('pushNotifications', value),
                     ),
                 ],
               ),
@@ -192,28 +247,32 @@ class _NotificationSettingsWidgetState extends ConsumerState<NotificationSetting
             const SizedBox(height: 16),
 
             // Individual notification settings
-            if (_permissionStatus.isGranted && (_settings['pushNotifications'] ?? false)) ...[
-              const Text('Notification Types', style: TextStyle(fontWeight: FontWeight.w600)),
+            if (_permissionStatus.isGranted &&
+                (_settings['pushNotifications'] ?? false)) ...[
+              Text(
+                l10n.notificationTypesTitle,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
               const SizedBox(height: 8),
 
               _buildNotificationToggle(
                 'scheduleUpdates',
-                'Schedule Updates',
-                'Get notified when your schedule is published or updated',
+                l10n.notificationTypeScheduleUpdates,
+                l10n.notificationTypeScheduleUpdatesBody,
                 Icons.schedule,
               ),
 
               _buildNotificationToggle(
                 'shiftReminders',
-                'Shift Reminders',
-                'Receive reminders before your shifts start',
+                l10n.notificationTypeShiftReminders,
+                l10n.notificationTypeShiftRemindersBody,
                 Icons.alarm,
               ),
 
               _buildNotificationToggle(
                 'generalAnnouncements',
-                'General Announcements',
-                'Important company-wide messages and updates',
+                l10n.notificationTypeGeneralAnnouncements,
+                l10n.notificationTypeGeneralAnnouncementsBody,
                 Icons.campaign,
               ),
 
@@ -221,8 +280,8 @@ class _NotificationSettingsWidgetState extends ConsumerState<NotificationSetting
 
               _buildNotificationToggle(
                 'emailNotifications',
-                'Email Notifications',
-                'Also receive notifications via email',
+                l10n.notificationTypeEmail,
+                l10n.notificationTypeEmailBody,
                 Icons.email,
               ),
             ],
@@ -231,16 +290,20 @@ class _NotificationSettingsWidgetState extends ConsumerState<NotificationSetting
             if (kDebugMode) ...[
               const Divider(),
               ExpansionTile(
-                title: const Text('Debug Info'),
+                title: Text(l10n.notificationDebugInfo),
                 children: [
                   FutureBuilder<String?>(
                     future: Future.value(_notificationService.currentToken),
                     builder: (context, snapshot) {
                       return ListTile(
-                        title: const Text('FCM Token'),
+                        title: Text(l10n.notificationFcmToken),
                         subtitle: Text(
-                          snapshot.data?.substring(0, 50) ?? 'No token',
-                          style: const TextStyle(fontFamily: 'monospace', fontSize: 10),
+                          snapshot.data?.substring(0, 50) ??
+                              l10n.notificationNoToken,
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 10,
+                          ),
                         ),
                         trailing:
                             snapshot.data != null
@@ -248,9 +311,13 @@ class _NotificationSettingsWidgetState extends ConsumerState<NotificationSetting
                                   icon: const Icon(Icons.copy),
                                   onPressed: () {
                                     // Copy to clipboard
-                                    ScaffoldMessenger.of(
-                                      context,
-                                    ).showSnackBar(const SnackBar(content: Text('Token copied to clipboard')));
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          l10n.notificationTokenCopied,
+                                        ),
+                                      ),
+                                    );
                                   },
                                 )
                                 : null,
@@ -266,12 +333,20 @@ class _NotificationSettingsWidgetState extends ConsumerState<NotificationSetting
     );
   }
 
-  Widget _buildNotificationToggle(String key, String title, String subtitle, IconData icon) {
+  Widget _buildNotificationToggle(
+    String key,
+    String title,
+    String subtitle,
+    IconData icon,
+  ) {
     return ListTile(
       leading: Icon(icon),
       title: Text(title),
       subtitle: Text(subtitle),
-      trailing: Switch(value: _settings[key] ?? false, onChanged: (value) => _updateSetting(key, value)),
+      trailing: Switch(
+        value: _settings[key] ?? false,
+        onChanged: (value) => _updateSetting(key, value),
+      ),
       contentPadding: EdgeInsets.zero,
     );
   }
@@ -282,12 +357,16 @@ class NotificationStatusIndicator extends ConsumerStatefulWidget {
   const NotificationStatusIndicator({super.key});
 
   @override
-  ConsumerState<NotificationStatusIndicator> createState() => _NotificationStatusIndicatorState();
+  ConsumerState<NotificationStatusIndicator> createState() =>
+      _NotificationStatusIndicatorState();
 }
 
-class _NotificationStatusIndicatorState extends ConsumerState<NotificationStatusIndicator> {
-  final PushNotificationService _notificationService = PushNotificationService();
-  NotificationPermissionResult _permissionStatus = NotificationPermissionResult.notDetermined;
+class _NotificationStatusIndicatorState
+    extends ConsumerState<NotificationStatusIndicator> {
+  final PushNotificationService _notificationService =
+      PushNotificationService();
+  NotificationPermissionResult _permissionStatus =
+      NotificationPermissionResult.notDetermined;
 
   @override
   void initState() {

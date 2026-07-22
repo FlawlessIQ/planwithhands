@@ -1,0 +1,28 @@
+# Files and directories to ignore when uploading to Google Cloud
+# Keep this minimal to reduce deployment size; Cloud Build will install deps
+
+# Dependencies
+node_modules/
+
+# VCS and editor cruft
+.git/
+.github/
+.gitignore
+.DS_Store
+*.log
+.eslintcache
+
+# Tests and coverage (not needed in runtime)
+test/
+coverage/
+
+# Local caches/temp
+.tmp/
+.cache/
+
+# TypeScript source is optional; lib/ is used at runtime
+# (keep src/ if you want, it's small)
+# src/
+
+# Build artifacts to skip if any
+*.tsbuildinfo

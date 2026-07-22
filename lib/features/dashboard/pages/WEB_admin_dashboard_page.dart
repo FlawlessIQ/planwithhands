@@ -1,22 +1,36 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/theme/theme.dart';
+import 'package:hands_app/services/activity_tracker.dart';
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
+import 'package:hands_app/widgets/welcome_organization_dialog.dart';
+import 'package:hands_app/widgets/hands_text_field.dart';
 
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/utils/location_helper.dart';
 import 'package:hands_app/utils/jobtype_helper.dart';
 import 'package:hands_app/data/models/shift_data.dart';
 import 'package:hands_app/services/location_selection_service.dart';
+import 'package:hands_app/services/daily_checklist_service.dart';
+import 'package:hands_app/widgets/pending_invites_panel.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
+import 'package:hands_app/features/help/widgets/context_help_trigger.dart';
+import 'package:hands_app/features/help/models/guided_tour_step.dart';
+import 'package:hands_app/features/help/widgets/guided_tour_host.dart';
+import 'package:hands_app/features/crm/widgets/crm_scoped_bottom_nav.dart';
+import 'package:hands_app/l10n/l10n.dart';
+import 'package:hands_app/utils/localized_content.dart';
 
 // Bottom sheet widgets for editing
 import 'package:hands_app/features/shifts/shift_template_bottom_sheet.dart';
@@ -26,22 +40,69 @@ import 'package:hands_app/ui/location_bottom_sheet_new.dart';
 
 enum WebAdminTab { shifts, checklists, users, locations }
 
+/// Persistent state manager for admin dashboard settings
+class AdminDashboardState {
+  static WebAdminTab? _lastTab;
+  static int _rowsPerPage = 10;
+  static int _currentPage = 0;
+  static String _searchQuery = '';
+  static int? _sortColumnIndex;
+  static bool _sortAscending = true;
+
+  static WebAdminTab? get lastTab => _lastTab;
+  static int get rowsPerPage => _rowsPerPage;
+  static int get currentPage => _currentPage;
+  static String get searchQuery => _searchQuery;
+  static int? get sortColumnIndex => _sortColumnIndex;
+  static bool get sortAscending => _sortAscending;
+
+  static set lastTab(WebAdminTab? value) => _lastTab = value;
+  static set rowsPerPage(int value) {
+    print('[AdminDashboardState] Setting rowsPerPage to $value');
+    _rowsPerPage = value;
+  }
+
+  static set currentPage(int value) {
+    print('[AdminDashboardState] Setting currentPage to $value');
+    _currentPage = value;
+  }
+
+  static set searchQuery(String value) => _searchQuery = value;
+  static set sortColumnIndex(int? value) => _sortColumnIndex = value;
+  static set sortAscending(bool value) => _sortAscending = value;
+
+  static void resetPagination() {
+    _currentPage = 0;
+  }
+}
+
 class WEBAdminDashboardPage extends StatefulWidget {
   final String organizationId;
   final WebAdminTab? initialTab;
   final bool usePortalLayout;
+  final bool isNewOrganizationSetup;
+  final bool allowPlatformAccess;
 
-  const WEBAdminDashboardPage({super.key, required this.organizationId, this.initialTab, this.usePortalLayout = false});
+  const WEBAdminDashboardPage({
+    super.key,
+    required this.organizationId,
+    this.initialTab,
+    this.usePortalLayout = false,
+    this.isNewOrganizationSetup = false,
+    this.allowPlatformAccess = false,
+  });
 
   @override
   State<WEBAdminDashboardPage> createState() => _WEBAdminDashboardPageState();
 }
 
-class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
+class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage>
+    with ActivityTrackingMixin {
   int? userRole;
   bool isLoading = true;
+  bool _accessDenied = false;
 
-  // Current active tab
+  // Current active tab - use persistent state
   late WebAdminTab _currentTab;
 
   // Available locations for filtering
@@ -52,69 +113,133 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
   // Data caches
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _shiftDocs = [];
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _checklistDocs = [];
+  int _teamMemberCount = 0;
 
   // Lookups
   final Map<String, String> _checklistNameById = {}; // templateId -> name
   final Map<String, String> _shiftNameById = {}; // shiftId -> name
-  final Map<String, List<String>> _checklistsByShiftId = {}; // shiftId -> [templateIds]
-  final Map<String, List<String>> _shiftsByChecklistId = {}; // checklistTemplateId -> [shiftIds]
+  final Map<String, List<String>> _checklistsByShiftId =
+      {}; // shiftId -> [templateIds]
+  final Map<String, List<String>> _shiftsByChecklistId =
+      {}; // checklistTemplateId -> [shiftIds]
+  final Map<String, List<String>> _locationIdsByShiftId =
+      {}; // shiftId -> [locationIds]
 
-  // Search and filtering
+  // Search and filtering - use persistent state
   final TextEditingController _searchController = TextEditingController();
-  String _searchQuery = '';
 
-  // Pagination
-  int _rowsPerPage = 10;
-  int _currentPage = 0;
+  // Loading state to prevent flashing during operations
+  final bool _isDeleting = false;
+  String? _deletingChecklistId;
 
-  // Sort state
-  int? _sortColumnIndex;
-  bool _sortAscending = true;
+  // Pagination and sorting - use persistent state manager
+  int get _rowsPerPage => AdminDashboardState.rowsPerPage;
+  int get _currentPage => AdminDashboardState.currentPage;
+  String get _searchQuery => AdminDashboardState.searchQuery;
+  int? get _sortColumnIndex => AdminDashboardState.sortColumnIndex;
+  bool get _sortAscending => AdminDashboardState.sortAscending;
 
   // Scroll controllers (web scrolling fix)
   final ScrollController _verticalTableController = ScrollController();
+  // Guard to avoid repeatedly showing the welcome dialog
+  bool _welcomeShown = false;
+
+  final GlobalKey _tourLocationScopeKey = GlobalKey();
+  final GlobalKey _tourNavigationKey = GlobalKey();
+  final GlobalKey _tourContentKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
-    _currentTab = widget.initialTab ?? WebAdminTab.shifts;
+    _currentTab =
+        widget.initialTab ?? AdminDashboardState.lastTab ?? WebAdminTab.shifts;
+    // Initialize search controller with persistent search query
+    _searchController.text = AdminDashboardState.searchQuery;
     // Seed selected location from global persisted value if available
     _selectedLocationId = LocationSelectionService.instance.currentLocationId;
     // Keep in sync with global location selection changes from other pages/dialogs.
-    LocationSelectionService.instance.listenable.addListener(_onGlobalLocationChanged);
+    LocationSelectionService.instance.listenable.addListener(
+      _onGlobalLocationChanged,
+    );
     _checkUserAccess();
     _searchController.addListener(_onSearchChanged);
+
+    // Do not show welcome here; defer until locations have been loaded
   }
 
   void _onGlobalLocationChanged() {
     final globalId = LocationSelectionService.instance.currentLocationId;
-    if (globalId != null && globalId != _selectedLocationId) {
-      setState(() {
-        _selectedLocationId = globalId;
-        // Optionally update name if we have it
+    final globalName = LocationSelectionService.instance.currentLocationName;
+    if (globalId == _selectedLocationId &&
+        globalName == _selectedLocationName) {
+      return;
+    }
+    setState(() {
+      _selectedLocationId = globalId;
+      if (globalId == null) {
+        _selectedLocationName = null;
+      } else {
         final match = _availableLocations.firstWhere(
           (l) => l['id'] == globalId,
-          orElse: () => {'name': _selectedLocationName},
+          orElse: () => {'name': globalName ?? _selectedLocationName},
         );
-        _selectedLocationName = match['name'] as String? ?? _selectedLocationName;
-      });
-      // Reload data scoped to new location
-      unawaited(_reloadAllTables());
-    }
+        _selectedLocationName =
+            match['name'] as String? ?? globalName ?? _selectedLocationName;
+      }
+    });
+    // Reload data scoped to new location
+    unawaited(_reloadAllTables());
   }
 
   @override
   void dispose() {
-    LocationSelectionService.instance.listenable.removeListener(_onGlobalLocationChanged);
+    LocationSelectionService.instance.listenable.removeListener(
+      _onGlobalLocationChanged,
+    );
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
     _verticalTableController.dispose();
     super.dispose();
   }
 
+  // Show welcome dialog for new organization setup
+  void _showWelcomeDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder:
+          (context) => WelcomeOrganizationDialog(
+            onProceedToLocationSetup: _showLocationWizard,
+          ),
+    );
+  }
+
+  // Show location wizard for first location setup
+  void _showLocationWizard() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: false, // Don't allow dismissing during setup
+      enableDrag: false, // Don't allow dragging to dismiss
+      builder:
+          (context) => LocationWizard(
+            organizationId: widget.organizationId,
+            onCompleted: () async {
+              // LocationWizard now handles closing automatically
+              // Refresh the page data after location is created
+              await _reloadAllTables();
+            },
+          ),
+    );
+  }
+
   // Reload on mount after access check sets up org
   Future<void> _reloadAllTables() async {
-    await Future.wait([_loadChecklistsTable(), _loadShiftsTable()]);
+    await Future.wait([
+      _loadChecklistsTable(),
+      _loadShiftsTable(),
+      _loadTeamMemberCount(),
+    ]);
   }
 
   // --- Data loaders -------------------------------------------------------
@@ -126,17 +251,24 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               .doc(widget.organizationId)
               .collection('shifts')
               .get();
-      _shiftDocs = snap.docs.cast<QueryDocumentSnapshot<Map<String, dynamic>>>();
+      _shiftDocs =
+          snap.docs.cast<QueryDocumentSnapshot<Map<String, dynamic>>>();
 
       // Build lookups
       _shiftNameById.clear();
       _checklistsByShiftId.clear();
+      _locationIdsByShiftId.clear();
       for (final d in _shiftDocs) {
         final data = d.data();
         final sid = d.id;
-        _shiftNameById[sid] = (data['shiftName'] ?? '').toString();
-        final tids = List<String>.from(data['checklistTemplateIds'] ?? const []);
+        final rawName = (data['name'] ?? data['shiftName'] ?? '').toString();
+        _shiftNameById[sid] = rawName;
+        final tids = List<String>.from(
+          data['checklistTemplateIds'] ?? const [],
+        );
         _checklistsByShiftId[sid] = tids;
+        final locIds = List<String>.from(data['locationIds'] ?? const []);
+        _locationIdsByShiftId[sid] = locIds;
       }
 
       // Build reverse index
@@ -146,6 +278,9 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           _shiftsByChecklistId.putIfAbsent(t, () => []).add(sid);
         }
       });
+      if (mounted) {
+        setState(() {});
+      }
     } catch (e, st) {
       logger.e('[WEBAdminDashboard] _loadShiftsTable error: $e\n$st');
     }
@@ -159,12 +294,16 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               .doc(widget.organizationId)
               .collection('checklist_templates')
               .get();
-      _checklistDocs = snap.docs.cast<QueryDocumentSnapshot<Map<String, dynamic>>>();
+      _checklistDocs =
+          snap.docs.cast<QueryDocumentSnapshot<Map<String, dynamic>>>();
 
       _checklistNameById.clear();
       for (final d in _checklistDocs) {
         final data = d.data();
-        final name = (data['checklistName'] ?? data['name'] ?? '').toString();
+        final name = localizedContent(
+          data,
+          fieldKeys: const ['name', 'checklistName', 'templateName'],
+        );
         _checklistNameById[d.id] = name;
       }
 
@@ -177,12 +316,101 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
     }
   }
 
+  Future<void> _loadTeamMemberCount() async {
+    try {
+      final snap =
+          await FirestoreEnforcer.instance
+              .collection('users')
+              .where('organizationId', isEqualTo: widget.organizationId)
+              .get();
+      _teamMemberCount = snap.docs.length;
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e, st) {
+      logger.e('[WEBAdminDashboard] _loadTeamMemberCount error: $e\n$st');
+    }
+  }
+
+  List<String> _extractShiftChecklistIds(Map<String, dynamic> shift) {
+    final checklistData =
+        shift['checklists'] ??
+        shift['checklistTemplateIds'] ??
+        shift['checklistIds'] ??
+        [];
+    return (checklistData as List? ?? [])
+        .map((e) => e.toString())
+        .where((e) => e.isNotEmpty)
+        .toList();
+  }
+
+  String _workflowSummaryForShift(Map<String, dynamic> shift) {
+    final names =
+        _extractShiftChecklistIds(shift)
+            .map(
+              (id) =>
+                  _checklistNameById[id] ?? context.l10n.webAdminWorkflowLabel,
+            )
+            .toList();
+    if (names.isEmpty) {
+      return context.l10n.adminWorkflowNoneAttached;
+    }
+    if (names.length == 1) {
+      return names.first;
+    }
+    return '${names.first} +${names.length - 1}';
+  }
+
+  void _editWorkflowForShift(Map<String, dynamic> shift) {
+    final checklistIds = _extractShiftChecklistIds(shift);
+    if (checklistIds.isEmpty) {
+      _createWorkflowForShift(shift);
+      return;
+    }
+    final checklistId = checklistIds.first;
+    QueryDocumentSnapshot<Map<String, dynamic>>? sourceDoc;
+    for (final doc in _checklistDocs) {
+      if (doc.id == checklistId) {
+        sourceDoc = doc;
+        break;
+      }
+    }
+    final initialData = <String, dynamic>{
+      'id': checklistId,
+      'name':
+          _checklistNameById[checklistId] ?? context.l10n.webAdminWorkflowLabel,
+      ...?sourceDoc?.data(),
+    };
+    _editChecklist(initialData);
+  }
+
+  void _createWorkflowForShift(Map<String, dynamic> shift) {
+    _showEditDialog(
+      ChecklistBottomSheet(
+        key: UniqueKey(),
+        organizationId: widget.organizationId,
+        locationId: _selectedLocationId ?? '',
+        availableLocations: _availableLocations,
+        presetShiftIds: [shift['id'] as String],
+        initialTitleSuggestion: context.l10n.webAdminWorkflowSuggestion(
+          '${shift['name'] ?? shift['shiftName'] ?? context.l10n.webAdminTabShift}',
+        ),
+        initialData: const {'tasks': []},
+        onSave: (checklistData) async {
+          await _saveChecklistFromBottomSheet(checklistData);
+          await _loadChecklistsTable();
+          _showSnackBar(context.l10n.webAdminWorkflowCreated);
+        },
+      ),
+    );
+  }
+
   String _formatSchedule(Map<String, dynamic> s) {
     final daily = s['repeatsDaily'] == true;
     final days = (s['days'] is List) ? List.from(s['days']) : <dynamic>[];
 
     if (daily) {
-      return 'Daily';
+      return context.l10n.webAdminScheduleDaily;
     }
 
     if (days.isEmpty) {
@@ -191,13 +419,14 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
 
     mapDay(d) {
       final dd = d.toString().toLowerCase();
-      if (dd.startsWith('mon') || dd == '1') return 'Mon';
-      if (dd.startsWith('tue') || dd == '2') return 'Tue';
-      if (dd.startsWith('wed') || dd == '3') return 'Wed';
-      if (dd.startsWith('thu') || dd == '4') return 'Thu';
-      if (dd.startsWith('fri') || dd == '5') return 'Fri';
-      if (dd.startsWith('sat') || dd == '6') return 'Sat';
-      if (dd.startsWith('sun') || dd == '0' || dd == '7') return 'Sun';
+      if (dd.startsWith('mon') || dd == '1') return context.l10n.webAdminDayMon;
+      if (dd.startsWith('tue') || dd == '2') return context.l10n.webAdminDayTue;
+      if (dd.startsWith('wed') || dd == '3') return context.l10n.webAdminDayWed;
+      if (dd.startsWith('thu') || dd == '4') return context.l10n.webAdminDayThu;
+      if (dd.startsWith('fri') || dd == '5') return context.l10n.webAdminDayFri;
+      if (dd.startsWith('sat') || dd == '6') return context.l10n.webAdminDaySat;
+      if (dd.startsWith('sun') || dd == '0' || dd == '7')
+        return context.l10n.webAdminDaySun;
       return dd.substring(0, 3).toUpperCase();
     }
 
@@ -205,18 +434,24 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
     return names.join(' ');
   }
 
-  Widget _locationPicker(BuildContext context) {
+  Widget _locationPicker(BuildContext context, {bool compact = true}) {
     return PopupMenuButton<String>(
       enabled: _availableLocations.isNotEmpty,
       onSelected: (value) async {
+        final selectedLocation = _availableLocations.firstWhere(
+          (l) => l['id'] == value,
+          orElse: () => {'name': context.l10n.webAdminTabLocation},
+        );
+        final selectedLocationName = selectedLocation['name'] as String?;
         setState(() {
           _selectedLocationId = value;
-          _selectedLocationName =
-              _availableLocations.firstWhere((l) => l['id'] == value, orElse: () => {'name': 'Location'})['name']
-                  as String?;
+          _selectedLocationName = selectedLocationName;
         });
         // Persist globally so other pages adopt the change
-        LocationSelectionService.instance.setLocation(value);
+        await LocationSelectionService.instance.setLocationAsync(
+          value,
+          locationName: selectedLocationName,
+        );
         await _reloadAllTables();
       },
       itemBuilder:
@@ -227,26 +462,141 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
                   value: loc['id'],
                   child: Row(
                     children: [
-                      Icon(Icons.location_on, size: 16, color: selected ? Theme.of(context).primaryColor : Colors.grey),
+                      Icon(
+                        Icons.location_on,
+                        size: 16,
+                        color:
+                            selected
+                                ? Theme.of(context).primaryColor
+                                : Colors.grey,
+                      ),
                       const SizedBox(width: 8),
-                      Expanded(child: Text(loc['name'], overflow: TextOverflow.ellipsis)),
+                      Expanded(
+                        child: Text(
+                          loc['name'],
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                       if (selected)
-                        const Padding(padding: EdgeInsets.only(left: 8), child: Icon(Icons.check, size: 14)),
+                        const Padding(
+                          padding: EdgeInsets.only(left: 8),
+                          child: Icon(Icons.check, size: 14),
+                        ),
                     ],
                   ),
                 );
               }).toList(),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(8)),
-        child: Row(
-          children: [
-            const Icon(Icons.location_on, size: 18),
-            const SizedBox(width: 6),
-            Text(_selectedLocationName ?? 'Select location', overflow: TextOverflow.ellipsis),
-          ],
-        ),
-      ),
+      child:
+          compact
+              ? Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white10,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: HandsColors.white12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.location_on_rounded, size: 18),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        _selectedLocationName ??
+                            context.l10n.adminSetupSelectLocation,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.expand_more_rounded, size: 16),
+                  ],
+                ),
+              )
+              : Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF21262F),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: _currentSectionAccent().withValues(alpha: 0.22),
+                    width: 1.2,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.location_on_rounded,
+                      color: HandsColors.handsOrange,
+                      size: 22,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            context.l10n.adminSetupActiveLocation,
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: HandsColors.white70,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _selectedLocationName ??
+                                context.l10n.adminSetupSelectLocation,
+                            style: GoogleFonts.inter(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: HandsColors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _currentSectionAccent().withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: _currentSectionAccent().withValues(
+                            alpha: 0.18,
+                          ),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Switch',
+                            style: GoogleFonts.inter(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: _currentSectionAccent(),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Icon(
+                            Icons.expand_more_rounded,
+                            color: _currentSectionAccent(),
+                            size: 16,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
     );
   }
 
@@ -254,9 +604,11 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
   void didUpdateWidget(WEBAdminDashboardPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     // Update tab when route changes
-    if (widget.initialTab != oldWidget.initialTab && widget.initialTab != null) {
+    if (widget.initialTab != oldWidget.initialTab &&
+        widget.initialTab != null) {
       setState(() {
         _currentTab = widget.initialTab!;
+        AdminDashboardState.lastTab = _currentTab;
       });
     }
   }
@@ -265,8 +617,9 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
 
   void _onSearchChanged() {
     setState(() {
-      _searchQuery = _searchController.text.toLowerCase();
-      _currentPage = 0; // Reset to first page when searching
+      AdminDashboardState.searchQuery = _searchController.text.toLowerCase();
+      AdminDashboardState.currentPage = 0; // Reset to first page when searching
+      AdminDashboardState.resetPagination(); // Persist the reset
     });
   }
 
@@ -275,7 +628,11 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
     if (user == null) return;
 
     try {
-      final userDoc = await FirestoreEnforcer.instance.collection('users').doc(user.uid).get();
+      final userDoc =
+          await FirestoreEnforcer.instance
+              .collection('users')
+              .doc(user.uid)
+              .get();
 
       if (userDoc.exists) {
         final userData = userDoc.data();
@@ -305,19 +662,28 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           orgId = userData['organizationId'] as String?;
         }
 
-        // Only allow admin access (userRole = 2) and require matching organizationId
-        if (role != 2 || orgId != widget.organizationId) {
+        final hasPlatformAccess =
+            widget.allowPlatformAccess && userData['platformAccess'] == true;
+
+        // Only allow normal org admins, except CRM platform users opening
+        // customer orgs through the platform-only CRM manage route.
+        if ((role != 2 || orgId != widget.organizationId) &&
+            !hasPlatformAccess) {
           logger.w(
             '[WEBAdminDashboard] Access denied: role=$role, orgId=$orgId, expectedOrgId=${widget.organizationId}',
           );
           if (mounted) {
-            Navigator.of(context).pop();
+            setState(() {
+              _accessDenied = true;
+              isLoading = false;
+            });
           }
           return;
         }
 
         setState(() {
-          userRole = role;
+          _accessDenied = false;
+          userRole = hasPlatformAccess ? 2 : role;
           isLoading = false;
         });
 
@@ -333,7 +699,9 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
 
   Future<void> _loadLocations() async {
     try {
-      logger.i('[WEBAdminDashboard] Loading locations for org: ${widget.organizationId}');
+      logger.i(
+        '[WEBAdminDashboard] Loading locations for org: ${widget.organizationId}',
+      );
 
       List<Map<String, dynamic>> locations = [];
 
@@ -359,7 +727,10 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
                 final data = doc.data();
                 return {
                   'id': doc.id,
-                  'name': data['locationName'] ?? data['name'] ?? 'Unnamed Location',
+                  'name':
+                      data['locationName'] ??
+                      data['name'] ??
+                      context.l10n.webAdminUnnamedLocation,
                   'isPrimary': data['isPrimary'] ?? false,
                 };
               }).toList();
@@ -370,7 +741,10 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               final data = doc.data();
               return {
                 'id': doc.id,
-                'name': data['locationName'] ?? data['name'] ?? 'Unnamed Location',
+                'name':
+                    data['locationName'] ??
+                    data['name'] ??
+                    context.l10n.webAdminUnnamedLocation,
                 'isPrimary': data['isPrimary'] ?? false,
               };
             }).toList();
@@ -385,7 +759,17 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
 
       setState(() {
         _availableLocations = locations;
-        if ((_selectedLocationId == null || !_availableLocations.any((l) => l['id'] == _selectedLocationId)) &&
+        if (_selectedLocationId != null &&
+            _availableLocations.any((l) => l['id'] == _selectedLocationId)) {
+          _selectedLocationName =
+              _availableLocations.firstWhere(
+                    (l) => l['id'] == _selectedLocationId,
+                  )['name']
+                  as String?;
+        } else if ((_selectedLocationId == null ||
+                !_availableLocations.any(
+                  (l) => l['id'] == _selectedLocationId,
+                )) &&
             _availableLocations.isNotEmpty) {
           final primary = _availableLocations.firstWhere(
             (l) => l['isPrimary'] == true,
@@ -395,6 +779,26 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           _selectedLocationName = primary['name'] as String?;
         }
       });
+
+      if (_selectedLocationId != null) {
+        await LocationSelectionService.instance.setLocationAsync(
+          _selectedLocationId,
+          locationName: _selectedLocationName,
+        );
+      }
+
+      // If this is a new organization setup and there are no locations, show welcome once
+      if (mounted &&
+          widget.isNewOrganizationSetup &&
+          !_welcomeShown &&
+          _availableLocations.isEmpty) {
+        _welcomeShown = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _showWelcomeDialog();
+          }
+        });
+      }
 
       // Reload dependent tables
       await _reloadAllTables();
@@ -424,15 +828,13 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
     showDialog(
       context: context,
       barrierDismissible: false,
+      barrierColor: HandsModalTokens.overlay,
       builder:
-          (context) => Dialog(
-            backgroundColor: Colors.transparent,
-            child: Container(
-              width: MediaQuery.of(context).size.width * 0.8,
-              height: MediaQuery.of(context).size.height * 0.8,
-              decoration: BoxDecoration(color: HandsColors.scaffoldBackground, borderRadius: BorderRadius.circular(12)),
-              child: child,
-            ),
+          (context) => HandsModalSurface(
+            width: MediaQuery.of(context).size.width * 0.82,
+            height: MediaQuery.of(context).size.height * 0.84,
+            maxWidth: 1180,
+            child: child,
           ),
     );
   }
@@ -446,160 +848,522 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
       );
     }
 
+    if (_accessDenied) {
+      return Scaffold(
+        backgroundColor: HandsColors.scaffoldBackground,
+        appBar: AppBar(
+          backgroundColor: HandsColors.cardPrimary,
+          title: const Text('Access unavailable'),
+        ),
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'You do not have admin access to this organization.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
+
+    final l10n = context.l10n;
+    final adminTourSteps = <GuidedTourStep>[
+      GuidedTourStep(
+        title: l10n.adminSetupTourWelcomeTitle,
+        description: l10n.adminSetupTourWelcomeDescription,
+      ),
+      if (_availableLocations.length > 1)
+        GuidedTourStep(
+          targetKey: _tourLocationScopeKey,
+          title: l10n.adminSetupTourLocationTitle,
+          description: l10n.adminSetupTourLocationDescription,
+          topicId: 'admin-multi-location',
+        ),
+      GuidedTourStep(
+        targetKey: _tourNavigationKey,
+        title: l10n.adminSetupTourAreasTitle,
+        description: l10n.adminSetupTourAreasDescription,
+        topicId: 'admin-first-location',
+        scrollAlignment: 0.08,
+      ),
+      GuidedTourStep(
+        targetKey: _tourContentKey,
+        title: l10n.adminSetupTourPanelTitle,
+        description: l10n.adminSetupTourPanelDescription,
+        topicId: 'admin-create-shift',
+        scrollAlignment: 0.08,
+      ),
+    ];
+
     return Scaffold(
       backgroundColor: HandsColors.scaffoldBackground,
       appBar: AppBar(
         backgroundColor: HandsColors.cardPrimary,
         elevation: 0,
         toolbarHeight: kToolbarHeight,
-        title: GenericAppBarContent(appBarTitle: 'Admin Dashboard', userRole: userRole),
+        leading:
+            widget.allowPlatformAccess
+                ? IconButton(
+                  tooltip: 'Back to CRM',
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => context.go('/crm'),
+                )
+                : null,
+        title:
+            widget.allowPlatformAccess
+                ? Text(
+                  'CRM account workspace',
+                  style: GoogleFonts.comfortaa(fontWeight: FontWeight.w800),
+                )
+                : GenericAppBarContent(
+                  appBarTitle: l10n.bottomNavSetup,
+                  userRole: userRole,
+                ),
         automaticallyImplyLeading: false,
-        actions: [
-          // Location selector dropdown
-          if (_availableLocations.isNotEmpty) ...[
-            Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: PopupMenuButton<String>(
-                enabled: _availableLocations.isNotEmpty,
-                onSelected: (value) {
-                  setState(() {
-                    _selectedLocationId = value;
-                    _selectedLocationName =
-                        _availableLocations.firstWhere(
-                              (loc) => loc['id'] == value,
-                              orElse: () => {'name': 'Unknown Location'},
-                            )['name']
-                            as String?;
-                  });
-                },
-                itemBuilder:
-                    (context) =>
-                        _availableLocations.map((location) {
-                          return PopupMenuItem<String>(
-                            value: location['id'],
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.location_on,
-                                  color:
-                                      location['id'] == _selectedLocationId
-                                          ? HandsColors.handsOrange
-                                          : HandsColors.white70,
-                                  size: 16,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    location['name'],
-                                    style: GoogleFonts.comfortaa(
-                                      fontWeight:
-                                          location['id'] == _selectedLocationId ? FontWeight.bold : FontWeight.normal,
-                                      color: HandsColors.white,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                if (location['id'] == _selectedLocationId)
-                                  const Padding(
-                                    padding: EdgeInsets.only(left: 8),
-                                    child: Icon(Icons.check, color: HandsColors.handsOrange, size: 16),
-                                  ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: HandsColors.handsOrange.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
+        actions:
+            widget.allowPlatformAccess
+                ? [
+                  TextButton.icon(
+                    onPressed: () => context.go('/crm'),
+                    icon: const Icon(Icons.dashboard_customize_outlined),
+                    label: const Text('Back to CRM'),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+                  const SizedBox(width: 12),
+                ]
+                : [
+                  // Unified menu button
+                  UnifiedMenuButton(
+                    userRole: userRole,
+                    organizationId: widget.organizationId,
+                  ),
+                ],
+      ),
+      body: GuidedTourHost(
+        storageKey: 'admin-setup-tour-v2',
+        enabled: !isLoading && !widget.allowPlatformAccess,
+        steps: adminTourSteps,
+        child: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF0F1116), Color(0xFF141820)],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                KeyedSubtree(
+                  key: _tourNavigationKey,
+                  child: _buildLeftNavigation(),
+                ),
+                const SizedBox(width: 18),
+                Expanded(
+                  child: Column(
                     children: [
-                      const Icon(Icons.location_on, color: HandsColors.white, size: 18),
-                      const SizedBox(width: 6),
-                      Text(
-                        _selectedLocationName?.isNotEmpty == true ? _selectedLocationName! : 'Select Location',
-                        style: GoogleFonts.comfortaa(
-                          color: HandsColors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
+                      if (widget.allowPlatformAccess) ...[
+                        _buildCrmManageBanner(),
+                        const SizedBox(height: 12),
+                      ],
+                      KeyedSubtree(
+                        key: _tourLocationScopeKey,
+                        child: _buildFilterBar(),
+                      ),
+                      if (widget.isNewOrganizationSetup &&
+                          !widget.allowPlatformAccess) ...[
+                        const SizedBox(height: 10),
+                        _buildLaunchChecklistCard(),
+                      ],
+                      const SizedBox(height: 16),
+                      Expanded(
+                        child: KeyedSubtree(
+                          key: _tourContentKey,
+                          child: _buildMainContent(),
                         ),
                       ),
-                      const SizedBox(width: 4),
-                      const Icon(Icons.arrow_drop_down, color: HandsColors.white, size: 16),
                     ],
                   ),
                 ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      bottomNavigationBar:
+          widget.allowPlatformAccess
+              ? CrmScopedBottomNav(
+                orgId: widget.organizationId,
+                currentIndex: 2,
+              )
+              : BottomNavBar(
+                currentIndex: 2,
+                userRole: userRole,
+              ), // Admin tab is index 2
+    );
+  }
+
+  Widget _buildLaunchChecklistCard() {
+    final locationDone = _availableLocations.isNotEmpty;
+    final teamDone = _teamMemberCount > 1;
+    final shiftsDone = _shiftDocs.isNotEmpty;
+    final workflowsDone = _checklistDocs.isNotEmpty;
+    final completeCount =
+        [
+          locationDone,
+          teamDone,
+          shiftsDone,
+          workflowsDone,
+        ].where((done) => done).length;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111821),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: HandsColors.white12),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: HandsColors.handsOrange.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.rocket_launch_outlined,
+              color: HandsColors.handsOrange,
+              size: 19,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      'Launch checklist',
+                      style: GoogleFonts.inter(
+                        color: HandsColors.white,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildTrialPill(),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    _buildLaunchStepChip(
+                      label: 'Location',
+                      done: locationDone,
+                      tab: WebAdminTab.locations,
+                    ),
+                    _buildLaunchStepChip(
+                      label: 'Team',
+                      done: teamDone,
+                      tab: WebAdminTab.users,
+                    ),
+                    _buildLaunchStepChip(
+                      label: 'Shift',
+                      done: shiftsDone,
+                      tab: WebAdminTab.shifts,
+                    ),
+                    _buildLaunchStepChip(
+                      label: 'Workflow',
+                      done: workflowsDone,
+                      tab: WebAdminTab.checklists,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            '$completeCount/4 ready',
+            style: GoogleFonts.inter(
+              color: HandsColors.white70,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTrialPill() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: HandsColors.sageGreen.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: HandsColors.sageGreen.withValues(alpha: 0.3)),
+      ),
+      child: Text(
+        'Trial active - add billing later in Settings',
+        style: GoogleFonts.inter(
+          color: HandsColors.sageGreen,
+          fontSize: 10.5,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLaunchStepChip({
+    required String label,
+    required bool done,
+    required WebAdminTab tab,
+  }) {
+    final color = done ? HandsColors.sageGreen : _accentForTab(tab);
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: () {
+        setState(() {
+          _currentTab = tab;
+          AdminDashboardState.lastTab = tab;
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: done ? 0.14 : 0.1),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: color.withValues(alpha: 0.28)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              done ? Icons.check_circle : Icons.radio_button_unchecked,
+              color: color,
+              size: 13,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: GoogleFonts.inter(
+                color: HandsColors.white,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ],
-          // Unified menu button
-          UnifiedMenuButton(userRole: userRole),
-        ],
+        ),
       ),
-      body: Row(
+    );
+  }
+
+  Widget _buildCrmManageBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: HandsColors.handsOrange.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: HandsColors.handsOrange.withValues(alpha: 0.25),
+        ),
+      ),
+      child: Row(
         children: [
-          // Left Navigation Bar
-          _buildLeftNavigation(),
-          // Main Content Area
-          Expanded(child: Column(children: [_buildFilterBar(), Expanded(child: _buildMainContent())])),
+          const Icon(
+            Icons.admin_panel_settings_outlined,
+            color: HandsColors.handsOrange,
+            size: 18,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Viewing this customer setup from CRM. This does not switch your signed-in app org; use Back to CRM when you are finished.',
+              style: GoogleFonts.inter(
+                color: HandsColors.white,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
         ],
       ),
-      bottomNavigationBar: BottomNavBar(currentIndex: 2, userRole: userRole), // Admin tab is index 2
     );
   }
 
   Widget _buildLeftNavigation() {
     return Container(
-      width: 250,
-      color: HandsColors.cardPrimary, // Same charcoal color as header
+      width: 238,
+      decoration: BoxDecoration(
+        color: const Color(0xFF171B22),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: HandsColors.white12),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x24000000),
+            blurRadius: 28,
+            offset: Offset(0, 18),
+          ),
+        ],
+      ),
       child: Column(
         children: [
-          // Header
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(24),
-            decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: HandsColors.white12, width: 1))),
-            child: Text(
-              'ADMIN SETUP',
-              style: GoogleFonts.comfortaa(
-                color: HandsColors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.2,
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+            decoration: const BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: HandsColors.white12, width: 1),
               ),
             ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  context.l10n.adminSetupHeroTitle,
+                  style: GoogleFonts.inter(
+                    color: HandsColors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.4,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  context.l10n.webAdminSidebarSubtitle,
+                  style: GoogleFonts.inter(
+                    color: HandsColors.white70,
+                    fontSize: 12.5,
+                    height: 1.35,
+                  ),
+                ),
+                if (_selectedLocationName != null) ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: HandsColors.handsOrange.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: HandsColors.handsOrange.withValues(alpha: 0.18),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.location_on_rounded,
+                          color: HandsColors.handsOrange,
+                          size: 15,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _selectedLocationName!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(
+                              color: HandsColors.handsOrange,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
-          // Navigation Items
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
               children: [
                 _buildNavItem(
-                  icon: Icons.schedule,
-                  label: 'Shifts',
-                  tab: WebAdminTab.shifts,
-                  isActive: _currentTab == WebAdminTab.shifts,
-                ),
-                _buildNavItem(
-                  icon: Icons.checklist,
-                  label: 'Checklists',
-                  tab: WebAdminTab.checklists,
-                  isActive: _currentTab == WebAdminTab.checklists,
+                  icon: Icons.location_on,
+                  label: context.l10n.adminViewLocations,
+                  tab: WebAdminTab.locations,
+                  isActive: _currentTab == WebAdminTab.locations,
                 ),
                 _buildNavItem(
                   icon: Icons.people,
-                  label: 'Staff',
+                  label: context.l10n.adminViewTeam,
                   tab: WebAdminTab.users,
                   isActive: _currentTab == WebAdminTab.users,
                 ),
                 _buildNavItem(
-                  icon: Icons.location_on,
-                  label: 'Locations',
-                  tab: WebAdminTab.locations,
-                  isActive: _currentTab == WebAdminTab.locations,
+                  icon: Icons.schedule,
+                  label: context.l10n.adminViewShifts,
+                  tab: WebAdminTab.shifts,
+                  isActive: _currentTab == WebAdminTab.shifts,
+                ),
+                _buildNavItem(
+                  icon: Icons.library_books,
+                  label: context.l10n.adminViewChecklistLibrary,
+                  tab: WebAdminTab.checklists,
+                  isActive: _currentTab == WebAdminTab.checklists,
+                ),
+              ],
+            ),
+          ),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+            decoration: const BoxDecoration(
+              border: Border(
+                top: BorderSide(color: HandsColors.white12, width: 1),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    _currentSectionIcon(),
+                    color: _currentSectionAccent(),
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _getTabDisplayName(),
+                        style: GoogleFonts.inter(
+                          color: HandsColors.white,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        context.l10n.webAdminSetupWorkspace,
+                        style: GoogleFonts.inter(
+                          color: HandsColors.white70,
+                          fontSize: 11.5,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -618,28 +1382,57 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       child: Material(
-        color: isActive ? HandsColors.handsOrange.withOpacity(0.15) : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
         child: InkWell(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(14),
           onTap: () {
             setState(() {
               _currentTab = tab;
+              AdminDashboardState.lastTab = _currentTab;
             });
           },
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color:
+                  isActive
+                      ? _currentSectionAccent().withValues(alpha: 0.14)
+                      : Colors.white.withValues(alpha: 0.02),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color:
+                    isActive
+                        ? _currentSectionAccent().withValues(alpha: 0.22)
+                        : Colors.transparent,
+              ),
+            ),
             child: Row(
               children: [
-                Icon(icon, color: isActive ? HandsColors.handsOrange : HandsColors.white70, size: 20),
+                Icon(
+                  icon,
+                  color:
+                      isActive ? _currentSectionAccent() : HandsColors.white70,
+                  size: 19,
+                ),
                 const SizedBox(width: 12),
-                Text(
-                  label,
-                  style: GoogleFonts.comfortaa(
-                    color: isActive ? HandsColors.handsOrange : HandsColors.white70,
-                    fontSize: 14,
-                    fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+                Expanded(
+                  child: Text(
+                    label,
+                    style: GoogleFonts.inter(
+                      color: isActive ? HandsColors.white : HandsColors.white70,
+                      fontSize: 13.5,
+                      fontWeight: isActive ? FontWeight.w700 : FontWeight.w600,
+                    ),
                   ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color:
+                      isActive
+                          ? _currentSectionAccent()
+                          : Colors.white.withValues(alpha: 0.22),
+                  size: 18,
                 ),
               ],
             ),
@@ -653,57 +1446,212 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
 
   Widget _buildFilterBar() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: HandsColors.cardPrimary,
-        border: Border(bottom: BorderSide(color: HandsColors.white12, width: 1)),
+        color: const Color(0xFF171B22),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: HandsColors.white12),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x20000000),
+            blurRadius: 14,
+            offset: Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Search field
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _currentSectionAccent().withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        _currentSectionEyebrow(),
+                        style: GoogleFonts.inter(
+                          color: _currentSectionAccent(),
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _currentSectionTitle(),
+                      style: GoogleFonts.inter(
+                        color: HandsColors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.7,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      _currentSectionSubtitle(),
+                      style: GoogleFonts.inter(
+                        color: HandsColors.white70,
+                        fontSize: 12,
+                        height: 1.25,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              ContextHelpTrigger(
+                title: _currentSectionTitle(),
+                subtitle: _currentSectionSubtitle(),
+                topicIds: _currentSectionHelpTopics(),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                width: 106,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.03),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: HandsColors.white12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      context.l10n.webAdminScope,
+                      style: GoogleFonts.inter(
+                        color: HandsColors.white70,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.tune_rounded,
+                          size: 14,
+                          color: _currentSectionAccent(),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            _availableLocations.length > 1
+                                ? (_selectedLocationName ??
+                                    context.l10n.adminSetupAllLocations)
+                                : context.l10n.webAdminAllActive,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(
+                              color: HandsColors.white,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              height: 1.2,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Location indicator (only show if multiple locations exist)
+          if (_availableLocations.length > 1) ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: _locationPicker(context, compact: true),
+            ),
+          ],
+          Row(
+            children: [
               Expanded(
                 flex: 3,
-                child: TextField(
+                child: HandsTextField(
                   controller: _searchController,
                   style: GoogleFonts.comfortaa(color: HandsColors.white),
                   decoration: InputDecoration(
-                    hintText: 'Search ${_getTabDisplayName()}...',
-                    hintStyle: GoogleFonts.comfortaa(color: HandsColors.white30),
-                    prefixIcon: const Icon(Icons.search, color: HandsColors.white30),
+                    hintText: context.l10n.webAdminSearchHint(
+                      _getTabDisplayName(),
+                    ),
+                    hintStyle: GoogleFonts.comfortaa(
+                      color: HandsColors.white30,
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.search,
+                      color: HandsColors.white30,
+                    ),
                     suffixIcon:
                         _searchQuery.isNotEmpty
                             ? IconButton(
-                              icon: const Icon(Icons.clear, color: HandsColors.white30),
+                              icon: const Icon(
+                                Icons.clear,
+                                color: HandsColors.white30,
+                              ),
                               onPressed: () => _searchController.clear(),
                             )
                             : null,
                     filled: true,
-                    fillColor: HandsColors.secondaryContainer,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    fillColor: const Color(0xFF21262F),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 9,
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(width: 16),
-              // Add new button
+              const SizedBox(width: 10),
+              if (_shouldShowLocationFilter() &&
+                  _availableLocations.isNotEmpty) ...[
+                SizedBox(width: 210, child: _locationPicker(context)),
+                const SizedBox(width: 8),
+              ],
               ElevatedButton.icon(
                 onPressed: () => _showCreateDialog(),
                 icon: const Icon(Icons.add, size: 16),
-                label: Text('Add ${_getTabDisplayName(singular: true)}'),
+                label: Text(
+                  context.l10n.webAdminAddItem(
+                    _getTabDisplayName(singular: true),
+                  ),
+                ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: HandsColors.handsOrange,
+                  backgroundColor: _currentSectionAccent(),
                   foregroundColor: HandsColors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 13,
+                    vertical: 10,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
               ),
             ],
           ),
           // Location filter for mobile/smaller screens (if needed)
-          if (_shouldShowLocationFilter() && MediaQuery.of(context).size.width < 1200) ...[
+          if (_shouldShowLocationFilter() &&
+              MediaQuery.of(context).size.width < 1200) ...[
             const SizedBox(height: 16),
-            Align(alignment: Alignment.centerLeft, child: SizedBox(width: 250, child: _locationPicker(context))),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SizedBox(width: 250, child: _locationPicker(context)),
+            ),
           ],
         ],
       ),
@@ -711,16 +1659,79 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
   }
 
   Widget _buildMainContent() {
-    switch (_currentTab) {
-      case WebAdminTab.shifts:
-        return _buildShiftsTable();
-      case WebAdminTab.checklists:
-        return _buildChecklistsTable();
-      case WebAdminTab.users:
-        return _buildUsersTable();
-      case WebAdminTab.locations:
-        return _buildLocationsTable();
-    }
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF171B22),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: HandsColors.white12),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1C000000),
+            blurRadius: 14,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: _currentSectionAccent().withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    _currentSectionIcon(),
+                    color: _currentSectionAccent(),
+                    size: 16,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _currentSectionTitle(),
+                        style: GoogleFonts.inter(
+                          color: HandsColors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.35,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _currentSectionTableSubtitle(),
+                        style: GoogleFonts.inter(
+                          color: HandsColors.white70,
+                          fontSize: 11.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: switch (_currentTab) {
+                WebAdminTab.shifts => _buildShiftsTable(),
+                WebAdminTab.checklists => _buildChecklistsTable(),
+                WebAdminTab.users => _buildUsersTable(),
+                WebAdminTab.locations => _buildLocationsTable(),
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildShiftsTable() {
@@ -733,7 +1744,9 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
+          return Center(
+            child: Text(context.l10n.webAdminStreamError('${snapshot.error}')),
+          );
         }
 
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -792,12 +1805,14 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
 
               // Try multiple possible field names for shift name
               String shiftName = '';
-              if (data['shiftName'] != null && data['shiftName'].toString().isNotEmpty) {
+              if (data['shiftName'] != null &&
+                  data['shiftName'].toString().isNotEmpty) {
                 shiftName = data['shiftName'].toString();
-              } else if (data['name'] != null && data['name'].toString().isNotEmpty) {
+              } else if (data['name'] != null &&
+                  data['name'].toString().isNotEmpty) {
                 shiftName = data['name'].toString();
               } else {
-                shiftName = 'Unnamed Shift';
+                shiftName = context.l10n.webAdminUnnamedShift;
               }
 
               return {
@@ -817,7 +1832,9 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
         if (_searchQuery.isNotEmpty) {
           shifts =
               shifts.where((shift) {
-                return shift['name'].toString().toLowerCase().contains(_searchQuery);
+                return shift['name'].toString().toLowerCase().contains(
+                  _searchQuery,
+                );
               }).toList();
         }
 
@@ -863,28 +1880,28 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
         return _buildDataTable(
           columns: [
             DataColumn(
-              label: const Text('Shift Name'),
+              label: Text(context.l10n.webAdminColumnShiftName),
               onSort: (columnIndex, ascending) {
                 setState(() {
-                  _sortColumnIndex = columnIndex;
-                  _sortAscending = ascending;
+                  AdminDashboardState.sortColumnIndex = columnIndex;
+                  AdminDashboardState.sortAscending = ascending;
                 });
               },
             ),
             DataColumn(
-              label: const Text('Time'),
+              label: Text(context.l10n.webAdminColumnTime),
               onSort: (columnIndex, ascending) {
                 setState(() {
-                  _sortColumnIndex = columnIndex;
-                  _sortAscending = ascending;
+                  AdminDashboardState.sortColumnIndex = columnIndex;
+                  AdminDashboardState.sortAscending = ascending;
                 });
               },
             ),
-            const DataColumn(label: Text('Checklists')),
-            const DataColumn(label: Text('Schedule')),
-            const DataColumn(label: Text('Locations')),
-            const DataColumn(label: Text('Status')),
-            const DataColumn(label: Text('Actions')),
+            DataColumn(label: Text(context.l10n.webAdminWorkflowLabel)),
+            DataColumn(label: Text(context.l10n.webAdminColumnSchedule)),
+            // Locations column removed - locations are now managed uniquely and should not be displayed here
+            DataColumn(label: Text(context.l10n.webAdminColumnStatus)),
+            DataColumn(label: Text(context.l10n.webAdminColumnActions)),
           ],
           rows: shifts,
           buildRow: (shift) => _buildShiftRow(shift),
@@ -894,18 +1911,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
   }
 
   DataRow _buildShiftRow(Map<String, dynamic> shift) {
-    final locationIds =
-        (shift['locations'] as List? ?? []).map((e) => e.toString()).where((e) => e.isNotEmpty).toList();
-    final locationNames = locationIds
-        .map((id) {
-          final location = _availableLocations.firstWhere(
-            (loc) => loc['id'] == id,
-            orElse: () => {'name': 'Unknown Location'},
-          );
-          return location['name'] as String;
-        })
-        .where((name) => name.isNotEmpty)
-        .join(', ');
+    // Location IDs and names intentionally not used in web shifts table (locations are managed uniquely)
 
     // Format time as "10:00am - 3:00pm"
     String formatTime(String time) {
@@ -928,57 +1934,71 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
 
     final startTime = formatTime(shift['startTime'] ?? '');
     final endTime = formatTime(shift['endTime'] ?? '');
-    final timeRange = (startTime.isNotEmpty && endTime.isNotEmpty) ? '$startTime - $endTime' : '$startTime$endTime';
+    final timeRange =
+        (startTime.isNotEmpty && endTime.isNotEmpty)
+            ? '$startTime - $endTime'
+            : '$startTime$endTime';
 
     return DataRow(
       cells: [
         DataCell(
-          SizedBox(width: 150, child: Text(shift['name'], style: GoogleFonts.comfortaa(color: HandsColors.white))),
+          Text(
+            shift['name'],
+            style: GoogleFonts.comfortaa(color: HandsColors.white),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
-        DataCell(Text(timeRange, style: GoogleFonts.comfortaa(color: HandsColors.white70))),
         DataCell(
-          // Checklists column: display as simple comma-separated text
+          Text(
+            timeRange,
+            style: GoogleFonts.comfortaa(color: HandsColors.white70),
+          ),
+        ),
+        DataCell(
+          // Workflow column: show the primary attached checklist template
           Builder(
             builder: (context) {
-              final tids =
-                  (shift['checklists'] as List? ?? []).map((e) => e.toString()).where((e) => e.isNotEmpty).toList();
-              final names = tids.map((t) => _checklistNameById[t] ?? 'Unknown Checklist').toList();
-
-              return SizedBox(
-                width: 250, // Constrains the width, forcing text to wrap
-                child: Text(
-                  names.isEmpty ? 'No Checklists' : names.join(', '),
-                  style: GoogleFonts.comfortaa(color: HandsColors.white70),
+              return Text(
+                _workflowSummaryForShift(shift),
+                style: GoogleFonts.comfortaa(
+                  color:
+                      _extractShiftChecklistIds(shift).isEmpty
+                          ? HandsColors.white30
+                          : HandsColors.white70,
                 ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               );
             },
           ),
         ),
         DataCell(
-          SizedBox(
-            width: 150,
-            child: Text(_formatSchedule(shift), style: GoogleFonts.comfortaa(color: HandsColors.white70)),
+          Text(
+            _formatSchedule(shift),
+            style: GoogleFonts.comfortaa(color: HandsColors.white70),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
-        DataCell(
-          SizedBox(
-            width: 150, // Give it a width to wrap
-            child: Text(
-              locationNames.isNotEmpty ? locationNames : 'No locations',
-              style: GoogleFonts.comfortaa(color: HandsColors.white70),
-            ),
-          ),
-        ),
+        // Locations cell removed - do not display location names in shifts table
         DataCell(
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: shift['active'] ? HandsColors.sageGreen : HandsColors.error,
+              color:
+                  shift['active'] ? HandsColors.sageGreen : HandsColors.error,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
-              shift['active'] ? 'Active' : 'Inactive',
-              style: GoogleFonts.comfortaa(color: HandsColors.white, fontSize: 12, fontWeight: FontWeight.w500),
+              shift['active']
+                  ? context.l10n.webAdminStatusActive
+                  : context.l10n.webAdminStatusInactive,
+              style: GoogleFonts.comfortaa(
+                color: HandsColors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ),
@@ -987,24 +2007,57 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               IconButton(
-                icon: const Icon(Icons.edit, color: HandsColors.handsOrange, size: 20),
+                icon: const Icon(
+                  Icons.edit,
+                  color: HandsColors.handsOrange,
+                  size: 20,
+                ),
                 onPressed: () => _editShift(shift),
-                tooltip: 'Edit',
+                tooltip: context.l10n.webAdminActionEdit,
               ),
               IconButton(
-                icon: const Icon(Icons.copy, color: HandsColors.white70, size: 20),
+                icon: Icon(
+                  _extractShiftChecklistIds(shift).isEmpty
+                      ? Icons.add_task_rounded
+                      : Icons.rule_folder_outlined,
+                  color: HandsColors.handsOrange,
+                  size: 20,
+                ),
+                onPressed: () => _editWorkflowForShift(shift),
+                tooltip:
+                    _extractShiftChecklistIds(shift).isEmpty
+                        ? context.l10n.webAdminActionCreateWorkflow
+                        : context.l10n.webAdminActionEditWorkflow,
+              ),
+              IconButton(
+                icon: const Icon(
+                  Icons.copy,
+                  color: HandsColors.white70,
+                  size: 20,
+                ),
                 onPressed: () => _duplicateShift(shift),
-                tooltip: 'Duplicate',
+                tooltip: context.l10n.webAdminActionDuplicate,
               ),
               IconButton(
-                icon: Icon(shift['active'] ? Icons.archive : Icons.unarchive, color: HandsColors.amber, size: 20),
+                icon: Icon(
+                  shift['active'] ? Icons.archive : Icons.unarchive,
+                  color: HandsColors.amber,
+                  size: 20,
+                ),
                 onPressed: () => _toggleShiftActive(shift),
-                tooltip: shift['active'] ? 'Archive' : 'Restore',
+                tooltip:
+                    shift['active']
+                        ? context.l10n.webAdminActionArchive
+                        : context.l10n.webAdminActionRestore,
               ),
               IconButton(
-                icon: const Icon(Icons.delete, color: HandsColors.error, size: 20),
+                icon: const Icon(
+                  Icons.delete,
+                  color: HandsColors.error,
+                  size: 20,
+                ),
                 onPressed: () => _deleteShift(shift),
-                tooltip: 'Delete',
+                tooltip: context.l10n.commonDelete,
               ),
             ],
           ),
@@ -1023,7 +2076,9 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
+          return Center(
+            child: Text(context.l10n.webAdminStreamError('${snapshot.error}')),
+          );
         }
 
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -1038,8 +2093,15 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
 
               return {
                 'id': doc.id,
-                'name': data['checklistName'] ?? data['name'] ?? 'Unnamed Checklist',
-                'description': data['checklistDescription'] ?? data['description'] ?? '',
+                'name': localizedContent(
+                  data,
+                  fieldKeys: const ['name', 'checklistName', 'templateName'],
+                  fallback: context.l10n.webAdminUnnamedTemplate,
+                ),
+                'description': localizedContent(
+                  data,
+                  fieldKeys: const ['checklistDescription', 'description'],
+                ),
                 'taskCount': tasks.length,
                 'createdAt': data['createdAt'],
                 ...data,
@@ -1050,8 +2112,12 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
         if (_searchQuery.isNotEmpty) {
           checklists =
               checklists.where((checklist) {
-                return checklist['name'].toString().toLowerCase().contains(_searchQuery) ||
-                    checklist['description'].toString().toLowerCase().contains(_searchQuery);
+                return checklist['name'].toString().toLowerCase().contains(
+                      _searchQuery,
+                    ) ||
+                    checklist['description'].toString().toLowerCase().contains(
+                      _searchQuery,
+                    );
               }).toList();
         }
 
@@ -1061,9 +2127,13 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               checklists.where((checklist) {
                 final data = checklist;
                 final rawLocs = data['locationIds'];
-                if (rawLocs == null) return true; // global template (legacy) -> show
+                if (rawLocs == null) {
+                  return true; // global template (legacy) -> show
+                }
                 if (rawLocs is Iterable) {
-                  return rawLocs.map((e) => e.toString()).contains(_selectedLocationId);
+                  return rawLocs
+                      .map((e) => e.toString())
+                      .contains(_selectedLocationId);
                 }
                 return true; // unexpected type -> don't hide
               }).toList();
@@ -1108,28 +2178,28 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
         return _buildDataTable(
           columns: [
             DataColumn(
-              label: const Text('Checklist Name'),
+              label: Text(context.l10n.webAdminColumnTemplateName),
               onSort: (columnIndex, ascending) {
                 setState(() {
-                  _sortColumnIndex = columnIndex;
-                  _sortAscending = ascending;
+                  AdminDashboardState.sortColumnIndex = columnIndex;
+                  AdminDashboardState.sortAscending = ascending;
                 });
               },
             ),
-            const DataColumn(label: Text('Description')),
+            DataColumn(label: Text(context.l10n.webAdminColumnDescription)),
             DataColumn(
-              label: const Text('Tasks'),
+              label: Text(context.l10n.webAdminColumnTasks),
               onSort: (columnIndex, ascending) {
                 setState(() {
-                  _sortColumnIndex = columnIndex;
-                  _sortAscending = ascending;
+                  AdminDashboardState.sortColumnIndex = columnIndex;
+                  AdminDashboardState.sortAscending = ascending;
                 });
               },
               numeric: true,
             ),
-            const DataColumn(label: Text('Used in Shifts')),
-            const DataColumn(label: Text('Status')),
-            const DataColumn(label: Text('Actions')),
+            DataColumn(label: Text(context.l10n.webAdminColumnUsedInShifts)),
+            DataColumn(label: Text(context.l10n.webAdminColumnStatus)),
+            DataColumn(label: Text(context.l10n.webAdminColumnActions)),
           ],
           rows: checklists,
           buildRow: (checklist) => _buildChecklistRow(checklist),
@@ -1139,17 +2209,55 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
   }
 
   DataRow _buildChecklistRow(Map<String, dynamic> checklist) {
+    final isBeingDeleted =
+        _isDeleting && _deletingChecklistId == checklist['id'];
+
     return DataRow(
       cells: [
-        DataCell(Text(checklist['name'], style: GoogleFonts.comfortaa(color: HandsColors.white))),
+        DataCell(
+          Row(
+            children: [
+              if (isBeingDeleted) ...[
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                child: Text(
+                  checklist['name'],
+                  style: GoogleFonts.comfortaa(
+                    color:
+                        isBeingDeleted
+                            ? HandsColors.white30
+                            : HandsColors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
         DataCell(
           Text(
-            checklist['description'].isNotEmpty ? checklist['description'] : 'No description',
-            style: GoogleFonts.comfortaa(color: HandsColors.white70),
+            checklist['description'].isNotEmpty
+                ? checklist['description']
+                : context.l10n.webAdminNoDescription,
+            style: GoogleFonts.comfortaa(
+              color: isBeingDeleted ? HandsColors.white30 : HandsColors.white70,
+            ),
             overflow: TextOverflow.ellipsis,
           ),
         ),
-        DataCell(Text('${checklist['taskCount']} tasks', style: GoogleFonts.comfortaa(color: HandsColors.white70))),
+        DataCell(
+          Text(
+            context.l10n.webAdminTaskCount(checklist['taskCount'] as int),
+            style: GoogleFonts.comfortaa(
+              color: isBeingDeleted ? HandsColors.white30 : HandsColors.white70,
+            ),
+          ),
+        ),
         DataCell(
           Builder(
             builder: (context) {
@@ -1158,24 +2266,54 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               List<String> filteredUsed = used;
               if (_selectedLocationId != null) {
                 filteredUsed =
-                    used.where((sid) {
-                      final shiftDoc = _shiftDocs.firstWhere(
-                        (s) => s.id == sid,
-                        orElse: () => throw Exception('Not found'),
-                      );
-                      final shiftData = shiftDoc.data();
-                      final locationIds = List<String>.from(shiftData['locationIds'] ?? const []);
-                      return locationIds.contains(_selectedLocationId);
-                    }).toList();
+                    used
+                        .where(
+                          (sid) =>
+                              (_locationIdsByShiftId[sid] ?? const <String>[])
+                                  .contains(_selectedLocationId),
+                        )
+                        .toList();
               }
-              final labels = filteredUsed.map((sid) => _shiftNameById[sid] ?? 'Shift').toList();
-              if (labels.isEmpty) return Text('—', style: GoogleFonts.comfortaa(color: HandsColors.white70));
+              final labels =
+                  filteredUsed
+                      .map((sid) => _shiftNameById[sid] ?? 'Shift')
+                      .map(
+                        (name) =>
+                            name == 'Shift'
+                                ? context.l10n.webAdminTabShift
+                                : name,
+                      )
+                      .toList();
+              if (labels.isEmpty) {
+                return Text(
+                  '—',
+                  style: GoogleFonts.comfortaa(
+                    color:
+                        isBeingDeleted
+                            ? HandsColors.white30
+                            : HandsColors.white70,
+                  ),
+                );
+              }
               if (labels.length <= 3) {
-                return Text(labels.join(', '), style: GoogleFonts.comfortaa(color: HandsColors.white70));
+                return Text(
+                  labels.join(', '),
+                  style: GoogleFonts.comfortaa(
+                    color:
+                        isBeingDeleted
+                            ? HandsColors.white30
+                            : HandsColors.white70,
+                  ),
+                );
               }
               return Text(
                 '${labels.take(3).join(', ')} +${labels.length - 3}',
-                style: GoogleFonts.comfortaa(color: HandsColors.white70),
+                style: GoogleFonts.comfortaa(
+                  color:
+                      isBeingDeleted
+                          ? HandsColors.white30
+                          : HandsColors.white70,
+                ),
               );
             },
           ),
@@ -1184,12 +2322,21 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: (checklist['archived'] ?? false) == true ? HandsColors.error : HandsColors.sageGreen,
+              color:
+                  (checklist['archived'] ?? false) == true
+                      ? HandsColors.error
+                      : HandsColors.sageGreen,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
-              (checklist['archived'] ?? false) == true ? 'Archived' : 'Active',
-              style: GoogleFonts.comfortaa(color: HandsColors.white, fontSize: 12, fontWeight: FontWeight.w500),
+              (checklist['archived'] ?? false) == true
+                  ? context.l10n.webAdminStatusArchived
+                  : context.l10n.webAdminStatusActive,
+              style: GoogleFonts.comfortaa(
+                color: isBeingDeleted ? HandsColors.white30 : HandsColors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ),
@@ -1198,28 +2345,61 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               IconButton(
-                icon: const Icon(Icons.edit, color: HandsColors.handsOrange, size: 20),
-                onPressed: () => _editChecklist(checklist),
-                tooltip: 'Edit',
-              ),
-              IconButton(
-                icon: const Icon(Icons.copy, color: HandsColors.white70, size: 20),
-                onPressed: () => _duplicateChecklist(checklist),
-                tooltip: 'Duplicate',
+                icon: Icon(
+                  Icons.edit,
+                  color:
+                      isBeingDeleted
+                          ? HandsColors.white30
+                          : HandsColors.handsOrange,
+                  size: 20,
+                ),
+                onPressed:
+                    isBeingDeleted ? null : () => _editChecklist(checklist),
+                tooltip: context.l10n.webAdminActionEdit,
               ),
               IconButton(
                 icon: Icon(
-                  (checklist['archived'] ?? false) ? Icons.unarchive : Icons.archive,
-                  color: HandsColors.amber,
+                  Icons.copy,
+                  color:
+                      isBeingDeleted
+                          ? HandsColors.white30
+                          : HandsColors.white70,
                   size: 20,
                 ),
-                onPressed: () => _toggleChecklistArchived(checklist),
-                tooltip: (checklist['archived'] ?? false) ? 'Restore' : 'Archive',
+                onPressed:
+                    isBeingDeleted
+                        ? null
+                        : () => _duplicateChecklist(checklist),
+                tooltip: context.l10n.webAdminActionDuplicate,
               ),
               IconButton(
-                icon: const Icon(Icons.delete, color: HandsColors.error, size: 20),
-                onPressed: () => _deleteChecklist(checklist),
-                tooltip: 'Delete',
+                icon: Icon(
+                  (checklist['archived'] ?? false)
+                      ? Icons.unarchive
+                      : Icons.archive,
+                  color:
+                      isBeingDeleted ? HandsColors.white30 : HandsColors.amber,
+                  size: 20,
+                ),
+                onPressed:
+                    isBeingDeleted
+                        ? null
+                        : () => _toggleChecklistArchived(checklist),
+                tooltip:
+                    (checklist['archived'] ?? false)
+                        ? context.l10n.webAdminActionRestore
+                        : context.l10n.webAdminActionArchive,
+              ),
+              IconButton(
+                icon: Icon(
+                  Icons.delete,
+                  color:
+                      isBeingDeleted ? HandsColors.white30 : HandsColors.error,
+                  size: 20,
+                ),
+                onPressed:
+                    isBeingDeleted ? null : () => _deleteChecklist(checklist),
+                tooltip: context.l10n.commonDelete,
               ),
             ],
           ),
@@ -1229,151 +2409,175 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
   }
 
   Widget _buildUsersTable() {
-    return StreamBuilder<QuerySnapshot>(
-      stream:
-          FirestoreEnforcer.instance
-              .collection('users')
-              .where('organizationId', isEqualTo: widget.organizationId)
-              .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
-
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        final docs = snapshot.data?.docs ?? [];
-        List<Map<String, dynamic>> users =
-            docs.map((doc) {
-              final data = doc.data() as Map<String, dynamic>;
-              final name = '${data['firstName'] ?? ''} ${data['lastName'] ?? ''}'.trim();
-              final locationIds = coerceToLocationIds(data['locationIds'] ?? data['locationId']);
-
-              // Safely convert userRole to int, handling both String and int types
-              int userRole = 0;
-              final roleData = data['userRole'] ?? data['role'];
-              if (roleData is int) {
-                userRole = roleData;
-              } else if (roleData is String) {
-                userRole = int.tryParse(roleData) ?? 0;
+    return Column(
+      children: [
+        PendingInvitesPanel(organizationId: widget.organizationId),
+        Expanded(
+          child: StreamBuilder<QuerySnapshot>(
+            stream:
+                FirestoreEnforcer.instance
+                    .collection('users')
+                    .where('organizationId', isEqualTo: widget.organizationId)
+                    .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Center(
+                  child: Text(
+                    context.l10n.webAdminStreamError('${snapshot.error}'),
+                  ),
+                );
               }
 
-              // Create clean user data with converted types
-              final cleanData = Map<String, dynamic>.from(data);
-              cleanData.remove('role'); // Remove original role to prevent conflicts
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-              return {
-                'id': doc.id,
-                'name': name.isNotEmpty ? name : 'Unknown User',
-                'email': data['emailAddress'] ?? data['userEmail'] ?? data['email'] ?? 'No email',
-                'role': userRole,
-                'userRole': userRole, // Include both for compatibility
-                'locationIds': locationIds,
-                'jobTypes': coerceToJobTypes(data['jobTypes'] ?? data['jobType']),
-                'isActive': data['isActive'] ?? true,
-                'createdAt': data['createdAt'],
-                ...cleanData,
-              };
-            }).toList();
+              final docs = snapshot.data?.docs ?? [];
+              List<Map<String, dynamic>> users =
+                  docs.map((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final name =
+                        '${data['firstName'] ?? ''} ${data['lastName'] ?? ''}'
+                            .trim();
+                    final locationIds = coerceToLocationIds(
+                      data['locationIds'] ?? data['locationId'],
+                    );
 
-        // Apply filters
-        if (_searchQuery.isNotEmpty) {
-          users =
-              users.where((user) {
-                return user['name'].toString().toLowerCase().contains(_searchQuery) ||
-                    user['email'].toString().toLowerCase().contains(_searchQuery);
-              }).toList();
-        }
+                    int userRole = 0;
+                    final roleData = data['userRole'] ?? data['role'];
+                    if (roleData is int) {
+                      userRole = roleData;
+                    } else if (roleData is String) {
+                      userRole = int.tryParse(roleData) ?? 0;
+                    }
 
-        if (_selectedLocationId != null) {
-          users =
-              users.where((user) {
-                final locationIds = user['locationIds'] as List? ?? [];
-                final role = user['role'] as int? ?? 0;
-                // Always show admins, filter others by location
-                return role == 2 || locationIds.contains(_selectedLocationId);
-              }).toList();
-        }
+                    final cleanData = Map<String, dynamic>.from(data);
+                    cleanData.remove('role');
 
-        // Sort
-        if (_sortColumnIndex != null) {
-          users.sort((a, b) {
-            dynamic valueA, valueB;
-            switch (_sortColumnIndex) {
-              case 0:
-                valueA = a['name'];
-                valueB = b['name'];
-                break;
-              case 1:
-                valueA = a['email'];
-                valueB = b['email'];
-                break;
-              case 2:
-                valueA = a['role'];
-                valueB = b['role'];
-                break;
-              default:
-                valueA = a['name'];
-                valueB = b['name'];
-            }
+                    return {
+                      'id': doc.id,
+                      'name':
+                          name.isNotEmpty
+                              ? name
+                              : context.l10n.webAdminUnknownUser,
+                      'email':
+                          data['emailAddress'] ??
+                          data['userEmail'] ??
+                          data['email'] ??
+                          context.l10n.webAdminNoEmail,
+                      'role': userRole,
+                      'userRole': userRole,
+                      'locationIds': locationIds,
+                      'jobTypes': coerceToJobTypes(
+                        data['jobTypes'] ?? data['jobType'],
+                      ),
+                      'isActive': data['isActive'] ?? true,
+                      'createdAt': data['createdAt'],
+                      ...cleanData,
+                    };
+                  }).toList();
 
-            int comparison;
-            if (valueA is int && valueB is int) {
-              comparison = valueA.compareTo(valueB);
-            } else {
-              comparison = valueA.toString().compareTo(valueB.toString());
-            }
-            return _sortAscending ? comparison : -comparison;
-          });
-        }
+              if (_searchQuery.isNotEmpty) {
+                users =
+                    users.where((user) {
+                      return user['name'].toString().toLowerCase().contains(
+                            _searchQuery,
+                          ) ||
+                          user['email'].toString().toLowerCase().contains(
+                            _searchQuery,
+                          );
+                    }).toList();
+              }
 
-        // Ensure inactive users (isActive == false) appear at bottom
-        users.sort((a, b) {
-          final aInactive = (a['isActive'] ?? true) == false;
-          final bInactive = (b['isActive'] ?? true) == false;
-          if (aInactive == bInactive) return 0;
-          return aInactive ? 1 : -1;
-        });
+              if (_selectedLocationId != null) {
+                users =
+                    users.where((user) {
+                      final locationIds = user['locationIds'] as List? ?? [];
+                      final role = user['role'] as int? ?? 0;
+                      return role == 2 ||
+                          locationIds.contains(_selectedLocationId);
+                    }).toList();
+              }
 
-        return _buildDataTable(
-          columns: [
-            DataColumn(
-              label: const Text('Name'),
-              onSort: (columnIndex, ascending) {
-                setState(() {
-                  _sortColumnIndex = columnIndex;
-                  _sortAscending = ascending;
+              if (_sortColumnIndex != null) {
+                users.sort((a, b) {
+                  dynamic valueA;
+                  dynamic valueB;
+                  switch (_sortColumnIndex) {
+                    case 0:
+                      valueA = a['name'];
+                      valueB = b['name'];
+                      break;
+                    case 1:
+                      valueA = a['email'];
+                      valueB = b['email'];
+                      break;
+                    case 2:
+                      valueA = a['role'];
+                      valueB = b['role'];
+                      break;
+                    default:
+                      valueA = a['name'];
+                      valueB = b['name'];
+                  }
+
+                  int comparison;
+                  if (valueA is int && valueB is int) {
+                    comparison = valueA.compareTo(valueB);
+                  } else {
+                    comparison = valueA.toString().compareTo(valueB.toString());
+                  }
+                  return _sortAscending ? comparison : -comparison;
                 });
-              },
-            ),
-            DataColumn(
-              label: const Text('Email'),
-              onSort: (columnIndex, ascending) {
-                setState(() {
-                  _sortColumnIndex = columnIndex;
-                  _sortAscending = ascending;
-                });
-              },
-            ),
-            DataColumn(
-              label: const Text('Role'),
-              onSort: (columnIndex, ascending) {
-                setState(() {
-                  _sortColumnIndex = columnIndex;
-                  _sortAscending = ascending;
-                });
-              },
-            ),
-            const DataColumn(label: Text('Locations')),
-            const DataColumn(label: Text('Status')),
-            const DataColumn(label: Text('Actions')),
-          ],
-          rows: users,
-          buildRow: (user) => _buildUserRow(user),
-        );
-      },
+              }
+
+              users.sort((a, b) {
+                final aInactive = (a['isActive'] ?? true) == false;
+                final bInactive = (b['isActive'] ?? true) == false;
+                if (aInactive == bInactive) return 0;
+                return aInactive ? 1 : -1;
+              });
+
+              return _buildDataTable(
+                columns: [
+                  DataColumn(
+                    label: Text(context.l10n.commonName),
+                    onSort: (columnIndex, ascending) {
+                      setState(() {
+                        AdminDashboardState.sortColumnIndex = columnIndex;
+                        AdminDashboardState.sortAscending = ascending;
+                      });
+                    },
+                  ),
+                  DataColumn(
+                    label: Text(context.l10n.commonEmail),
+                    onSort: (columnIndex, ascending) {
+                      setState(() {
+                        AdminDashboardState.sortColumnIndex = columnIndex;
+                        AdminDashboardState.sortAscending = ascending;
+                      });
+                    },
+                  ),
+                  DataColumn(
+                    label: Text(context.l10n.commonRole),
+                    onSort: (columnIndex, ascending) {
+                      setState(() {
+                        AdminDashboardState.sortColumnIndex = columnIndex;
+                        AdminDashboardState.sortAscending = ascending;
+                      });
+                    },
+                  ),
+                  DataColumn(label: Text(context.l10n.adminViewLocations)),
+                  DataColumn(label: Text(context.l10n.webAdminColumnStatus)),
+                  DataColumn(label: Text(context.l10n.webAdminColumnActions)),
+                ],
+                rows: users,
+                buildRow: (user) => _buildUserRow(user),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -1381,34 +2585,61 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
     final locationIds = user['locationIds'] as List? ?? [];
     final locationNames = locationIds
         .map((id) {
-          final location = _availableLocations.firstWhere((loc) => loc['id'] == id, orElse: () => {'name': 'Unknown'});
+          final location = _availableLocations.firstWhere(
+            (loc) => loc['id'] == id,
+            orElse: () => {'name': 'Unknown'},
+          );
           return location['name'];
         })
         .join(', ');
 
     final role = user['role'] as int? ?? 0;
-    final roleText = role == 2 ? 'Admin' : (role == 1 ? 'Manager' : 'User');
+    final roleText =
+        role == 2
+            ? context.l10n.welcomeRoleAdmin
+            : (role == 1
+                ? context.l10n.welcomeRoleManager
+                : context.l10n.welcomeRoleUser);
 
     return DataRow(
       cells: [
-        DataCell(Text(user['name'], style: GoogleFonts.comfortaa(color: HandsColors.white))),
-        DataCell(Text(user['email'], style: GoogleFonts.comfortaa(color: HandsColors.white70))),
+        DataCell(
+          Text(
+            user['name'],
+            style: GoogleFonts.comfortaa(color: HandsColors.white),
+          ),
+        ),
+        DataCell(
+          Text(
+            user['email'],
+            style: GoogleFonts.comfortaa(color: HandsColors.white70),
+          ),
+        ),
         DataCell(
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: role == 2 ? HandsColors.handsOrange : (role == 1 ? HandsColors.amber : HandsColors.sageGreen),
+              color:
+                  role == 2
+                      ? HandsColors.handsOrange
+                      : (role == 1 ? HandsColors.amber : HandsColors.sageGreen),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
               roleText,
-              style: GoogleFonts.comfortaa(color: HandsColors.white, fontSize: 12, fontWeight: FontWeight.w500),
+              style: GoogleFonts.comfortaa(
+                color: HandsColors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ),
         DataCell(
           Text(
-            locationNames.isNotEmpty ? locationNames : 'No locations',
+            locationNames.isNotEmpty
+                ? locationNames
+                : context.l10n.adminSetupAllLocations,
             style: GoogleFonts.comfortaa(color: HandsColors.white70),
             overflow: TextOverflow.ellipsis,
           ),
@@ -1417,12 +2648,19 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: user['isActive'] ? HandsColors.sageGreen : HandsColors.error,
+              color:
+                  user['isActive'] ? HandsColors.sageGreen : HandsColors.error,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
-              user['isActive'] ? 'Active' : 'Inactive',
-              style: GoogleFonts.comfortaa(color: HandsColors.white, fontSize: 12, fontWeight: FontWeight.w500),
+              user['isActive']
+                  ? context.l10n.webAdminStatusActive
+                  : context.l10n.webAdminStatusInactive,
+              style: GoogleFonts.comfortaa(
+                color: HandsColors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ),
@@ -1431,42 +2669,115 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               IconButton(
-                icon: const Icon(Icons.edit, color: HandsColors.handsOrange, size: 20),
+                icon: const Icon(
+                  Icons.edit,
+                  color: HandsColors.handsOrange,
+                  size: 20,
+                ),
                 onPressed: () => _editUser(user),
-                tooltip: 'Edit',
+                tooltip: context.l10n.webAdminActionEdit,
               ),
               if (role < 2)
                 IconButton(
-                  icon: Icon(user['isActive'] ? Icons.archive : Icons.unarchive, color: HandsColors.amber, size: 20),
+                  icon: Icon(
+                    user['isActive'] ? Icons.archive : Icons.unarchive,
+                    color: HandsColors.amber,
+                    size: 20,
+                  ),
                   onPressed: () => _toggleUserActive(user),
-                  tooltip: user['isActive'] ? 'Deactivate' : 'Activate',
+                  tooltip:
+                      user['isActive']
+                          ? context.l10n.webAdminActionDeactivate
+                          : context.l10n.webAdminActionActivate,
                 ),
               IconButton(
                 icon: const Icon(Icons.delete, color: HandsColors.error),
-                tooltip: 'Delete user',
+                tooltip: context.l10n.webAdminActionDeleteUser,
                 onPressed: () async {
-                  final ok =
-                      await showDialog<bool>(
-                        context: context,
-                        builder:
-                            (_) => AlertDialog(
-                              title: const Text('Delete user?'),
-                              content: const Text('This action cannot be undone.'),
-                              actions: [
-                                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                                FilledButton(
-                                  onPressed: () => Navigator.pop(context, true),
-                                  child: const Text('Delete'),
-                                ),
-                              ],
+                  print(
+                    '🔴 DELETE USER BUTTON CLICKED! User: ${user['firstName']} ${user['lastName']} (${user['id']})',
+                  );
+
+                  // Capture context and user data before dialog
+                  final currentContext = context;
+                  final userId = user['id'] as String;
+                  final userName = '${user['firstName']} ${user['lastName']}';
+
+                  // Create standalone deletion function
+                  Future<void> executeUserDeletion() async {
+                    try {
+                      await _deleteUser(userId);
+                      if (currentContext.mounted) {
+                        try {
+                          ScaffoldMessenger.of(currentContext).showSnackBar(
+                            SnackBar(
+                              content: Text(context.l10n.webAdminUserDeleted),
                             ),
-                      ) ??
-                      false;
-                  if (!ok) return;
-                  await _deleteUser(user['id']);
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('User deleted')));
+                          );
+                        } catch (e) {
+                          print(
+                            '🔴 USER DELETE: Could not show snackbar (context invalid): $e',
+                          );
+                        }
+                      }
+                    } catch (e) {
+                      print('🔴 USER DELETE: Error during execution: $e');
+                      if (currentContext.mounted) {
+                        try {
+                          ScaffoldMessenger.of(currentContext).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                context.l10n.webAdminUserDeleteFailed('$e'),
+                              ),
+                            ),
+                          );
+                        } catch (contextError) {
+                          print(
+                            '🔴 USER DELETE: Could not show error snackbar (context invalid): $contextError',
+                          );
+                        }
+                      }
+                    }
                   }
+
+                  final ok = await _showStableDialog(
+                    builder: (closeDialog) {
+                      print('🔴 USER DELETE DIALOG BUILDING!');
+                      return AlertDialog(
+                        title: Text(context.l10n.webAdminDeleteUserTitle),
+                        content: Text(
+                          context.l10n.webAdminDeleteUserBody(userName),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () {
+                              print('🔴 USER DELETE CANCELLED');
+                              closeDialog(false);
+                            },
+                            child: Text(context.l10n.commonCancel),
+                          ),
+                          FilledButton(
+                            onPressed: () {
+                              print('🔴 USER DELETE CONFIRMED');
+                              closeDialog(true);
+                            },
+                            child: Text(context.l10n.commonDelete),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+
+                  if (ok != true) {
+                    print('🔴 USER DELETE CANCELLED BY USER');
+                    return;
+                  }
+
+                  // Execute deletion regardless of widget state
+                  print(
+                    '🔴 USER DELETE PROCEEDING... (widget may be unmounted)',
+                  );
+                  await executeUserDeletion();
                 },
               ),
             ],
@@ -1486,8 +2797,12 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          logger.e('[WEBAdminDashboard] StreamBuilder error for locations: ${snapshot.error}');
-          return Center(child: Text('Error: ${snapshot.error}'));
+          logger.e(
+            '[WEBAdminDashboard] StreamBuilder error for locations: ${snapshot.error}',
+          );
+          return Center(
+            child: Text(context.l10n.webAdminStreamError('${snapshot.error}')),
+          );
         }
 
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -1496,31 +2811,38 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
         }
 
         final docs = snapshot.data?.docs ?? [];
-        logger.i('[WEBAdminDashboard] StreamBuilder received ${docs.length} location documents');
+        logger.i(
+          '[WEBAdminDashboard] StreamBuilder received ${docs.length} location documents',
+        );
 
         List<Map<String, dynamic>> locations =
             docs.map((doc) {
               final data = doc.data() as Map<String, dynamic>;
-              logger.d('[WEBAdminDashboard] Processing location: ${doc.id} -> $data');
+              logger.d(
+                '[WEBAdminDashboard] Processing location: ${doc.id} -> $data',
+              );
 
               // Try multiple possible field names for location name
               String locationName = '';
               if (data['name'] != null && data['name'].toString().isNotEmpty) {
                 locationName = data['name'].toString();
-              } else if (data['locationName'] != null && data['locationName'].toString().isNotEmpty) {
+              } else if (data['locationName'] != null &&
+                  data['locationName'].toString().isNotEmpty) {
                 locationName = data['locationName'].toString();
               } else {
-                locationName = 'Unnamed Location';
+                locationName = context.l10n.webAdminUnnamedLocation;
               }
 
               // Try multiple possible field names for address
               String address = '';
-              if (data['address'] != null && data['address'].toString().isNotEmpty) {
+              if (data['address'] != null &&
+                  data['address'].toString().isNotEmpty) {
                 address = data['address'].toString();
-              } else if (data['locationAddress'] != null && data['locationAddress'].toString().isNotEmpty) {
+              } else if (data['locationAddress'] != null &&
+                  data['locationAddress'].toString().isNotEmpty) {
                 address = data['locationAddress'].toString();
               } else {
-                address = 'No address';
+                address = context.l10n.webAdminNoAddress;
               }
 
               return {
@@ -1534,14 +2856,20 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               };
             }).toList();
 
-        logger.i('[WEBAdminDashboard] Total locations after processing: ${locations.length}');
+        logger.i(
+          '[WEBAdminDashboard] Total locations after processing: ${locations.length}',
+        );
 
         // Apply filters
         if (_searchQuery.isNotEmpty) {
           locations =
               locations.where((location) {
-                return location['name'].toString().toLowerCase().contains(_searchQuery) ||
-                    location['address'].toString().toLowerCase().contains(_searchQuery);
+                return location['name'].toString().toLowerCase().contains(
+                      _searchQuery,
+                    ) ||
+                    location['address'].toString().toLowerCase().contains(
+                      _searchQuery,
+                    );
               }).toList();
         }
 
@@ -1579,25 +2907,25 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
         return _buildDataTable(
           columns: [
             DataColumn(
-              label: const Text('Location Name'),
+              label: Text(context.l10n.webAdminColumnLocationName),
               onSort: (columnIndex, ascending) {
                 setState(() {
-                  _sortColumnIndex = columnIndex;
-                  _sortAscending = ascending;
+                  AdminDashboardState.sortColumnIndex = columnIndex;
+                  AdminDashboardState.sortAscending = ascending;
                 });
               },
             ),
             DataColumn(
-              label: const Text('Address'),
+              label: Text(context.l10n.webAdminColumnAddress),
               onSort: (columnIndex, ascending) {
                 setState(() {
-                  _sortColumnIndex = columnIndex;
-                  _sortAscending = ascending;
+                  AdminDashboardState.sortColumnIndex = columnIndex;
+                  AdminDashboardState.sortAscending = ascending;
                 });
               },
             ),
-            const DataColumn(label: Text('Status')),
-            const DataColumn(label: Text('Actions')),
+            DataColumn(label: Text(context.l10n.webAdminColumnStatus)),
+            DataColumn(label: Text(context.l10n.webAdminColumnActions)),
           ],
           rows: locations,
           buildRow: (location) => _buildLocationRow(location),
@@ -1609,7 +2937,12 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
   DataRow _buildLocationRow(Map<String, dynamic> location) {
     return DataRow(
       cells: [
-        DataCell(Text(location['name'], style: GoogleFonts.comfortaa(color: HandsColors.white))),
+        DataCell(
+          Text(
+            location['name'],
+            style: GoogleFonts.comfortaa(color: HandsColors.white),
+          ),
+        ),
         DataCell(
           Text(
             location['address'],
@@ -1621,12 +2954,21 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: location['isActive'] ? HandsColors.sageGreen : HandsColors.error,
+              color:
+                  location['isActive']
+                      ? HandsColors.sageGreen
+                      : HandsColors.error,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
-              location['isActive'] ? 'Active' : 'Inactive',
-              style: GoogleFonts.comfortaa(color: HandsColors.white, fontSize: 12, fontWeight: FontWeight.w500),
+              location['isActive']
+                  ? context.l10n.webAdminStatusActive
+                  : context.l10n.webAdminStatusInactive,
+              style: GoogleFonts.comfortaa(
+                color: HandsColors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ),
@@ -1635,24 +2977,43 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               IconButton(
-                icon: const Icon(Icons.edit, color: HandsColors.handsOrange, size: 20),
+                icon: const Icon(
+                  Icons.edit,
+                  color: HandsColors.handsOrange,
+                  size: 20,
+                ),
                 onPressed: () => _editLocation(location),
-                tooltip: 'Edit',
+                tooltip: context.l10n.webAdminActionEdit,
               ),
               IconButton(
-                icon: const Icon(Icons.copy, color: HandsColors.white70, size: 20),
+                icon: const Icon(
+                  Icons.copy,
+                  color: HandsColors.white70,
+                  size: 20,
+                ),
                 onPressed: () => _duplicateLocation(location),
-                tooltip: 'Duplicate',
+                tooltip: context.l10n.webAdminActionDuplicate,
               ),
               IconButton(
-                icon: Icon(location['isActive'] ? Icons.archive : Icons.unarchive, color: HandsColors.amber, size: 20),
+                icon: Icon(
+                  location['isActive'] ? Icons.archive : Icons.unarchive,
+                  color: HandsColors.amber,
+                  size: 20,
+                ),
                 onPressed: () => _toggleLocationActive(location),
-                tooltip: location['isActive'] ? 'Archive' : 'Restore',
+                tooltip:
+                    location['isActive']
+                        ? context.l10n.webAdminActionArchive
+                        : context.l10n.webAdminActionRestore,
               ),
               IconButton(
-                icon: const Icon(Icons.delete, color: HandsColors.error, size: 20),
+                icon: const Icon(
+                  Icons.delete,
+                  color: HandsColors.error,
+                  size: 20,
+                ),
                 onPressed: () => _deleteLocation(location),
-                tooltip: 'Delete',
+                tooltip: context.l10n.commonDelete,
               ),
             ],
           ),
@@ -1666,90 +3027,212 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
     String description;
     String actionText;
     IconData icon;
+    String supportLabel;
+    String supportValue;
+    String secondaryLabel;
+    String secondaryValue;
 
     switch (_currentTab) {
       case WebAdminTab.shifts:
-        title = 'No Shifts Created Yet';
-        description =
-            'Create your first shift to define work schedules, assign staff, and manage daily operations. Shifts help organize your team\'s workflow by time, location, and required tasks.';
-        actionText = 'Create Your First Shift';
+        title = context.l10n.webAdminEmptyTitleShifts;
+        description = context.l10n.webAdminEmptyDescriptionShifts;
+        actionText = context.l10n.webAdminEmptyActionShifts;
         icon = Icons.schedule;
+        supportLabel = context.l10n.webAdminEmptySupportLabelShifts;
+        supportValue = context.l10n.webAdminEmptySupportValueShifts;
+        secondaryLabel = context.l10n.webAdminEmptySecondaryLabelShifts;
+        secondaryValue = context.l10n.webAdminEmptySecondaryValueShifts;
         break;
       case WebAdminTab.checklists:
-        title = 'No Checklists Created Yet';
-        description =
-            'Build checklists to standardize tasks and ensure consistent quality. Create detailed task lists with step-by-step instructions that can be assigned to specific shifts and completed by your team.';
-        actionText = 'Create Your First Checklist';
-        icon = Icons.checklist;
+        title = context.l10n.webAdminEmptyTitleChecklists;
+        description = context.l10n.webAdminEmptyDescriptionChecklists;
+        actionText = context.l10n.webAdminEmptyActionChecklists;
+        icon = Icons.library_books;
+        supportLabel = context.l10n.webAdminEmptySupportLabelChecklists;
+        supportValue = context.l10n.webAdminEmptySupportValueChecklists;
+        secondaryLabel = context.l10n.webAdminEmptySecondaryLabelChecklists;
+        secondaryValue = context.l10n.webAdminEmptySecondaryValueChecklists;
         break;
       case WebAdminTab.users:
-        title = 'No Staff Members Added Yet';
-        description =
-            'Invite team members to join your organization. You can assign different roles (Admin, Manager, Staff) and control access to specific locations and shifts.';
-        actionText = 'Add Your First Staff Member';
+        title = context.l10n.webAdminEmptyTitleUsers;
+        description = context.l10n.webAdminEmptyDescriptionUsers;
+        actionText = context.l10n.webAdminEmptyActionUsers;
         icon = Icons.people;
+        supportLabel = context.l10n.webAdminEmptySupportLabelUsers;
+        supportValue = context.l10n.webAdminEmptySupportValueUsers;
+        secondaryLabel = context.l10n.webAdminEmptySecondaryLabelUsers;
+        secondaryValue = context.l10n.webAdminEmptySecondaryValueUsers;
         break;
       case WebAdminTab.locations:
-        title = 'No Locations Added Yet';
-        description =
-            'Set up your business locations to organize shifts, assign staff, and track operations. Each location can have its own shifts, checklists, and team members.';
-        actionText = 'Add Your First Location';
+        title = context.l10n.webAdminEmptyTitleLocations;
+        description = context.l10n.webAdminEmptyDescriptionLocations;
+        actionText = context.l10n.webAdminEmptyActionLocations;
         icon = Icons.location_on;
+        supportLabel = context.l10n.webAdminEmptySupportLabelLocations;
+        supportValue = context.l10n.webAdminEmptySupportValueLocations;
+        secondaryLabel = context.l10n.webAdminEmptySecondaryLabelLocations;
+        secondaryValue = context.l10n.webAdminEmptySecondaryValueLocations;
         break;
     }
 
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.all(48),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                color: HandsColors.handsOrange.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(60),
-                border: Border.all(color: HandsColors.handsOrange.withOpacity(0.3), width: 2),
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 980),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF181D25), Color(0xFF12161D)],
+            ),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: HandsColors.white12),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x18000000),
+                blurRadius: 24,
+                offset: Offset(0, 16),
               ),
-              child: Icon(icon, size: 56, color: HandsColors.handsOrange),
-            ),
-            const SizedBox(height: 32),
-            Text(
-              title,
-              style: GoogleFonts.comfortaa(fontSize: 24, fontWeight: FontWeight.bold, color: HandsColors.white),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 600),
-              child: Text(
-                description,
-                style: GoogleFonts.comfortaa(fontSize: 16, color: HandsColors.white70, height: 1.6),
-                textAlign: TextAlign.center,
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: _currentSectionAccent().withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: _currentSectionAccent().withValues(alpha: 0.24),
+                      ),
+                    ),
+                    child: Icon(icon, size: 28, color: _currentSectionAccent()),
+                  ),
+                  const SizedBox(width: 18),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: GoogleFonts.inter(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.75,
+                            color: HandsColors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          description,
+                          style: GoogleFonts.inter(
+                            fontSize: 14,
+                            color: HandsColors.white70,
+                            height: 1.45,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 32),
-            ElevatedButton.icon(
-              onPressed: () => _showCreateDialog(),
-              icon: const Icon(Icons.add, size: 20),
-              label: Text(actionText, style: GoogleFonts.comfortaa(fontWeight: FontWeight.w600, fontSize: 16)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: HandsColors.handsOrange,
-                foregroundColor: HandsColors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                elevation: 2,
+              const SizedBox(height: 18),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: () => _showCreateDialog(),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: Text(
+                      actionText,
+                      style: GoogleFonts.inter(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13.5,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _currentSectionAccent(),
+                      foregroundColor: HandsColors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 13,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(13),
+                      ),
+                      elevation: 0,
+                    ),
+                  ),
+                  _buildEmptyStateMetric(
+                    label: supportLabel,
+                    value: supportValue,
+                  ),
+                  _buildEmptyStateMetric(
+                    label: secondaryLabel,
+                    value: secondaryValue,
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Need help getting started? Check out our setup guide or contact support.',
-              style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white30, fontStyle: FontStyle.italic),
-              textAlign: TextAlign.center,
-            ),
-          ],
+              const SizedBox(height: 14),
+              Text(
+                context.l10n.webAdminEmptyFooter,
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  color: HandsColors.white30,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyStateMetric({
+    required String label,
+    required String value,
+  }) {
+    return Container(
+      width: 180,
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: HandsColors.white12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.inter(
+              color: HandsColors.white70,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: GoogleFonts.inter(
+              color: HandsColors.white,
+              fontSize: 13.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1766,65 +3249,166 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
 
     final paginatedRows = _paginateRows(rows);
 
-    return Column(
-      children: [
-        // Allow both vertical and horizontal scrolling for large tables on web
-        Expanded(
-          child: Scrollbar(
-            controller: _verticalTableController,
-            thumbVisibility: true,
-            child: SingleChildScrollView(
-              controller: _verticalTableController,
-              padding: EdgeInsets.zero,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: EdgeInsets.zero,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(minWidth: 1000),
-                  child: DataTable(
-                    columnSpacing: 8,
-                    horizontalMargin: 8,
-                    headingRowHeight: 48,
-                    dataRowMinHeight: 56,
-                    dataRowMaxHeight: 56,
-                    sortColumnIndex: _sortColumnIndex,
-                    sortAscending: _sortAscending,
-                    headingRowColor: WidgetStateProperty.all(HandsColors.cardPrimary),
-                    dataRowColor: WidgetStateProperty.resolveWith((states) {
-                      return states.contains(WidgetState.selected)
-                          ? HandsColors.secondaryContainer
-                          : Colors.transparent;
-                    }),
-                    headingTextStyle: GoogleFonts.comfortaa(
-                      color: HandsColors.white,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                    ),
-                    dataTextStyle: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 12),
-                    showBottomBorder: true,
-                    dividerThickness: 1,
-                    columns: columns,
-                    rows: paginatedRows.map(buildRow).toList(),
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF141920),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: HandsColors.white12),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x12000000),
+            blurRadius: 10,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${rows.length} ${_getTabDisplayName()}',
+                        style: GoogleFonts.inter(
+                          color: HandsColors.white,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _currentSectionTableSubtitle(),
+                        style: GoogleFonts.inter(
+                          color: HandsColors.white70,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
+                const SizedBox(width: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _currentSectionAccent().withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    _searchQuery.isEmpty ? 'All visible' : 'Filtered',
+                    style: GoogleFonts.inter(
+                      color: _currentSectionAccent(),
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-        ),
-        _buildPaginationControls(rows.length),
-      ],
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Container(height: 1, color: HandsColors.white12),
+          ),
+          // Allow both vertical and horizontal scrolling for large tables on web
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final viewportWidth = constraints.maxWidth;
+                final tableWidth = math.max(viewportWidth, 1000.0).toDouble();
+
+                return Scrollbar(
+                  controller: _verticalTableController,
+                  thumbVisibility: true,
+                  child: SingleChildScrollView(
+                    controller: _verticalTableController,
+                    padding: EdgeInsets.zero,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+                      child: SizedBox(
+                        width: tableWidth,
+                        child: Theme(
+                          data: Theme.of(
+                            context,
+                          ).copyWith(dividerColor: HandsColors.white12),
+                          child: DataTable(
+                            columnSpacing: 18,
+                            horizontalMargin: 12,
+                            headingRowHeight: 38,
+                            dataRowMinHeight: 42,
+                            dataRowMaxHeight: 46,
+                            sortColumnIndex: _sortColumnIndex,
+                            sortAscending: _sortAscending,
+                            headingRowColor: WidgetStateProperty.all(
+                              const Color(0xFF1C2129),
+                            ),
+                            dataRowColor: WidgetStateProperty.resolveWith((
+                              states,
+                            ) {
+                              return states.contains(WidgetState.selected)
+                                  ? HandsColors.secondaryContainer
+                                  : Colors.transparent;
+                            }),
+                            headingTextStyle: GoogleFonts.inter(
+                              color: HandsColors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 11.5,
+                            ),
+                            dataTextStyle: GoogleFonts.inter(
+                              color: HandsColors.white70,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            showBottomBorder: true,
+                            dividerThickness: 1,
+                            columns: columns,
+                            rows: paginatedRows.map(buildRow).toList(),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          _buildPaginationControls(rows.length),
+        ],
+      ),
     );
   }
 
   List<Map<String, dynamic>> _paginateRows(List<Map<String, dynamic>> rows) {
+    print(
+      '[WEB_admin_dashboard_page] _paginateRows called with ${rows.length} rows, _rowsPerPage=$_rowsPerPage, _currentPage=$_currentPage',
+    );
+
     final startIndex = _currentPage * _rowsPerPage;
     final endIndex = (startIndex + _rowsPerPage).clamp(0, rows.length);
 
+    print(
+      '[WEB_admin_dashboard_page] Pagination: startIndex=$startIndex, endIndex=$endIndex',
+    );
+
     if (startIndex >= rows.length) {
+      print(
+        '[WEB_admin_dashboard_page] startIndex >= rows.length, returning empty list',
+      );
       return [];
     }
 
-    return rows.sublist(startIndex, endIndex);
+    final result = rows.sublist(startIndex, endIndex);
+    print('[WEB_admin_dashboard_page] Returning ${result.length} rows');
+    return result;
   }
 
   Widget _buildPaginationControls(int totalRows) {
@@ -1832,64 +3416,135 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
     final totalPages = totalRows == 0 ? 0 : (totalRows / _rowsPerPage).ceil();
     // Use a local page index for display to avoid mutating state during build
     final displayPage =
-        (totalPages == 0) ? 0 : _currentPage.clamp(0, totalPages - 1); // clamp in case underlying data shrank
+        (totalPages == 0)
+            ? 0
+            : _currentPage.clamp(
+              0,
+              totalPages - 1,
+            ); // clamp in case underlying data shrank
     final hasNextPage = totalPages == 0 ? false : displayPage < totalPages - 1;
     final hasPreviousPage = totalPages == 0 ? false : displayPage > 0;
     final startRow = totalRows == 0 ? 0 : displayPage * _rowsPerPage + 1;
     final endRow =
         totalRows == 0
             ? 0
-            : (((displayPage + 1) * _rowsPerPage) > totalRows ? totalRows : ((displayPage + 1) * _rowsPerPage));
+            : (((displayPage + 1) * _rowsPerPage) > totalRows
+                ? totalRows
+                : ((displayPage + 1) * _rowsPerPage));
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 9),
       decoration: BoxDecoration(
-        color: HandsColors.cardPrimary,
+        color: const Color(0xFF141920),
         border: Border(top: BorderSide(color: HandsColors.white12, width: 1)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
-            totalRows == 0 ? 'Showing 0 of 0' : 'Showing $startRow-$endRow of $totalRows',
-            style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 12),
+            totalRows == 0
+                ? 'Showing 0 of 0'
+                : 'Showing $startRow-$endRow of $totalRows',
+            style: GoogleFonts.inter(
+              color: HandsColors.white70,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+            ),
           ),
           Row(
             children: [
-              DropdownButton<int>(
-                value: _rowsPerPage,
-                items:
-                    [5, 10, 25, 50, 100].map((value) {
-                      return DropdownMenuItem(
-                        value: value,
-                        child: Text('$value per page', style: GoogleFonts.comfortaa(color: HandsColors.white)),
-                      );
-                    }).toList(),
-                onChanged: (value) {
-                  if (value != null) {
+              GestureDetector(
+                onTap: () {
+                  print(
+                    '[WEB_admin_dashboard_page] Custom dropdown tapped, cycling rows per page',
+                  );
+                  // Cycle through pagination options without any complex widgets
+                  final currentValue = AdminDashboardState.rowsPerPage;
+                  final options = [5, 10, 25, 50, 100];
+                  final currentIndex = options.indexOf(currentValue);
+                  final nextIndex = (currentIndex + 1) % options.length;
+                  final newValue = options[nextIndex];
+
+                  print(
+                    '[WEB_admin_dashboard_page] Cycling from $currentValue to $newValue',
+                  );
+                  AdminDashboardState.rowsPerPage = newValue;
+                  AdminDashboardState.currentPage = 0;
+                  print(
+                    '[WEB_admin_dashboard_page] Updated AdminDashboardState: rowsPerPage = ${AdminDashboardState.rowsPerPage}, currentPage = ${AdminDashboardState.currentPage}',
+                  );
+
+                  // Test if simple setState works without route rebuilds
+                  if (mounted) {
                     setState(() {
-                      _rowsPerPage = value;
-                      _currentPage = 0;
+                      // Simple state update
                     });
                   }
                 },
-                dropdownColor: HandsColors.primaryContainer,
-                underline: const SizedBox(),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: HandsColors.secondaryContainer,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: HandsColors.white30, width: 1),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '$_rowsPerPage per page',
+                        style: GoogleFonts.comfortaa(
+                          color: HandsColors.white,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Icon(
+                        Icons.refresh,
+                        color: HandsColors.white70,
+                        size: 16,
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              const SizedBox(width: 24),
+              const SizedBox(width: 12),
               IconButton(
                 icon: const Icon(Icons.chevron_left),
-                color: hasPreviousPage ? HandsColors.white : HandsColors.white30,
-                onPressed: hasPreviousPage ? () => setState(() => _currentPage--) : null,
+                color:
+                    hasPreviousPage ? HandsColors.white : HandsColors.white30,
+                onPressed:
+                    hasPreviousPage
+                        ? () {
+                          AdminDashboardState.currentPage =
+                              AdminDashboardState.currentPage - 1;
+                          // TESTING: No setState to avoid route rebuilds
+                        }
+                        : null,
               ),
               Text(
-                totalPages == 0 ? 'Page 0 of 0' : 'Page ${displayPage + 1} of $totalPages',
-                style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 12),
+                totalPages == 0
+                    ? 'Page 0 of 0'
+                    : 'Page ${displayPage + 1} of $totalPages',
+                style: GoogleFonts.comfortaa(
+                  color: HandsColors.white70,
+                  fontSize: 12,
+                ),
               ),
               IconButton(
                 icon: const Icon(Icons.chevron_right),
                 color: hasNextPage ? HandsColors.white : HandsColors.white30,
-                onPressed: hasNextPage ? () => setState(() => _currentPage++) : null,
+                onPressed:
+                    hasNextPage
+                        ? () {
+                          AdminDashboardState.currentPage =
+                              AdminDashboardState.currentPage + 1;
+                          // TESTING: No setState to avoid route rebuilds
+                        }
+                        : null,
               ),
             ],
           ),
@@ -1900,75 +3555,278 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
 
   // _buildEditDrawer removed - edit drawer was unused after removing the admin sidebar
 
-  String _getTabDisplayName({bool singular = false}) {
+  IconData _currentSectionIcon() {
     switch (_currentTab) {
       case WebAdminTab.shifts:
-        return singular ? 'Shift' : 'Shifts';
+        return Icons.schedule_rounded;
       case WebAdminTab.checklists:
-        return singular ? 'Checklist' : 'Checklists';
+        return Icons.library_books_rounded;
       case WebAdminTab.users:
-        return singular ? 'Staff' : 'Staff';
+        return Icons.group_rounded;
       case WebAdminTab.locations:
-        return singular ? 'Location' : 'Locations';
+        return Icons.location_on_rounded;
     }
   }
 
-  Future<void> _deleteShift(Map<String, dynamic> shift) async {
-    final ok =
-        await showDialog<bool>(
-          context: context,
-          builder:
-              (_) => AlertDialog(
-                title: const Text('Delete shift?'),
-                content: Text('Are you sure you want to delete "${shift['name']}"? This cannot be undone.'),
-                actions: [
-                  TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                  FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
-                ],
-              ),
-        ) ??
-        false;
-    if (!ok || !mounted) return;
+  Color _currentSectionAccent() {
+    return _accentForTab(_currentTab);
+  }
 
-    // Show a modal loading indicator that cannot be dismissed by the user.
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return const Dialog(
-          child: Padding(
-            padding: EdgeInsets.all(20.0),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [CircularProgressIndicator(), SizedBox(width: 20), Text("Deleting...")],
+  Color _accentForTab(WebAdminTab tab) {
+    switch (tab) {
+      case WebAdminTab.shifts:
+        return const Color(0xFF4DA3FF);
+      case WebAdminTab.checklists:
+        return const Color(0xFF49C98A);
+      case WebAdminTab.users:
+        return const Color(0xFFFF8A4C);
+      case WebAdminTab.locations:
+        return const Color(0xFFF4B844);
+    }
+  }
+
+  String _currentSectionEyebrow() {
+    switch (_currentTab) {
+      case WebAdminTab.shifts:
+        return context.l10n.webAdminSectionEyebrowShifts;
+      case WebAdminTab.checklists:
+        return context.l10n.webAdminSectionEyebrowChecklists;
+      case WebAdminTab.users:
+        return context.l10n.webAdminSectionEyebrowUsers;
+      case WebAdminTab.locations:
+        return context.l10n.webAdminSectionEyebrowLocations;
+    }
+  }
+
+  String _currentSectionTitle() {
+    switch (_currentTab) {
+      case WebAdminTab.shifts:
+        return context.l10n.webAdminSectionTitleShifts;
+      case WebAdminTab.checklists:
+        return context.l10n.webAdminSectionTitleChecklists;
+      case WebAdminTab.users:
+        return context.l10n.webAdminSectionTitleUsers;
+      case WebAdminTab.locations:
+        return context.l10n.webAdminSectionTitleLocations;
+    }
+  }
+
+  String _currentSectionSubtitle() {
+    switch (_currentTab) {
+      case WebAdminTab.shifts:
+        return context.l10n.webAdminSectionSubtitleShifts;
+      case WebAdminTab.checklists:
+        return context.l10n.webAdminSectionSubtitleChecklists;
+      case WebAdminTab.users:
+        return context.l10n.webAdminSectionSubtitleUsers;
+      case WebAdminTab.locations:
+        return context.l10n.webAdminSectionSubtitleLocations;
+    }
+  }
+
+  List<String> _currentSectionHelpTopics() {
+    switch (_currentTab) {
+      case WebAdminTab.shifts:
+        return const ['admin-create-shift', 'admin-attach-workflow'];
+      case WebAdminTab.checklists:
+        return const ['admin-checklist-library', 'admin-attach-workflow'];
+      case WebAdminTab.users:
+        return const ['admin-invite-team'];
+      case WebAdminTab.locations:
+        return const ['admin-first-location', 'admin-multi-location'];
+    }
+  }
+
+  String _currentSectionTableSubtitle() {
+    switch (_currentTab) {
+      case WebAdminTab.shifts:
+        return context.l10n.webAdminSectionTableSubtitleShifts;
+      case WebAdminTab.checklists:
+        return context.l10n.webAdminSectionTableSubtitleChecklists;
+      case WebAdminTab.users:
+        return context.l10n.webAdminSectionTableSubtitleUsers;
+      case WebAdminTab.locations:
+        return context.l10n.webAdminSectionTableSubtitleLocations;
+    }
+  }
+
+  String _getTabDisplayName({bool singular = false}) {
+    switch (_currentTab) {
+      case WebAdminTab.shifts:
+        return singular
+            ? context.l10n.webAdminTabShift
+            : context.l10n.adminViewShifts;
+      case WebAdminTab.checklists:
+        return singular
+            ? context.l10n.webAdminTabTemplate
+            : context.l10n.adminViewChecklistLibrary;
+      case WebAdminTab.users:
+        return singular
+            ? context.l10n.webAdminTabTeamMember
+            : context.l10n.adminViewTeam;
+      case WebAdminTab.locations:
+        return singular
+            ? context.l10n.webAdminTabLocation
+            : context.l10n.adminViewLocations;
+    }
+  }
+
+  // Global overlay dialog that completely bypasses navigation
+  Future<bool?> _showStableDialog({
+    required Widget Function(void Function(bool?)) builder,
+  }) async {
+    final completer = Completer<bool?>();
+    OverlayEntry? overlayEntry;
+
+    void closeDialog(bool? result) {
+      if (!completer.isCompleted) {
+        overlayEntry?.remove();
+        completer.complete(result);
+      }
+    }
+
+    overlayEntry = OverlayEntry(
+      builder: (context) {
+        return Material(
+          color: Colors.black54,
+          child: GestureDetector(
+            onTap: () => closeDialog(false),
+            child: Container(
+              alignment: Alignment.center,
+              child: GestureDetector(
+                onTap: () {}, // Prevent tap through
+                child: builder(closeDialog),
+              ),
             ),
           ),
         );
       },
     );
 
-    try {
-      await FirestoreEnforcer.instance
-          .collection('organizations')
-          .doc(widget.organizationId)
-          .collection('shifts')
-          .doc(shift['id'])
-          .delete();
+    // Add overlay to the root overlay
+    Overlay.of(context, rootOverlay: true).insert(overlayEntry);
 
-      if (mounted) {
-        Navigator.pop(context); // Dismiss loading dialog
-        _showSnackBar('Shift deleted');
+    return completer.future;
+  }
+
+  Future<void> _deleteShift(Map<String, dynamic> shift) async {
+    final l10n = context.l10n;
+    print(
+      '🔴 DELETE SHIFT BUTTON CLICKED! Shift: ${shift['name']} (${shift['id']})',
+    );
+
+    // Capture context before dialog to avoid mounting issues
+    final currentContext = context;
+    final orgId = widget.organizationId;
+    final shiftId = shift['id'] as String;
+
+    final ok = await _showStableDialog(
+      builder: (closeDialog) {
+        print('🔴 SHIFT DELETE DIALOG BUILDING!');
+        return AlertDialog(
+          title: Text(l10n.webAdminDeleteShiftTitle),
+          content: Text(l10n.webAdminDeleteShiftBody('${shift['name']}')),
+          actions: [
+            TextButton(
+              onPressed: () {
+                print('🔴 SHIFT DELETE CANCELLED');
+                closeDialog(false);
+              },
+              child: Text(l10n.commonCancel),
+            ),
+            FilledButton(
+              onPressed: () {
+                print('🔴 SHIFT DELETE CONFIRMED');
+                closeDialog(true);
+              },
+              child: Text(l10n.commonDelete),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (ok != true) {
+      print('🔴 SHIFT DELETE CANCELLED BY USER');
+      return;
+    }
+
+    // Execute deletion regardless of mounted state
+    print('🔴 SHIFT DELETE PROCEEDING... (ignoring mounted state: $mounted)');
+
+    // Use captured values instead of widget state
+    try {
+      print('🔴 SHIFT DELETE: Starting Firestore operation...');
+      final shiftRef = FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(orgId)
+          .collection('shifts')
+          .doc(shiftId);
+      final snap = await shiftRef.get();
+      if (!snap.exists) {
+        print('🔴 SHIFT DELETE: Document does not exist');
+        return;
+      }
+      final data = snap.data() as Map<String, dynamic>;
+      final List<String> locs =
+          (data['locationIds'] is Iterable)
+              ? List<String>.from(data['locationIds'])
+              : (data['locationIds'] is String &&
+                  (data['locationIds'] as String).isNotEmpty)
+              ? [data['locationIds'] as String]
+              : <String>[];
+
+      if (_selectedLocationId != null && _selectedLocationId!.isNotEmpty) {
+        print('🔴 SHIFT DELETE: Removing from location $_selectedLocationId');
+        final newLocs = List<String>.from(locs)..remove(_selectedLocationId);
+        if (newLocs.isEmpty) {
+          print('🔴 SHIFT DELETE: No locations left, deleting entire shift');
+          await shiftRef.delete();
+        } else {
+          print('🔴 SHIFT DELETE: Updating locations list');
+          await shiftRef.update({
+            'locationIds': newLocs,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+      } else {
+        print('🔴 SHIFT DELETE: No location filter, deleting entire shift');
+        await shiftRef.delete();
+      }
+
+      print('🔴 SHIFT DELETE: Firestore operation completed successfully');
+
+      // Only show snackbar if context is still valid
+      if (currentContext.mounted) {
+        try {
+          ScaffoldMessenger.of(
+            currentContext,
+          ).showSnackBar(SnackBar(content: Text(l10n.webAdminShiftUpdated)));
+        } catch (e) {
+          print(
+            '🔴 SHIFT DELETE: Could not show snackbar (context invalid): $e',
+          );
+        }
       }
     } catch (e, st) {
-      logger.e('Failed to delete shift', e, st);
-      if (mounted) {
-        Navigator.pop(context); // Dismiss loading dialog
-        _showSnackBar('Failed to delete shift: $e', isError: true);
+      print('🔴 SHIFT DELETE ERROR: $e');
+      logger.e('Failed to update shift', e, st);
+      if (currentContext.mounted) {
+        try {
+          ScaffoldMessenger.of(currentContext).showSnackBar(
+            SnackBar(content: Text(l10n.webAdminShiftUpdateFailed('$e'))),
+          );
+        } catch (contextError) {
+          print(
+            '🔴 SHIFT DELETE: Could not show error snackbar (context invalid): $contextError',
+          );
+        }
       }
     }
   }
 
   Future<void> _toggleChecklistArchived(Map<String, dynamic> checklist) async {
+    final l10n = context.l10n;
     final archived = (checklist['archived'] ?? false) == true;
     try {
       await FirestoreEnforcer.instance
@@ -1976,21 +3834,178 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           .doc(widget.organizationId)
           .collection('checklist_templates')
           .doc(checklist['id'])
-          .update({'archived': !archived, 'updatedAt': FieldValue.serverTimestamp()});
-      _showSnackBar('Checklist ${archived ? 'restored' : 'archived'}');
+          .update({
+            'archived': !archived,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+      _showSnackBar(
+        archived
+            ? l10n.webAdminTemplateRestored
+            : l10n.webAdminTemplateArchived,
+      );
     } catch (e) {
-      _showSnackBar('Failed to update checklist');
+      _showSnackBar(l10n.webAdminChecklistUpdateFailed, isError: true);
     }
   }
 
+  Future<void> _deleteChecklist(Map<String, dynamic> checklist) async {
+    final l10n = context.l10n;
+    print(
+      '🔴 DELETE BUTTON CLICKED! Checklist: ${checklist['name']} (${checklist['id']})',
+    );
+    logger.i(
+      '[WEBAdminDashboard] Starting checklist deletion for: ${checklist['id']} - "${checklist['name']}"',
+    );
+
+    // Capture all necessary data BEFORE showing dialog
+    final currentContext = context;
+    final currentOrgId = widget.organizationId;
+    final checklistId = checklist['id'] as String;
+    final checklistName = checklist['name'] as String;
+
+    // Create a standalone deletion function that doesn't depend on widget state
+    Future<void> executeChecklistDeletion() async {
+      try {
+        logger.i('[WEBAdminDashboard] User confirmed deletion, proceeding...');
+
+        final orgRef = FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(currentOrgId);
+
+        // Delete the checklist template
+        logger.i(
+          '[WEBAdminDashboard] Attempting to delete checklist document: $checklistId',
+        );
+        final checklistRef = orgRef
+            .collection('checklist_templates')
+            .doc(checklistId);
+        await checklistRef.delete();
+        logger.i(
+          '[WEBAdminDashboard] Delete operation completed, verifying...',
+        );
+
+        // Verify deletion (surface a clear error if blocked by rules)
+        final verifySnap = await checklistRef.get();
+        if (verifySnap.exists) {
+          logger.e(
+            '[WEBAdminDashboard] Verification failed: document still exists after delete',
+          );
+          throw Exception(
+            'Checklist still exists after delete; check Firestore rules or references',
+          );
+        }
+        logger.i(
+          '[WEBAdminDashboard] Verification passed: document successfully deleted',
+        );
+
+        // Remove references from shifts
+        logger.i(
+          '[WEBAdminDashboard] Removing checklist references from shifts...',
+        );
+        final shiftsSnap = await orgRef.collection('shifts').get();
+        WriteBatch batch = FirestoreEnforcer.instance.batch();
+        int ops = 0;
+        int shiftsUpdated = 0;
+        for (final s in shiftsSnap.docs) {
+          final data = s.data();
+          final List<dynamic> tidsDyn =
+              (data['checklistTemplateIds'] as List?) ?? const [];
+          final filtered = tidsDyn.where((e) => e != checklistId).toList();
+          if (filtered.length != tidsDyn.length) {
+            batch.update(s.reference, {'checklistTemplateIds': filtered});
+            ops++;
+            shiftsUpdated++;
+            if (ops >= 450) {
+              await batch.commit();
+              batch = FirestoreEnforcer.instance.batch();
+              ops = 0;
+            }
+          }
+        }
+        if (ops > 0) await batch.commit();
+        logger.i(
+          '[WEBAdminDashboard] Updated $shiftsUpdated shifts to remove checklist references',
+        );
+
+        // Wait a moment for Firestore streams to propagate the deletion
+        await Future.delayed(const Duration(milliseconds: 500));
+
+        logger.i('[WEBAdminDashboard] Reloading checklists table...');
+
+        if (currentContext.mounted) {
+          try {
+            ScaffoldMessenger.of(currentContext).showSnackBar(
+              SnackBar(content: Text(l10n.webAdminTemplateDeleted)),
+            );
+          } catch (e) {
+            print(
+              '🔴 CHECKLIST DELETE: Could not show snackbar (context invalid): $e',
+            );
+          }
+          logger.i('[WEBAdminDashboard] Success: checklist deletion completed');
+        }
+      } catch (e, st) {
+        logger.e('[WEBAdminDashboard] Failed to delete checklist: $e', e, st);
+        if (currentContext.mounted) {
+          try {
+            ScaffoldMessenger.of(currentContext).showSnackBar(
+              SnackBar(content: Text(l10n.webAdminTemplateDeleteFailed('$e'))),
+            );
+          } catch (contextError) {
+            print(
+              '🔴 CHECKLIST DELETE: Could not show error snackbar (context invalid): $contextError',
+            );
+          }
+        }
+      }
+    }
+
+    final confirm = await _showStableDialog(
+      builder: (closeDialog) {
+        print('🔴 DIALOG BUILDING! About to show delete confirmation');
+        return AlertDialog(
+          title: Text(l10n.webAdminDeleteTemplateTitle),
+          content: Text(l10n.webAdminDeleteTemplateBody(checklistName)),
+          actions: [
+            TextButton(
+              onPressed: () {
+                print('🔴 CANCEL CLICKED');
+                closeDialog(false);
+              },
+              child: Text(l10n.commonCancel),
+            ),
+            FilledButton(
+              onPressed: () {
+                print('🔴 DELETE CONFIRMED');
+                closeDialog(true);
+              },
+              child: Text(l10n.commonDelete),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) {
+      print('🔴 CHECKLIST DELETE CANCELLED BY USER');
+      logger.i('[WEBAdminDashboard] Checklist deletion cancelled by user');
+      return;
+    }
+
+    // Execute deletion regardless of widget state
+    print('🔴 CHECKLIST DELETE PROCEEDING... (widget may be unmounted)');
+    await executeChecklistDeletion();
+  }
+
   Future<void> _duplicateLocation(Map<String, dynamic> location) async {
+    final l10n = context.l10n;
     try {
       final newData =
           Map<String, dynamic>.from(location)
             ..remove('id')
             ..remove('createdAt')
             ..remove('updatedAt')
-            ..['name'] = '${location['name']} Copy'
+            ..['name'] = l10n.webAdminCopyName('${location['name']}')
             ..['createdAt'] = FieldValue.serverTimestamp();
       final ref =
           FirestoreEnforcer.instance
@@ -1999,9 +4014,9 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
               .collection('locations')
               .doc();
       await ref.set(newData);
-      _showSnackBar('Location duplicated');
+      _showSnackBar(l10n.webAdminLocationDuplicated);
     } catch (e) {
-      _showSnackBar('Failed to duplicate');
+      _showSnackBar(l10n.webAdminDuplicateFailed, isError: true);
     }
   }
 
@@ -2015,7 +4030,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
     try {
       return ShiftData(
         shiftId: shiftMap['id'] ?? '',
-        shiftName: shiftMap['name'] ?? 'Unnamed Shift',
+        shiftName: shiftMap['name'] ?? context.l10n.webAdminUnnamedShift,
         createdAt: shiftMap['createdAt']?.toDate() ?? DateTime.now(),
         startTime: shiftMap['startTime'] ?? '',
         endTime: shiftMap['endTime'] ?? '',
@@ -2058,10 +4073,13 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
   }
 
   void _editShift(Map<String, dynamic>? shift) {
+    final l10n = context.l10n;
     // Ensure we always open the editor and avoid throwing on legacy/malformed docs.
     // _mapToShiftData may return null; if so build a resilient fallback using safe
     // coercion helpers and guard with try/catch so the UI still opens.
-    logger.i('[WEBAdminDashboard] _editShift invoked for shiftId=${shift?['id']} name=${shift?['name']}');
+    logger.i(
+      '[WEBAdminDashboard] _editShift invoked for shiftId=${shift?['id']} name=${shift?['name']}',
+    );
     ShiftData? shiftData;
     if (shift != null) {
       shiftData = _mapToShiftData(shift);
@@ -2069,7 +4087,12 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
         // Local helpers to coerce dynamic Firestore values into safe types.
         List<String> coerceStringList(dynamic v) {
           if (v == null) return [];
-          if (v is List) return v.map((e) => e?.toString() ?? '').where((s) => s.isNotEmpty).toList();
+          if (v is List) {
+            return v
+                .map((e) => e?.toString() ?? '')
+                .where((s) => s.isNotEmpty)
+                .toList();
+          }
           return [v.toString()];
         }
 
@@ -2106,14 +4129,21 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
         try {
           shiftData = ShiftData(
             shiftId: shift['id'] ?? '',
-            shiftName: shift['name'] ?? shift['shiftName'] ?? 'Unnamed Shift',
+            shiftName:
+                shift['name'] ??
+                shift['shiftName'] ??
+                l10n.webAdminUnnamedShift,
             createdAt: toDate(shift['createdAt']) ?? DateTime.now(),
             startTime: shift['startTime'] ?? '',
             endTime: shift['endTime'] ?? '',
             organizationId: widget.organizationId,
-            locationIds: coerceStringList(shift['locations'] ?? shift['locationIds'] ?? shift['location']),
+            locationIds: coerceStringList(
+              shift['locations'] ?? shift['locationIds'] ?? shift['location'],
+            ),
             checklistTemplateIds: coerceStringList(
-              shift['checklists'] ?? shift['checklistTemplateIds'] ?? shift['checklistIds'],
+              shift['checklists'] ??
+                  shift['checklistTemplateIds'] ??
+                  shift['checklistIds'],
             ),
             jobType: coerceStringList(shift['jobType'] ?? shift['jobTypes']),
             staffingLevels: coerceIntMap(shift['staffingLevels']),
@@ -2133,11 +4163,16 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
             updatedAt: toDate(shift['updatedAt']),
           );
         } catch (e, st) {
-          logger.e('[WEBAdminDashboard] Error building fallback ShiftData: $e\n$st');
+          logger.e(
+            '[WEBAdminDashboard] Error building fallback ShiftData: $e\n$st',
+          );
           // Fallback to minimal ShiftData so the editor still opens.
           shiftData = ShiftData(
             shiftId: shift['id'] ?? '',
-            shiftName: shift['name'] ?? shift['shiftName'] ?? 'Unnamed Shift',
+            shiftName:
+                shift['name'] ??
+                shift['shiftName'] ??
+                l10n.webAdminUnnamedShift,
             createdAt: DateTime.now(),
             startTime: shift['startTime'] ?? '',
             endTime: shift['endTime'] ?? '',
@@ -2157,24 +4192,31 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           shiftId: shift?['id'],
           shiftData: shiftData,
           availableLocations: _availableLocations,
+          selectedLocationId: _selectedLocationId,
           onShiftSaved: () {
-            Navigator.of(context).pop();
-            _showSnackBar(shift == null ? 'Shift created successfully' : 'Shift updated successfully');
+            _showSnackBar(
+              shift == null
+                  ? l10n.webAdminShiftCreated
+                  : l10n.webAdminShiftSaved,
+            );
           },
         ),
       );
     } catch (e, st) {
-      logger.e('[WEBAdminDashboard] Failed to open shift editor dialog: $e\n$st');
-      _showSnackBar('Failed to open shift editor', isError: true);
+      logger.e(
+        '[WEBAdminDashboard] Failed to open shift editor dialog: $e\n$st',
+      );
+      _showSnackBar(l10n.webAdminShiftEditorOpenFailed, isError: true);
     }
   }
 
   void _duplicateShift(Map<String, dynamic> shift) async {
+    final l10n = context.l10n;
     try {
       // Create a copy without the ID
       final newShiftData = Map<String, dynamic>.from(shift);
       newShiftData.remove('id');
-      newShiftData['shiftName'] = '${shift['name']} (Copy)';
+      newShiftData['shiftName'] = l10n.webAdminCopyName('${shift['name']}');
       newShiftData['createdAt'] = FieldValue.serverTimestamp();
 
       await FirestoreEnforcer.instance
@@ -2183,13 +4225,14 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           .collection('shifts')
           .add(newShiftData);
 
-      _showSnackBar('Shift duplicated successfully');
+      _showSnackBar(l10n.webAdminShiftDuplicated);
     } catch (e) {
-      _showSnackBar('Failed to duplicate shift: $e', isError: true);
+      _showSnackBar(l10n.webAdminShiftDuplicateFailed('$e'), isError: true);
     }
   }
 
   void _toggleShiftActive(Map<String, dynamic> shift) async {
+    final l10n = context.l10n;
     try {
       await FirestoreEnforcer.instance
           .collection('organizations')
@@ -2198,13 +4241,18 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           .doc(shift['id'])
           .update({'isActive': !shift['active']});
 
-      _showSnackBar('Shift ${shift['active'] ? 'archived' : 'restored'} successfully');
+      _showSnackBar(
+        shift['active']
+            ? l10n.webAdminShiftArchived
+            : l10n.webAdminShiftRestored,
+      );
     } catch (e) {
-      _showSnackBar('Failed to update shift: $e', isError: true);
+      _showSnackBar(l10n.webAdminShiftUpdateFailed('$e'), isError: true);
     }
   }
 
   Future<void> _editChecklist(Map<String, dynamic>? checklist) async {
+    final l10n = context.l10n;
     logger.i(
       '[WEBAdminDashboard] _editChecklist invoked for checklistId=${checklist?['id']} name=${checklist?['name']}',
     );
@@ -2212,7 +4260,9 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
     // Resolve a safe locationId fallback.
     final safeLocationId =
         _selectedLocationId ??
-        (_availableLocations.isNotEmpty ? (_availableLocations.first['id'] as String? ?? '') : '');
+        (_availableLocations.isNotEmpty
+            ? (_availableLocations.first['id'] as String? ?? '')
+            : '');
 
     try {
       _showEditDialog(
@@ -2224,36 +4274,58 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           initialData: checklist,
           availableLocations: _availableLocations,
           onSave: (checklistData) async {
-            // Close the editor first, then refresh the cached checklist table so
-            // other views (like shifts) immediately reflect the new/updated checklist.
-            Navigator.of(context).pop();
+            logger.d(
+              '[WEBAdminDashboard] onSave callback triggered with data: ${checklistData.keys}',
+            );
             try {
               // Persist checklist to Firestore (save + update shifts + tasks)
-              try {
-                await _saveChecklistFromBottomSheet(checklistData, existingChecklistId: checklist?['id']);
-              } catch (e) {
-                logger.e('[WEBAdminDashboard] Error saving checklist from bottom sheet: $e', e);
-              }
-              await _loadChecklistsTable();
-            } catch (_) {
-              // ignore errors from reload to avoid breaking the UI flow
-            }
+              await _saveChecklistFromBottomSheet(
+                checklistData,
+                existingChecklistId: checklist?['id'],
+              );
 
-            _showSnackBar(checklist == null ? 'Checklist created successfully' : 'Checklist updated successfully');
+              // Refresh the cached checklist table so other views reflect the changes
+              await _loadChecklistsTable();
+
+              // Show success message
+              _showSnackBar(
+                checklist == null
+                    ? l10n.webAdminTemplateCreated
+                    : l10n.webAdminTemplateSaved,
+              );
+              logger.d('[WEBAdminDashboard] Checklist saved successfully');
+            } catch (e) {
+              logger.e(
+                '[WEBAdminDashboard] Error saving checklist from bottom sheet: $e',
+                e,
+              );
+              // Show error message to user
+              _showSnackBar(
+                l10n.webAdminTemplateSaveFailed('$e'),
+                isError: true,
+              );
+              // Rethrow to prevent the dialog from closing on error
+              rethrow;
+            }
           },
         ),
       );
     } catch (e, st) {
-      logger.e('[WEBAdminDashboard] Failed to open checklist editor dialog: $e\n$st');
-      _showSnackBar('Failed to open checklist editor', isError: true);
+      logger.e(
+        '[WEBAdminDashboard] Failed to open checklist editor dialog: $e\n$st',
+      );
+      _showSnackBar(l10n.webAdminTemplateEditorOpenFailed, isError: true);
     }
   }
 
   void _duplicateChecklist(Map<String, dynamic> checklist) async {
+    final l10n = context.l10n;
     try {
       final newChecklistData = Map<String, dynamic>.from(checklist);
       newChecklistData.remove('id');
-      newChecklistData['checklistName'] = '${checklist['name']} (Copy)';
+      newChecklistData['checklistName'] = l10n.webAdminCopyName(
+        '${checklist['name']}',
+      );
       newChecklistData['createdAt'] = FieldValue.serverTimestamp();
 
       await FirestoreEnforcer.instance
@@ -2262,37 +4334,67 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           .collection('checklist_templates')
           .add(newChecklistData);
 
-      _showSnackBar('Checklist duplicated successfully');
+      _showSnackBar(l10n.webAdminTemplateDuplicated);
     } catch (e) {
-      _showSnackBar('Failed to duplicate checklist: $e', isError: true);
+      _showSnackBar(l10n.webAdminTemplateDuplicateFailed('$e'), isError: true);
     }
   }
 
   /// Persist checklist data coming from the ChecklistBottomSheet.
   /// Minimal implementation mirroring admin save: writes the template doc,
   /// updates shift associations, and replaces subcollection tasks.
-  Future<void> _saveChecklistFromBottomSheet(Map<String, dynamic> result, {String? existingChecklistId}) async {
+  Future<void> _saveChecklistFromBottomSheet(
+    Map<String, dynamic> result, {
+    String? existingChecklistId,
+  }) async {
     if (widget.organizationId.isEmpty) return;
 
-    final checklistData = (result['checklistData'] ?? {}) as Map<String, dynamic>;
+    final checklistData =
+        (result['checklistData'] ?? {}) as Map<String, dynamic>;
     final selectedShiftIds =
-        (result['selectedShiftIds'] is Iterable) ? List<String>.from(result['selectedShiftIds']) : <String>[];
+        (result['selectedShiftIds'] is Iterable)
+            ? List<String>.from(result['selectedShiftIds'])
+            : <String>[];
     // Newly added: location scoping. The bottom sheet provides selectedLocationIds (additional)
     // and the active location passed as widget.locationId when opened. Persist union as locationIds.
     final additionalLocIds =
-        (result['selectedLocationIds'] is Iterable) ? List<String>.from(result['selectedLocationIds']) : <String>[];
+        (result['selectedLocationIds'] is Iterable)
+            ? List<String>.from(result['selectedLocationIds'])
+            : <String>[];
     final Set<String> unionLocs = {
-      if (_selectedLocationId != null && _selectedLocationId!.isNotEmpty) _selectedLocationId!,
+      if (_selectedLocationId != null && _selectedLocationId!.isNotEmpty)
+        _selectedLocationId!,
       ...additionalLocIds.where((e) => e.isNotEmpty),
     };
-
-    final batch = FirestoreEnforcer.instance.batch();
-
-    final mainChecklistRef = FirestoreEnforcer.instance
+    final checklistTemplatesRef = FirestoreEnforcer.instance
         .collection('organizations')
         .doc(widget.organizationId)
-        .collection('checklist_templates')
-        .doc(existingChecklistId);
+        .collection('checklist_templates');
+    final Set<String> previousChecklistLocationIds = <String>{};
+
+    if (existingChecklistId != null) {
+      try {
+        final existingChecklistSnap =
+            await checklistTemplatesRef.doc(existingChecklistId).get();
+        final existingChecklistData = existingChecklistSnap.data();
+        if (existingChecklistData != null) {
+          previousChecklistLocationIds.addAll(
+            coerceToLocationIds(existingChecklistData['locationIds']),
+          );
+        }
+      } catch (e) {
+        logger.w(
+          '[WEBAdminDashboard] Unable to load existing checklist locations for $existingChecklistId: $e',
+        );
+      }
+    }
+    final batch = FirestoreEnforcer.instance.batch();
+
+    final mainChecklistRef =
+        existingChecklistId != null
+            ? checklistTemplatesRef.doc(existingChecklistId)
+            : checklistTemplatesRef
+                .doc(); // Auto-generate ID for new checklists
     final mainChecklistId = mainChecklistRef.id;
 
     final tasksArray =
@@ -2305,16 +4407,34 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
       'taskCount': tasksArray.length,
       'updatedAt': FieldValue.serverTimestamp(),
       if (unionLocs.isNotEmpty) 'locationIds': unionLocs.toList(),
-      if (existingChecklistId == null) 'createdAt': FieldValue.serverTimestamp(),
+      if (existingChecklistId == null)
+        'createdAt': FieldValue.serverTimestamp(),
     };
 
     batch.set(mainChecklistRef, checklistDocPayload, SetOptions(merge: true));
 
-    // Add checklist reference to selected shifts
     final shiftsCollection = FirestoreEnforcer.instance
         .collection('organizations')
         .doc(widget.organizationId)
         .collection('shifts');
+
+    if (existingChecklistId != null) {
+      final shiftsWithChecklistSnapshot =
+          await shiftsCollection
+              .where('checklistTemplateIds', arrayContains: existingChecklistId)
+              .get();
+
+      for (final shiftDoc in shiftsWithChecklistSnapshot.docs) {
+        if (!selectedShiftIds.contains(shiftDoc.id)) {
+          batch.update(shiftDoc.reference, {
+            'checklistTemplateIds': FieldValue.arrayRemove([
+              existingChecklistId,
+            ]),
+          });
+        }
+      }
+    }
+
     for (final shiftId in selectedShiftIds) {
       batch.update(shiftsCollection.doc(shiftId), {
         'checklistTemplateIds': FieldValue.arrayUnion([mainChecklistId]),
@@ -2360,112 +4480,95 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
         if (opCount > 0) await addBatch.commit();
       }
 
-      // Optionally reseed today's generated daily checklists if needed (left out for brevity)
+      try {
+        final dcs = DailyChecklistService();
+        final now = DateTime.now();
+        final dateStr =
+            '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+        final checklistLocationIds =
+            {
+              ...unionLocs,
+              ...previousChecklistLocationIds,
+            }.where((id) => id.isNotEmpty).toList();
+
+        for (final locationId in checklistLocationIds) {
+          final existingDaily =
+              await FirestoreEnforcer.instance
+                  .collection('organizations')
+                  .doc(widget.organizationId)
+                  .collection('locations')
+                  .doc(locationId)
+                  .collection('daily_checklists')
+                  .where('date', isEqualTo: dateStr)
+                  .where('checklistTemplateId', isEqualTo: mainChecklistId)
+                  .get();
+
+          for (final checklistDoc in existingDaily.docs) {
+            try {
+              await dcs.reseedChecklistTasksFromTemplate(
+                organizationId: widget.organizationId,
+                locationId: locationId,
+                checklistId: checklistDoc.id,
+              );
+            } catch (e) {
+              logger.e(
+                '[WEBAdminDashboard] Error reseeding checklist ${checklistDoc.id}: $e',
+              );
+            }
+          }
+        }
+      } catch (e) {
+        logger.e('[WEBAdminDashboard] Reseed step failed: $e');
+      }
+
+      logger.d(
+        '[WEBAdminDashboard] Successfully saved checklist with ${tasksArray.length} tasks',
+      );
     } catch (e, st) {
       logger.e('[WEBAdminDashboard] Error persisting checklist: $e\n$st');
-      if (mounted) _showSnackBar('Failed to save checklist: $e', isError: true);
+      // Rethrow the error so the calling function can handle it properly
       rethrow;
     }
   }
 
-  void _deleteChecklist(Map<String, dynamic> checklist) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            backgroundColor: HandsColors.cardPrimary,
-            title: Text('Delete Checklist', style: GoogleFonts.comfortaa(color: HandsColors.white)),
-            content: Text(
-              'Are you sure you want to delete "${checklist['name']}"? This action cannot be undone.',
-              style: GoogleFonts.comfortaa(color: HandsColors.white70),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: Text('Cancel', style: GoogleFonts.comfortaa(color: HandsColors.white70)),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: Text('Delete', style: GoogleFonts.comfortaa(color: HandsColors.error)),
-              ),
-            ],
-          ),
-    );
-
-    if (confirm == true) {
-      try {
-        final orgRef = FirestoreEnforcer.instance.collection('organizations').doc(widget.organizationId);
-        final checklistId = checklist['id'];
-
-        // 1. Delete the checklist template document
-        await orgRef.collection('checklist_templates').doc(checklistId).delete();
-
-        // 2. Remove the template id from any shift documents that reference it
-        try {
-          final shiftsSnap = await orgRef.collection('shifts').get();
-          WriteBatch batch = FirestoreEnforcer.instance.batch();
-          int ops = 0;
-          for (final s in shiftsSnap.docs) {
-            final data = s.data();
-            final List<dynamic> tidsDyn = (data['checklistTemplateIds'] as List?) ?? const [];
-            final originalLen = tidsDyn.length;
-            final filtered = tidsDyn.where((e) => e != checklistId).toList();
-            if (filtered.length != originalLen) {
-              batch.update(s.reference, {'checklistTemplateIds': filtered});
-              ops++;
-              if (ops == 450) {
-                await batch.commit();
-                batch = FirestoreEnforcer.instance.batch();
-                ops = 0;
-              }
-            }
-          }
-          if (ops > 0) await batch.commit();
-          logger.d('[WEBAdminDashboard] Removed deleted checklist $checklistId from affected shifts');
-        } catch (e, st) {
-          logger.e('[WEBAdminDashboard] Error removing checklist from shifts: $e\n$st');
-        }
-
-        // 3. Update local lookup maps to prevent displaying "Unknown Checklist"
-        _checklistNameById.remove(checklistId);
-        _shiftsByChecklistId.remove(checklistId);
-        // Also prune any cached shift -> checklist relationships
-        _checklistsByShiftId.updateAll((_, list) => list.where((id) => id != checklistId).toList());
-
-        // 4. Reload shifts table to reflect changes
-        await _loadShiftsTable();
-        if (mounted) setState(() {});
-
-        _showSnackBar('Checklist deleted successfully');
-      } catch (e) {
-        _showSnackBar('Failed to delete checklist: $e', isError: true);
-      }
-    }
-  }
-
   void _editUser(Map<String, dynamic>? user) {
-    _showEditDialog(UserManagementBottomSheet(userData: user, userId: user?['id']));
+    _showEditDialog(
+      UserManagementBottomSheet(userData: user, userId: user?['id']),
+    );
   }
 
   void _toggleUserActive(Map<String, dynamic> user) async {
+    final l10n = context.l10n;
     try {
-      await FirestoreEnforcer.instance.collection('users').doc(user['id']).update({'isActive': !user['isActive']});
+      await FirestoreEnforcer.instance
+          .collection('users')
+          .doc(user['id'])
+          .update({'isActive': !user['isActive']});
 
-      _showSnackBar('User ${user['isActive'] ? 'deactivated' : 'activated'} successfully');
+      _showSnackBar(
+        user['isActive']
+            ? l10n.webAdminUserDeactivated
+            : l10n.webAdminUserActivated,
+      );
     } catch (e) {
-      _showSnackBar('Failed to update user: $e', isError: true);
+      _showSnackBar(l10n.webAdminUserUpdateFailed('$e'), isError: true);
     }
   }
 
   void _editLocation(Map<String, dynamic>? location) {
+    final l10n = context.l10n;
     _showEditDialog(
       LocationWizard(
         organizationId: widget.organizationId,
         locationId: location?['id'],
         initialData: location,
         onCompleted: () {
-          Navigator.of(context).pop();
-          _showSnackBar(location == null ? 'Location created successfully' : 'Location updated successfully');
+          // LocationWizard now handles closing automatically
+          _showSnackBar(
+            location == null
+                ? l10n.webAdminLocationCreated
+                : l10n.webAdminLocationSaved,
+          );
           _loadLocations(); // Refresh locations list
         },
       ),
@@ -2473,6 +4576,7 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
   }
 
   void _toggleLocationActive(Map<String, dynamic> location) async {
+    final l10n = context.l10n;
     try {
       await FirestoreEnforcer.instance
           .collection('organizations')
@@ -2481,74 +4585,143 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
           .doc(location['id'])
           .update({'isActive': !location['isActive']});
 
-      _showSnackBar('Location ${location['isActive'] ? 'archived' : 'restored'} successfully');
+      _showSnackBar(
+        location['isActive']
+            ? l10n.webAdminLocationArchived
+            : l10n.webAdminLocationRestored,
+      );
     } catch (e) {
-      _showSnackBar('Failed to update location: $e', isError: true);
+      _showSnackBar(l10n.webAdminLocationUpdateFailed('$e'), isError: true);
     }
   }
 
   void _deleteLocation(Map<String, dynamic> location) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            backgroundColor: HandsColors.cardPrimary,
-            title: Text('Delete Location', style: GoogleFonts.comfortaa(color: HandsColors.white)),
-            content: Text(
-              'Are you sure you want to delete "${location['name']}"? This action cannot be undone and will affect any shifts or users assigned to this location.',
-              style: GoogleFonts.comfortaa(color: HandsColors.white70),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: Text('Cancel', style: GoogleFonts.comfortaa(color: HandsColors.white70)),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: Text('Delete', style: GoogleFonts.comfortaa(color: HandsColors.error)),
-              ),
-            ],
-          ),
+    final l10n = context.l10n;
+    print(
+      '🔴 DELETE LOCATION BUTTON CLICKED! Location: ${location['name']} (${location['id']})',
     );
 
-    if (confirm == true) {
+    // Capture all necessary data BEFORE showing dialog
+    final currentContext = context;
+    final currentOrgId = widget.organizationId;
+    final locationId = location['id'] as String;
+    final locationName = location['name'] as String;
+
+    // Create a standalone deletion function that doesn't depend on widget state
+    Future<void> executeLocationDeletion() async {
       try {
+        print('🔴 CALLING FIRESTORE DELETE FOR LOCATION $locationId');
+
         await FirestoreEnforcer.instance
             .collection('organizations')
-            .doc(widget.organizationId)
+            .doc(currentOrgId)
             .collection('locations')
-            .doc(location['id'])
+            .doc(locationId)
             .delete();
 
-        _showSnackBar('Location deleted successfully');
+        print('🔴 LOCATION DELETE SUCCESSFUL');
 
-        // Refresh locations list and reload tables
-        await _loadLocations();
+        // Show success message using the captured context
+        if (currentContext.mounted) {
+          try {
+            ScaffoldMessenger.of(currentContext).showSnackBar(
+              SnackBar(content: Text(l10n.webAdminLocationDeleted)),
+            );
+          } catch (e) {
+            print(
+              '🔴 LOCATION DELETE: Could not show snackbar (context invalid): $e',
+            );
+          }
+        }
       } catch (e) {
-        _showSnackBar('Failed to delete location: $e', isError: true);
+        print('🔴 LOCATION DELETE ERROR: $e');
+        if (currentContext.mounted) {
+          try {
+            ScaffoldMessenger.of(currentContext).showSnackBar(
+              SnackBar(content: Text(l10n.webAdminLocationDeleteFailed('$e'))),
+            );
+          } catch (contextError) {
+            print(
+              '🔴 LOCATION DELETE: Could not show error snackbar (context invalid): $contextError',
+            );
+          }
+        }
       }
     }
+
+    final confirm = await _showStableDialog(
+      builder: (closeDialog) {
+        print('🔴 LOCATION DELETE DIALOG BUILDING!');
+        return AlertDialog(
+          backgroundColor: HandsColors.cardPrimary,
+          title: Text(
+            l10n.webAdminDeleteLocationTitle,
+            style: GoogleFonts.comfortaa(color: HandsColors.white),
+          ),
+          content: Text(
+            l10n.webAdminDeleteLocationBody(locationName),
+            style: GoogleFonts.comfortaa(color: HandsColors.white70),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                print('🔴 LOCATION DELETE CANCELLED');
+                closeDialog(false);
+              },
+              child: Text(
+                l10n.commonCancel,
+                style: GoogleFonts.comfortaa(color: HandsColors.white70),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                print('🔴 LOCATION DELETE CONFIRMED');
+                closeDialog(true);
+              },
+              child: Text(
+                l10n.commonDelete,
+                style: GoogleFonts.comfortaa(color: HandsColors.error),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) {
+      print('🔴 LOCATION DELETE CANCELLED BY USER');
+      return;
+    }
+
+    // Execute deletion regardless of widget state
+    print('🔴 LOCATION DELETE PROCEEDING... (widget may be unmounted)');
+    await executeLocationDeletion();
   }
 
   Future<void> _deleteUser(String userId) async {
+    // Execute deletion operations completely independently of widget state
     try {
-      logger.d('[WEBAdminDashboard] Starting user deletion for userId: $userId');
+      logger.d(
+        '[WEBAdminDashboard] Starting user deletion for userId: $userId',
+      );
 
       // Call server-side callable 'deleteUser' to remove Auth record + Firestore doc atomically
       final functions = FirebaseFunctions.instanceFor(region: 'us-central1');
       final callable = functions.httpsCallable('deleteUser');
 
-      logger.d('[WEBAdminDashboard] Calling deleteUser function with uid: $userId');
+      logger.d(
+        '[WEBAdminDashboard] Calling deleteUser function with uid: $userId',
+      );
 
       final resp = await callable.call(<String, dynamic>{'uid': userId});
       final data = resp.data as Map<String, dynamic>?;
 
       logger.d('[WEBAdminDashboard] deleteUser function response: $data');
 
+      // Reload data without depending on widget state
       await _reloadAllTables();
-      if (mounted) {
-        _showSnackBar(data != null && data['message'] != null ? data['message'] : 'User deleted successfully');
-      }
+
+      print('🔴 USER DELETE: Operation completed successfully');
     } on FirebaseFunctionsException catch (e) {
       logger.e(
         '[WEBAdminDashboard] FirebaseFunctionsException: code=${e.code}, message=${e.message}, details=${e.details}',
@@ -2557,40 +4730,44 @@ class _WEBAdminDashboardPageState extends State<WEBAdminDashboardPage> {
 
       // If the function doesn't exist or fails, try fallback deletion (Firestore only)
       if (e.code == 'not-found' || e.code == 'unimplemented') {
-        logger.w('[WEBAdminDashboard] Cloud function not found, attempting Firestore-only deletion');
+        logger.w(
+          '[WEBAdminDashboard] Cloud function not found, attempting Firestore-only deletion',
+        );
         await _deleteUserFallback(userId);
       } else {
-        if (mounted) {
-          _showSnackBar('Error deleting user: ${e.message} (Code: ${e.code})', isError: true);
-        }
+        print('🔴 USER DELETE ERROR: ${e.message} (Code: ${e.code})');
+        rethrow;
       }
     } catch (e) {
       logger.e('[WEBAdminDashboard] deleteUser callable error: $e', e);
 
       // Try fallback deletion
-      logger.w('[WEBAdminDashboard] Attempting fallback Firestore-only deletion');
+      logger.w(
+        '[WEBAdminDashboard] Attempting fallback Firestore-only deletion',
+      );
       await _deleteUserFallback(userId);
     }
   }
 
   Future<void> _deleteUserFallback(String userId) async {
     try {
-      logger.d('[WEBAdminDashboard] Starting fallback user deletion for userId: $userId');
+      logger.d(
+        '[WEBAdminDashboard] Starting fallback user deletion for userId: $userId',
+      );
 
       // Delete user document from Firestore (Auth record will remain)
       await FirestoreEnforcer.instance.collection('users').doc(userId).delete();
 
-      logger.d('[WEBAdminDashboard] User document deleted from Firestore: $userId');
+      logger.d(
+        '[WEBAdminDashboard] User document deleted from Firestore: $userId',
+      );
 
       await _reloadAllTables();
-      if (mounted) {
-        _showSnackBar('User deleted from database. Note: Authentication record may still exist.');
-      }
+      print('🔴 USER DELETE FALLBACK: Operation completed successfully');
     } catch (e) {
       logger.e('[WEBAdminDashboard] Fallback deletion error: $e', e);
-      if (mounted) {
-        _showSnackBar('Failed to delete user: $e', isError: true);
-      }
+      print('🔴 USER DELETE FALLBACK ERROR: $e');
+      rethrow;
     }
   }
 }

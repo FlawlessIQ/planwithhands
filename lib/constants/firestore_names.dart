@@ -15,4 +15,7 @@ class UserFieldNames {
   static const String organizationId = "organizationId";
   static const String locationIds = "locationIds";
   static const String jobTypes = "jobTypes"; // Changed from jobType to jobTypes
+  static const String preferredLanguageCode = "preferredLanguageCode";
+  static const String preferredLanguageSource = "preferredLanguageSource";
+  static const String preferredLocaleResolved = "preferredLocaleResolved";
 }

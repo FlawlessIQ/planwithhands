@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
+import 'package:hands_app/widgets/hands_text_field.dart';
 
 class EmployeePricingWidget extends StatefulWidget {
   final TextEditingController? controller;
@@ -55,7 +57,7 @@ class _EmployeePricingWidgetState extends State<EmployeePricingWidget> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        TextField(
+        HandsTextField(
           controller: _controller,
           keyboardType: TextInputType.number,
           decoration: const InputDecoration(
@@ -100,9 +102,17 @@ class _EmployeePricingWidgetState extends State<EmployeePricingWidget> {
     showDialog(
       context: context,
       builder:
-          (_) => AlertDialog(
-            title: const Text('Pricing Matrix'),
-            content: SingleChildScrollView(
+          (_) => HandsDialog(
+            title: 'Pricing Matrix',
+            maxWidth: 620,
+            actions: [
+              HandsSecondaryButton(
+                text: 'Close',
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
               child: DataTable(
                 columns: const [
                   DataColumn(label: Text('Employees')),
@@ -131,12 +141,6 @@ class _EmployeePricingWidgetState extends State<EmployeePricingWidget> {
                     }).toList(),
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Close'),
-              ),
-            ],
           ),
     );
   }

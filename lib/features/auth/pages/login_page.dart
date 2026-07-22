@@ -1,61 +1,98 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:hands_app/global_widgets/language_selector_button.dart';
 import 'package:hands_app/state/auth_controller.dart';
 import 'package:hands_app/global_widgets/generic_text_field.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:hands_app/l10n/l10n.dart';
 import 'package:hands_app/routing/routes.dart';
 import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/global_widgets/hands_icon.dart';
 import 'package:hands_app/state/user_state.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'dart:io' show Platform;
-import 'package:url_launcher/url_launcher.dart';
+import 'package:hands_app/utils/app_platform.dart';
+import 'package:hands_app/widgets/hands_text_field.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class LoginPage extends HookConsumerWidget {
   const LoginPage({super.key});
 
   // Method to show forgot password dialog
   void _showForgotPasswordDialog(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final forgotEmailController = TextEditingController();
     final authActions = ref.watch(authControllerProvider.notifier);
 
     HandsDialog.show(
       context: context,
-      title: 'Reset Password',
+      title: l10n.loginResetPasswordTitle,
+      subtitle: l10n.loginResetPasswordSubtitle,
+      maxWidth: 460,
       isDismissible: true,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(Icons.lock_reset, color: HandsColors.handsOrange, size: 24),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Enter your email address and we\'ll send you a link to reset your password.',
-                  style: GoogleFonts.comfortaa(fontSize: 14, fontWeight: FontWeight.normal, color: HandsColors.white),
-                ),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: HandsModalTokens.surfaceElevated,
+              borderRadius: BorderRadius.circular(
+                HandsModalTokens.sectionRadius,
               ),
-            ],
+              border: Border.all(color: HandsModalTokens.border),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: HandsColors.handsOrange.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.lock_reset_rounded,
+                    color: HandsColors.handsOrange,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    l10n.loginResetPasswordBody,
+                    style: HandsModalTokens.bodyStyle,
+                  ),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
+          Text(
+            l10n.loginResetEmailAddressLabel,
+            style: HandsModalTokens.labelStyle,
+          ),
+          const SizedBox(height: 8),
           GenericTextField(
-            hintText: 'Email Address',
+            hintText: l10n.loginResetEmailHint,
             textEditingController: forgotEmailController,
             isAutofocused: true,
           ),
         ],
       ),
       actions: [
-        HandsTextButton(text: 'Cancel', onPressed: () => Navigator.of(context).pop(), textColor: HandsColors.white70),
+        HandsTextButton(
+          text: l10n.commonCancel,
+          onPressed: () => Navigator.of(context).pop(),
+          textColor: HandsColors.white70,
+        ),
         HandsPrimaryButton(
-          text: 'Send Reset Link',
+          text: l10n.loginResetSendButton,
           onPressed: () async {
             final email = forgotEmailController.text.trim();
 
@@ -66,7 +103,7 @@ class LoginPage extends HookConsumerWidget {
                     children: [
                       const Icon(Icons.warning, color: Colors.white),
                       const SizedBox(width: 8),
-                      const Expanded(child: Text('Please enter your email address.')),
+                      Expanded(child: Text(l10n.loginEnterEmailAddress)),
                     ],
                   ),
                   backgroundColor: HandsColors.handsOrange,
@@ -82,7 +119,7 @@ class LoginPage extends HookConsumerWidget {
                     children: [
                       const Icon(Icons.warning, color: Colors.white),
                       const SizedBox(width: 8),
-                      const Expanded(child: Text('Please enter a valid email address.')),
+                      Expanded(child: Text(l10n.loginEnterValidEmailAddress)),
                     ],
                   ),
                   backgroundColor: HandsColors.handsOrange,
@@ -102,7 +139,7 @@ class LoginPage extends HookConsumerWidget {
                       children: [
                         const Icon(Icons.check_circle, color: Colors.white),
                         const SizedBox(width: 8),
-                        Expanded(child: Text('Password reset email sent to $email')),
+                        Expanded(child: Text(l10n.loginResetEmailSent(email))),
                       ],
                     ),
                     backgroundColor: HandsColors.sageGreen,
@@ -112,17 +149,17 @@ class LoginPage extends HookConsumerWidget {
               }
             } catch (e) {
               if (context.mounted) {
-                String errorMessage = 'Failed to send reset email.';
+                String errorMessage = l10n.loginResetFailed;
                 if (e is FirebaseAuthException) {
                   switch (e.code) {
                     case 'user-not-found':
-                      errorMessage = 'No account found with this email address.';
+                      errorMessage = l10n.loginNoAccountFound;
                       break;
                     case 'invalid-email':
-                      errorMessage = 'Please enter a valid email address.';
+                      errorMessage = l10n.loginEnterValidEmailAddress;
                       break;
                     case 'too-many-requests':
-                      errorMessage = 'Too many requests. Please try again later.';
+                      errorMessage = l10n.loginTooManyRequests;
                       break;
                     default:
                       errorMessage = e.message ?? errorMessage;
@@ -154,75 +191,149 @@ class LoginPage extends HookConsumerWidget {
 
   // Method to build the sign-up section based on platform
   Widget _buildSignUpSection(BuildContext context) {
-    if (!kIsWeb && Platform.isIOS) {
-      // iOS native: show modal link instead of navigation
-      return GestureDetector(
-        onTap: () {
-          showDialog(
-            context: context,
-            builder:
-                (context) => AlertDialog(
-                  title: Text('Create an Account'),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('To create an account for your organization, please visit:', textAlign: TextAlign.center),
-                      SizedBox(height: 8),
-                      GestureDetector(
-                        onTap: () async {
-                          final url = Uri.parse('https://planwithhands.com');
-                          if (await canLaunchUrl(url)) {
-                            await launchUrl(url, mode: LaunchMode.externalApplication);
-                          }
-                        },
-                        child: SelectableText(
-                          'https://planwithhands.com',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.blue, decoration: TextDecoration.underline),
-                        ),
-                      ),
-                      SizedBox(height: 12),
-                      Text(
-                        'If you are trying to log in to an existing organization, please contact your manager to send you an invite.',
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                  actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: Text('Close'))],
-                ),
-          );
-        },
-        child: Padding(
-          padding: const EdgeInsets.only(top: 16.0),
-          child: Text('Need an account?', style: TextStyle(color: Colors.blue)),
+    final l10n = context.l10n;
+    if (isIOS) {
+      // iOS: Show neutral messaging without external signup links (App Store compliance)
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: HandsModalTokens.surfaceElevated,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: HandsModalTokens.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              l10n.loginNeedAccessTitle,
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: HandsColors.white,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              l10n.loginNeedAccessBody,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: HandsModalTokens.textMuted,
+              ),
+            ),
+          ],
         ),
       );
     } else {
       // All other platforms show the regular sign up navigation
-      return Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            "Don't have an account?",
-            style: GoogleFonts.comfortaa(fontSize: 14, fontWeight: FontWeight.normal, color: HandsColors.white70),
-          ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: () {
-              context.pushNamed('AccountCreationPage');
-            },
-            child: Text(
-              ' Sign up',
-              style: GoogleFonts.comfortaa(fontSize: 14, fontWeight: FontWeight.normal, color: Colors.blue),
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: HandsModalTokens.surfaceElevated,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: HandsModalTokens.border),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    l10n.loginNeedAccountTitle,
+                    style: GoogleFonts.inter(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: HandsColors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    l10n.loginNeedAccountBody,
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: HandsModalTokens.textMuted,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: 12),
+            HandsSecondaryButton(
+              text: l10n.loginSignUp,
+              onPressed: () {
+                debugPrint(
+                  '[LOGIN] Navigating to account creation page: ${AppRoutes.accountCreationPage.path}',
+                );
+                try {
+                  context.go(AppRoutes.accountCreationPage.path);
+                  debugPrint('[LOGIN] Navigation triggered successfully');
+                } catch (e) {
+                  debugPrint('[LOGIN] Navigation error: $e');
+                }
+              },
+            ),
+          ],
+        ),
       );
     }
   }
 
+  InputDecoration _buildAuthDecoration({
+    required String hintText,
+    required IconData icon,
+    Widget? suffixIcon,
+  }) {
+    return InputDecoration(
+      hintText: hintText,
+      prefixIcon: Icon(icon, color: HandsModalTokens.textSubtle, size: 18),
+      suffixIcon: suffixIcon,
+      filled: true,
+      fillColor: HandsModalTokens.surfaceMuted,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: HandsModalTokens.border),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: HandsModalTokens.border),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(
+          color: HandsColors.handsOrange,
+          width: 1.4,
+        ),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(
+          color: HandsModalTokens.danger,
+          width: 1.3,
+        ),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(
+          color: HandsModalTokens.danger,
+          width: 1.4,
+        ),
+      ),
+      hintStyle: GoogleFonts.inter(
+        fontWeight: FontWeight.w500,
+        fontSize: 13.5,
+        color: HandsModalTokens.textSubtle,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     // EARLY AUTH GUARD: If already authenticated, route away immediately to prevent loops
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser != null) {
@@ -276,8 +387,13 @@ class LoginPage extends HookConsumerWidget {
       isLoading.value = true;
 
       try {
-        debugPrint('[LOGIN] Calling signIn with email: ${emailController.text.trim()}');
-        final userData = await authActions.signIn(emailController.text.trim(), passwordController.text.trim());
+        debugPrint(
+          '[LOGIN] Calling signIn with email: ${emailController.text.trim()}',
+        );
+        final userData = await authActions.signIn(
+          emailController.text.trim(),
+          passwordController.text.trim(),
+        );
 
         debugPrint('[LOGIN] signIn completed, userData: $userData');
 
@@ -287,7 +403,7 @@ class LoginPage extends HookConsumerWidget {
           if (context.mounted) {
             ScaffoldMessenger.of(
               context,
-            ).showSnackBar(const SnackBar(content: Text('User profile not found. Please contact support.')));
+            ).showSnackBar(SnackBar(content: Text(l10n.loginProfileNotFound)));
           }
         } else {
           debugPrint('[LOGIN] userData found, userRole: ${userData.userRole}');
@@ -295,22 +411,33 @@ class LoginPage extends HookConsumerWidget {
           try {
             final uid = FirebaseAuth.instance.currentUser?.uid;
             if (uid != null) {
-              final snap = await FirestoreEnforcer.instance.collection('users').doc(uid).get();
+              final snap =
+                  await FirestoreEnforcer.instance
+                      .collection('users')
+                      .doc(uid)
+                      .get();
               final data = snap.data();
               if (data != null) {
-                final redacted = Map<String, dynamic>.from(data)
-                  ..removeWhere((k, _) => ['email', 'phone', 'password', 'apiKey'].contains(k));
+                final redacted = Map<String, dynamic>.from(data)..removeWhere(
+                  (k, _) =>
+                      ['email', 'phone', 'password', 'apiKey'].contains(k),
+                );
                 debugPrint(
                   '[LOGIN][DEBUG_USER_DOC] keys=${redacted.keys.toList()} organizationId=${redacted['organizationId']} orgMemberships=${redacted['orgMemberships']} roles=${redacted['roles']} userRole=${redacted['userRole']}',
                 );
               } else {
-                debugPrint('[LOGIN][DEBUG_USER_DOC] User doc missing in planwithhands DB');
+                debugPrint(
+                  '[LOGIN][DEBUG_USER_DOC] User doc missing in planwithhands DB',
+                );
               }
             }
           } catch (e) {
             debugPrint('[LOGIN][DEBUG_USER_DOC] Error reading user doc: $e');
           }
           if (context.mounted) {
+            // Signal autofill completion to trigger password save prompt
+            TextInput.finishAutofillContext();
+
             // Route based on user role
             switch (userData.userRole) {
               case 0:
@@ -338,13 +465,17 @@ class LoginPage extends HookConsumerWidget {
         if (context.mounted) {
           String message;
           if (e is FirebaseAuthException) {
-            debugPrint('[LOGIN] FirebaseAuthException: ${e.code} - ${e.message}');
+            debugPrint(
+              '[LOGIN] FirebaseAuthException: ${e.code} - ${e.message}',
+            );
             message = e.message ?? 'Authentication error';
           } else {
             debugPrint('[LOGIN] Other error: ${e.toString()}');
             message = 'Error: ${e.toString()}';
           }
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(message)));
         }
       } finally {
         debugPrint('[LOGIN] Setting loading state to false');
@@ -357,200 +488,385 @@ class LoginPage extends HookConsumerWidget {
     return SafeArea(
       child: Scaffold(
         appBar: AppBar(
-          backgroundColor: HandsColors.primaryContainer,
+          backgroundColor: HandsColors.cardPrimary,
           foregroundColor: HandsColors.white,
+          actions: const [
+            Padding(
+              padding: EdgeInsets.only(right: 12),
+              child: Center(child: LanguageSelectorButton(showText: true)),
+            ),
+          ],
           title: Text(
-            'LOGIN',
-            style: GoogleFonts.comfortaa(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+            l10n.loginTitle,
+            style: GoogleFonts.inter(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.2,
+            ),
           ),
           centerTitle: true,
           automaticallyImplyLeading: false,
           elevation: 0,
         ),
         backgroundColor: HandsColors.scaffoldBackground,
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              minHeight: MediaQuery.of(context).size.height - MediaQuery.of(context).padding.top - kToolbarHeight - 32,
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                const SizedBox(height: 40),
-                // Hands Logo
-                Padding(padding: const EdgeInsets.only(bottom: 32.0), child: HandsIcon(size: 140, enableShadow: false)),
-                // Welcome Text
-                Text(
-                  'WELCOME BACK TO HANDS!',
-                  style: GoogleFonts.comfortaa(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.5,
-                    color: HandsColors.white,
-                  ),
-                  textAlign: TextAlign.center,
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            final isWide = constraints.maxWidth >= 980;
+            final isCompactMobile =
+                !isWide &&
+                (constraints.maxHeight <= 900 || constraints.maxWidth <= 430);
+            final shell = ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1120),
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: isWide ? 32 : (isCompactMobile ? 16 : 18),
+                  vertical: isWide ? 24 : (isCompactMobile ? 12 : 16),
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  'Please sign in to continue',
-                  style: GoogleFonts.comfortaa(fontSize: 14, fontWeight: FontWeight.normal, color: HandsColors.white70),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 40),
-                // Login Form Card
-                Container(
-                  decoration: HandsDecorations.primaryBoxDecoration,
-                  child: Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Form(
-                      key: formKey,
-                      onChanged: () {
-                        // Force form state update
-                        formKey.currentState?.validate();
-                      },
-                      child: AutofillGroup(
-                        child: Column(
+                child:
+                    isWide
+                        ? Row(
                           children: [
-                            // Email Field
-                            TextFormField(
-                              controller: emailController,
-                              decoration: InputDecoration(
-                                hintText: 'Email',
-                                prefixIcon: Icon(Icons.email_outlined, color: HandsColors.white70),
-                                filled: true,
-                                fillColor: HandsColors.secondaryContainer,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12.0),
-                                  borderSide: const BorderSide(color: HandsColors.white12),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12.0),
-                                  borderSide: const BorderSide(color: HandsColors.white12),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12.0),
-                                  borderSide: const BorderSide(color: HandsColors.handsOrange, width: 2),
-                                ),
-                                errorBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12.0),
-                                  borderSide: const BorderSide(color: HandsColors.error, width: 2),
-                                ),
-                                hintStyle: GoogleFonts.comfortaa(
-                                  fontWeight: FontWeight.normal,
-                                  fontSize: 14,
-                                  color: HandsColors.white70,
-                                ),
+                            Expanded(
+                              child: _buildAuthIntroCard(
+                                context,
+                                compact: false,
                               ),
-                              style: GoogleFonts.comfortaa(
-                                fontWeight: FontWeight.normal,
-                                fontSize: 14,
-                                color: HandsColors.white,
-                              ),
-                              keyboardType: TextInputType.emailAddress,
-                              textInputAction: TextInputAction.next,
-                              autofillHints: const [AutofillHints.email],
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Please enter your email';
-                                }
-                                if (!value.contains('@') || !value.contains('.')) {
-                                  return 'Please enter a valid email';
-                                }
-                                return null;
-                              },
                             ),
-                            const SizedBox(height: 20),
-                            // Password Field
-                            TextFormField(
-                              controller: passwordController,
-                              decoration: InputDecoration(
-                                hintText: 'Password',
-                                prefixIcon: Icon(Icons.lock_outlined, color: HandsColors.white70),
-                                suffixIcon: IconButton(
-                                  icon: Icon(
-                                    isPasswordVisible.value ? Icons.visibility_off : Icons.visibility,
-                                    color: HandsColors.white70,
-                                  ),
-                                  onPressed: () {
-                                    isPasswordVisible.value = !isPasswordVisible.value;
-                                  },
-                                  tooltip: isPasswordVisible.value ? 'Hide password' : 'Show password',
-                                ),
-                                filled: true,
-                                fillColor: HandsColors.secondaryContainer,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12.0),
-                                  borderSide: const BorderSide(color: HandsColors.white12),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12.0),
-                                  borderSide: const BorderSide(color: HandsColors.white12),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12.0),
-                                  borderSide: const BorderSide(color: HandsColors.handsOrange, width: 2),
-                                ),
-                                errorBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12.0),
-                                  borderSide: const BorderSide(color: HandsColors.error, width: 2),
-                                ),
-                                hintStyle: GoogleFonts.comfortaa(
-                                  fontWeight: FontWeight.normal,
-                                  fontSize: 14,
-                                  color: HandsColors.white70,
-                                ),
-                              ),
-                              style: GoogleFonts.comfortaa(
-                                fontWeight: FontWeight.normal,
-                                fontSize: 14,
-                                color: HandsColors.white,
-                              ),
-                              obscureText: !isPasswordVisible.value,
-                              textInputAction: TextInputAction.done,
-                              autofillHints: const [AutofillHints.password],
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Please enter your password';
-                                }
-                                return null;
-                              },
-                              onFieldSubmitted: (_) => handleLogin(),
-                            ),
-                            const SizedBox(height: 32),
-                            // Sign In Button
-                            HandsPrimaryButton(
-                              text: 'SIGN IN',
-                              onPressed: handleLogin,
-                              isLoading: isLoading.value,
-                              width: double.infinity,
-                            ),
-                            // Forgot Password Link
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: Padding(
-                                padding: const EdgeInsets.only(top: 16.0),
-                                child: HandsTextButton(
-                                  text: 'Forgot Password?',
-                                  onPressed: () => _showForgotPasswordDialog(context, ref),
-                                  textColor: HandsColors.handsOrange,
-                                ),
+                            const SizedBox(width: 24),
+                            SizedBox(
+                              width: 430,
+                              child: _buildLoginFormCard(
+                                context,
+                                formKey,
+                                emailController,
+                                passwordController,
+                                isPasswordVisible,
+                                isLoading,
+                                handleLogin,
+                                ref,
+                                compact: false,
                               ),
                             ),
                           ],
+                        )
+                        : Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _buildAuthIntroCard(
+                              context,
+                              compact: isCompactMobile,
+                            ),
+                            SizedBox(height: isCompactMobile ? 14 : 18),
+                            _buildLoginFormCard(
+                              context,
+                              formKey,
+                              emailController,
+                              passwordController,
+                              isPasswordVisible,
+                              isLoading,
+                              handleLogin,
+                              ref,
+                              compact: isCompactMobile,
+                            ),
+                          ],
                         ),
-                      ),
-                    ),
+              ),
+            );
+            return Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.only(bottom: 24),
+                child: shell,
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAuthIntroCard(BuildContext context, {required bool compact}) {
+    final l10n = context.l10n;
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(compact ? 18 : 24),
+      decoration: BoxDecoration(
+        color: HandsModalTokens.surface,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: HandsModalTokens.border),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x22000000),
+            blurRadius: 32,
+            offset: Offset(0, 18),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: compact ? 52 : 68,
+            height: compact ? 52 : 68,
+            decoration: BoxDecoration(
+              color: HandsColors.handsOrange.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(compact ? 18 : 22),
+            ),
+            alignment: Alignment.center,
+            child: HandsIcon(size: compact ? 26 : 34, enableShadow: false),
+          ),
+          SizedBox(height: compact ? 14 : 20),
+          Text(
+            l10n.loginIntroTitle,
+            style: GoogleFonts.inter(
+              fontSize: compact ? 24 : 32,
+              fontWeight: FontWeight.w800,
+              height: 1.0,
+              letterSpacing: compact ? -0.8 : -1.2,
+              color: HandsColors.white,
+            ),
+          ),
+          SizedBox(height: compact ? 10 : 12),
+          Text(
+            l10n.loginIntroBody,
+            style: GoogleFonts.inter(
+              fontSize: compact ? 13 : 14,
+              fontWeight: FontWeight.w500,
+              height: 1.45,
+              color: HandsModalTokens.textMuted,
+            ),
+          ),
+          SizedBox(height: compact ? 12 : 24),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _LoginFeaturePill(
+                icon: Icons.checklist_rounded,
+                label: l10n.loginFeatureLiveTaskTracking,
+                compact: compact,
+              ),
+              _LoginFeaturePill(
+                icon: Icons.groups_2_rounded,
+                label: l10n.loginFeatureSharedTeamWorkflows,
+                compact: compact,
+              ),
+              _LoginFeaturePill(
+                icon: Icons.insights_rounded,
+                label: l10n.loginFeatureOperationalVisibility,
+                compact: compact,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoginFormCard(
+    BuildContext context,
+    GlobalKey<FormState> formKey,
+    TextEditingController emailController,
+    TextEditingController passwordController,
+    ValueNotifier<bool> isPasswordVisible,
+    ValueNotifier<bool> isLoading,
+    Future<void> Function() handleLogin,
+    WidgetRef ref, {
+    required bool compact,
+  }) {
+    final l10n = context.l10n;
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: HandsModalTokens.surface,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: HandsModalTokens.border),
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(compact ? 20 : 24),
+        child: Form(
+          key: formKey,
+          autovalidateMode: AutovalidateMode.disabled,
+          child: AutofillGroup(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  l10n.loginWelcomeBack,
+                  style: GoogleFonts.inter(
+                    fontSize: compact ? 22 : 24,
+                    fontWeight: FontWeight.w800,
+                    color: HandsColors.white,
+                    letterSpacing: -0.6,
                   ),
                 ),
-                // Sign Up Link - Different behavior based on platform
-                Padding(padding: const EdgeInsets.symmetric(vertical: 32.0), child: _buildSignUpSection(context)),
-                const SizedBox(height: 20),
+                SizedBox(height: compact ? 6 : 8),
+                Text(
+                  l10n.loginWelcomeBackBody,
+                  style: GoogleFonts.inter(
+                    fontSize: compact ? 13 : 13.5,
+                    fontWeight: FontWeight.w500,
+                    color: HandsModalTokens.textMuted,
+                  ),
+                ),
+                SizedBox(height: compact ? 18 : 22),
+                Text(l10n.loginEmailLabel, style: HandsModalTokens.labelStyle),
+                const SizedBox(height: 8),
+                HandsTextFormField(
+                  controller: emailController,
+                  autofillHints: const [
+                    AutofillHints.email,
+                    AutofillHints.username,
+                  ],
+                  decoration: _buildAuthDecoration(
+                    hintText: l10n.loginEmailHint,
+                    icon: Icons.alternate_email_rounded,
+                  ),
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: HandsColors.white,
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                  textInputAction: TextInputAction.next,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return l10n.loginEnterEmail;
+                    }
+                    final text = value.trim();
+                    if (!text.contains('@') || !text.contains('.')) {
+                      return l10n.loginEnterValidEmail;
+                    }
+                    return null;
+                  },
+                ),
+                SizedBox(height: compact ? 12 : 14),
+                Text(
+                  l10n.loginPasswordLabel,
+                  style: HandsModalTokens.labelStyle,
+                ),
+                const SizedBox(height: 8),
+                HandsTextFormField(
+                  controller: passwordController,
+                  autofillHints: const [AutofillHints.password],
+                  textCapitalization: TextCapitalization.none,
+                  decoration: _buildAuthDecoration(
+                    hintText: l10n.loginPasswordHint,
+                    icon: Icons.lock_outline_rounded,
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        isPasswordVisible.value
+                            ? Icons.visibility_off_rounded
+                            : Icons.visibility_rounded,
+                        color: HandsModalTokens.textSubtle,
+                        size: 18,
+                      ),
+                      onPressed:
+                          () =>
+                              isPasswordVisible.value =
+                                  !isPasswordVisible.value,
+                      tooltip:
+                          isPasswordVisible.value
+                              ? l10n.loginHidePassword
+                              : l10n.loginShowPassword,
+                    ),
+                  ),
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: HandsColors.white,
+                  ),
+                  obscureText: !isPasswordVisible.value,
+                  textInputAction: TextInputAction.done,
+                  validator:
+                      (value) =>
+                          value == null || value.isEmpty
+                              ? l10n.loginEnterPassword
+                              : null,
+                  onFieldSubmitted: (_) => handleLogin(),
+                ),
+                SizedBox(height: compact ? 14 : 18),
+                HandsPrimaryButton(
+                  text: l10n.loginSignIn,
+                  onPressed: handleLogin,
+                  isLoading: isLoading.value,
+                  width: double.infinity,
+                  icon: Icons.arrow_forward_rounded,
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: HandsTextButton(
+                    text: l10n.loginForgotPassword,
+                    onPressed: () => _showForgotPasswordDialog(context, ref),
+                    textColor: HandsColors.handsOrange,
+                  ),
+                ),
+                SizedBox(height: compact ? 14 : 18),
+                _buildSignUpSection(context),
+                SizedBox(height: compact ? 10 : 14),
+                FutureBuilder<PackageInfo>(
+                  future: PackageInfo.fromPlatform(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) return const SizedBox.shrink();
+                    return Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        l10n.loginVersion(snapshot.data!.version),
+                        style: GoogleFonts.inter(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w500,
+                          color: HandsModalTokens.textSubtle,
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _LoginFeaturePill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool compact;
+
+  const _LoginFeaturePill({
+    required this.icon,
+    required this.label,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 9 : 12,
+        vertical: compact ? 7 : 10,
+      ),
+      decoration: BoxDecoration(
+        color: HandsModalTokens.surfaceElevated,
+        borderRadius: BorderRadius.circular(compact ? 14 : 16),
+        border: Border.all(color: HandsModalTokens.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: compact ? 14 : 15, color: HandsColors.handsOrange),
+          SizedBox(width: compact ? 7 : 8),
+          Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: compact ? 11.2 : 12.5,
+              fontWeight: FontWeight.w600,
+              color: HandsColors.white,
+            ),
+          ),
+        ],
       ),
     );
   }

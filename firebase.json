@@ -11,10 +11,18 @@
       "codebase": "default",
       "ignore": [
         "node_modules",
+        "**/node_modules/**",
         ".git",
         "firebase-debug.log",
         "firebase-debug.*.log",
-        "*.local"
+        "*.local",
+        "build",
+        "build/**",
+        "coverage",
+        "coverage/**",
+        "test",
+        "test/**",
+        "**/*.map"
       ],
       "predeploy": [
         "npm --prefix \"$RESOURCE_DIR\" run build"
@@ -29,19 +37,77 @@
       "headers": [
         {"source": "**/*.@(js|css)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]},
         {"source": "**/*.@(jpg|jpeg|gif|png|svg|webp)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]},
-        {"source": "/index.html", "headers": [{"key": "Cache-Control", "value": "no-store"}]}
+        {"source": "/", "headers": [{"key": "Cache-Control", "value": "no-cache"}]},
+        {"source": "/index.html", "headers": [{"key": "Cache-Control", "value": "no-store"}]},
+        {"source": "/about", "headers": [{"key": "Cache-Control", "value": "no-cache"}]},
+        {"source": "/features", "headers": [{"key": "Cache-Control", "value": "no-cache"}]},
+        {"source": "/how-it-works", "headers": [{"key": "Cache-Control", "value": "no-cache"}]},
+        {"source": "/pricing", "headers": [{"key": "Cache-Control", "value": "no-cache"}]},
+        {"source": "/app-signup", "headers": [{"key": "Cache-Control", "value": "no-cache"}]},
+        {"source": "/app-login", "headers": [{"key": "Cache-Control", "value": "no-cache"}]}
       ],
       "cleanUrls": true
     },
     {
       "target": "hands-app", 
       "public": "build/web",
-      "ignore": ["**/.*", "**/node_modules/**"],
+      "ignore": ["firebase.json", "**/node_modules/**"],
       "headers": [
-        {"source": "/index.html", "headers": [{"key": "Cache-Control", "value": "no-store"}]},
-        {"source": "/flutter_bootstrap.js", "headers": [{"key": "Cache-Control", "value": "no-store"}]},
-        {"source": "/main.dart.js", "headers": [{"key": "Cache-Control", "value": "no-store"}]},
-        {"source": "**/*.@(js|wasm)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]}
+        {
+          "source": "/index.html",
+          "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+        },
+        {
+          "source": "/create_account",
+          "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+        },
+        {
+          "source": "/create_account/**",
+          "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+        },
+        {
+          "source": "/login",
+          "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+        },
+        {
+          "source": "/version.json",
+          "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+        },
+        {
+          "source": "/flutter_bootstrap.js",
+          "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+        },
+        {
+          "source": "/main.dart.js",
+          "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+        },
+        {
+          "source": "/main.dart.js.map",
+          "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+        },
+        {
+          "source": "/.well-known/apple-app-site-association",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json" },
+            { "key": "Cache-Control", "value": "public,max-age=3600" }
+          ]
+        },
+        {
+          "source": "assets/**",
+          "headers": [{ "key": "Cache-Control", "value": "public,max-age=31536000,immutable" }]
+        },
+        {
+          "source": "assets/images/**",
+          "headers": [{ "key": "Cache-Control", "value": "public,max-age=31536000,immutable" }]
+        },
+        {
+          "source": "assets/packages/**",
+          "headers": [{ "key": "Cache-Control", "value": "public,max-age=31536000,immutable" }]
+        },
+        {
+          "source": "/flutter_service_worker.js",
+          "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+        }
       ],
       "rewrites": [
         { "source": "**", "destination": "/index.html" }

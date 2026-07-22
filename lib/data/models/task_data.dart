@@ -54,6 +54,8 @@ class TaskData with _$TaskData {
     String? shiftId,
     String? templateId,
     String? dateString, // 'YYYY-MM-DD'
+    // Display order
+    int? order,
   }) = _TaskData;
 
   factory TaskData.fromJson(Map<String, dynamic> json) => _$TaskDataFromJson(json);

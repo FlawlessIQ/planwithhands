@@ -51,6 +51,18 @@ fi
 flutter build web --web-renderer html --base-href "/" --release
 print_success "Flutter web build completed"
 
+# Generate version.json in build/web so clients can detect new deployments
+print_status "Generating build version file..."
+GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+BUILD_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+cat > build/web/version.json <<EOF
+{
+    "version": "${GIT_COMMIT}",
+    "timestamp": "${BUILD_TS}"
+}
+EOF
+print_success "version.json generated: ${GIT_COMMIT} @ ${BUILD_TS}"
+
 # Step 2: Build marketing website
 print_status "Building marketing website..."
 cd website/marketing

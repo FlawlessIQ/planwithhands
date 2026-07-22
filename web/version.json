@@ -1,0 +1,109 @@
+{
+  "buildVersion": "1.2.0+31",
+  "minimumBuildVersion": "1.1.25+25",
+  "experienceReleaseId": "spring-2026-operations-refresh",
+  "announceExperienceRelease": true,
+  "appStoreUrl": "",
+  "playStoreUrl": "",
+  "roles": {
+    "staff": {
+      "title": "Your daily work screen is faster now",
+      "body": "The staff experience has been redesigned to make task execution clearer and quicker.",
+      "bullets": [
+        "Next Up now shows the fastest path through your shift",
+        "Carryover is separated more clearly from today’s work",
+        "Location and shift context are easier to scan at a glance",
+        "You can now use Hands in English, Spanish, or Portuguese"
+      ],
+      "localizedTitles": {
+        "es": "Tu pantalla diaria de trabajo ahora es más rápida",
+        "pt": "Sua tela diária de trabalho agora está mais rápida"
+      },
+      "localizedBodies": {
+        "es": "La experiencia del personal se rediseñó para que ejecutar tareas sea más claro y rápido.",
+        "pt": "A experiência da equipe foi redesenhada para deixar a execução das tarefas mais clara e rápida."
+      },
+      "localizedBullets": {
+        "es": [
+          "Próximo ahora muestra la ruta más rápida a través de tu turno",
+          "Las tareas pendientes están separadas con más claridad del trabajo de hoy",
+          "El contexto de ubicación y turno es más fácil de escanear de un vistazo",
+          "Ahora puedes usar Hands en inglés, español o portugués"
+        ],
+        "pt": [
+          "Próximo agora mostra o caminho mais rápido pelo seu turno",
+          "As pendências aparecem separadas com mais clareza do trabalho de hoje",
+          "O contexto de local e turno está mais fácil de entender de relance",
+          "Agora você pode usar o Hands em inglês, espanhol ou português"
+        ]
+      },
+      "tourVersion": "staff-dashboard-tour-v1"
+    },
+    "manager": {
+      "title": "The manager dashboard has been redesigned",
+      "body": "The new dashboard makes live issues, shift readiness, and recurring problems easier to review.",
+      "bullets": [
+        "Today at Risk is more focused and actionable",
+        "Shift Readiness shows live progress more clearly",
+        "Recurring Issues are easier to compare over time",
+        "Staff can now work in English, Spanish, or Portuguese"
+      ],
+      "localizedTitles": {
+        "es": "El panel del gerente fue rediseñado",
+        "pt": "O painel do gerente foi redesenhado"
+      },
+      "localizedBodies": {
+        "es": "El nuevo panel facilita revisar problemas en vivo, preparación de turnos y problemas recurrentes.",
+        "pt": "O novo painel facilita revisar problemas em tempo real, prontidão dos turnos e problemas recorrentes."
+      },
+      "localizedBullets": {
+        "es": [
+          "Hoy en Riesgo está más enfocado y es más accionable",
+          "Preparación del Turno muestra el progreso en vivo con más claridad",
+          "Los Problemas Recurrentes son más fáciles de comparar con el tiempo",
+          "Ahora el personal puede trabajar en inglés, español o portugués"
+        ],
+        "pt": [
+          "Hoje em risco está mais focado e acionável",
+          "Prontidão do turno mostra o progresso em tempo real com mais clareza",
+          "Problemas recorrentes estão mais fáceis de comparar ao longo do tempo",
+          "Agora a equipe pode trabalhar em inglês, espanhol ou português"
+        ]
+      },
+      "tourVersion": "manager-dashboard-tour-v1"
+    },
+    "admin": {
+      "title": "Setup is simpler and more location-focused",
+      "body": "Operations setup now follows a clearer structure for restaurant owners and multi-location teams.",
+      "bullets": [
+        "Locations, Team, Shifts, and Checklist Library are easier to navigate",
+        "Location scope is clearer across setup pages",
+        "Workflow setup is easier to understand in context",
+        "Language support is now available in English, Spanish, and Portuguese"
+      ],
+      "localizedTitles": {
+        "es": "La configuración es más simple y enfocada en la ubicación",
+        "pt": "A configuração está mais simples e mais focada no local"
+      },
+      "localizedBodies": {
+        "es": "La configuración operativa ahora sigue una estructura más clara para dueños de restaurantes y equipos con varias ubicaciones.",
+        "pt": "A configuração das operações agora segue uma estrutura mais clara para proprietários de restaurantes e equipes com vários locais."
+      },
+      "localizedBullets": {
+        "es": [
+          "Ubicaciones, Equipo, Turnos y Biblioteca de Checklists son más fáciles de navegar",
+          "El alcance por ubicación es más claro en todas las páginas de configuración",
+          "La configuración de flujos de trabajo es más fácil de entender en contexto",
+          "El soporte de idioma ahora está disponible en inglés, español y portugués"
+        ],
+        "pt": [
+          "Locais, Equipe, Turnos e Biblioteca de Checklists estão mais fáceis de navegar",
+          "O escopo por local está mais claro em todas as páginas de configuração",
+          "A configuração de fluxos de trabalho está mais fácil de entender no contexto",
+          "O suporte de idioma agora está disponível em inglês, espanhol e português"
+        ]
+      },
+      "tourVersion": "admin-setup-tour-v2"
+    }
+  }
+}

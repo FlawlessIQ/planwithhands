@@ -5,6 +5,9 @@
   "targets": {
     "plan-with-hands": {
       "hosting": {
+        "staging": [
+          "plan-with-hands-staging"
+        ],
         "hands-app": [
           "plan-with-hands"
         ]

@@ -8,42 +8,49 @@ class GenericAppBarContent extends StatelessWidget {
   final int? userRole;
   final bool showCompactTitle;
 
-  const GenericAppBarContent({super.key, required this.appBarTitle, this.userRole, this.showCompactTitle = false});
+  const GenericAppBarContent({
+    super.key,
+    required this.appBarTitle,
+    this.userRole,
+    this.showCompactTitle = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final isNarrowScreen = screenWidth < 400; // Mobile breakpoint
+    final isNarrowScreen = screenWidth < 400;
+    final double titleFontSize =
+        showCompactTitle
+            ? (isNarrowScreen ? 16.5 : 18)
+            : (isNarrowScreen ? 17.5 : 19.5);
 
-    return Container(
+    return SizedBox(
       width: double.infinity,
       height: kToolbarHeight,
-      decoration: BoxDecoration(
-        color: HandsColors.cardPrimary,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 4, offset: const Offset(0, 2))],
-      ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // Logo always on the far left
-            Image.asset('assets/images/hands_icon.png', height: isNarrowScreen ? 36 : 44, fit: BoxFit.contain),
-            const SizedBox(width: 12),
-            // Title - fully responsive, wraps if needed
+            Image.asset(
+              'assets/images/hands_icon.png',
+              height: isNarrowScreen ? 34 : 40,
+              fit: BoxFit.contain,
+            ),
+            const SizedBox(width: 14),
             Expanded(
               child: ResponsiveAppBarTitle(
                 appBarTitle,
-                style: GoogleFonts.comfortaa(
+                style: GoogleFonts.inter(
                   color: HandsColors.white,
-                  fontSize: isNarrowScreen ? 18 : 22,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.0,
+                  fontSize: titleFontSize,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.45,
+                  height: 1.1,
                 ),
-                maxLines: 2,
+                maxLines: 1,
               ),
             ),
-            // Optionally, add userRole or actions here if needed
           ],
         ),
       ),

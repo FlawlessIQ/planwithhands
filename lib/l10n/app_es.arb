@@ -1,0 +1,2303 @@
+{
+  "@@locale": "es",
+  "languageTitle": "Idioma",
+  "languageDescription": "Elige el idioma para la experiencia del personal.",
+  "languageEnglish": "Inglés",
+  "languageSpanish": "Español",
+  "languagePortuguese": "Portugués (Brasil)",
+  "languageSaved": "Idioma actualizado.",
+  "commonCancel": "Cancelar",
+  "commonDelete": "Eliminar",
+  "commonArchive": "Archivar",
+  "commonUnarchive": "Desarchivar",
+  "commonOk": "Aceptar",
+  "commonDone": "Listo",
+  "commonErrorTitle": "Error",
+  "commonEmail": "Correo electrónico",
+  "commonPassword": "Contraseña",
+  "commonClose": "Cerrar",
+  "commonRole": "Rol",
+  "commonName": "Nombre",
+  "commonBackToSignIn": "Volver a iniciar sesión",
+  "commonGoToSignIn": "Ir a iniciar sesión",
+  "commonOpenHands": "Abrir Hands",
+  "commonNotSpecified": "No especificado",
+  "commonContinueIn": "Continuar en",
+  "commonWebApp": "Aplicación web",
+  "loginTitle": "Iniciar sesión",
+  "loginIntroTitle": "Operaciones, sin el caos.",
+  "loginIntroBody": "Inicia sesión para gestionar turnos, tareas, documentos y la ejecución del equipo desde un solo lugar.",
+  "loginFeatureLiveTaskTracking": "Seguimiento de tareas en vivo",
+  "loginFeatureSharedTeamWorkflows": "Flujos de trabajo compartidos",
+  "loginFeatureOperationalVisibility": "Visibilidad operativa",
+  "loginWelcomeBack": "Bienvenido de nuevo",
+  "loginWelcomeBackBody": "Usa tu correo y contraseña para continuar.",
+  "loginEmailLabel": "Correo electrónico",
+  "loginEmailHint": "tu@restaurante.com",
+  "loginPasswordLabel": "Contraseña",
+  "loginPasswordHint": "Ingresa tu contraseña",
+  "loginHidePassword": "Ocultar contraseña",
+  "loginShowPassword": "Mostrar contraseña",
+  "loginSignIn": "Iniciar sesión",
+  "loginForgotPassword": "¿Olvidaste tu contraseña?",
+  "loginNeedAccessTitle": "¿Necesitas acceso?",
+  "loginNeedAccessBody": "Si necesitas acceso a una organización existente, pídele a tu gerente que te envíe una invitación.",
+  "loginNeedAccountTitle": "¿Necesitas una cuenta?",
+  "loginNeedAccountBody": "Crea una organización de prueba o acepta una invitación de tu gerente.",
+  "loginSignUp": "Registrarte",
+  "loginVersion": "Versión {version}",
+  "@loginVersion": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "loginEnterEmail": "Por favor ingresa tu correo electrónico",
+  "loginEnterValidEmail": "Por favor ingresa un correo electrónico válido",
+  "loginEnterPassword": "Por favor ingresa tu contraseña",
+  "loginProfileNotFound": "No se encontró el perfil del usuario. Comunícate con soporte.",
+  "loginResetPasswordTitle": "Restablecer contraseña",
+  "loginResetPasswordSubtitle": "Ingresa el correo asociado a tu cuenta de Hands y te enviaremos un enlace seguro para restablecerla.",
+  "loginResetPasswordBody": "Enviaremos el correo de restablecimiento de inmediato.",
+  "loginResetEmailAddressLabel": "Correo electrónico",
+  "loginResetEmailHint": "Correo electrónico",
+  "loginResetSendButton": "Enviar enlace",
+  "loginResetEmailSent": "Se envió un correo de restablecimiento a {email}",
+  "@loginResetEmailSent": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
+  "loginEnterEmailAddress": "Por favor ingresa tu correo electrónico.",
+  "loginEnterValidEmailAddress": "Por favor ingresa un correo electrónico válido.",
+  "loginResetFailed": "No se pudo enviar el correo de restablecimiento.",
+  "loginNoAccountFound": "No se encontró una cuenta con este correo electrónico.",
+  "loginTooManyRequests": "Demasiadas solicitudes. Inténtalo más tarde.",
+  "welcomeInviteUnavailable": "Invitación no disponible",
+  "welcomeToOrganization": "¡Bienvenido a {organizationName}!",
+  "@welcomeToOrganization": {
+    "placeholders": {
+      "organizationName": {
+        "type": "String"
+      }
+    }
+  },
+  "welcomeInviteBody": "Has sido invitado a unirte a {organizationName}. Completa la configuración de tu cuenta para comenzar.",
+  "@welcomeInviteBody": {
+    "placeholders": {
+      "organizationName": {
+        "type": "String"
+      }
+    }
+  },
+  "welcomeAccountDetails": "Detalles de la cuenta",
+  "welcomeCompleteSetupTitle": "Completa la configuración de tu cuenta",
+  "welcomeCompleteSetupBody": "Crea una contraseña para terminar de configurar tu cuenta. El acceso y el rol de tu organización se aplicarán automáticamente desde esta invitación.",
+  "welcomeNewPasswordLabel": "Nueva contraseña",
+  "welcomeNewPasswordHint": "Crea una nueva contraseña",
+  "welcomeConfirmPasswordLabel": "Confirmar nueva contraseña",
+  "welcomeConfirmPasswordHint": "Confirma tu nueva contraseña",
+  "welcomeEnterNewPassword": "Por favor ingresa una nueva contraseña",
+  "welcomePasswordMinLength": "La contraseña debe tener al menos 6 caracteres",
+  "welcomeConfirmNewPassword": "Por favor confirma tu nueva contraseña",
+  "welcomePasswordsDoNotMatch": "Las contraseñas no coinciden",
+  "welcomeCompleteSetupButton": "Completar configuración",
+  "welcomeAccountSetupCompleteTitle": "Configuración de cuenta completa",
+  "welcomeAccountReady": "Tu cuenta está lista para usarse.",
+  "welcomeOpenOnWeb": "Puedes abrir Hands en la web ahora mismo. La descarga de la app móvil es opcional.",
+  "welcomeDownloadOnThe": "Descargar en",
+  "welcomeAppStore": "App Store",
+  "welcomeUseSameCredentials": "Usa el mismo correo y contraseña que acabas de crear en cualquier lugar donde inicies sesión.",
+  "welcomeInviteAccepted": "Esta invitación ya fue aceptada. Inicia sesión con tu cuenta para continuar.",
+  "welcomeInviteExpired": "Este enlace de invitación venció. Pídele a tu administrador que te envíe una nueva invitación.",
+  "welcomeInviteRevoked": "Esta invitación fue revocada por tu administrador. Pídele una nueva si todavía necesitas acceso.",
+  "welcomeInviteInvalid": "Este enlace de invitación no es válido o ya no está disponible.",
+  "welcomeRoleGeneralUser": "Usuario general",
+  "welcomeRoleManager": "Gerente",
+  "welcomeRoleAdmin": "Administrador",
+  "welcomeRoleUser": "Usuario",
+  "welcomeFailedSetup": "No se pudo completar la cuenta: {error}",
+  "@welcomeFailedSetup": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "welcomeInviteUsed": "Esta invitación ya fue usada. Inicia sesión con tu cuenta.",
+  "welcomeInviteExistingAccount": "Ya existe una cuenta para este correo electrónico. Inicia sesión o pídele a tu administrador una nueva invitación si esperabas una cuenta nueva.",
+  "welcomeInviteExpiredError": "Esta invitación venció. Pídele a tu administrador que envíe una nueva.",
+  "welcomeInviteRevokedError": "Esta invitación fue revocada. Pídele a tu administrador una nueva invitación.",
+  "welcomeInviteMissingEmail": "La invitación no tiene una dirección de correo electrónico.",
+  "notificationsInbox": "Bandeja",
+  "notificationsUnread": "No leídos",
+  "notificationsRead": "Leídos",
+  "notificationsArchived": "Archivados",
+  "notificationsHeaderSubtitle": "Actualizaciones sin leer, elementos leídos y mensajes archivados.",
+  "notificationsDeleteTitle": "Eliminar mensaje",
+  "notificationsDeleteBody": "¿Seguro que quieres eliminar este mensaje de forma permanente? Esta acción no se puede deshacer.",
+  "notificationsDeleteSuccess": "Mensaje eliminado correctamente",
+  "notificationsDeleteFailed": "No se pudo eliminar el mensaje: {error}",
+  "@notificationsDeleteFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "notificationsNoMessagesIn": "No hay mensajes en {filter}",
+  "@notificationsNoMessagesIn": {
+    "placeholders": {
+      "filter": {
+        "type": "String"
+      }
+    }
+  },
+  "notificationsNewMessage": "Nuevo mensaje",
+  "notificationsNoContent": "Sin contenido",
+  "notificationsLoadMore": "Cargar más",
+  "notificationsUpdateType": "Actualización",
+  "notificationsSummaryType": "Resumen diario",
+  "notificationsSummaryOverview": "Resumen",
+  "notificationsSummaryCompletion": "Cumplimiento",
+  "notificationsSummaryTasks": "Tareas",
+  "notificationsSummaryMissedTasks": "Tareas pendientes",
+  "notificationsSummaryLocations": "Rendimiento por ubicación",
+  "notificationsSummaryNotes": "Notas",
+  "notificationsSummaryPhotoBypassed": "Fotos omitidas",
+  "notificationsSummaryNoReason": "Sin motivo indicado",
+  "notificationsSummaryMoreItems": "... y {count} más",
+  "@notificationsSummaryMoreItems": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "notificationsYesterdayAt": "Ayer {time}",
+  "@notificationsYesterdayAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "contactUsTitle": "Contáctanos",
+  "contactUsSuccess": "¡Solicitud enviada con éxito! Te responderemos dentro de 24 horas.",
+  "contactUsFailed": "No se pudo enviar la solicitud",
+  "contactUsNetworkError": "Error de red. Inténtalo de nuevo.",
+  "contactUsOverviewTitle": "Soporte, sin tantas idas y vueltas.",
+  "contactUsOverviewBody": "Envía una solicitud clara y nuestro equipo responderá con la ayuda correcta para configuración, facturación, errores o preguntas sobre flujos de trabajo.",
+  "contactUsTechnicalIssues": "Problemas técnicos",
+  "contactUsBillingQuestions": "Preguntas de facturación",
+  "contactUsTeamSetupHelp": "Ayuda con el equipo",
+  "contactUsWhatToExpect": "Qué esperar",
+  "contactUsTypicalResponse": "Respuesta típica",
+  "contactUsTypicalResponseValue": "Dentro de 24 horas",
+  "contactUsBestFor": "Ideal para",
+  "contactUsBestForValue": "Ayuda del producto, facturación y configuración",
+  "contactUsHelpfulDetails": "Detalles útiles",
+  "contactUsHelpfulDetailsValue": "Ubicación, rol y lo que ocurrió",
+  "contactUsSupportContext": "Contexto de soporte",
+  "contactUsSupportContextBody": "Incluiremos automáticamente el contexto actual de ayuda y ubicación.",
+  "bottomNavTodayTasks": "Tareas de hoy",
+  "bottomNavDashboard": "Panel",
+  "bottomNavSetup": "Configuración",
+  "bottomNavDocumentCenter": "Centro de documentos",
+  "messagesTitle": "Comunicaciones",
+  "messagesHeaderSubtitle": "La bandeja mantiene a todos al día. Los comunicados envían novedades. Las audiencias organizan quién las recibe.",
+  "messagesInboxTab": "Bandeja",
+  "messagesBroadcastsTab": "Comunicados",
+  "messagesAudiencesTab": "Audiencias",
+  "messagesBroadcastsTitle": "Comunicados",
+  "messagesBroadcastsBody": "Envía una actualización clara a todos, a una ubicación o a una audiencia personalizada.",
+  "messagesBroadcastsHelp": "Usa comunicados para anuncios claros para todo el equipo o para ubicaciones específicas que deban quedar visibles en la bandeja.",
+  "messagesNewBroadcast": "Nuevo comunicado",
+  "messagesBroadcastsUnavailable": "Comunicados no disponibles",
+  "messagesOrgContextMissing": "No pudimos determinar el contexto de tu organización.",
+  "messagesNoBroadcasts": "Todavía no hay comunicados",
+  "messagesNoBroadcastsBody": "Tus actualizaciones enviadas aparecerán aquí cuando publiques un comunicado al equipo.",
+  "messagesSending": "Enviando...",
+  "messagesEveryone": "Todos",
+  "messagesCustomAudience": "Audiencia personalizada",
+  "messagesLocation": "Ubicación",
+  "messagesUntitledBroadcast": "Comunicado sin título",
+  "messagesAudiencesTitle": "Audiencias",
+  "messagesAudiencesBody": "Crea listas reutilizables para que el equipo correcto reciba la actualización correcta cada vez.",
+  "messagesAudiencesHelp": "Las audiencias son grupos reutilizables de destinatarios que te ayudan a enviar el comunicado correcto al equipo correcto.",
+  "broadcastSheetTitle": "Nuevo comunicado",
+  "broadcastSheetSubtitle": "Envía una actualización clara a todos, a una ubicación o a una audiencia guardada.",
+  "broadcastSendButton": "Enviar comunicado",
+  "broadcastInfoTip": "Los comunicados aparecen en la bandeja del equipo y también pueden enviar una notificación push.",
+  "broadcastAudienceSectionTitle": "Audiencia",
+  "broadcastRecipientEveryone": "Todos",
+  "broadcastRecipientSavedAudience": "Audiencia guardada",
+  "broadcastRecipientLocation": "Ubicación específica",
+  "broadcastSendToLabel": "Enviar a",
+  "broadcastChooseAudience": "Elige una audiencia",
+  "broadcastSelectAudience": "Selecciona una audiencia",
+  "broadcastSelectLocation": "Selecciona una ubicación",
+  "broadcastMessageSectionTitle": "Mensaje",
+  "broadcastHeadlineLabel": "Titular",
+  "broadcastEnterHeadline": "Ingresa un titular",
+  "broadcastMessageLabel": "Mensaje",
+  "broadcastMessageHint": "¿Qué debe saber el equipo en este momento?",
+  "broadcastEnterMessage": "Ingresa un mensaje",
+  "broadcastDismiss": "Descartar",
+  "broadcastAutoTitleAudience": "Actualización para {name}",
+  "@broadcastAutoTitleAudience": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "broadcastAutoTitleAudienceFallback": "Actualización de audiencia",
+  "broadcastAutoTitleLocation": "Actualización para {name}",
+  "@broadcastAutoTitleLocation": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "broadcastAutoTitleLocationFallback": "Actualización de ubicación",
+  "broadcastAutoTitleTeam": "Actualización del equipo",
+  "audienceSheetSubtitle": "Crea listas reutilizables de audiencia para que los gerentes puedan dirigirse al equipo correcto rápidamente.",
+  "audienceSavedTitle": "Audiencias guardadas",
+  "audienceNewTitle": "Nueva audiencia",
+  "audienceNameLabel": "Nombre de la audiencia",
+  "audienceSearchMembers": "Buscar miembros del equipo",
+  "audienceTeamMembers": "Miembros del equipo",
+  "audienceMembersTitle": "Miembros de la audiencia",
+  "audienceCreateButton": "Crear audiencia",
+  "audienceEditTitle": "Editar audiencia",
+  "audienceDeleteTitle": "Eliminar audiencia",
+  "audienceEnterNameAndMember": "Ingresa un nombre de audiencia y selecciona al menos un miembro del equipo.",
+  "audienceCreatedSuccess": "¡Audiencia creada correctamente!",
+  "audienceUpdatedSuccess": "Audiencia actualizada correctamente!",
+  "audienceDeletedSuccess": "Audiencia eliminada correctamente!",
+  "audienceDeleteBody": "¿Seguro que quieres eliminar la audiencia \"{groupName}\"? Esta acción no se puede deshacer.",
+  "@audienceDeleteBody": {
+    "placeholders": {
+      "groupName": {
+        "type": "String"
+      }
+    }
+  },
+  "messagesManageAudiences": "Administrar audiencias",
+  "messagesAudiencesUnavailable": "Audiencias no disponibles",
+  "messagesNoAudiences": "Todavía no hay audiencias personalizadas",
+  "messagesNoAudiencesBody": "Empieza con audiencias personalizadas para equipos como Bar, Cocina o el equipo de fin de semana.",
+  "messagesCustomAudiencesMetric": "Audiencias personalizadas",
+  "messagesLinkedMembersMetric": "Miembros vinculados",
+  "messagesUnnamedAudience": "Audiencia sin nombre",
+  "messagesMemberCount": "{count} miembros",
+  "@messagesMemberCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "threadTitle": "Conversación",
+  "threadNoMessages": "Todavía no hay mensajes",
+  "threadMessageHint": "Mensaje",
+  "threadDeleteTitle": "Eliminar mensaje",
+  "threadDeleteBody": "¿Seguro que quieres eliminar este mensaje? Esta acción no se puede deshacer.",
+  "threadDeleteSuccess": "Mensaje eliminado correctamente",
+  "threadDeleteFailed": "No se pudo eliminar el mensaje: {error}",
+  "@threadDeleteFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "commonOpen": "Abrir",
+  "commonReplay": "Repetir",
+  "helpTitle": "Ayuda",
+  "helpSubtitle": "Encuentra la forma más rápida de completar tu trabajo, configurar operaciones o resolver un problema.",
+  "helpSearchHint": "Busca ayuda, configuración o solución de problemas",
+  "helpSearchResultsTitle": "Resultados de búsqueda",
+  "helpNoSearchResults": "Todavía no hay temas de ayuda que coincidan con esa búsqueda.",
+  "helpTopicsFoundForRole": "{count} temas encontrados para {role}",
+  "@helpTopicsFoundForRole": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "role": {
+        "type": "String"
+      }
+    }
+  },
+  "helpStartHereTitle": "Empieza aquí",
+  "helpOpenHelp": "Abrir ayuda",
+  "helpOpenWalkthrough": "Abrir recorrido",
+  "helpStartHereSectionSubtitle": "Comienza con la ruta más corta para tu rol.",
+  "helpNewHereTitle": "Soy nuevo aquí",
+  "helpNewHereBody": "Recibe el recorrido guiado según tu rol sin tener que leer primero todas las guías.",
+  "helpOpenStartHere": "Abrir Empieza aquí",
+  "helpBrowseByRoleTitle": "Explorar por rol",
+  "helpBrowseByRoleBody": "Ve solo los temas de tu trabajo.",
+  "helpFixProblemTitle": "Resolver un problema",
+  "helpFixProblemBody": "Ve directo a la solución de problemas.",
+  "helpBrowseByRoleSectionSubtitle": "Cambia de perspectiva sin cambiar de cuenta.",
+  "helpReplayGuidedTourTitle": "Repetir recorrido guiado",
+  "helpReplayGuidedTourSubtitle": "Vuelve al recorrido dentro de la app para tu rol actual cuando necesites un repaso.",
+  "helpWhatsNewTitle": "Qué hay de nuevo",
+  "helpWhatsNewSubtitle": "Vuelve a abrir el resumen de la última actualización importante y entra de nuevo al recorrido guiado.",
+  "helpMajorUpdateAvailable": "Actualización importante disponible",
+  "helpLatestMajorRelease": "Última versión importante",
+  "helpOpenLatestReleaseUpdateBody": "Abre el resumen más reciente y las instrucciones de actualización para tu rol.",
+  "helpOpenLatestReleaseTourBody": "Abre el resumen más reciente y vuelve a iniciar el recorrido guiado para tu rol.",
+  "helpPopularTasksTitle": "Tareas populares",
+  "helpPopularTasksSubtitle": "Las guías más útiles para {role} en este momento.",
+  "@helpPopularTasksSubtitle": {
+    "placeholders": {
+      "role": {
+        "type": "String"
+      }
+    }
+  },
+  "helpRoleBannerTitle": "Ayuda para {role}",
+  "@helpRoleBannerTitle": {
+    "placeholders": {
+      "role": {
+        "type": "String"
+      }
+    }
+  },
+  "helpStillStuckTitle": "¿Todavía atascado?",
+  "helpStillStuckBody": "Abre primero la solución de problemas o contacta a soporte con el problema que estás viendo ahora mismo.",
+  "helpContactSupport": "Contactar soporte",
+  "settingsPageTitle": "Configuración",
+  "settingsHeroTitle": "Configuración de cuenta y espacio de trabajo",
+  "settingsHeroHelp": "Usa Configuración para detalles de cuenta, preferencias y soporte sin perder el foco en la operación.",
+  "settingsHeroAdminBody": "Administra tu perfil, detalles del negocio, facturación y preferencias operativas desde un solo lugar.",
+  "settingsHeroStaffBody": "Administra tu perfil, contraseña y preferencias de notificación desde un solo lugar.",
+  "settingsPreferencesTitle": "Preferencias",
+  "settingsPreferencesSaved": "¡Preferencias guardadas con éxito!",
+  "settingsPreferencesSaveFailed": "No se pudieron guardar las preferencias: {error}",
+  "@settingsPreferencesSaveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsProfileTitle": "Perfil",
+  "settingsProfileSubtitle": "Los datos de tu cuenta y tu correo de acceso.",
+  "settingsBusinessTitle": "Negocio",
+  "settingsBusinessSubtitle": "Detalles centrales de la organización que se muestran en toda la app.",
+  "settingsLocationsTitle": "Ubicaciones",
+  "settingsLocationsSubtitle": "Administra dónde trabaja tu equipo y dónde se ejecutan los turnos.",
+  "settingsLocationsBody": "Agrega, revisa o ajusta las ubicaciones vinculadas a tu organización.",
+  "settingsLocationSupportEmail": "Envíanos un correo a support@planwithhands.com",
+  "settingsGuidedToursTitle": "Recorridos guiados",
+  "settingsGuidedToursSubtitle": "Repite el recorrido dentro de la app para tu rol actual cuando necesites un repaso.",
+  "settingsReplayTour": "Repetir recorrido de {role}",
+  "@settingsReplayTour": {
+    "placeholders": {
+      "role": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsWhatsNew": "Qué hay de nuevo",
+  "settingsSecurityTitle": "Seguridad",
+  "settingsSecuritySubtitle": "Restablecimiento de contraseña y controles de acceso relacionados con la sesión.",
+  "settingsResetPassword": "Restablecer contraseña",
+  "settingsSignedInAs": "Sesión iniciada como",
+  "settingsOrganization": "Organización",
+  "settingsSessionTimeout": "Tiempo de espera de la sesión",
+  "settingsSessionTimeoutSubtitle": "Cierra la sesión automáticamente después de un período de inactividad",
+  "settingsSessionTimeoutDone": "Listo",
+  "settingsSessionTimeout2Hours": "2 horas",
+  "settingsSessionTimeout2HoursBody": "Alta seguridad: cierre automático después de 2 horas",
+  "settingsSessionTimeout4Hours": "4 horas",
+  "settingsSessionTimeout4HoursBody": "Seguridad equilibrada: cierre automático después de 4 horas",
+  "settingsSessionTimeout8Hours": "8 horas",
+  "settingsSessionTimeout8HoursBody": "Recomendado: ideal para turnos de trabajo",
+  "settingsSessionTimeout24Hours": "24 horas",
+  "settingsSessionTimeout24HoursBody": "Acceso extendido: cierre automático después de 1 día",
+  "settingsResetEmailInvalid": "Ingresa una dirección de correo válida",
+  "settingsResetEmailSentVerified": "Se envió el restablecimiento a tu correo verificado {email}. Verifica tu nuevo correo para usarlo al iniciar sesión.",
+  "@settingsResetEmailSentVerified": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsResetEmailSent": "Se envió el correo de restablecimiento a {email}",
+  "@settingsResetEmailSent": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsResetEmailFailed": "No se pudo enviar el correo de restablecimiento",
+  "settingsResetEmailUserNotFound": "No se encontró una cuenta con esta dirección de correo",
+  "settingsResetEmailTooManyRequests": "Demasiadas solicitudes. Inténtalo de nuevo más tarde",
+  "settingsSummaryPeriodTitle": "Selecciona el período del resumen",
+  "settingsSummaryPeriodCalendar": "Día calendario",
+  "settingsSummaryPeriodCalendarBody": "Solo las tareas de hoy (de 6 a. m. a 6 a. m.)",
+  "settingsSummaryPeriodBusiness": "Día operativo",
+  "settingsSummaryPeriodBusinessBody": "Incluye las tareas de cierre de anoche",
+  "settingsDailySummaryHourTitle": "Selecciona la hora del resumen diario",
+  "settingsDailySummaryFixedMinutes": "Los minutos están fijos en :00",
+  "settingsOrganizationDailySummaryUpdated": "¡La configuración del resumen diario de la organización se actualizó!",
+  "settingsOrganizationDailySummaryFailed": "No se pudo guardar la configuración de la organización: {error}",
+  "@settingsOrganizationDailySummaryFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsDailySummaryEmailTitle": "Correo de resumen diario",
+  "settingsDailySummaryEmailSubtitle": "Recibe resúmenes diarios de finalización de tareas",
+  "settingsDailySummaryTimeTitle": "Hora del resumen diario",
+  "settingsDailySummaryTimeSubtitle": "Cuándo recibir tu resumen diario",
+  "settingsDailySummaryRateLimitTitle": "Límite de cambios",
+  "settingsDailySummaryChangeBlocked": "No se puede cambiar el resumen diario en este momento.",
+  "settingsDailySummaryConfirmTitle": "Confirmar cambio de hora",
+  "settingsDailySummaryTimePassedTitle": "La hora ya pasó",
+  "settingsDailySummaryProceedQuestion": "¿Quieres continuar con el cambio de hora?",
+  "settingsDailySummarySendNowTitle": "¿Enviar ahora?",
+  "settingsDailySummarySendNowBody": "¿Quieres enviar el resumen de hoy ahora mismo en lugar de esperar hasta mañana?",
+  "settingsDailySummarySendNowLater": "No, esperar",
+  "settingsDailySummarySendNowAction": "Sí, enviar ahora",
+  "settingsDailySummaryResultSuccess": "Éxito",
+  "settingsDailySummaryResultError": "Error",
+  "settingsSummaryPeriodLabel": "Período del resumen",
+  "settingsSummaryPeriodLabelSubtitle": "Elige si el resumen incluye tareas nocturnas",
+  "settingsDashboardMetricsTitle": "Métricas del panel",
+  "settingsDashboardMetricsSubtitle": "Recalcula las métricas del panel desde hoy",
+  "settingsRefresh": "Actualizar",
+  "settingsLoadingSubscriptionData": "Cargando datos de suscripción...",
+  "settingsLoadingSubscriptionDetails": "Cargando detalles de la suscripción...",
+  "settingsTrialEndingSoon": "La prueba termina pronto",
+  "settingsFreeTrialDays": "Prueba gratuita de {days} días",
+  "@settingsFreeTrialDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsTrialContinueUntil": "Tu prueba continuará hasta {date}, pero no se te cobrará.",
+  "@settingsTrialContinueUntil": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsTrialChargeOn": "Estás en una prueba gratuita de {days} días. Tu primer cobro será el {date} a menos que canceles.",
+  "@settingsTrialChargeOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsCancelSubscription": "Cancelar suscripción",
+  "settingsManageBilling": "Administrar facturación",
+  "settingsBillingPortal": "Portal de facturación",
+  "settingsBillingPortalFailed": "No se pudo abrir el portal de facturación: {error}",
+  "@settingsBillingPortalFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsTrialAndBilling": "Prueba y facturación",
+  "settingsSubscriptionManagement": "Administración de suscripción",
+  "settingsPlannedLocations": "Ubicaciones planificadas:",
+  "settingsSubscribedLocations": "Ubicaciones suscritas:",
+  "settingsLocationsInUse": "Ubicaciones en uso:",
+  "settingsMonthlyCost": "Costo mensual:",
+  "settingsStatus": "Estado:",
+  "settingsSubscriptionOverUsage": "Estás usando más ubicaciones de las que permite tu suscripción. Actualiza para evitar interrupciones en el servicio.",
+  "settingsAddBilling": "Agregar facturación",
+  "settingsManageSubscription": "Administrar suscripción",
+  "settingsBillingWebOnly": "Para administrar tu suscripción, visita https://planwithhands.com y haz clic en \"Login\" arriba a la derecha. Las suscripciones deben administrarse desde el portal web.",
+  "settingsBillingPortalWebOnly": "Para administrar la facturación, abre esta página en Safari o Chrome y visita el portal de facturación. Las suscripciones deben administrarse desde el portal web.",
+  "settingsTalkToSales": "Hablar con ventas",
+  "settingsNoOrganizationFound": "No se encontró ninguna organización. Comunícate con soporte.",
+  "settingsOrganizationInformation": "Información de la organización",
+  "settingsOrganizationLabel": "Organización:",
+  "settingsBusinessTypeLabel": "Tipo de negocio:",
+  "settingsNotSet": "Sin configurar",
+  "settingsActiveLocations": "Ubicaciones activas:",
+  "settingsNeedHelp": "¿Necesitas ayuda?",
+  "settingsSupportContactBody": "Para administración de suscripciones, preguntas de facturación o soporte técnico, contáctanos:",
+  "settingsSupportEmailPrompt": "Envíanos un correo a support@planwithhands.com",
+  "settingsContactSalesBody": "Para 5 o más ubicaciones, contacta a nuestro equipo de ventas para un plan personalizado.",
+  "settingsSubscriptionUpgraded": "¡Suscripción mejorada!",
+  "settingsSubscriptionUpdated": "¡Suscripción actualizada!",
+  "settingsSubscriptionUpdateFailed": "No se pudo actualizar: {error}",
+  "@settingsSubscriptionUpdateFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsSubscriptionChangeIncrease": "aumentar",
+  "settingsSubscriptionChangeDecrease": "reducir",
+  "settingsUpgradeSubscription": "Mejorar suscripción",
+  "settingsDowngradeSubscription": "Reducir suscripción",
+  "settingsSubscriptionAboutToChange": "Estás a punto de {change} tu suscripción de ubicaciones:",
+  "@settingsSubscriptionAboutToChange": {
+    "placeholders": {
+      "change": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsFrom": "De:",
+  "settingsTo": "A:",
+  "settingsLocationsCount": "{count} ubicaciones",
+  "@settingsLocationsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsMonthlyChange": "Cambio mensual:",
+  "settingsPerMonth": "/mes",
+  "settingsBillingEffectiveNextCycle": "El nuevo importe de facturación entrará en vigor en tu próximo ciclo de facturación.",
+  "settingsCurrent": "Actual:",
+  "settingsInUse": "En uso:",
+  "settingsCannotReduceBelow": "No se puede reducir por debajo de {currentUsage} (uso actual). Elimina ubicaciones primero.",
+  "@settingsCannotReduceBelow": {
+    "placeholders": {
+      "currentUsage": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsNoChanges": "Sin cambios",
+  "settingsUpgrade": "Mejorar",
+  "settingsDowngrade": "Reducir",
+  "settingsStatusActive": "ACTIVA",
+  "settingsStatusTrial": "PRUEBA",
+  "settingsStatusPastDue": "VENCIDA",
+  "settingsStatusCanceled": "CANCELADA",
+  "settingsStatusUnpaid": "IMPAGA",
+  "settingsStatusPending": "PENDIENTE",
+  "settingsAccountTitle": "Cuenta",
+  "settingsAccountSubtitle": "Cierre de sesión del dispositivo y acciones irreversibles de la cuenta.",
+  "settingsSignOut": "Cerrar sesión",
+  "settingsSignOutSubtitle": "Esto cierra tu sesión en este dispositivo y te devuelve a la pantalla de inicio de sesión.",
+  "settingsSigningOut": "Cerrando sesión...",
+  "settingsSignOutFailed": "No se pudo cerrar sesión: {error}",
+  "@settingsSignOutFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsDeleteAccount": "Eliminar cuenta",
+  "settingsDeleteAccountWarningTitle": "¿Eliminar cuenta?",
+  "settingsDeleteAccountWarningBody": "Esto eliminará permanentemente tu cuenta y todos los datos personales asociados. Esta acción NO se puede deshacer.",
+  "settingsDeleteAccountReinviteBody": "Si continúas y luego quieres volver a usar Hands, necesitarás recibir una NUEVA INVITACIÓN de tu administrador para registrarte de nuevo.",
+  "settingsDeleteAccountContinueQuestion": "¿Todavía quieres continuar?",
+  "settingsDeleteAccountConfirmAction": "Sí, eliminar",
+  "settingsDeleteAccountBody": "Esto eliminará permanentemente tu cuenta y todos tus datos. Esta acción no se puede deshacer.",
+  "settingsDeleteAccountPasswordPrompt": "Ingresa tu contraseña para confirmar:",
+  "settingsDeleteAccountPasswordHint": "Contraseña",
+  "settingsDeletingAccount": "Eliminando cuenta...",
+  "settingsDeleteAccountSuccess": "Cuenta eliminada con éxito",
+  "settingsDeleteAccountFailed": "No se pudo eliminar la cuenta",
+  "settingsDeleteAccountWrongPassword": "Contraseña incorrecta. Inténtalo de nuevo.",
+  "settingsDeleteAccountRelogin": "Cierra sesión y vuelve a iniciar sesión, luego inténtalo de nuevo.",
+  "settingsDeleteAccountTooManyRequests": "Demasiados intentos fallidos. Inténtalo de nuevo más tarde.",
+  "settingsAddLocation": "Agregar ubicación",
+  "settingsEdit": "Editar",
+  "settingsFirstName": "Nombre",
+  "settingsLastName": "Apellido",
+  "settingsEditProfileTitle": "Editar perfil",
+  "settingsEditProfileSubtitle": "Actualiza tu nombre y tu correo de inicio de sesión.",
+  "settingsSaveChanges": "Guardar cambios",
+  "settingsProfileSignInRequired": "Inicia sesión para editar tu perfil",
+  "settingsProfileSavedVerifyEmail": "Perfil guardado. Verifica el nuevo correo.",
+  "settingsProfileUpdatedSuccess": "¡Perfil actualizado con éxito!",
+  "settingsProfileUpdateFailed": "No se pudo actualizar el perfil",
+  "settingsProfileErrorReloginToChangeEmail": "Cierra y vuelve a iniciar sesión para cambiar el correo",
+  "settingsProfileErrorEmailInUse": "El correo ya está en uso",
+  "settingsProfileErrorInvalidEmail": "Dirección de correo no válida",
+  "settingsFieldEnterFirstName": "Ingresa el nombre",
+  "settingsFieldEnterLastName": "Ingresa el apellido",
+  "settingsInvalidEmail": "Correo no válido",
+  "settingsBusinessName": "Nombre del negocio",
+  "settingsBusinessType": "Tipo de negocio",
+  "commonRequired": "Obligatorio",
+  "commonHide": "Ocultar",
+  "helpSupportRequest": "Solicitud de soporte de {role}",
+  "@helpSupportRequest": {
+    "placeholders": {
+      "role": {
+        "type": "String"
+      }
+    }
+  },
+  "helpRolePageTitle": "Ayuda de {role}",
+  "@helpRolePageTitle": {
+    "placeholders": {
+      "role": {
+        "type": "String"
+      }
+    }
+  },
+  "helpTroubleshootingTitle": "Solución de problemas",
+  "helpTroubleshootingSubtitle": "Resuelve bloqueos rápido comenzando por el síntoma que estás viendo ahora mismo.",
+  "helpTroubleshootingSearchHint": "Busca un problema como turno faltante o ubicación incorrecta",
+  "helpTroubleshootingIntroTitle": "La solución de problemas funciona mejor cuando comienzas con el síntoma exacto.",
+  "helpTroubleshootingIntroBody": "Primero revisa la ubicación activa, el rol actual y el contexto de la pantalla. Muchos problemas en realidad son de alcance o configuración.",
+  "helpTroubleshootingCommonProblems": "Problemas comunes",
+  "helpTroubleshootingResults": "Resultados",
+  "helpTroubleshootingNoResults": "Ninguna guía de solución de problemas coincide con esa búsqueda. Prueba con un síntoma más simple o contacta a soporte.",
+  "helpNeedMoreHelpTitle": "¿Necesitas más ayuda?",
+  "helpNeedMoreHelpBody": "Envía a soporte el problema exacto, la ubicación y la pantalla en la que estabas. Incluiremos el contexto de solución de problemas automáticamente.",
+  "helpTopicScreenLabel": "Tema de ayuda",
+  "helpTopicMissingSubtitle": "No se pudo encontrar ese tema.",
+  "helpTopicMissingBody": "La guía que intentaste abrir ya no existe o todavía no se ha agregado.",
+  "helpReturnToHelp": "Volver a Ayuda",
+  "helpMinutes": "{count} min",
+  "@helpMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "helpWhyThisMatters": "Por qué importa",
+  "helpDoThisNow": "Haz esto ahora",
+  "helpWhatGoodLooksLike": "Cómo se ve bien hecho",
+  "helpCommonMistakes": "Errores comunes",
+  "helpMoreRoleHelp": "Más ayuda para {role}",
+  "@helpMoreRoleHelp": {
+    "placeholders": {
+      "role": {
+        "type": "String"
+      }
+    }
+  },
+  "helpRelatedHelp": "Ayuda relacionada",
+  "helpStartHerePageSubtitle": "Un recorrido rápido por lo esencial para tu rol, para que puedas usar la app sin adivinar.",
+  "helpFollowTheseSteps": "Sigue estos pasos",
+  "helpKeepGoing": "Sigue adelante",
+  "helpRoleStaff": "Personal",
+  "helpRoleManager": "Gerente",
+  "helpRoleAdmin": "Administrador",
+  "helpRoleStaffShortDescription": "Trabajo diario, turnos, tareas y pendientes",
+  "helpRoleManagerShortDescription": "Supervisión diaria, seguimiento y comunicados",
+  "helpRoleAdminShortDescription": "Configuración, flujos de trabajo, acceso del equipo y operaciones",
+  "helpCategoryDailyWork": "Trabajo diario",
+  "helpCategoryDailyWorkDescription": "Completa tu turno y termina las tareas de forma ordenada.",
+  "helpCategoryOversight": "Supervisión diaria",
+  "helpCategoryOversightDescription": "Comprende el servicio en vivo y responde rápido a los riesgos.",
+  "helpCategorySetup": "Configuración operativa",
+  "helpCategorySetupDescription": "Configura el negocio en el orden correcto.",
+  "helpCategoryCommunications": "Comunicaciones",
+  "helpCategoryCommunicationsDescription": "Mantén al equipo alineado con bandeja, comunicados y audiencias.",
+  "helpCategoryDocuments": "Documentos y formación",
+  "helpCategoryDocumentsDescription": "Usa el Centro de documentos para formación, SOP y referencias.",
+  "helpCategoryAccount": "Cuenta y acceso",
+  "helpCategoryAccountDescription": "Administra inicio de sesión, ubicaciones, accesos y lo básico del perfil.",
+  "helpCategorySharedMode": "Modo compartido",
+  "helpCategorySharedModeDescription": "Usa dispositivos compartidos de forma segura sin perder el control.",
+  "helpCategoryTroubleshooting": "Solución de problemas",
+  "helpCategoryTroubleshootingDescription": "Resuelve bloqueos rápido cuando faltan trabajo, acceso o mensajes.",
+  "helpCategoryOperationsControl": "Control operativo",
+  "helpCategoryOperationsControlDescription": "Gestiona las operaciones del día a día y mantén la configuración saludable con el tiempo.",
+  "contactUsPrefillSubjectTopic": "Ayuda con {topic}",
+  "@contactUsPrefillSubjectTopic": {
+    "placeholders": {
+      "topic": {
+        "type": "String"
+      }
+    }
+  },
+  "contactUsPrefillSubjectIssue": "Ayuda con {issue}",
+  "@contactUsPrefillSubjectIssue": {
+    "placeholders": {
+      "issue": {
+        "type": "String"
+      }
+    }
+  },
+  "contactUsPrefillSubjectScreen": "Ayuda en {screen}",
+  "@contactUsPrefillSubjectScreen": {
+    "placeholders": {
+      "screen": {
+        "type": "String"
+      }
+    }
+  },
+  "contactUsPrefillSubjectDefault": "Solicitud de soporte",
+  "contactUsPrefillPrompt": "Describe qué pasó, qué esperabas y cualquier error que hayas visto.",
+  "contactUsPrefillContextTitle": "Contexto",
+  "contactUsPrefillRole": "Rol: {role}",
+  "@contactUsPrefillRole": {
+    "placeholders": {
+      "role": {
+        "type": "String"
+      }
+    }
+  },
+  "contactUsPrefillHelpTopic": "Tema de ayuda: {topic}",
+  "@contactUsPrefillHelpTopic": {
+    "placeholders": {
+      "topic": {
+        "type": "String"
+      }
+    }
+  },
+  "contactUsPrefillScreen": "Pantalla: {screen}",
+  "@contactUsPrefillScreen": {
+    "placeholders": {
+      "screen": {
+        "type": "String"
+      }
+    }
+  },
+  "contactUsPrefillLocation": "Ubicación: {location}",
+  "@contactUsPrefillLocation": {
+    "placeholders": {
+      "location": {
+        "type": "String"
+      }
+    }
+  },
+  "contactUsPrefillIssue": "Problema: {issue}",
+  "@contactUsPrefillIssue": {
+    "placeholders": {
+      "issue": {
+        "type": "String"
+      }
+    }
+  },
+  "contactUsPrefillRoute": "Ruta: {route}",
+  "@contactUsPrefillRoute": {
+    "placeholders": {
+      "route": {
+        "type": "String"
+      }
+    }
+  },
+  "contactUsSendRequestTitle": "Enviar una solicitud",
+  "contactUsSendRequestBody": "Hazla breve y específica para que podamos ayudarte más rápido.",
+  "contactUsAutoContextBody": "Esta solicitud ya incluye tu tema de ayuda, la pantalla actual y la ubicación activa para que soporte pueda responder más rápido.",
+  "contactUsSubjectLabel": "Asunto",
+  "contactUsSubjectHint": "¿Con qué necesitas ayuda?",
+  "contactUsMessageLabel": "Mensaje",
+  "contactUsMessageHint": "Describe el problema, lo que esperabas y lo que ocurrió.",
+  "contactUsEmailRequired": "El correo electrónico es obligatorio",
+  "contactUsValidEmailRequired": "Ingresa un correo electrónico válido",
+  "contactUsSubjectRequired": "El asunto es obligatorio",
+  "contactUsSubjectMinLength": "El asunto debe tener al menos 5 caracteres",
+  "contactUsMessageRequired": "El mensaje es obligatorio",
+  "contactUsMessageMinLength": "El mensaje debe tener al menos 10 caracteres",
+  "contactUsSendRequestButton": "Enviar solicitud",
+  "contactUsUrgentIssueNote": "Para problemas urgentes, incluye la ubicación, el turno afectado y cualquier mensaje de error que hayas visto.",
+  "documentsTitle": "Centro de documentos",
+  "documentsNoOrganization": "No se encontró ninguna organización. Ponte en contacto con soporte.",
+  "documentsUploaded": "Documento cargado",
+  "documentsUpdated": "Documento actualizado",
+  "documentsDeleteTitle": "Eliminar documento",
+  "documentsDeleteBody": "¿Seguro que quieres eliminar este documento? Esta acción no se puede deshacer.",
+  "documentsDeletedSuccess": "Documento eliminado correctamente",
+  "documentsDeleteError": "Error al eliminar el documento: {error}",
+  "@documentsDeleteError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "documentsAdminSubtitle": "Organiza SOP, guías de formación y archivos de referencia para cada ubicación.",
+  "documentsStaffSubtitle": "Encuentra las guías, políticas y materiales de referencia que necesitas para este turno.",
+  "documentsHelpSubtitle": "Usa el Centro de documentos para SOP, formación y archivos de referencia que apoyen el trabajo sin saturar los flujos de tareas.",
+  "documentsUpload": "Cargar",
+  "documentsSearchHint": "Busca por título, categoría o nombre del archivo",
+  "documentsCurrentScope": "Alcance actual",
+  "documentsAllLocations": "Todas las ubicaciones",
+  "documentsLocationsCount": "{count} ubicaciones",
+  "@documentsLocationsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "documentsErrorLoading": "Error al cargar los documentos: {error}",
+  "@documentsErrorLoading": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "documentsVisibleFiles": "Archivos visibles",
+  "documentsCategories": "Categorías",
+  "documentsScope": "Alcance",
+  "documentsScopeAll": "Todo",
+  "documentsScopeLocal": "Local",
+  "documentsBuildLibraryTitle": "Crea tu biblioteca de documentos",
+  "documentsNoDocumentsTitle": "Todavía no hay documentos disponibles",
+  "documentsBuildLibraryBody": "Carga SOP, políticas de seguridad, guías de equipos y archivos de formación para que tu equipo tenga una sola fuente clara de información.",
+  "documentsNoDocumentsBody": "Tu gerente o administrador cargará aquí las guías de formación, SOP y documentos de referencia.",
+  "documentsUploadFirst": "Cargar primer documento",
+  "documentsNoMatches": "Ningún archivo coincide con \"{query}\" en el alcance actual.",
+  "@documentsNoMatches": {
+    "placeholders": {
+      "query": {
+        "type": "String"
+      }
+    }
+  },
+  "documentsNoLocationDocs": "Todavía no hay documentos disponibles en esta ubicación.",
+  "documentsNoCategoryDocs": "No se encontraron documentos en {category}.",
+  "@documentsNoCategoryDocs": {
+    "placeholders": {
+      "category": {
+        "type": "String"
+      }
+    }
+  },
+  "documentsNothingToShow": "Nada para mostrar",
+  "documentsUntitled": "Sin título",
+  "documentsTypeVideo": "Video",
+  "documentsTypeImage": "Imagen",
+  "documentsTypeDoc": "Doc",
+  "documentsGlobal": "Global",
+  "documentsLocation": "Ubicación",
+  "documentsEditTooltip": "Editar",
+  "documentsDeleteTooltip": "Eliminar",
+  "documentsAddedDate": "Agregado {date}",
+  "@documentsAddedDate": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "documentsOpenError": "No se pudo abrir el documento. Revisa tu conexión a internet.",
+  "documentsOpenErrorDetailed": "Error al abrir el documento: {error}",
+  "@documentsOpenErrorDetailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "documentsCategoryAll": "Todo",
+  "documentsCategorySafetyProcedures": "Procedimientos de seguridad",
+  "documentsCategoryCleaningProtocols": "Protocolos de limpieza",
+  "documentsCategoryTrainingMaterials": "Materiales de formación",
+  "documentsCategoryOperatingProcedures": "Procedimientos operativos",
+  "documentsCategoryEmergencyProcedures": "Procedimientos de emergencia",
+  "documentsCategoryEquipmentManuals": "Manuales de equipos",
+  "documentsCategoryPolicyDocuments": "Documentos de políticas",
+  "documentsCategoryOther": "Otro",
+  "documentsViewerOpenExternalTooltip": "Abrir en app externa",
+  "documentsViewerDownloadTooltip": "Descargar",
+  "documentsViewerLoading": "Cargando documento...",
+  "documentsViewerErrorTitle": "Error al cargar el documento",
+  "documentsViewerInvalidUrl": "URL de documento no válida.",
+  "documentsViewerDownloadFailed": "No se pudo descargar el documento.",
+  "documentsViewerTestBrowser": "Probar URL en el navegador",
+  "documentsViewerRetry": "Reintentar",
+  "documentsViewerNoPath": "No hay una ruta de documento disponible",
+  "documentsViewerTrainingDocument": "Documento de formación",
+  "documentsViewerNativeBody": "Este documento se abrirá en el visor nativo de tu dispositivo para una mejor experiencia.",
+  "documentsViewerOpenDocument": "Abrir documento",
+  "documentsViewerNativeHelp": "Los documentos se abren en el visor integrado de tu dispositivo para un rendimiento y funciones óptimos.",
+  "documentsViewerPdfTitle": "Documento PDF",
+  "documentsViewerOfficeTitle": "Documento de Office",
+  "documentsViewerWebBody": "Haz clic abajo para ver o descargar este documento",
+  "documentsViewerViewDocument": "Ver documento",
+  "documentsViewerCopyLink": "Copiar enlace",
+  "documentsViewerTechnicalInfo": "Información técnica",
+  "documentsViewerDocumentUrl": "URL del documento:",
+  "documentsViewerNewTabNote": "Nota: Los documentos se abren en una pestaña nueva debido a las políticas de seguridad del navegador.",
+  "documentsViewerImageFailed": "No se pudo cargar la imagen",
+  "documentsViewerPreviewUnavailable": "Vista previa no disponible",
+  "documentsViewerUnsupportedPreview": "Este tipo de archivo no es compatible con la vista previa",
+  "documentsViewerOpenExternal": "Abrir en app externa",
+  "documentsViewerUrlCopied": "URL copiada al portapapeles",
+  "documentsViewerCopyFailed": "No se pudo copiar la URL",
+  "documentsViewerVideoFailed": "No se pudo cargar el video",
+  "documentsViewerLoadingVideo": "Cargando video...",
+  "documentsUploadSheetTitle": "Documento",
+  "documentsUploadSheetLoadingSubtitle": "Cargando el contexto de la organización...",
+  "documentsUploadSheetMissingOrgSubtitle": "No pudimos determinar tu organización.",
+  "documentsUploadTitle": "Cargar documento",
+  "documentsEditTitle": "Editar documento",
+  "documentsUploadSubtitle": "Agrega SOP, políticas, guías y archivos de formación para el equipo.",
+  "documentsLocationAccessTitle": "Ubicaciones del documento",
+  "documentsLocationAccessBody": "Elige dónde aparece este documento en el Centro de Documentos. Selecciona una ubicación o deja varias seleccionadas si el archivo aplica en más de un local.",
+  "documentsLocationRequired": "Selecciona al menos una ubicación para este documento.",
+  "documentsUploadNeedsLocation": "Agrega una ubicación antes de cargar documentos.",
+  "documentsUpdateButton": "Actualizar documento",
+  "documentsInfoTip": "Carga PDF, archivos DOCX, imágenes o videos de hasta 20 MB y colócalos en la categoría correcta.",
+  "documentsDetails": "Detalles",
+  "documentsDocumentTitleLabel": "Título del documento",
+  "documentsDocumentTitleHint": "Ingresa un título claro y descriptivo",
+  "documentsDocumentTitleRequired": "Ingresa un título para el documento",
+  "documentsCategoryLabel": "Categoría",
+  "documentsCategoryRequired": "Selecciona una categoría",
+  "documentsReplaceFileOptional": "Reemplazar archivo (opcional)",
+  "documentsSelectFile": "Seleccionar archivo",
+  "documentsUnknownFile": "Archivo desconocido",
+  "documentsChangeFile": "Cambiar archivo",
+  "documentsTapToSelect": "Toca para seleccionar un archivo",
+  "documentsSupportedFileTypes": "PDF, DOCX, imágenes o video",
+  "documentsPickFileError": "Error al seleccionar el archivo: {error}",
+  "@documentsPickFileError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "documentsFillRequiredFields": "Completa todos los campos obligatorios",
+  "documentsSelectFileRequired": "Selecciona un archivo",
+  "documentsMissingOrgId": "Falta el ID de la organización. No se puede cargar el documento.",
+  "documentsUserNotAuthenticated": "Usuario no autenticado. Vuelve a iniciar sesión.",
+  "documentsFileDataUnavailable": "Los datos del archivo no están disponibles. Vuelve a seleccionar el archivo.",
+  "documentsUpdatedSuccess": "¡Documento actualizado correctamente!",
+  "documentsUploadedSuccess": "¡Documento cargado correctamente!",
+  "documentsUploadFailedPrefix": "Error al cargar: ",
+  "documentsUploadFailedMissingData": "Faltan datos obligatorios. Intenta seleccionar el archivo nuevamente.",
+  "documentsUploadFailedPermission": "Permiso denegado. Revisa los permisos de tu cuenta.",
+  "documentsUploadFailedStorage": "Error de almacenamiento. Revisa tu conexión a internet.",
+  "documentsDismissTip": "Cerrar",
+  "scheduleEditorTitle": "Editor de horarios",
+  "scheduleMyTitle": "Mi horario",
+  "scheduleOrganizationNotFound": "Organización no encontrada",
+  "scheduleOrganizationLocationMissing": "Falta la organización o la ubicación.",
+  "scheduleLocationLabel": "Ubicación",
+  "schedulePickDateRange": "Elige un rango de fechas",
+  "scheduleSelectDateRange": "Seleccionar rango de fechas",
+  "scheduleNext7Days": "Próximos 7 días",
+  "scheduleDaysWindow": "Días {start}-{end}",
+  "@scheduleDaysWindow": {
+    "placeholders": {
+      "start": {
+        "type": "int"
+      },
+      "end": {
+        "type": "int"
+      }
+    }
+  },
+  "scheduleSelectLocationAndDateRange": "Selecciona una ubicación y un rango de fechas para ver el horario",
+  "schedulePublishSchedule": "Publicar horario",
+  "scheduleCreateTemplateFirst": "Primero crea una plantilla de turno desde el panel de administración",
+  "schedulePublishAllSuccess": "¡Todos los horarios se publicaron correctamente!",
+  "schedulePublishError": "Error al publicar los horarios: {error}",
+  "@schedulePublishError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "scheduleDayPublished": "¡Horario de {date} publicado!",
+  "@scheduleDayPublished": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "scheduleDayPublishError": "Error al publicar el horario: {error}",
+  "@scheduleDayPublishError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "scheduleNoPublishedShifts": "No hay turnos publicados.",
+  "scheduleAssignedCount": "Asignados: {count}",
+  "@scheduleAssignedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "scheduleUsersLabel": "Usuarios: {users}",
+  "@scheduleUsersLabel": {
+    "placeholders": {
+      "users": {
+        "type": "String"
+      }
+    }
+  },
+  "scheduleAssignedStatus": "Asignado",
+  "scheduleShiftsHeader": "Turnos",
+  "scheduleAssignedCell": "asignados",
+  "scheduleShiftTemplatesError": "Error al cargar los turnos: {error}",
+  "@scheduleShiftTemplatesError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "scheduleNoShiftTemplates": "No se encontraron plantillas de turnos para esta ubicación.\nPrimero crea plantillas de turnos desde el panel de administración.",
+  "scheduleUnnamedShift": "Turno sin nombre",
+  "scheduleMessageTitle": "Tu horario {start} a {end}",
+  "@scheduleMessageTitle": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
+  "scheduleMessageLine": "{date}: {shiftName} ({startTime} - {endTime})",
+  "@scheduleMessageLine": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "shiftName": {
+        "type": "String"
+      },
+      "startTime": {
+        "type": "String"
+      },
+      "endTime": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardSwitch": "Cambiar",
+  "dashboardLocationsCount": "{count} ubicaciones",
+  "@dashboardLocationsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardNoActiveShift": "Sin turno activo",
+  "dashboardNothingAssignedTitle": "No hay nada asignado ahora mismo",
+  "dashboardNothingAssignedBody": "Estás configurado para trabajar en {locationName}. Toma un turno disponible cuando estés listo.",
+  "@dashboardNothingAssignedBody": {
+    "placeholders": {
+      "locationName": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardSeeAvailableShifts": "Ver turnos disponibles",
+  "dashboardNoVisibleShiftTitle": "No hay un turno visible en este momento",
+  "dashboardNoVisibleShiftBody": "Tus turnos asignados pueden haber terminado, o tu próximo turno aún no está disponible para comenzar.",
+  "dashboardMomentumBody": "Mantén el ritmo cuando el trabajo asignado de hoy esté en buen estado.",
+  "dashboardLoadingTasks": "Cargando las tareas de hoy...",
+  "dashboardNoTasksForShift": "Todavía no hay tareas disponibles para este turno.",
+  "dashboardEverythingCompleteShift": "Todo para este turno está completo.",
+  "dashboardTasksLeftShort": "{count} pendientes",
+  "@dashboardTasksLeftShort": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardBlockedShort": "{count} bloqueadas",
+  "@dashboardBlockedShort": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardNeedPhotosShort": "{count} necesitan fotos",
+  "@dashboardNeedPhotosShort": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardProgress": "Progreso",
+  "dashboardWaitingForTasks": "Esperando tareas",
+  "dashboardCompletedOfTotal": "{completed} de {total} hechas",
+  "@dashboardCompletedOfTotal": {
+    "placeholders": {
+      "completed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardRemaining": "Pendientes",
+  "dashboardTasksLeftInShift": "Tareas pendientes en este turno",
+  "dashboardAttention": "Atención",
+  "dashboardPhotos": "Fotos",
+  "dashboardBlockedOrFlagged": "Bloqueadas o marcadas",
+  "dashboardNeedPhotoProof": "Necesitan prueba fotográfica",
+  "dashboardReviewTodaysWork": "Revisar el trabajo de hoy",
+  "dashboardContinueWorking": "Seguir trabajando",
+  "dashboardViewFullShift": "Ver turno completo",
+  "dashboardNextUp": "Siguiente",
+  "dashboardNoRemainingTasks": "No quedan tareas en este turno ahora mismo.",
+  "dashboardFastestPath": "La ruta más rápida para terminar este turno.",
+  "dashboardNextUpHelpSubtitle": "Siguiente muestra la ruta más rápida a través de las tareas sin terminar de tu turno actual.",
+  "dashboardQueuedCount": "{count} en cola",
+  "@dashboardQueuedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardNoTasksAvailableYet": "Todavía no hay tareas disponibles",
+  "dashboardCaughtUp": "Estás al día en este turno",
+  "dashboardCheckChecklistSetup": "Si esto parece incorrecto, pídele a tu gerente que revise la configuración de la lista de este turno.",
+  "dashboardReviewCompletedOrPickShift": "Usa la sección de abajo para revisar el trabajo completado o tomar otro turno.",
+  "dashboardCurrentShift": "Turno actual",
+  "dashboardLeaveShift": "Salir del turno",
+  "dashboardPendingTasksRemaining": "{count} pendientes",
+  "@dashboardPendingTasksRemaining": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardListsCount": "{count} listas",
+  "@dashboardListsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardNoTasksAvailableForShift": "No hay tareas disponibles para este turno",
+  "dashboardAskManagerVerifyChecklist": "Si esto parece incorrecto, pídele a tu gerente que verifique la configuración de la lista de hoy.",
+  "dashboardChecklistFallback": "Lista",
+  "dashboardChecklistTasksLoading": "Las tareas se están cargando para esta lista",
+  "dashboardChecklistCompletedOfTotal": "{completed} de {total} tareas completas",
+  "@dashboardChecklistCompletedOfTotal": {
+    "placeholders": {
+      "completed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardNeedPhotoChip": "{count} necesitan foto",
+  "@dashboardNeedPhotoChip": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardEverythingHereComplete": "Todo aquí está completo",
+  "dashboardCompletedBelow": "El trabajo completado está abajo para una revisión rápida.",
+  "dashboardHideCompleted": "Ocultar completadas ({count})",
+  "@dashboardHideCompleted": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardShowCompleted": "Mostrar completadas ({count})",
+  "@dashboardShowCompleted": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardNeedsAttention": "Necesita atención: {reason}",
+  "@dashboardNeedsAttention": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardPhotoRequiredBeforeSignoff": "Se requiere foto antes de finalizar",
+  "dashboardReadyToComplete": "Listo para completar",
+  "dashboardMustBeLoggedIn": "Debes iniciar sesión para completar tareas",
+  "dashboardPhotoRequiredTitle": "Se requiere foto",
+  "dashboardPhotoRequiredBody": "Esta tarea requiere una foto. Agrega una foto ahora, completa sin foto o cancela.",
+  "dashboardCompleteWithoutPhoto": "Completar sin foto",
+  "dashboardAddPhoto": "Agregar foto",
+  "dashboardAddNoteRequiredTitle": "Agregar nota (obligatoria)",
+  "dashboardAddNoteRequiredBody": "Agrega una nota breve explicando por qué no se añadió una foto.",
+  "dashboardEnterNote": "Ingresa una nota...",
+  "dashboardSave": "Guardar",
+  "dashboardTaskCompleted": "¡Tarea completada!",
+  "dashboardTaskUnchecked": "Tarea desmarcada",
+  "dashboardTaskUpdateError": "Error al actualizar la tarea. Inténtalo de nuevo.",
+  "dashboardCompleted": "Completada",
+  "dashboardCompletedBy": "Completada por {name}",
+  "@dashboardCompletedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardPhotoAdded": "Foto agregada",
+  "dashboardPhotoRequiredChip": "Foto obligatoria",
+  "dashboardNoteAdded": "Nota agregada",
+  "dashboardBlocked": "Bloqueada",
+  "dashboardPhotoMenu": "Foto",
+  "dashboardNotesMenu": "Notas",
+  "dashboardCannotComplete": "No se puede completar",
+  "dashboardMarkIncomplete": "Marcar incompleta",
+  "dashboardComplete": "Completar",
+  "dashboardViewPhoto": "Ver foto",
+  "dashboardUpdateIssue": "Actualizar problema",
+  "dashboardCantDo": "No puedo",
+  "dashboardEditNote": "Editar nota",
+  "dashboardAddNote": "Agregar nota",
+  "dashboardSwitchLocationTitle": "Cambiar ubicación",
+  "dashboardSwitchLocationBody": "Elige dónde quieres ver y completar el trabajo.",
+  "dashboardUnnamedLocation": "Ubicación sin nombre",
+  "dashboardCurrentlySelectedLocation": "Seleccionada actualmente",
+  "dashboardSwitchLocationError": "No se pudieron cambiar las ubicaciones. Inténtalo de nuevo.",
+  "dashboardMissedTaskNotCompletedYesterday": "No se completó ayer",
+  "dashboardNoteChip": "Nota",
+  "dashboardReasonChip": "Motivo",
+  "dashboardClearNotes": "Borrar notas",
+  "dashboardClearReason": "Borrar motivo",
+  "dashboardAlreadySignedUpForShift": "Ya estás apuntado a {shiftName}.",
+  "@dashboardAlreadySignedUpForShift": {
+    "placeholders": {
+      "shiftName": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardJoinedShift": "¡Te uniste correctamente a {shiftName}!",
+  "@dashboardJoinedShift": {
+    "placeholders": {
+      "shiftName": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardJoinShiftError": "Error al unirte al turno. Inténtalo de nuevo.",
+  "dashboardMustBeLoggedInToLeaveShift": "Debes iniciar sesión para salir de los turnos",
+  "dashboardLeaveVolunteerShiftTitle": "Salir del turno voluntario",
+  "dashboardLeaveVolunteerShiftBody": "¿Seguro que quieres salir del turno voluntario \"{shiftName}\"? Esto te quitará de futuras asignaciones para este turno.",
+  "@dashboardLeaveVolunteerShiftBody": {
+    "placeholders": {
+      "shiftName": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardLeaveShiftConfirm": "Salir del turno",
+  "dashboardLeftVolunteerShift": "¡Saliste correctamente del turno voluntario!",
+  "dashboardLeaveShiftError": "Error al salir del turno. Inténtalo de nuevo.",
+  "dashboardAvailableShiftsTitle": "Turnos disponibles",
+  "dashboardAvailableShiftsSubtitle": "Selecciona un turno para comenzar a trabajar en {locationName}",
+  "@dashboardAvailableShiftsSubtitle": {
+    "placeholders": {
+      "locationName": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardAvailableShiftsLoadError": "Error al cargar los turnos",
+  "dashboardNoAvailableShiftsTitle": "No hay turnos disponibles",
+  "dashboardNoAvailableShiftsBody": "No hay turnos disponibles para que te unas hoy.",
+  "dashboardNoAvailableShiftsTiming": "Los turnos estarán disponibles para seleccionar 30 minutos antes de su hora de inicio.",
+  "dashboardJoin": "Unirse",
+  "dashboardTaskNotesTitle": "Notas de la tarea",
+  "dashboardTaskLabel": "Tarea: {taskName}",
+  "@dashboardTaskLabel": {
+    "placeholders": {
+      "taskName": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardUnknownTask": "Tarea desconocida",
+  "dashboardTaskNotesPrompt": "Agrega notas o comentarios sobre esta tarea:",
+  "dashboardNotesSaved": "¡Notas guardadas correctamente!",
+  "dashboardNotesSaveError": "Error al guardar las notas: {error}",
+  "@dashboardNotesSaveError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardNotesCleared": "Notas borradas",
+  "dashboardNotesClearError": "No se pudieron borrar las notas: {error}",
+  "@dashboardNotesClearError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardSaveNotes": "Guardar notas",
+  "dashboardEnterNotesHint": "Escribe tus notas aquí...",
+  "dashboardSavingNotes": "Guardando notas...",
+  "dashboardPhotoViewerResetZoom": "Restablecer zoom",
+  "dashboardPhotoViewerLoadingImage": "Cargando imagen...",
+  "dashboardPhotoViewerLoadError": "No se pudo cargar la imagen",
+  "dashboardPhotoViewerGestureHint": "Pellizca para acercar • Arrastra para mover • Toca restablecer para ajustar",
+  "dashboardReasonEquipmentUnavailable": "Equipo no disponible",
+  "dashboardReasonSuppliesMissing": "Faltan suministros",
+  "dashboardReasonNotEnoughTime": "No hubo tiempo suficiente",
+  "dashboardReasonSafetyConcern": "Problema de seguridad",
+  "dashboardReasonWaitingApproval": "Esperando aprobación",
+  "dashboardReasonAreaBlocked": "Área bloqueada o inaccesible",
+  "dashboardReasonTechnicalIssue": "Problema técnico",
+  "dashboardReasonStaffShortage": "Falta de personal",
+  "dashboardReasonEmergencyPriority": "Tarea prioritaria por emergencia",
+  "dashboardReasonWeatherConditions": "Condiciones climáticas",
+  "dashboardReasonOther": "Otro (especifica abajo)",
+  "dashboardReasonSpecifyText": "Especifica un motivo en el campo de texto",
+  "dashboardReasonSelectOrEnter": "Selecciona o escribe un motivo",
+  "dashboardReasonSaved": "¡Motivo guardado correctamente!",
+  "dashboardReasonSaveError": "Error al guardar el motivo: {error}",
+  "@dashboardReasonSaveError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardTaskNotCompletedTitle": "Tarea no completada",
+  "dashboardSaveReason": "Guardar motivo",
+  "dashboardTaskNotCompletedPrompt": "¿Por qué no se completó esta tarea?",
+  "dashboardEnterReasonHint": "Especifica el motivo...",
+  "dashboardSavingReason": "Guardando motivo...",
+  "dashboardLoadingCarryover": "Cargando pendientes acumuladas...",
+  "dashboardCurrentLocationLabel": "Ubicación actual",
+  "dashboardWorkingLocationLabel": "Ubicación de trabajo",
+  "dashboardLocationHelpTitle": "Ayuda sobre ubicaciones",
+  "dashboardLocationHelpSubtitle": "La ubicación activa controla qué turnos, tareas y documentos ves en esta página.",
+  "dashboardSharedModeTitle": "Modo compartido",
+  "dashboardSharedModeLocked": "Bloqueado: selecciona tu nombre para continuar",
+  "dashboardSharedModeActive": "Activo: {userName}",
+  "@dashboardSharedModeActive": {
+    "placeholders": {
+      "userName": {
+        "type": "String"
+      }
+    }
+  },
+  "dashboardCarryoverClearTitle": "No hay pendientes acumuladas",
+  "dashboardCarryoverClearBody": "No hubo tareas omitidas ayer.",
+  "dashboardCarryoverTitle": "Pendientes acumuladas de ayer",
+  "dashboardCarryoverHelpTitle": "Pendientes acumuladas de ayer",
+  "dashboardCarryoverHelpSubtitle": "Las pendientes acumuladas mantienen visible el trabajo sin terminar para que pueda completarse o bloquearse con contexto en vez de desaparecer.",
+  "dashboardTasksCompletedCount": "{completed} de {total} tareas completadas",
+  "@dashboardTasksCompletedCount": {
+    "placeholders": {
+      "completed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardShiftTaskSummary": "{shiftCount} {shiftCount, plural, one {turno} other {turnos}} • {taskCount} {taskCount, plural, one {tarea} other {tareas}}",
+  "@dashboardShiftTaskSummary": {
+    "placeholders": {
+      "shiftCount": {
+        "type": "int"
+      },
+      "taskCount": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardUnknownShift": "Turno desconocido",
+  "dashboardShiftTimingScheduled": "Programado",
+  "dashboardShiftTimingCheckDetails": "Revisa los detalles del horario",
+  "dashboardShiftTimingStartsSoon": "Comienza pronto",
+  "dashboardShiftTimingAvailableNow": "Disponible ahora",
+  "dashboardShiftTimingAvailableInMinutes": "Disponible en {minutes} min",
+  "@dashboardShiftTimingAvailableInMinutes": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardShiftTimingInProgress": "En curso",
+  "dashboardShiftTimingHoursLeft": "Quedan {hours} h",
+  "@dashboardShiftTimingHoursLeft": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardShiftTimingMinutesLeft": "Quedan {minutes} min",
+  "@dashboardShiftTimingMinutesLeft": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardShiftTimingGracePeriod": "Período de gracia",
+  "dashboardShiftTimingJustEnded": "El turno acaba de terminar",
+  "dashboardShiftTimingEndedMinutesAgo": "Terminó hace {minutes} min",
+  "@dashboardShiftTimingEndedMinutesAgo": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "dashboardShiftTimingCheckCurrentWork": "Revisa el trabajo actual",
+  "dashboardTourLocationTitle": "Empieza con la ubicación activa",
+  "dashboardTourLocationDescription": "Las tareas, los turnos, las pendientes acumuladas, los avisos y los documentos siguen la ubicación seleccionada. Cámbiala aquí antes de empezar a trabajar.",
+  "dashboardTourShiftLiveTitle": "Primero revisa el resumen de tu turno",
+  "dashboardTourShiftIdleTitle": "Aquí aparece el estado de tu turno",
+  "dashboardTourShiftLiveDescription": "La tarjeta principal del turno te muestra en qué turno estás, cuánto trabajo queda y si algo está bloqueado o esperando evidencia.",
+  "dashboardTourShiftIdleDescription": "Si todavía no tienes un turno activo, esta área te indica si debes esperar, tomar otro turno o pedirle a tu gerente que revise la configuración.",
+  "dashboardTourNextUpTitle": "Usa Siguiente como tu cola principal de trabajo",
+  "dashboardTourNextUpDescription": "Siguiente muestra la ruta más rápida por el trabajo pendiente para que no tengas que revisar manualmente cada lista.",
+  "dashboardTourTodaysWorkTitle": "Revisa las listas completas en Trabajo de hoy",
+  "dashboardTourTodaysWorkDescription": "Usa esta sección cuando necesites la vista completa de la lista de tu turno, las tareas completadas o más contexto que la cola principal.",
+  "commonAdd": "Agregar",
+  "managerDashboardActiveShifts": "Turnos activos",
+  "managerDashboardActiveShiftLiveNowOne": "1 turno activo ahora",
+  "managerDashboardActiveShiftLiveNowOther": "{count} turnos activos ahora",
+  "@managerDashboardActiveShiftLiveNowOther": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "managerDashboardAtRisk": "En riesgo",
+  "managerDashboardNoShiftsSlipping": "No hay turnos desviándose",
+  "managerDashboardNeedInterventionNow": "Necesita intervención ahora",
+  "managerDashboardOpenTasks": "Tareas abiertas",
+  "managerDashboardNoTrackedTasksYet": "Aún no hay tareas rastreadas",
+  "managerDashboardCompletedTracked": "{completed}/{total} completadas",
+  "@managerDashboardCompletedTracked": {
+    "placeholders": {
+      "completed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "managerDashboardCarryover": "Pendientes acumuladas",
+  "managerDashboardYesterdayFinishedCleanly": "Ayer terminó sin pendientes",
+  "managerDashboardShiftsAffected": "{count} turnos afectados",
+  "@managerDashboardShiftsAffected": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "managerDashboardTourSummaryTitle": "Empieza por la tarjeta de resumen",
+  "managerDashboardTourSummaryDescription": "Esta tarjeta superior te muestra si el servicio va bien, cuántos turnos están en riesgo y qué necesita tu atención ahora mismo.",
+  "managerDashboardTourIssuesTitle": "Usa En riesgo hoy como tu cola de acción",
+  "managerDashboardTourIssuesDescription": "Abre primero estos problemas cuando algo se retrasa. Te ayudan a priorizar trabajo pendiente, riesgos en vivo y el siguiente seguimiento.",
+  "managerDashboardTourReadinessTitle": "Estado del turno muestra el tablero en vivo",
+  "managerDashboardTourReadinessDescription": "Usa esta sección para revisar trabajo abierto, progreso del turno y qué ejecuciones van bien o se están quedando atrás.",
+  "managerDashboardCurrentLocation": "Ubicación actual",
+  "managerDashboardLoading": "Cargando panel",
+  "managerDashboardIssuesNeedAttention": "{count} problemas necesitan atención",
+  "@managerDashboardIssuesNeedAttention": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "managerDashboardTodayOnTrack": "Hoy va por buen camino",
+  "managerDashboardLoadingSummary": "Cargando los turnos de hoy, el trabajo pendiente y las señales de problemas recurrentes para {locationName}.",
+  "@managerDashboardLoadingSummary": {
+    "placeholders": {
+      "locationName": {
+        "type": "String"
+      }
+    }
+  },
+  "managerDashboardThisLocation": "esta ubicación",
+  "managerDashboardIssuesSummary": "{riskCount} turnos están actualmente en riesgo y {openTaskCount} tareas abiertas aún necesitan atención del gerente.",
+  "@managerDashboardIssuesSummary": {
+    "placeholders": {
+      "riskCount": {
+        "type": "int"
+      },
+      "openTaskCount": {
+        "type": "int"
+      }
+    }
+  },
+  "managerDashboardNoLiveShiftsSummary": "Ningún turno en vivo está desviado en este momento. Usa el panel de abajo para revisar el estado y los problemas recurrentes.",
+  "managerDashboardRefreshNow": "Actualizar ahora",
+  "managerDashboardReviewIssues": "Revisar problemas",
+  "managerDashboardViewShiftReadiness": "Ver estado del turno",
+  "managerDashboardHistoryReports": "Historial e informes",
+  "managerDashboardTodayAtRisk": "En riesgo hoy",
+  "managerDashboardTodayAtRiskSubtitle": "Cola de acción compacta para lo que necesita atención primero.",
+  "managerDashboardShiftReadiness": "Estado del turno",
+  "managerDashboardShiftReadinessSubtitle": "Tablero en vivo de progreso, trabajo abierto y salud del turno.",
+  "managerDashboardNoScheduledShiftsYet": "Aún no hay turnos programados",
+  "managerDashboardNoScheduledShiftsBody": "Crea y ejecuta turnos para ver aquí el estado.",
+  "managerDashboardRecurringIssues": "Problemas recurrentes",
+  "managerDashboardRecurringIssuesSubtitle": "Donde los fallos y ejecuciones débiles siguen apareciendo.",
+  "managerDashboardRecurringFailures": "Fallos recurrentes",
+  "managerDashboardRecurringFailuresSubtitle": "Clasificados por tasa de fallos en los últimos 30 días.",
+  "managerDashboardNoRecurringFailuresYet": "Aún no hay fallos recurrentes.",
+  "managerDashboardAtRiskShifts": "Turnos en riesgo",
+  "managerDashboardAtRiskShiftsSubtitle": "Turnos con las tendencias de finalización más débiles en los últimos 30 días.",
+  "managerDashboardNoAtRiskShifts": "No se encontraron turnos en riesgo.",
+  "managerDashboardAllMissedTasksYesterday": "Todas las tareas omitidas ayer",
+  "managerDashboardUnknownTask": "Tarea desconocida",
+  "managerDashboardUnknownShift": "Turno desconocido",
+  "managerDashboardDoneToday": "Hecho hoy",
+  "adminSetupTourWelcomeTitle": "Te mostramos lo nuevo",
+  "adminSetupTourWelcomeDescription": "La configuración se actualizó para que ubicaciones, equipo, turnos y plantillas de listas sean más fáciles de administrar. Este recorrido rápido te mostrará el flujo actualizado antes de empezar a editar.",
+  "adminSetupTourLocationTitle": "Mantén la configuración enfocada en una ubicación",
+  "adminSetupTourLocationDescription": "Cambia aquí cuando quieras concentrarte en un restaurante. Los turnos, el acceso del equipo y las plantillas de listas son más fáciles de administrar cuando reduces el alcance a una ubicación.",
+  "adminSetupTourAreasTitle": "Muévete por la configuración por áreas",
+  "adminSetupTourAreasDescription": "Usa estas áreas rápidas de configuración para saltar entre Ubicaciones, Equipo, Turnos y Biblioteca de listas sin perder tu lugar.",
+  "adminSetupTourPanelTitle": "Trabaja en una sola área a la vez",
+  "adminSetupTourPanelDescription": "El panel principal de abajo es donde agregas, editas y revisas el área de configuración actual. Mantén sincronizadas la ubicación seleccionada y el área de configuración mientras configuras la operación.",
+  "adminSetupActiveLocation": "Ubicación activa",
+  "adminSetupSelectLocation": "Seleccionar ubicación",
+  "adminSetupAreas": "Áreas de configuración",
+  "adminViewLocations": "Ubicaciones",
+  "adminViewTeam": "Equipo",
+  "adminViewShifts": "Turnos",
+  "adminViewChecklistLibrary": "Biblioteca de listas",
+  "adminViewEyebrowPlaces": "Lugares",
+  "adminViewEyebrowPeople": "Personas",
+  "adminViewEyebrowOperations": "Operaciones",
+  "adminViewEyebrowChecklistTemplates": "Plantillas de listas",
+  "adminViewLocationsSubtitle": "Administra los lugares desde donde opera tu equipo y mantén la configuración anclada a ubicaciones reales.",
+  "adminViewTeamSubtitle": "Invita al personal, asigna accesos y mantén cada rol alineado con las ubicaciones correctas.",
+  "adminViewShiftsSubtitle": "Define cuándo sucede el trabajo y adjunta el flujo correcto a cada turno.",
+  "adminViewChecklistLibrarySubtitle": "Mantén plantillas reutilizables para apertura, cierre, preparación y rutinas repetibles.",
+  "adminSetupHeroTitle": "Configuración operativa",
+  "adminSetupAllLocations": "Todas las ubicaciones",
+  "adminWorkflowNoneAttached": "Aún no hay un flujo adjunto",
+  "adminWorkflowOneAttached": "1 flujo adjunto",
+  "adminWorkflowManyAttached": "{count} flujos adjuntos",
+  "@adminWorkflowManyAttached": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "adminWorkflowTitle": "Flujo de {name}",
+  "@adminWorkflowTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "adminNoOrganizationDataAvailable": "No hay datos de la organización disponibles",
+  "adminErrorLoadingUsers": "Error al cargar usuarios: {error}",
+  "@adminErrorLoadingUsers": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "adminErrorLoadingLocations": "Error al cargar ubicaciones: {error}",
+  "@adminErrorLoadingLocations": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "adminNoTeamMembersFound": "No se encontraron miembros del equipo",
+  "adminInviteTeamToGetStarted": "Invita a tu equipo para comenzar",
+  "adminUnnamedUser": "Usuario sin nombre",
+  "adminDeleteUserTitle": "Eliminar usuario",
+  "adminDeleteUserBody": "¿Seguro que quieres eliminar este usuario? Esta acción no se puede deshacer.",
+  "adminNoLocationsFound": "No se encontraron ubicaciones",
+  "adminAddLocationToGetStarted": "Agrega una ubicación para comenzar",
+  "adminNoShiftsForSelectedLocation": "No se encontraron turnos para la ubicación seleccionada",
+  "adminNoShiftsFound": "No se encontraron turnos",
+  "adminCreateShiftsAttachWorkflows": "Crea turnos y luego adjunta los flujos de trabajo",
+  "webAdminWorkflowLabel": "Flujo",
+  "webAdminWorkflowCreated": "Flujo creado correctamente",
+  "webAdminScheduleDaily": "Diario",
+  "webAdminDayMon": "Lun",
+  "webAdminDayTue": "Mar",
+  "webAdminDayWed": "Mié",
+  "webAdminDayThu": "Jue",
+  "webAdminDayFri": "Vie",
+  "webAdminDaySat": "Sáb",
+  "webAdminDaySun": "Dom",
+  "webAdminSidebarSubtitle": "Configura lugares, personas, turnos y flujos reutilizables.",
+  "webAdminSetupWorkspace": "Espacio de configuración",
+  "webAdminScope": "Alcance",
+  "webAdminAllActive": "Todos los activos",
+  "webAdminSearchHint": "Buscar {name}...",
+  "@webAdminSearchHint": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminAddItem": "Agregar {name}",
+  "@webAdminAddItem": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminSectionEyebrowShifts": "Configuración operativa",
+  "webAdminSectionEyebrowChecklists": "Plantillas de listas",
+  "webAdminSectionEyebrowUsers": "Personas y acceso",
+  "webAdminSectionEyebrowLocations": "Huella operativa",
+  "webAdminSectionTitleShifts": "Construye turnos alrededor de flujos reales de servicio",
+  "webAdminSectionTitleChecklists": "Mantén una biblioteca limpia de flujos",
+  "webAdminSectionTitleUsers": "Administra tu equipo con menos fricción",
+  "webAdminSectionTitleLocations": "Mantén cada ubicación lista para operar",
+  "webAdminSectionSubtitleShifts": "Define cuándo ocurre el trabajo, a quién pertenece y qué plantilla de flujo se ejecuta en ese turno.",
+  "webAdminSectionSubtitleChecklists": "Crea plantillas reutilizables para apertura, cierre, preparación y procedimientos recurrentes en toda tu operación.",
+  "webAdminSectionSubtitleUsers": "Invita a gerentes y personal, asigna sus ubicaciones y mantén el acceso alineado con la forma en que opera el negocio.",
+  "webAdminSectionSubtitleLocations": "Configura los lugares desde donde opera tu equipo y úsalos para organizar turnos, personal y cobertura de flujos.",
+  "webAdminSectionTableSubtitleShifts": "Configuración centrada en turnos con visibilidad directa del flujo.",
+  "webAdminSectionTableSubtitleChecklists": "Las plantillas siguen siendo reutilizables aquí y se adjuntan desde los turnos.",
+  "webAdminSectionTableSubtitleUsers": "Personas, roles, estado de invitación y cobertura por ubicación.",
+  "webAdminSectionTableSubtitleLocations": "Tus lugares activos, direcciones y huella operativa.",
+  "webAdminTabShift": "turno",
+  "webAdminTabTemplate": "plantilla",
+  "webAdminTabTeamMember": "miembro del equipo",
+  "webAdminTabLocation": "ubicación",
+  "webAdminEmptyTitleShifts": "Aún no hay turnos creados",
+  "webAdminEmptyDescriptionShifts": "Crea tu primer turno para definir cuándo ocurre el trabajo, quién lo realiza y qué flujo debe ejecutarse. Los turnos son el lugar principal para configurar la operación.",
+  "webAdminEmptyActionShifts": "Crear el primer turno",
+  "webAdminEmptySupportLabelShifts": "Siguiente paso",
+  "webAdminEmptySupportValueShifts": "Adjuntar flujo",
+  "webAdminEmptySecondaryLabelShifts": "Recomendado",
+  "webAdminEmptySecondaryValueShifts": "Empieza con apertura",
+  "webAdminEmptyTitleChecklists": "Aún no hay plantillas de listas",
+  "webAdminEmptyDescriptionChecklists": "Crea plantillas reutilizables para apertura, cierre, preparación y otro trabajo repetible. La mayoría de los propietarios las adjuntarán desde la pantalla de turnos.",
+  "webAdminEmptyActionChecklists": "Crear la primera plantilla",
+  "webAdminEmptySupportLabelChecklists": "Mejor uso",
+  "webAdminEmptySupportValueChecklists": "Flujos reutilizables",
+  "webAdminEmptySecondaryLabelChecklists": "Lo más común",
+  "webAdminEmptySecondaryValueChecklists": "Apertura + cierre",
+  "webAdminEmptyTitleUsers": "Aún no hay miembros del equipo",
+  "webAdminEmptyDescriptionUsers": "Invita a miembros del equipo a unirse a tu organización. Puedes asignar distintos roles y controlar a qué ubicaciones pueden acceder.",
+  "webAdminEmptyActionUsers": "Agregar el primer miembro",
+  "webAdminEmptySupportLabelUsers": "Más útil",
+  "webAdminEmptySupportValueUsers": "Invita primero a gerentes",
+  "webAdminEmptySecondaryLabelUsers": "Estado",
+  "webAdminEmptySecondaryValueUsers": "Sigue las invitaciones aquí",
+  "webAdminEmptyTitleLocations": "Aún no hay ubicaciones agregadas",
+  "webAdminEmptyDescriptionLocations": "Configura las ubicaciones de tu negocio para organizar turnos, asignar personal y seguir la operación. Cada ubicación puede tener sus propios turnos, listas y miembros del equipo.",
+  "webAdminEmptyActionLocations": "Agregar la primera ubicación",
+  "webAdminEmptySupportLabelLocations": "Base",
+  "webAdminEmptySupportValueLocations": "Construye la configuración alrededor de los lugares",
+  "webAdminEmptySecondaryLabelLocations": "Después de esto",
+  "webAdminEmptySecondaryValueLocations": "Crear turnos",
+  "webAdminEmptyFooter": "Mantén la configuración simple: crea la ubicación, agrega tu equipo y luego construye turnos con flujos adjuntos.",
+  "webAdminColumnShiftName": "Nombre del turno",
+  "webAdminColumnTime": "Hora",
+  "webAdminColumnSchedule": "Horario",
+  "webAdminColumnStatus": "Estado",
+  "webAdminColumnActions": "Acciones",
+  "webAdminColumnTemplateName": "Nombre de la plantilla",
+  "webAdminColumnDescription": "Descripción",
+  "webAdminColumnTasks": "Tareas",
+  "webAdminColumnUsedInShifts": "Usado en turnos",
+  "webAdminColumnLocationName": "Nombre de la ubicación",
+  "webAdminColumnAddress": "Dirección",
+  "webAdminStatusActive": "Activo",
+  "webAdminStatusInactive": "Inactivo",
+  "webAdminStatusArchived": "Archivado",
+  "webAdminActionEdit": "Editar",
+  "webAdminActionDuplicate": "Duplicar",
+  "webAdminActionArchive": "Archivar",
+  "webAdminActionRestore": "Restaurar",
+  "webAdminActionCreateWorkflow": "Crear flujo",
+  "webAdminActionEditWorkflow": "Editar flujo",
+  "webAdminActionDeactivate": "Desactivar",
+  "webAdminActionActivate": "Activar",
+  "webAdminActionDeleteUser": "Eliminar usuario",
+  "webAdminNoDescription": "Sin descripción",
+  "webAdminTaskCount": "{count} tareas",
+  "@webAdminTaskCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "webAdminDeleteShiftTitle": "¿Eliminar turno?",
+  "webAdminDeleteShiftBody": "¿Seguro que quieres eliminar \"{name}\"? Esta acción no se puede deshacer.",
+  "@webAdminDeleteShiftBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminShiftUpdated": "Turno actualizado correctamente",
+  "webAdminShiftUpdateFailed": "No se pudo actualizar el turno: {error}",
+  "@webAdminShiftUpdateFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminChecklistUpdateFailed": "No se pudo actualizar la plantilla",
+  "webAdminDeleteTemplateTitle": "¿Eliminar plantilla?",
+  "webAdminDeleteTemplateBody": "¿Seguro que quieres eliminar \"{name}\"? Esta acción no se puede deshacer.",
+  "@webAdminDeleteTemplateBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminTemplateDeleted": "Plantilla eliminada correctamente",
+  "webAdminTemplateDeleteFailed": "No se pudo eliminar la plantilla: {error}",
+  "@webAdminTemplateDeleteFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminCopyName": "{name} (Copia)",
+  "@webAdminCopyName": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminLocationDuplicated": "Ubicación duplicada correctamente",
+  "webAdminDuplicateFailed": "No se pudo duplicar el elemento",
+  "webAdminShiftCreated": "Turno creado correctamente",
+  "webAdminShiftSaved": "Turno actualizado correctamente",
+  "webAdminShiftEditorOpenFailed": "No se pudo abrir el editor de turnos",
+  "webAdminShiftDuplicated": "Turno duplicado correctamente",
+  "webAdminShiftDuplicateFailed": "No se pudo duplicar el turno: {error}",
+  "@webAdminShiftDuplicateFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminShiftArchived": "Turno archivado correctamente",
+  "webAdminShiftRestored": "Turno restaurado correctamente",
+  "webAdminTemplateCreated": "Plantilla creada correctamente",
+  "webAdminTemplateSaved": "Plantilla actualizada correctamente",
+  "webAdminTemplateSaveFailed": "No se pudo guardar la plantilla: {error}",
+  "@webAdminTemplateSaveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminTemplateEditorOpenFailed": "No se pudo abrir el editor de plantillas",
+  "webAdminTemplateDuplicated": "Plantilla duplicada correctamente",
+  "webAdminTemplateDuplicateFailed": "No se pudo duplicar la plantilla: {error}",
+  "@webAdminTemplateDuplicateFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminTemplateArchived": "Plantilla archivada correctamente",
+  "webAdminTemplateRestored": "Plantilla restaurada correctamente",
+  "webAdminUserDeactivated": "Usuario desactivado correctamente",
+  "webAdminUserActivated": "Usuario activado correctamente",
+  "webAdminUserUpdateFailed": "No se pudo actualizar el usuario: {error}",
+  "@webAdminUserUpdateFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminLocationCreated": "Ubicación creada correctamente",
+  "webAdminLocationSaved": "Ubicación actualizada correctamente",
+  "webAdminLocationUpdateFailed": "No se pudo actualizar la ubicación: {error}",
+  "@webAdminLocationUpdateFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminLocationArchived": "Ubicación archivada correctamente",
+  "webAdminLocationRestored": "Ubicación restaurada correctamente",
+  "webAdminDeleteLocationTitle": "¿Eliminar ubicación?",
+  "webAdminDeleteLocationBody": "¿Seguro que quieres eliminar \"{name}\"? Esta acción no se puede deshacer.",
+  "@webAdminDeleteLocationBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminLocationDeleted": "Ubicación eliminada correctamente",
+  "webAdminLocationDeleteFailed": "No se pudo eliminar la ubicación: {error}",
+  "@webAdminLocationDeleteFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminDeleteUserTitle": "¿Eliminar usuario?",
+  "webAdminDeleteUserBody": "¿Seguro que quieres eliminar a \"{name}\"? Esta acción no se puede deshacer.",
+  "@webAdminDeleteUserBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminUserDeleted": "Usuario eliminado correctamente",
+  "webAdminUserDeleteFailed": "No se pudo eliminar el usuario: {error}",
+  "@webAdminUserDeleteFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminWorkflowSuggestion": "flujo de {name}",
+  "@webAdminWorkflowSuggestion": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminStreamError": "Error: {error}",
+  "@webAdminStreamError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "webAdminUnnamedShift": "Turno sin nombre",
+  "webAdminUnnamedTemplate": "Plantilla sin nombre",
+  "webAdminUnnamedLocation": "Ubicación sin nombre",
+  "webAdminUnknownUser": "Usuario desconocido",
+  "webAdminNoEmail": "Sin correo electrónico",
+  "webAdminNoAddress": "Sin dirección",
+  "guidedTourStepCounter": "Paso {current} de {total}",
+  "@guidedTourStepCounter": {
+    "placeholders": {
+      "current": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "guidedTourSkip": "Omitir",
+  "guidedTourLearnMore": "Más información",
+  "guidedTourBack": "Atrás",
+  "guidedTourNext": "Siguiente",
+  "guidedTourDone": "Listo",
+  "guidedTourLanguageFeatureTitle": "Nuevo: soporte de idioma",
+  "guidedTourLanguageFeatureBody": "Ahora puedes cambiar entre inglés, español y portugués en cualquier momento desde Idioma en Configuración.",
+  "releaseDialogUpdateTitle": "Hay una actualización importante disponible",
+  "releaseDialogUpdateSubtitle": "Actualiza o recarga para ver la experiencia más reciente, las opciones de idioma y el recorrido guiado.",
+  "releaseDialogWhatsNewSubtitle": "Hay una experiencia renovada disponible, con actualizaciones del recorrido guiado y soporte de idioma.",
+  "releaseDialogNotNow": "Ahora no",
+  "releaseDialogTakeGuidedTour": "Iniciar recorrido guiado",
+  "releaseDialogRefreshNow": "Recargar ahora",
+  "releaseDialogUpdateNow": "Actualizar ahora",
+  "releaseDialogOkay": "Entendido",
+  "releaseDialogMajorReleaseBadge": "Versión importante",
+  "releaseDialogNewExperienceBadge": "Nueva experiencia",
+  "releaseDialogWhatChanged": "Qué cambió",
+  "releaseDialogLanguageFeatureTitle": "Nuevo: soporte de idioma",
+  "releaseDialogLanguageFeatureBody": "Ahora tienes inglés, español y portugués disponibles desde Idioma en Configuración.",
+  "commonContinue": "Continuar",
+  "notificationsViewAction": "Ver",
+  "quickPdfViewerDocumentTitle": "Documento",
+  "quickPdfViewerTrainingDocumentTitle": "Documento de capacitación",
+  "quickPdfViewerDescription": "Este documento se abrirá en el visor nativo de tu dispositivo para una mejor experiencia.",
+  "quickPdfViewerOpenDocument": "Abrir documento",
+  "quickPdfViewerCopyLink": "Copiar enlace",
+  "quickPdfViewerShare": "Compartir",
+  "quickPdfViewerHelpBody": "Los documentos se abren en el visor integrado de tu dispositivo para ofrecer mejor rendimiento y compatibilidad.",
+  "quickPdfViewerOpenFailed": "No se pudo abrir el documento. Revisa tu conexión a internet.",
+  "quickPdfViewerOpenError": "Error al abrir el documento: {error}",
+  "@quickPdfViewerOpenError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "quickPdfViewerCopied": "Enlace del documento copiado al portapapeles",
+  "quickPdfViewerShareFailed": "No se pudo compartir el documento",
+  "notificationSettingsTitle": "Configuración de notificaciones",
+  "notificationSettingsTestTooltip": "Probar notificaciones",
+  "notificationPermissionTitle": "Mantente al día con Hands",
+  "notificationPermissionBody": "Recibe notificaciones sobre cambios de horario, recordatorios de turno y anuncios importantes de tu equipo.",
+  "notificationSettingsQuickActions": "Acciones rápidas",
+  "notificationSettingsSubscribeTopics": "Suscribirse a temas",
+  "notificationSettingsSystemSettings": "Configuración del sistema",
+  "notificationSettingsTestTitle": "Prueba de configuración de notificaciones",
+  "notificationSettingsPermission": "Permiso: {value}",
+  "@notificationSettingsPermission": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "notificationSettingsToken": "Token: {value}",
+  "@notificationSettingsToken": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "notificationSettingsStatus": "Estado: {value}",
+  "@notificationSettingsStatus": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "notificationSettingsNone": "Ninguno",
+  "notificationSettingsReady": "✅ Listo",
+  "notificationSettingsNotReady": "❌ No está listo",
+  "notificationTypesTitle": "Tipos de notificaciones",
+  "notificationOnboardingBody": "Recibe avisos sobre:\n• Actualizaciones de horario\n• Recordatorios de turno\n• Anuncios importantes",
+  "notificationOnboardingEnableBody": "Solo enviaremos notificaciones relevantes para tu horario de trabajo y actualizaciones importantes.",
+  "notificationOnboardingSkip": "Omitir por ahora",
+  "checklistSheetInfoLabel": "Información",
+  "checklistSheetNewChecklist": "Nueva lista",
+  "checklistSheetEditChecklist": "Editar lista",
+  "checklistSheetSaveChecklist": "Guardar lista",
+  "checklistSheetStepBasics": "Datos básicos",
+  "checklistSheetStepTasks": "Tareas",
+  "checklistSheetStepAdvanced": "Avanzado",
+  "checklistSheetNameRequired": "El nombre de la lista es obligatorio.",
+  "checklistSheetAddOneTask": "Agrega al menos una tarea.",
+  "checklistSheetAllTasksNamed": "Todas las tareas deben tener nombre.",
+  "checklistSheetInfoTipBasics": "Nombra esta plantilla de flujo de trabajo y agrega una breve descripción.",
+  "checklistSheetBasicsIntro": "Ingresa la información básica de esta plantilla:",
+  "checklistSheetTemplateName": "Nombre de la plantilla *",
+  "checklistSheetTemplateNameHint": "p. ej., Apertura del bar, Cierre de cocina",
+  "checklistSheetDescriptionOptional": "Descripción (opcional)",
+  "checklistSheetDescriptionHint": "Breve descripción de esta lista",
+  "checklistSheetNoShiftsAttach": "No hay turnos disponibles para adjuntar ahora.",
+  "checklistSheetNoShiftsFound": "No se encontraron turnos para esta ubicación. Crea turnos primero.",
+  "checklistSheetShiftTip": "Selecciona los turnos donde aparecerá esta lista. Puedes dejarlo vacío ahora y adjuntarla más tarde desde la pantalla de Turnos.",
+  "checklistSheetSelectShifts": "Selecciona qué turnos deben usar esta lista:",
+  "checklistSheetTasksTip": "Toca la cámara para exigir una foto. Si el personal no sube una foto, se notificará a los administradores.",
+  "checklistSheetTasksIntro": "Agrega tareas a tu lista. Arrastra para reordenar:",
+  "checklistSheetNoTasks": "Aún no hay tareas. Toca \"Agregar tarea\" para comenzar.",
+  "checklistSheetAddTask": "Agregar tarea",
+  "checklistSheetAdvancedTip": "La configuración avanzada es opcional. Úsala si quieres limitar quién puede ver esta lista o adjuntarla ahora a uno o más turnos.",
+  "checklistSheetVisibilityByJobType": "Visibilidad por tipo de puesto",
+  "checklistSheetAssignToShifts": "Asignar a turnos",
+  "checklistSheetSpanishTranslations": "Traducciones al español",
+  "checklistSheetPortugueseTranslations": "Traducciones al portugués",
+  "checklistSheetSpanishTip": "Opcional: agrega versiones en español de esta plantilla y sus tareas. El inglés seguirá como respaldo cuando un campo en español quede vacío.",
+  "checklistSheetTemplateNameSpanish": "Nombre de la plantilla (español)",
+  "checklistSheetTemplateNameSpanishHint": "p. ej., Apertura del bar",
+  "checklistSheetDescriptionSpanish": "Descripción (español)",
+  "checklistSheetDescriptionSpanishHint": "Breve descripción en español",
+  "checklistSheetAddTasksForSpanish": "Agrega tareas primero para incluir etiquetas en español.",
+  "checklistSheetSpanishTaskLabels": "Etiquetas de tareas en español",
+  "checklistSheetTaskSpanish": "Tarea {index} (español)",
+  "@checklistSheetTaskSpanish": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "checklistSheetSpanishTaskLabelHint": "Etiqueta de tarea en español",
+  "checklistSheetSpanishFor": "Español para: {name}",
+  "@checklistSheetSpanishFor": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "checklistSheetPortugueseTip": "Opcional: agrega versiones en portugués de esta plantilla y sus tareas. El inglés seguirá como respaldo cuando un campo en portugués quede vacío.",
+  "checklistSheetTemplateNamePortuguese": "Nombre de la plantilla (portugués)",
+  "checklistSheetTemplateNamePortugueseHint": "p. ej., Abertura do bar",
+  "checklistSheetDescriptionPortuguese": "Descripción (portugués)",
+  "checklistSheetDescriptionPortugueseHint": "Breve descripción en portugués",
+  "checklistSheetAddTasksForPortuguese": "Agrega tareas primero para incluir etiquetas en portugués.",
+  "checklistSheetPortugueseTaskLabels": "Etiquetas de tareas en portugués",
+  "checklistSheetTaskPortuguese": "Tarea {index} (portugués)",
+  "@checklistSheetTaskPortuguese": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "checklistSheetPortugueseTaskLabelHint": "Etiqueta de tarea en portugués",
+  "checklistSheetPortugueseFor": "Portugués para: {name}",
+  "@checklistSheetPortugueseFor": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "checklistSheetTask": "Tarea {index}",
+  "@checklistSheetTask": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "checklistSheetTaskHint": "Ingresa la descripción de la tarea",
+  "checklistSheetDeleteTask": "Eliminar tarea",
+  "checklistSheetPhotoRequired": "Foto obligatoria",
+  "checklistSheetNoPhotoRequired": "Sin foto obligatoria",
+  "checklistSheetTaskName": "Nombre de la tarea",
+  "checklistSheetPhoto": "Foto",
+  "checklistSheetLoadShiftsError": "Error al cargar turnos: {error}",
+  "@checklistSheetLoadShiftsError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "checklistSheetJobTypesTip": "Los tipos de puesto controlan quién verá esta lista. Déjalo vacío para que sea visible para todos en el turno.",
+  "checklistSheetJobTypesIntro": "Opcionalmente limita esta lista a personas con estos tipos de puesto. Déjalo vacío para que sea visible para todos.",
+  "checklistSheetManage": "Administrar",
+  "checklistSheetNoJobTypes": "Aún no hay tipos de puesto. Usa Administrar para crear el primero.",
+  "checklistSheetAddJobType": "Agregar tipo de puesto",
+  "checklistSheetAddJobTypeHint": "p. ej., Lavaplatos",
+  "checklistSheetAdd": "Agregar",
+  "checklistSheetSaveFailed": "No se pudo guardar la lista: {error}",
+  "@checklistSheetSaveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "shiftSheetLoadDataError": "Error al cargar datos: {error}",
+  "@shiftSheetLoadDataError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "shiftSheetSavedSuccess": "Horario del turno actualizado correctamente",
+  "shiftSheetSaveError": "Error al guardar el horario: {error}",
+  "@shiftSheetSaveError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "shiftSheetAddRequiredRole": "Agregar rol requerido",
+  "shiftSheetAlreadyAdded": "Ya agregado",
+  "shiftSheetAssignedCount": "{assigned} de {required} asignados",
+  "@shiftSheetAssignedCount": {
+    "placeholders": {
+      "assigned": {
+        "type": "int"
+      },
+      "required": {
+        "type": "int"
+      }
+    }
+  },
+  "shiftSheetRequiredRoles": "Roles requeridos",
+  "shiftSheetAddRole": "Agregar rol",
+  "shiftSheetNoRolesAssigned": "No hay roles asignados a este turno. Toca \"Agregar rol\" para agregar puestos requeridos.",
+  "shiftSheetAssignedUsers": "Usuarios asignados",
+  "shiftSheetNoUsersAssigned": "Aún no hay usuarios asignados.",
+  "shiftSheetAvailableUsers": "Usuarios disponibles (roles coincidentes)",
+  "shiftSheetOtherUsers": "Otros usuarios (sin rol coincidente)",
+  "shiftSheetLoadUsersError": "Error al cargar usuarios: {error}",
+  "@shiftSheetLoadUsersError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "shiftSheetNoOtherUsers": "No hay otros usuarios disponibles",
+  "shiftSheetSaveSchedule": "Guardar horario",
+  "shiftSheetUnknownRole": "Rol desconocido",
+  "shiftSheetRequiredCount": "Requeridos: {count}",
+  "@shiftSheetRequiredCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "shiftSheetDecreaseCount": "Disminuir cantidad",
+  "shiftSheetIncreaseCount": "Aumentar cantidad",
+  "shiftSheetRemoveRole": "Quitar rol",
+  "shiftSheetUnknownUserInitial": "U",
+  "shiftSheetCheckAssignmentsError": "Error al revisar asignaciones: {error}",
+  "@shiftSheetCheckAssignmentsError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "shiftSheetAlreadyAssignedAnotherShift": "Ya asignado a otro turno este día",
+  "notificationTopicsTitle": "Tipos de notificación",
+  "notificationTopicsIntro": "Elige qué actualizaciones quieres seguir:",
+  "notificationTopicsScheduleUpdates": "Las actualizaciones de horario te avisan cuando cambian tus turnos.",
+  "notificationTopicsShiftReminders": "Los recordatorios de turno te preparan antes de que comience tu trabajo asignado.",
+  "notificationTopicsGeneralAnnouncements": "Los anuncios generales comparten novedades más amplias del equipo y del negocio.",
+  "notificationTopicsGotIt": "Entendido",
+  "notificationTypesLearnMore": "Más información sobre los tipos de notificación",
+  "notificationPushTitle": "Notificaciones push",
+  "notificationPushEnabled": "Las notificaciones push están activadas en este dispositivo.",
+  "notificationPushTapToEnable": "Pulsa activar para recibir alertas en este dispositivo.",
+  "notificationEnable": "Activar",
+  "notificationTypeScheduleUpdates": "Actualizaciones de horario",
+  "notificationTypeScheduleUpdatesBody": "Recibe avisos cuando tus turnos se agreguen, cambien o eliminen.",
+  "notificationTypeShiftReminders": "Recordatorios de turno",
+  "notificationTypeShiftRemindersBody": "Recibe recordatorios antes de que empiecen tus próximos turnos.",
+  "notificationTypeGeneralAnnouncements": "Anuncios generales",
+  "notificationTypeGeneralAnnouncementsBody": "Mantente al tanto de las novedades del equipo y los avisos importantes.",
+  "notificationTypeEmail": "Notificaciones por correo",
+  "notificationTypeEmailBody": "Recibe también por correo las actualizaciones más importantes.",
+  "notificationDebugInfo": "Información de depuración",
+  "notificationFcmToken": "Token de FCM",
+  "notificationNoToken": "Todavía no hay token disponible",
+  "notificationTokenCopied": "Token copiado",
+  "notificationOnboardingEnableTitle": "Activar notificaciones",
+  "notificationOnboardingStayConnected": "Mantente al tanto",
+  "pushPermissionExplanationBody": "Activa las notificaciones para recibir recordatorios de turnos, cambios de horario y actualizaciones importantes del equipo al instante.",
+  "pushPermissionNotNow": "Ahora no",
+  "pushPermissionEnabledSuccess": "Las notificaciones están activadas.",
+  "pushPermissionError": "No pudimos activar las notificaciones. Inténtalo de nuevo.",
+  "pushPermissionDisabledTitle": "Las notificaciones están desactivadas",
+  "pushPermissionDisabledBody": "Puedes seguir usando la app, pero podrías perder recordatorios y avisos urgentes hasta volver a activar las notificaciones en la configuración del dispositivo.",
+  "pushPermissionMaybeLater": "Tal vez después",
+  "pushPermissionOpenSettings": "Abrir configuración",
+  "pushPermissionShortBody": "Recibe recordatorios de turnos, cambios de horario y novedades del equipo en este dispositivo.",
+  "pushPermissionSettings": "Configuración",
+  "pushPermissionRequestError": "No pudimos solicitar el permiso de notificaciones. Inténtalo de nuevo.",
+  "availabilitySavedSuccess": "Disponibilidad guardada correctamente.",
+  "availabilitySaveError": "Error al guardar la disponibilidad: {error}",
+  "@availabilitySaveError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "availabilityTitle": "Disponibilidad",
+  "availabilityShiftAvailability": "Disponibilidad por turnos",
+  "availabilityShiftAvailabilityBody": "Define en qué bloques de turno sueles poder trabajar cada día.",
+  "availabilityEarliestStartTimes": "Hora más temprana para empezar",
+  "availabilityEarliestStartBody": "Define la hora más temprana en la que normalmente puedes empezar cada día de la semana.",
+  "availabilityDefaultTime": "9:00",
+  "availabilityNotificationPreferences": "Preferencias de notificación",
+  "availabilityScheduleUpdatesBody": "Mantente al día cuando cambie tu horario publicado.",
+  "availabilityShiftRemindersBody": "Recibe recordatorios antes de que empiecen tus turnos.",
+  "availabilityEmailNotificationsBody": "Recibe también por correo las actualizaciones más importantes.",
+  "availabilityPushNotificationsBody": "Permite que este dispositivo reciba alertas instantáneas.",
+  "availabilitySavePreferences": "Guardar preferencias",
+  "weekdayMonday": "Lunes",
+  "weekdayTuesday": "Martes",
+  "weekdayWednesday": "Miércoles",
+  "weekdayThursday": "Jueves",
+  "weekdayFriday": "Viernes",
+  "weekdaySaturday": "Sábado",
+  "weekdaySunday": "Domingo",
+  "shiftLabelMorning": "Mañana",
+  "shiftLabelAfternoon": "Tarde",
+  "shiftLabelEvening": "Noche",
+  "shiftLabelNight": "Madrugada",
+  "upgradeLocationsTitle": "Agregar ubicaciones",
+  "upgradeLocationsQuantity": "¿Cuántas ubicaciones quieres agregar?",
+  "upgradeLocationsSummary": "Agregar {count} ubicación(es) por {price} al mes.",
+  "@upgradeLocationsSummary": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "upgradeLocationsFailed": "No se pudieron actualizar las ubicaciones: {error}",
+  "@upgradeLocationsFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "upgradeLocationsAction": "Actualizar y pagar"
+}

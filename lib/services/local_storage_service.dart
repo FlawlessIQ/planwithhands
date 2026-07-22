@@ -31,4 +31,12 @@ class LocalStorageService {
   static String? getString(String key) {
     return _preferences?.getString(key);
   }
+
+  static Future<void> saveInt(String key, int value) async {
+    await _preferences?.setInt(key, value);
+  }
+
+  static int? getInt(String key) {
+    return _preferences?.getInt(key);
+  }
 }

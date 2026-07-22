@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'package:hands_app/utils/app_platform.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 /// App-specific permission types that map to the permissions we need
@@ -69,9 +69,9 @@ class AppPermissionService {
   Permission? _mapToNativePermission(AppPermission permission) {
     switch (permission) {
       case AppPermission.photos:
-        if (Platform.isIOS) {
+        if (isIOS) {
           return Permission.photos;
-        } else if (Platform.isAndroid) {
+        } else if (isAndroid) {
           // Use the new Android 13+ media permissions
           return Permission.photos;
         }

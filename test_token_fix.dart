@@ -7,6 +7,8 @@ import 'package:hands_app/services/push_notification_service.dart';
 import 'package:hands_app/debug_push_test.dart';
 
 class TokenFixTestWidget extends StatefulWidget {
+  const TokenFixTestWidget({super.key});
+
   @override
   _TokenFixTestWidgetState createState() => _TokenFixTestWidgetState();
 }

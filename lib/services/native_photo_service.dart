@@ -1,16 +1,20 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/services/daily_checklist_service.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'dart:convert';
+import 'package:image/image.dart' as img;
+import 'package:permission_handler/permission_handler.dart';
 // Conditional native IO helpers (macOS) - use platform-specific implementation when available
 import 'native_io_stub.dart' if (dart.library.io) 'native_io_macos.dart';
 import 'package:hands_app/data/models/task_data.dart';
 
 class NativePhotoService {
   static final ImagePicker _picker = ImagePicker();
-  static final DailyChecklistService _checklistService = DailyChecklistService();
+  static final DailyChecklistService _checklistService =
+      DailyChecklistService();
 
   /// Shows native photo options (camera/gallery) and handles upload
   static Future<TaskData?> showPhotoOptions({
@@ -52,26 +56,17 @@ class NativePhotoService {
     return showDialog<TaskData?>(
       context: context,
       builder:
-          (dialogContext) => AlertDialog(
-            title: const Text('Add Photo'),
-            content: const Text('Choose photo source:'),
+          (dialogContext) => HandsDialog(
+            title: 'Take Photo',
+            maxWidth: 440,
             actions: [
-              TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-              TextButton(
-                onPressed:
-                    () => _handlePhotoSelection(
-                      sheetContext: dialogContext,
-                      parentContext: context,
-                      source: ImageSource.gallery,
-                      task: task,
-                      organizationId: organizationId,
-                      locationId: locationId,
-                      checklistId: checklistId,
-                    ),
-                child: const Text('Gallery'),
+              HandsSecondaryButton(
+                text: 'Cancel',
+                onPressed: () => Navigator.pop(dialogContext),
               ),
               if (!kIsWeb) // Camera not reliable on web
-                TextButton(
+                HandsPrimaryButton(
+                  text: 'Camera',
                   onPressed:
                       () => _handlePhotoSelection(
                         sheetContext: dialogContext,
@@ -82,9 +77,12 @@ class NativePhotoService {
                         locationId: locationId,
                         checklistId: checklistId,
                       ),
-                  child: const Text('Camera'),
                 ),
             ],
+            child: Text(
+              'Use camera to take a live photo for this task.',
+              style: HandsModalTokens.bodyStyle,
+            ),
           ),
     );
   }
@@ -97,11 +95,15 @@ class NativePhotoService {
     String? locationId,
     String? checklistId,
   }) async {
-    final bool hasExistingPhoto = (task.photoUrl?.isNotEmpty == true) || (task.proofImageUrl?.isNotEmpty == true);
+    final bool hasExistingPhoto =
+        (task.photoUrl?.isNotEmpty == true) ||
+        (task.proofImageUrl?.isNotEmpty == true);
 
     return showModalBottomSheet<TaskData?>(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder:
           (sheetContext) => SafeArea(
             child: Wrap(
@@ -115,12 +117,17 @@ class NativePhotoService {
                       Container(
                         width: 40,
                         height: 4,
-                        decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[300],
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        'Photo Options',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+                        'Take Photo',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ],
                   ),
@@ -136,21 +143,6 @@ class NativePhotoService {
                         sheetContext: sheetContext,
                         parentContext: context,
                         source: ImageSource.camera,
-                        task: task,
-                        organizationId: organizationId,
-                        locationId: locationId,
-                        checklistId: checklistId,
-                      ),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.photo_library, color: Colors.green),
-                  title: const Text('Choose from Gallery'),
-                  subtitle: const Text('Select an existing photo'),
-                  onTap:
-                      () => _handlePhotoSelection(
-                        sheetContext: sheetContext,
-                        parentContext: context,
-                        source: ImageSource.gallery,
                         task: task,
                         organizationId: organizationId,
                         locationId: locationId,
@@ -188,12 +180,17 @@ class NativePhotoService {
 
                 // Cancel button
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 10,
+                  ),
                   child: SizedBox(
                     width: double.infinity,
                     child: TextButton(
                       onPressed: () => Navigator.pop(sheetContext),
-                      style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
                       child: const Text('Cancel'),
                     ),
                   ),
@@ -218,14 +215,25 @@ class NativePhotoService {
     // capture states to avoid BuildContext use across async gaps
     late final NavigatorState parentNav = Navigator.of(parentContext);
     late final NavigatorState sheetNav = Navigator.of(sheetContext);
-    late final ScaffoldMessengerState messenger = ScaffoldMessenger.of(parentContext);
+    late final ScaffoldMessengerState messenger = ScaffoldMessenger.of(
+      parentContext,
+    );
 
     try {
       // Show loading overlay using parent context
       _showLoadingOverlay(parentContext, 'Processing photo...');
 
-      // Pick image
-      final XFile? image = await _picker.pickImage(source: source, maxWidth: 1920, maxHeight: 1080, imageQuality: 85);
+      // Pick image with iOS-optimized settings to prevent green coloring
+      // The green tint issue on iOS is often caused by HEIC format and color space problems
+      final XFile? image = await _picker.pickImage(
+        source: source,
+        maxWidth: 1920,
+        maxHeight: 1080,
+        imageQuality: 85, // Slightly lower quality but better compatibility
+        requestFullMetadata: false, // Prevent HEIC color space issues on iOS
+        preferredCameraDevice:
+            CameraDevice.rear, // Use rear camera for better quality
+      );
 
       if (image == null) {
         // Close loading and close sheet/dialog returning null
@@ -234,22 +242,110 @@ class NativePhotoService {
         return;
       }
 
-      // On macOS the image.path can be a file:// URI; ensure we can read bytes reliably.
+      // For iOS/Android, ensure we're working with JPEG format to avoid HEIC color space issues
       XFile uploadFile = image;
       try {
-        if (nativeIsMacOS && (image.path.startsWith('file://') || image.path.startsWith('/'))) {
+        // Read the image bytes
+        final imageBytes = await image.readAsBytes();
+
+        // Always convert to JPEG on mobile to prevent color space issues
+        // This fixes the green tint problem that occurs with HEIC and other formats
+        if (!kIsWeb) {
+          try {
+            // Decode the image using the image package to ensure proper color space handling
+            final decodedImage = img.decodeImage(
+              Uint8List.fromList(imageBytes),
+            );
+            if (decodedImage != null) {
+              // Encode as JPEG with quality 85 to ensure proper color space
+              final jpegBytes = img.encodeJpg(decodedImage, quality: 85);
+
+              // Create a new JPEG file with proper format and naming
+              final tempPath = await nativeWriteTempFile(jpegBytes);
+              if (tempPath != null) {
+                // Ensure the file has proper JPEG extension and mime type
+                uploadFile = XFile(
+                  tempPath,
+                  name: 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg',
+                  mimeType: 'image/jpeg',
+                );
+              }
+            } else {
+              // If image decoding fails, fall back to the raw bytes approach
+              final tempPath = await nativeWriteTempFile(imageBytes);
+              if (tempPath != null) {
+                uploadFile = XFile(
+                  tempPath,
+                  name: 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg',
+                  mimeType: 'image/jpeg',
+                );
+              }
+            }
+          } catch (imageProcessingError) {
+            print(
+              'Image processing failed, using raw bytes: $imageProcessingError',
+            );
+            // Fallback to raw bytes if image processing fails
+            final tempPath = await nativeWriteTempFile(imageBytes);
+            if (tempPath != null) {
+              uploadFile = XFile(
+                tempPath,
+                name: 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg',
+                mimeType: 'image/jpeg',
+              );
+            }
+          }
+        }
+        // On macOS, handle file:// paths as before
+        else if (nativeIsMacOS &&
+            (image.path.startsWith('file://') || image.path.startsWith('/'))) {
           // Normalize path
-          final path = image.path.startsWith('file://') ? Uri.parse(image.path).toFilePath() : image.path;
+          final path =
+              image.path.startsWith('file://')
+                  ? Uri.parse(image.path).toFilePath()
+                  : image.path;
           // Read bytes using native helper
           final bytes = await nativeReadFileBytes(path);
-          // Write a temp file that XFile can use (uploadTask reads bytes anyway)
-          final tempPath = await nativeWriteTempFile(bytes);
-          if (tempPath != null) {
-            uploadFile = XFile(tempPath);
+          // Process the image to ensure JPEG format
+          try {
+            final decodedImage = img.decodeImage(Uint8List.fromList(bytes));
+            if (decodedImage != null) {
+              final jpegBytes = img.encodeJpg(decodedImage, quality: 85);
+              final tempPath = await nativeWriteTempFile(jpegBytes);
+              if (tempPath != null) {
+                uploadFile = XFile(
+                  tempPath,
+                  name: 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg',
+                  mimeType: 'image/jpeg',
+                );
+              }
+            } else {
+              final tempPath = await nativeWriteTempFile(bytes);
+              if (tempPath != null) {
+                uploadFile = XFile(
+                  tempPath,
+                  name: 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg',
+                  mimeType: 'image/jpeg',
+                );
+              }
+            }
+          } catch (imageProcessingError) {
+            print(
+              'MacOS image processing failed, using raw bytes: $imageProcessingError',
+            );
+            final tempPath = await nativeWriteTempFile(bytes);
+            if (tempPath != null) {
+              uploadFile = XFile(
+                tempPath,
+                name: 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg',
+                mimeType: 'image/jpeg',
+              );
+            }
           }
         }
       } catch (e) {
         // Fallback: proceed with original XFile; uploadTask may still read bytes
+        print('Warning: Could not process image format, using original: $e');
       }
 
       // Upload via service
@@ -265,7 +361,10 @@ class NativePhotoService {
       if (parentNav.canPop()) parentNav.pop();
 
       // Create updated task
-      final updatedTask = task.copyWith(photoUrl: downloadUrl, proofImageUrl: downloadUrl);
+      final updatedTask = task.copyWith(
+        photoUrl: downloadUrl,
+        proofImageUrl: downloadUrl,
+      );
 
       // Show success on parent context
       messenger.showSnackBar(
@@ -285,24 +384,102 @@ class NativePhotoService {
       } catch (_) {}
 
       final err = e.toString();
-      // Detect common local emulator connection problems and give actionable advice
-      String userMessage;
-      if (err.contains('127.0.0.1') ||
-          err.contains('Connection refused') ||
-          err.contains('Failed host lookup') ||
-          err.contains('ERR_CONNECTION_REFUSED')) {
-        userMessage =
-            'Unable to reach the Firebase Storage emulator at 127.0.0.1:9199.\nStart the emulator (e.g. `firebase emulators:start --only storage`) or switch to production Storage in your web config.';
-      } else {
-        userMessage = 'Error uploading photo: $err';
-      }
 
-      // Show error
-      try {
-        messenger.showSnackBar(
-          SnackBar(content: Text(userMessage), backgroundColor: Colors.red, duration: const Duration(seconds: 6)),
-        );
-      } catch (_) {}
+      // Check for camera permission denial
+      if (err.contains('camera_access_denied') ||
+          err.contains('The user did not allow camera access') ||
+          err.contains('Camera permission')) {
+        // Show user-friendly dialog with option to open settings
+        try {
+          await showDialog(
+            context: parentContext,
+            builder:
+                (dialogContext) => HandsDialog(
+                  title: 'Camera Access Required',
+                  maxWidth: 480,
+                  actions: [
+                    HandsSecondaryButton(
+                      text: 'Not Now',
+                      onPressed: () => Navigator.pop(dialogContext),
+                    ),
+                    HandsPrimaryButton(
+                      text: 'Open Settings',
+                      icon: Icons.settings,
+                      onPressed: () async {
+                        Navigator.pop(dialogContext);
+                        // Open app settings
+                        try {
+                          await _openAppSettings();
+                        } catch (settingsError) {
+                          messenger.showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Please enable camera access in Settings → Plan with Hands → Camera',
+                              ),
+                              backgroundColor: Colors.orange,
+                              duration: const Duration(seconds: 5),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ],
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text(
+                        'To take photos for task completion, this app needs access to your camera.',
+                        style: TextStyle(fontSize: 16),
+                      ),
+                      SizedBox(height: 16),
+                      Text(
+                        'Please allow camera access in your device settings.',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+          );
+        } catch (_) {
+          // Fallback to simple snackbar if dialog fails
+          messenger.showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Camera access denied. Please enable it in your device settings.',
+              ),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
+      } else {
+        // Detect common local emulator connection problems and give actionable advice
+        String userMessage;
+        if (err.contains('127.0.0.1') ||
+            err.contains('Connection refused') ||
+            err.contains('Failed host lookup') ||
+            err.contains('ERR_CONNECTION_REFUSED')) {
+          userMessage =
+              'Unable to reach the Firebase Storage emulator at 127.0.0.1:9199.\nStart the emulator (e.g. `firebase emulators:start --only storage`) or switch to production Storage in your web config.';
+        } else {
+          userMessage = 'Error uploading photo: $err';
+        }
+
+        // Show error
+        try {
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text(userMessage),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 6),
+            ),
+          );
+        } catch (_) {}
+      }
 
       // Close sheet/dialog with null indicating failure
       try {
@@ -324,24 +501,32 @@ class NativePhotoService {
     // capture states to avoid BuildContext use across async gaps
     late final NavigatorState parentNav = Navigator.of(parentContext);
     late final NavigatorState sheetNav = Navigator.of(sheetContext);
-    late final ScaffoldMessengerState messenger = ScaffoldMessenger.of(parentContext);
+    late final ScaffoldMessengerState messenger = ScaffoldMessenger.of(
+      parentContext,
+    );
 
     try {
       // Ask for confirmation on the parent context while sheet/dialog remains open
       final confirmed = await showDialog<bool>(
         context: parentContext,
         builder:
-            (c) => AlertDialog(
-              title: const Text('Remove Photo'),
-              content: const Text('Are you sure you want to remove this photo?'),
+            (c) => HandsDialog(
+              title: 'Remove Photo',
+              maxWidth: 440,
               actions: [
-                TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
-                TextButton(
+                HandsSecondaryButton(
+                  text: 'Cancel',
+                  onPressed: () => Navigator.pop(c, false),
+                ),
+                HandsPrimaryButton(
+                  text: 'Remove',
                   onPressed: () => Navigator.pop(c, true),
-                  style: TextButton.styleFrom(foregroundColor: Colors.red),
-                  child: const Text('Remove'),
                 ),
               ],
+              child: Text(
+                'Are you sure you want to remove this photo?',
+                style: HandsModalTokens.bodyStyle,
+              ),
             ),
       );
 
@@ -350,13 +535,12 @@ class NativePhotoService {
       // Show loading overlay
       _showLoadingOverlay(parentContext, 'Removing photo...');
 
-      // Update task with empty photo URL
-      await _checklistService.updateTaskPhotoInSubcollection(
+      // Clear photo via dedicated helper (handles both photoUrl/proofImageUrl and fallback lookup)
+      await _checklistService.clearTaskPhoto(
         organizationId: organizationId ?? task.organizationId ?? '',
         locationId: locationId ?? task.locationId ?? '',
         checklistId: checklistId ?? task.checklistId ?? '',
         taskId: task.taskId,
-        proofImageUrl: '',
       );
 
       // Close loading
@@ -393,7 +577,11 @@ class NativePhotoService {
 
       try {
         messenger.showSnackBar(
-          SnackBar(content: Text(userMessage), backgroundColor: Colors.red, duration: const Duration(seconds: 6)),
+          SnackBar(
+            content: Text(userMessage),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 6),
+          ),
         );
       } catch (_) {}
       try {
@@ -404,21 +592,29 @@ class NativePhotoService {
 
   /// Show current photo in full screen
   /// Public wrapper to view existing photo without exposing private implementation
-  static void viewExistingPhoto({required BuildContext context, required TaskData task}) {
+  static void viewExistingPhoto({
+    required BuildContext context,
+    required TaskData task,
+  }) {
     _showCurrentPhoto(context, task);
   }
 
   /// Show current photo in full screen (legacy private implementation)
   static void _showCurrentPhoto(BuildContext context, TaskData task) {
-    final photoUrl = task.photoUrl?.isNotEmpty == true ? task.photoUrl : task.proofImageUrl;
+    final photoUrl =
+        task.photoUrl?.isNotEmpty == true ? task.photoUrl : task.proofImageUrl;
     print('DEBUG: _showCurrentPhoto called with photoUrl: $photoUrl');
 
     if (photoUrl == null || photoUrl.isEmpty) return;
 
     // On web, our downloadUrl may be a signed URL which can still be blocked by CORS
     // if served indirectly. To be robust, fetch via callable proxyDownload which returns base64 bytes.
-    if (kIsWeb && (photoUrl.contains('/o/') || photoUrl.contains('storage.googleapis.com'))) {
-      print('DEBUG: Web detected, attempting proxy download for URL: $photoUrl');
+    if (kIsWeb &&
+        (photoUrl.contains('/o/') ||
+            photoUrl.contains('storage.googleapis.com'))) {
+      print(
+        'DEBUG: Web detected, attempting proxy download for URL: $photoUrl',
+      );
 
       // Try to extract the storage path from the URL
       try {
@@ -431,13 +627,21 @@ class NativePhotoService {
           // Extract path from hostname/path without query params
           final pathWithoutQuery = uri.path;
           // Remove leading slash and extract everything after the bucket name
-          final pathParts = pathWithoutQuery.split('/').where((part) => part.isNotEmpty).toList();
+          final pathParts =
+              pathWithoutQuery
+                  .split('/')
+                  .where((part) => part.isNotEmpty)
+                  .toList();
           if (pathParts.length > 1) {
             // Skip the bucket name (first part), take the rest as the storage path
             storagePath = pathParts.skip(1).join('/');
-            print('DEBUG: Extracted storage path from googleapis URL: $storagePath');
+            print(
+              'DEBUG: Extracted storage path from googleapis URL: $storagePath',
+            );
           } else {
-            print('DEBUG: Could not extract path from googleapis URL, pathParts: $pathParts');
+            print(
+              'DEBUG: Could not extract path from googleapis URL, pathParts: $pathParts',
+            );
             _showNetworkImage(dialogContext: context, photoUrl: photoUrl);
             return;
           }
@@ -448,7 +652,9 @@ class NativePhotoService {
 
           final idx = segments.indexWhere((s) => s == 'o');
           if (idx >= 0 && idx + 1 < segments.length) {
-            storagePath = Uri.decodeComponent(segments.sublist(idx + 1).join('/'));
+            storagePath = Uri.decodeComponent(
+              segments.sublist(idx + 1).join('/'),
+            );
             print('DEBUG: Extracted storage path from /o/ URL: $storagePath');
           } else {
             print('DEBUG: No /o/ pattern found, falling back to network image');
@@ -469,7 +675,9 @@ class NativePhotoService {
               final data = result.data as Map<String, dynamic>;
               final base64 = data['base64'] as String?;
               if (base64 == null) {
-                print('DEBUG: No base64 data received, falling back to network image');
+                print(
+                  'DEBUG: No base64 data received, falling back to network image',
+                );
                 _showNetworkImage(dialogContext: context, photoUrl: photoUrl);
                 return;
               }
@@ -484,14 +692,24 @@ class NativePhotoService {
                       insetPadding: const EdgeInsets.all(20),
                       child: Stack(
                         children: [
-                          Center(child: InteractiveViewer(child: Image.memory(bytes, fit: BoxFit.contain))),
+                          Center(
+                            child: InteractiveViewer(
+                              child: Image.memory(bytes, fit: BoxFit.contain),
+                            ),
+                          ),
                           Positioned(
                             top: 40,
                             right: 20,
                             child: IconButton(
                               onPressed: () => Navigator.pop(dialogContext),
-                              icon: const Icon(Icons.close, color: Colors.white, size: 30),
-                              style: IconButton.styleFrom(backgroundColor: Colors.black54),
+                              icon: const Icon(
+                                Icons.close,
+                                color: Colors.white,
+                                size: 30,
+                              ),
+                              style: IconButton.styleFrom(
+                                backgroundColor: Colors.black54,
+                              ),
                             ),
                           ),
                         ],
@@ -517,7 +735,10 @@ class NativePhotoService {
     _showNetworkImage(dialogContext: context, photoUrl: photoUrl);
   }
 
-  static void _showNetworkImage({required BuildContext dialogContext, required String photoUrl}) {
+  static void _showNetworkImage({
+    required BuildContext dialogContext,
+    required String photoUrl,
+  }) {
     showDialog(
       context: dialogContext,
       barrierColor: Colors.black87,
@@ -535,15 +756,25 @@ class NativePhotoService {
                       errorBuilder:
                           (context, error, stackTrace) => Container(
                             padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Icon(Icons.error, color: Colors.red, size: 48),
+                                const Icon(
+                                  Icons.error,
+                                  color: Colors.red,
+                                  size: 48,
+                                ),
                                 const SizedBox(height: 16),
                                 const Text('Failed to load photo'),
                                 const SizedBox(height: 8),
-                                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text('Close'),
+                                ),
                               ],
                             ),
                           ),
@@ -555,8 +786,14 @@ class NativePhotoService {
                   right: 20,
                   child: IconButton(
                     onPressed: () => Navigator.pop(dc),
-                    icon: const Icon(Icons.close, color: Colors.white, size: 30),
-                    style: IconButton.styleFrom(backgroundColor: Colors.black54),
+                    icon: const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                      size: 30,
+                    ),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.black54,
+                    ),
                   ),
                 ),
               ],
@@ -576,12 +813,29 @@ class NativePhotoService {
       context: context,
       barrierDismissible: false,
       builder:
-          (c) => AlertDialog(
-            content: Column(
+          (c) => HandsDialog(
+            isDismissible: false,
+            maxWidth: 360,
+            showDivider: false,
+            child: Column(
               mainAxisSize: MainAxisSize.min,
-              children: [const CircularProgressIndicator(), const SizedBox(height: 16), Text(message)],
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(height: 16),
+                Text(message),
+              ],
             ),
           ),
     );
+  }
+
+  /// Open app settings to allow user to grant camera permission
+  static Future<void> _openAppSettings() async {
+    try {
+      await openAppSettings();
+    } catch (e) {
+      // If openAppSettings fails, throw to trigger fallback message
+      throw Exception('Could not open settings');
+    }
   }
 }

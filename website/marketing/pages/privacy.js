@@ -1,4 +1,23 @@
+import SEO from '../components/SEO'
+
 export default function Privacy() {
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Privacy Policy - Plan With Hands",
+    "description": "Privacy policy for Plan With Hands restaurant management software. Learn how we collect, use, and protect your information.",
+    "url": "https://planwithhands.com/privacy/"
+  };
+
+  return (
+    <>
+      <SEO
+        title="Privacy Policy - Plan With Hands | Restaurant Management Software"
+        description="Privacy policy for Plan With Hands restaurant management software. Learn how we collect, use, and protect your information when using our platform."
+        canonical="https://planwithhands.com/privacy/"
+        structuredData={structuredData}
+        keywords="privacy policy, data protection, restaurant software privacy, plan with hands privacy"
+      />
   return (
     <div className="container mx-auto px-4 py-20 max-w-3xl">
       <h1 className="text-5xl font-bold mb-6">Privacy Policy</h1>
@@ -44,5 +63,6 @@ export default function Privacy() {
         </p>
       </div>
     </div>
+    </>
   )
 }

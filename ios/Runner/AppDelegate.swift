@@ -1,58 +1,42 @@
 import Flutter
+import FirebaseMessaging
 import UIKit
 import UserNotifications
 
 @main
-@objc class AppDelegate: FlutterAppDelegate {
+@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    // Set up notification delegate
     UNUserNotificationCenter.current().delegate = self
-    
-    GeneratedPluginRegistrant.register(with: self)
+    application.registerForRemoteNotifications()
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
-  
-  // Handle APNs token registration
+
   override func application(
     _ application: UIApplication,
     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
   ) {
-    print("APNs token received: \(deviceToken)")
+    if FirebaseApp.app() != nil {
+      Messaging.messaging().apnsToken = deviceToken
+    } else {
+      print("[PushNotification] Firebase not initialized yet; skipping APNs token assignment at app delegate")
+    }
+
     super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
   }
-  
-  // Handle APNs registration failure
+
   override func application(
     _ application: UIApplication,
     didFailToRegisterForRemoteNotificationsWithError error: Error
   ) {
-    print("APNs registration failed: \(error)")
+    print("[PushNotification] Failed to register for remote notifications: \(error.localizedDescription)")
     super.application(application, didFailToRegisterForRemoteNotificationsWithError: error)
   }
-}
 
-// MARK: - UNUserNotificationCenterDelegate
-extension AppDelegate {
-  // Handle foreground notifications
-  override func userNotificationCenter(
-    _ center: UNUserNotificationCenter,
-    willPresent notification: UNNotification,
-    withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
-  ) {
-    // Show notification even when app is in foreground
-    completionHandler([.alert, .badge, .sound])
-  }
-  
-  // Handle notification taps
-  override func userNotificationCenter(
-    _ center: UNUserNotificationCenter,
-    didReceive response: UNNotificationResponse,
-    withCompletionHandler completionHandler: @escaping () -> Void
-  ) {
-    // Let Firebase handle the response
-    super.userNotificationCenter(center, didReceive: response, withCompletionHandler: completionHandler)
+  func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
+    GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
   }
 }

@@ -4,6 +4,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/utils/jobtype_helper.dart';
+import 'package:hands_app/widgets/hands_text_field.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
+import 'package:hands_app/theme/theme.dart';
 
 class SignInPage extends StatefulWidget {
   const SignInPage({super.key});
@@ -75,10 +79,15 @@ class _SignInPageState extends State<SignInPage> {
           // Get organization name if orgId is available
           if (orgId != null) {
             try {
-              final orgDoc = await FirestoreEnforcer.instance.collection('organizations').doc(orgId).get();
+              final orgDoc =
+                  await FirestoreEnforcer.instance
+                      .collection('organizations')
+                      .doc(orgId)
+                      .get();
 
               if (orgDoc.exists) {
-                organizationName = orgDoc.data()?['organizationName'] ?? 'Your Organization';
+                organizationName =
+                    orgDoc.data()?['organizationName'] ?? 'Your Organization';
               }
             } catch (e) {
               organizationName = 'Your Organization';
@@ -87,7 +96,8 @@ class _SignInPageState extends State<SignInPage> {
         }
       } else if (uid != null) {
         // Legacy flow - load user profile from Firestore
-        final userDoc = await FirestoreEnforcer.instance.collection('users').doc(uid).get();
+        final userDoc =
+            await FirestoreEnforcer.instance.collection('users').doc(uid).get();
 
         if (userDoc.exists) {
           final userData = userDoc.data() as Map<String, dynamic>;
@@ -98,10 +108,15 @@ class _SignInPageState extends State<SignInPage> {
           // Get organization name if orgId is available
           if (orgId != null) {
             try {
-              final orgDoc = await FirestoreEnforcer.instance.collection('organizations').doc(orgId).get();
+              final orgDoc =
+                  await FirestoreEnforcer.instance
+                      .collection('organizations')
+                      .doc(orgId)
+                      .get();
 
               if (orgDoc.exists) {
-                organizationName = orgDoc.data()?['organizationName'] ?? 'Your Organization';
+                organizationName =
+                    orgDoc.data()?['organizationName'] ?? 'Your Organization';
               }
             } catch (e) {
               organizationName = 'Your Organization';
@@ -136,13 +151,18 @@ class _SignInPageState extends State<SignInPage> {
       }
 
       // Sign in with email link using the current URL
-      await FirebaseAuth.instance.signInWithEmailLink(email: email!, emailLink: Uri.base.toString());
+      await FirebaseAuth.instance.signInWithEmailLink(
+        email: email!,
+        emailLink: Uri.base.toString(),
+      );
 
       // Now update the password
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         // This can happen if the sign-in link failed to authenticate the user
-        _showError('Sign-in failed. No authenticated user found. Please try again or contact support.');
+        _showError(
+          'Sign-in failed. No authenticated user found. Please try again or contact support.',
+        );
         return;
       }
       await user.updatePassword(_passwordController.text);
@@ -172,12 +192,16 @@ class _SignInPageState extends State<SignInPage> {
           final pendingUserData = pendingUserDoc.data();
 
           // Create user document with the authenticated user's UID
-          final userDoc = FirestoreEnforcer.instance.collection('users').doc(user.uid);
+          final userDoc = FirestoreEnforcer.instance
+              .collection('users')
+              .doc(user.uid);
           // Defensive: ensure both locationId (legacy) and locationIds (canonical) are set
           final dynamic pLocIds = pendingUserData['locationIds'];
           final dynamic pLocId = pendingUserData['locationId'];
           final List<String> canonicalLocIds =
-              pLocIds is Iterable ? List<String>.from(pLocIds) : (pLocId != null ? [pLocId.toString()] : <String>[]);
+              pLocIds is Iterable
+                  ? List<String>.from(pLocIds)
+                  : (pLocId != null ? [pLocId.toString()] : <String>[]);
 
           // Normalize job types to canonical list before writing user doc
           final List<String> canonicalJobTypes = coerceToJobTypes(
@@ -192,9 +216,15 @@ class _SignInPageState extends State<SignInPage> {
             'userRole': pendingUserData['userRole'],
             // write canonical jobTypes and keep legacy jobType for compatibility
             'jobTypes': canonicalJobTypes,
-            'jobType': (canonicalJobTypes.isNotEmpty ? canonicalJobTypes.first : pendingUserData['jobType']),
+            'jobType':
+                (canonicalJobTypes.isNotEmpty
+                    ? canonicalJobTypes.first
+                    : pendingUserData['jobType']),
             'organizationId': pendingUserData['organizationId'],
-            'locationId': canonicalLocIds.isNotEmpty ? canonicalLocIds.first : pendingUserData['locationId'],
+            'locationId':
+                canonicalLocIds.isNotEmpty
+                    ? canonicalLocIds.first
+                    : pendingUserData['locationId'],
             'locationIds': canonicalLocIds,
             'createdAt': pendingUserData['createdAt'],
             'updatedAt': FieldValue.serverTimestamp(),
@@ -235,86 +265,36 @@ class _SignInPageState extends State<SignInPage> {
   }
 
   void _showAppInstallDialog() {
-    showDialog(
+    HandsDialog.show(
       context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.green, size: 28),
-              const SizedBox(width: 12),
-              const Text('Welcome to Hands App!'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Your account is now set up. Download the Hands App on your mobile device to get started.',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue[200]!),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline, color: Colors.blue[600], size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Use the same email and password to sign in on the mobile app.',
-                        style: TextStyle(color: Colors.blue[700], fontSize: 13),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _launchAppStore(),
-                    icon: const Icon(Icons.apple, size: 18),
-                    label: const Text('App Store'),
-                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _launchPlayStore(),
-                    icon: const Icon(Icons.android, size: 18),
-                    label: const Text('Play Store'),
-                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  _navigateToHome();
-                },
-                style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
-                child: const Text('Continue to Dashboard'),
-              ),
-            ),
-          ],
-        );
-      },
+      isDismissible: false,
+      title: 'Welcome to Hands',
+      subtitle:
+          'Your account is ready. Install the mobile app to get started on the floor.',
+      maxWidth: 520,
+      child: const HandsModalInfoBanner(
+        text: 'Use the same email and password to sign in on the mobile app.',
+        icon: Icons.phone_iphone_rounded,
+      ),
+      actions: [
+        HandsSecondaryButton(
+          text: 'App Store',
+          icon: Icons.apple_rounded,
+          onPressed: _launchAppStore,
+        ),
+        HandsSecondaryButton(
+          text: 'Play Store',
+          icon: Icons.android_rounded,
+          onPressed: _launchPlayStore,
+        ),
+        HandsPrimaryButton(
+          text: 'Continue',
+          onPressed: () {
+            Navigator.of(context).pop();
+            _navigateToHome();
+          },
+        ),
+      ],
     );
   }
 
@@ -346,7 +326,11 @@ class _SignInPageState extends State<SignInPage> {
   void _showError(String message) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message), backgroundColor: Colors.red, duration: const Duration(seconds: 5)),
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
       );
     }
   }
@@ -354,7 +338,11 @@ class _SignInPageState extends State<SignInPage> {
   void _showSuccess(String message) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message), backgroundColor: Colors.green, duration: const Duration(seconds: 3)),
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
+        ),
       );
     }
   }
@@ -397,164 +385,268 @@ class _SignInPageState extends State<SignInPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final isWide = MediaQuery.of(context).size.width >= 980;
 
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
+      backgroundColor: HandsColors.scaffoldBackground,
       appBar: AppBar(
-        title: const Text('Complete Your Setup'),
+        title: Text(
+          'Complete setup',
+          style: GoogleFonts.inter(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.2,
+          ),
+        ),
         centerTitle: true,
-        backgroundColor: theme.primaryColor,
+        backgroundColor: HandsColors.cardPrimary,
         foregroundColor: Colors.white,
         elevation: 0,
       ),
       body:
           isLoading
               ? const Center(child: CircularProgressIndicator())
-              : SingleChildScrollView(
-                padding: const EdgeInsets.all(24.0),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const SizedBox(height: 20),
-
-                      // Welcome Card
-                      Card(
-                        elevation: 4,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        child: Padding(
-                          padding: const EdgeInsets.all(24.0),
-                          child: Column(
-                            children: [
-                              Icon(Icons.waving_hand, size: 48, color: theme.primaryColor),
-                              const SizedBox(height: 16),
-                              Text(
-                                'Welcome, ${userName ?? 'User'}!',
-                                style: theme.textTheme.headlineSmall?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: theme.primaryColor,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                              if (organizationName != null) ...[
-                                const SizedBox(height: 8),
-                                Text(
-                                  'You\'ve been added to $organizationName',
-                                  style: theme.textTheme.bodyLarge?.copyWith(
-                                    color: Colors.grey[600],
-                                    fontWeight: FontWeight.w500,
+              : Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1120),
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(18),
+                    child: Form(
+                      key: _formKey,
+                      child:
+                          isWide
+                              ? Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(child: _buildSetupIntro()),
+                                  const SizedBox(width: 20),
+                                  SizedBox(
+                                    width: 460,
+                                    child: _buildSetupForm(),
                                   ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ],
-                              const SizedBox(height: 12),
-                              Text(
-                                'Please set your password to complete your account setup.',
-                                style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
-                                textAlign: TextAlign.center,
+                                ],
+                              )
+                              : Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  _buildSetupIntro(),
+                                  const SizedBox(height: 18),
+                                  _buildSetupForm(),
+                                ],
                               ),
-                            ],
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // Email field (read-only)
-                      TextFormField(
-                        initialValue: email ?? '',
-                        readOnly: true,
-                        decoration: InputDecoration(
-                          labelText: 'Email Address',
-                          border: const OutlineInputBorder(),
-                          prefixIcon: const Icon(Icons.email),
-                          filled: true,
-                          fillColor: Colors.grey[100],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // New Password field
-                      TextFormField(
-                        controller: _passwordController,
-                        obscureText: true,
-                        validator: _validatePassword,
-                        decoration: const InputDecoration(
-                          labelText: 'Create Password',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.lock),
-                          helperText: 'At least 8 characters with uppercase, lowercase, and number',
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Confirm Password field
-                      TextFormField(
-                        controller: _confirmPasswordController,
-                        obscureText: true,
-                        validator: _validateConfirmPassword,
-                        decoration: const InputDecoration(
-                          labelText: 'Confirm Password',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.lock_outline),
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-
-                      // Set Password button
-                      ElevatedButton(
-                        onPressed: isSettingPassword ? null : _setPassword,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: theme.primaryColor,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          elevation: 2,
-                        ),
-                        child:
-                            isSettingPassword
-                                ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                  ),
-                                )
-                                : const Text(
-                                  'Set Password & Continue',
-                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                                ),
-                      ),
-                      const SizedBox(height: 24),
-
-                      // Security note
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.blue[50],
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.blue[200]!),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.security, color: Colors.blue[600]),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                'Your password will be securely encrypted. You can change it later in your account settings.',
-                                style: TextStyle(color: Colors.blue[700], fontSize: 14),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
+    );
+  }
+
+  Widget _buildSetupIntro() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: HandsModalTokens.surface,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: HandsModalTokens.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 62,
+            height: 62,
+            decoration: BoxDecoration(
+              color: HandsColors.handsOrange.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Icon(
+              Icons.verified_user_outlined,
+              color: HandsColors.handsOrange,
+              size: 28,
+            ),
+          ),
+          const SizedBox(height: 18),
+          Text(
+            'You’re almost in.',
+            style: GoogleFonts.inter(
+              fontSize: 30,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -1.0,
+              height: 1.0,
+              color: HandsColors.white,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            organizationName == null
+                ? 'Finish setting your password so you can start using Hands.'
+                : 'You’ve been added to $organizationName. Set your password to finish account setup.',
+            style: HandsModalTokens.bodyStyle,
+          ),
+          const SizedBox(height: 20),
+          HandsModalSection(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Account holder', style: HandsModalTokens.labelStyle),
+                const SizedBox(height: 8),
+                Text(
+                  userName ?? 'User',
+                  style: GoogleFonts.inter(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w800,
+                    color: HandsColors.white,
+                  ),
+                ),
+                if (email != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    email!,
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: HandsModalTokens.textMuted,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSetupForm() {
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: HandsModalTokens.surface,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: HandsModalTokens.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Create your password',
+            style: GoogleFonts.inter(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: HandsColors.white,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Use a strong password you can also use in the mobile app.',
+            style: HandsModalTokens.bodyStyle,
+          ),
+          const SizedBox(height: 18),
+          Text('Email', style: HandsModalTokens.labelStyle),
+          const SizedBox(height: 8),
+          HandsTextFormField(
+            initialValue: email ?? '',
+            readOnly: true,
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: HandsColors.white,
+            ),
+            decoration: _fieldDecoration(
+              'Email address',
+              Icons.alternate_email_rounded,
+            ).copyWith(fillColor: HandsModalTokens.surfaceElevated),
+          ),
+          const SizedBox(height: 14),
+          Text('Password', style: HandsModalTokens.labelStyle),
+          const SizedBox(height: 8),
+          HandsTextFormField(
+            controller: _passwordController,
+            textCapitalization: TextCapitalization.none,
+            obscureText: true,
+            validator: _validatePassword,
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: HandsColors.white,
+            ),
+            decoration: _fieldDecoration(
+              'Create password',
+              Icons.lock_outline_rounded,
+            ).copyWith(
+              helperText:
+                  'At least 8 characters, with uppercase, lowercase, and a number.',
+              helperStyle: GoogleFonts.inter(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w500,
+                color: HandsModalTokens.textSubtle,
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text('Confirm password', style: HandsModalTokens.labelStyle),
+          const SizedBox(height: 8),
+          HandsTextFormField(
+            controller: _confirmPasswordController,
+            textCapitalization: TextCapitalization.none,
+            obscureText: true,
+            validator: _validateConfirmPassword,
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: HandsColors.white,
+            ),
+            decoration: _fieldDecoration(
+              'Confirm password',
+              Icons.lock_person_outlined,
+            ),
+          ),
+          const SizedBox(height: 18),
+          const HandsModalInfoBanner(
+            text:
+                'Your password is securely encrypted and can be changed later in Settings.',
+            icon: Icons.security_rounded,
+          ),
+          const SizedBox(height: 20),
+          HandsPrimaryButton(
+            text: 'Finish setup',
+            onPressed: isSettingPassword ? null : _setPassword,
+            isLoading: isSettingPassword,
+            width: double.infinity,
+            icon: Icons.arrow_forward_rounded,
+          ),
+        ],
+      ),
+    );
+  }
+
+  InputDecoration _fieldDecoration(String hint, IconData icon) {
+    return InputDecoration(
+      hintText: hint,
+      prefixIcon: Icon(icon, color: HandsModalTokens.textSubtle, size: 18),
+      filled: true,
+      fillColor: HandsModalTokens.surfaceMuted,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: HandsModalTokens.border),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: HandsModalTokens.border),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(
+          color: HandsColors.handsOrange,
+          width: 1.4,
+        ),
+      ),
+      hintStyle: GoogleFonts.inter(
+        fontSize: 13.5,
+        fontWeight: FontWeight.w500,
+        color: HandsModalTokens.textSubtle,
+      ),
     );
   }
 }

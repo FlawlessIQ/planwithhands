@@ -1,6 +1,7 @@
 import 'dart:developer' as developer;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hands_app/data/models/task_data.dart';
+import 'package:hands_app/utils/localized_content.dart';
 
 class DailyChecklistTask {
   final String taskId;
@@ -92,12 +93,10 @@ class DailyChecklistTask {
     final completed = map['isCompleted'] ?? map['completed'] ?? false;
 
     // Extract description with better fallbacks
-    String description =
-        map['description']?.toString() ??
-        map['title']?.toString() ??
-        map['name']?.toString() ??
-        map['taskName']?.toString() ??
-        '';
+    String description = localizedContent(
+      map,
+      fieldKeys: const ['description', 'title', 'name', 'taskName'],
+    );
 
     // If description is still empty, provide a meaningful fallback
     if (description.isEmpty) {
@@ -105,16 +104,21 @@ class DailyChecklistTask {
       if (taskId.contains('-cf-')) {
         // Prefer any explicit taskName before falling back to a generic label
         final tn = map['taskName']?.toString();
-        description = (tn != null && tn.trim().isNotEmpty) ? tn : 'Carried forward task';
+        description =
+            (tn != null && tn.trim().isNotEmpty) ? tn : 'Carried forward task';
       } else if (map['photoUrl'] != null || map['proofImageUrl'] != null) {
         description = 'Photo task';
       } else {
         description = 'Task';
       }
-      developer.log('[DailyChecklistTask] Used fallback description: $description');
+      developer.log(
+        '[DailyChecklistTask] Used fallback description: $description',
+      );
     }
 
-    developer.log('[DailyChecklistTask] Final task: taskId=${map['taskId']}, description=$description');
+    developer.log(
+      '[DailyChecklistTask] Final task: taskId=${map['taskId']}, description=$description',
+    );
 
     return DailyChecklistTask(
       taskId: map['taskId']?.toString() ?? '',
@@ -124,16 +128,24 @@ class DailyChecklistTask {
       completedAt: parseTimestampField(map['completedAt']),
       proofImageUrl: map['proofImageUrl']?.toString(),
       notes: map['notes']?.toString(),
-      photoRequired: map['photoRequired'] is bool ? map['photoRequired'] : false,
+      photoRequired:
+          map['photoRequired'] is bool ? map['photoRequired'] : false,
       notCompletedReason: map['notCompletedReason']?.toString(),
       // Carry-forward fields
-      isCarryForward: map['isCarryForward'] is bool ? map['isCarryForward'] : false,
+      isCarryForward:
+          map['isCarryForward'] is bool ? map['isCarryForward'] : false,
       originalDate: parseTimestampField(map['originalDate']),
       originalChecklistId: map['originalChecklistId']?.toString(),
       originalTaskId: map['originalTaskId']?.toString(),
       carriedIntoDate: parseTimestampField(map['carriedIntoDate']),
-      carryForwardAttempted: map['carryForwardAttempted'] is bool ? map['carryForwardAttempted'] : false,
-      excludedFromMetrics: map['excludedFromMetrics'] is bool ? map['excludedFromMetrics'] : false,
+      carryForwardAttempted:
+          map['carryForwardAttempted'] is bool
+              ? map['carryForwardAttempted']
+              : false,
+      excludedFromMetrics:
+          map['excludedFromMetrics'] is bool
+              ? map['excludedFromMetrics']
+              : false,
       resolvedLate: map['resolvedLate'] is bool ? map['resolvedLate'] : false,
       resolvedAt: parseTimestampField(map['resolvedAt']),
     );
@@ -202,7 +214,8 @@ class DailyChecklistTask {
       originalChecklistId: originalChecklistId ?? this.originalChecklistId,
       originalTaskId: originalTaskId ?? this.originalTaskId,
       carriedIntoDate: carriedIntoDate ?? this.carriedIntoDate,
-      carryForwardAttempted: carryForwardAttempted ?? this.carryForwardAttempted,
+      carryForwardAttempted:
+          carryForwardAttempted ?? this.carryForwardAttempted,
       excludedFromMetrics: excludedFromMetrics ?? this.excludedFromMetrics,
       resolvedLate: resolvedLate ?? this.resolvedLate,
       resolvedAt: resolvedAt ?? this.resolvedAt,
@@ -227,6 +240,7 @@ class DailyChecklist {
   final DateTime createdAt;
   final DateTime updatedAt;
   final String? templateName; // Optional template name
+  final List<String> jobTypes;
 
   const DailyChecklist({
     required this.id,
@@ -245,6 +259,7 @@ class DailyChecklist {
     required this.createdAt,
     required this.updatedAt,
     this.templateName,
+    this.jobTypes = const [],
   });
 
   Map<String, dynamic> toMap() {
@@ -259,12 +274,14 @@ class DailyChecklist {
       'startedByUserId': startedByUserId,
       'startedAt': startedAt != null ? Timestamp.fromDate(startedAt!) : null,
       'completedByUserId': completedByUserId,
-      'completedAt': completedAt != null ? Timestamp.fromDate(completedAt!) : null,
+      'completedAt':
+          completedAt != null ? Timestamp.fromDate(completedAt!) : null,
       'tasks': tasks.map((task) => task.toMap()).toList(),
       'isCompleted': isCompleted,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
       'templateName': templateName,
+      'jobTypes': jobTypes,
       // Add metrics for Manager Dashboard
       'completedItems': tasks.where((task) => task.isCompleted).length,
       'totalItems': tasks.length,
@@ -317,10 +334,13 @@ class DailyChecklist {
         try {
           if (entry.value is Map<String, dynamic>) {
             final taskData = Map<String, dynamic>.from(entry.value);
-            developer.log('[DailyChecklist] Loading task from Map format: $taskData');
+            developer.log(
+              '[DailyChecklist] Loading task from Map format: $taskData',
+            );
 
             // Ensure taskId is set
-            if (!taskData.containsKey('taskId') && !taskData.containsKey('id')) {
+            if (!taskData.containsKey('taskId') &&
+                !taskData.containsKey('id')) {
               taskData['taskId'] = entry.key;
             }
 
@@ -330,13 +350,17 @@ class DailyChecklist {
                 !taskData.containsKey('name')) {
               // Try to extract meaningful info from the task ID or provide a default
               final taskId = entry.key;
-              developer.log('[DailyChecklist] Task missing description, taskId: $taskId');
+              developer.log(
+                '[DailyChecklist] Task missing description, taskId: $taskId',
+              );
               if (taskId.contains('-cf-')) {
                 taskData['description'] = 'Carried forward task';
               } else {
                 taskData['description'] = 'Task ${tasksList.length + 1}';
               }
-              developer.log('[DailyChecklist] Set default description: ${taskData['description']}');
+              developer.log(
+                '[DailyChecklist] Set default description: ${taskData['description']}',
+              );
             }
 
             tasksList.add(DailyChecklistTask.fromMap(taskData));
@@ -364,7 +388,15 @@ class DailyChecklist {
       isCompleted: map['isCompleted'] is bool ? map['isCompleted'] : false,
       createdAt: createdAt,
       updatedAt: updatedAt,
-      templateName: map['templateName']?.toString(),
+      templateName: localizedContent(
+        map,
+        fieldKeys: const ['templateName', 'name', 'checklistName'],
+      ),
+      jobTypes:
+          (map['jobTypes'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
     );
   }
 
@@ -385,6 +417,7 @@ class DailyChecklist {
     DateTime? createdAt,
     DateTime? updatedAt,
     String? templateName,
+    List<String>? jobTypes,
   }) {
     return DailyChecklist(
       id: id ?? this.id,
@@ -403,6 +436,7 @@ class DailyChecklist {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       templateName: templateName ?? this.templateName,
+      jobTypes: jobTypes ?? this.jobTypes,
     );
   }
 

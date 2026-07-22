@@ -2,6 +2,7 @@
 import {checklistIdFor, daysFromNow, generateForOrgDate} from "../src/dailyGenerator";
 import {expect} from "chai";
 import * as admin from "firebase-admin";
+import {Firestore} from "@google-cloud/firestore";
 
 // Note: these tests assume the emulator is available via FIRESTORE_EMULATOR_HOST or
 // will use the default in-memory project when admin.initializeApp is called without credentials.
@@ -9,10 +10,17 @@ if (!admin.apps.length) {
   admin.initializeApp();
 }
 
+function testDb(): Firestore {
+  return new Firestore({
+    projectId: process.env.GCLOUD_PROJECT || process.env.FIREBASE_PROJECT || "demo-test",
+    databaseId: process.env.FIRESTORE_DATABASE_ID || "planwithhands",
+  });
+}
+
 describe("dailyGenerator helpers", () => {
   it("generates deterministic checklist id", () => {
-    const id = checklistIdFor("org1", "loc1", "shiftA", "2025-08-19");
-    expect(id).to.equal("org1_loc1_shiftA_2025-08-19");
+    const id = checklistIdFor("org1", "loc1", "shiftA", "tmpl-1", "2025-08-19");
+    expect(id).to.equal("org1_loc1_shiftA_tmpl-1_2025-08-19");
   });
 
   it("daysFromNow produces a timestamp ~30 days in future", () => {
@@ -25,7 +33,7 @@ describe("dailyGenerator helpers", () => {
 
   // Integration-style idempotency + carry-forward tests using the emulator
   it("idempotency: running generator twice does not create duplicate checklists or tasks", async () => {
-    const db = admin.firestore();
+    const db = testDb();
     const orgId = "test-org-id";
     const locId = "loc-1";
     const shiftId = "shift-1";
@@ -79,7 +87,7 @@ describe("dailyGenerator helpers", () => {
   }).timeout(10000);
 
   it("carry-forward: moves incomplete yesterday tasks into today with isCarryForward and expiresAt ~30d", async () => {
-    const db = admin.firestore();
+    const db = testDb();
     const orgId = "cf-org";
     const locId = "loc-cf";
     const shiftId = "shift-cf";
@@ -99,7 +107,7 @@ describe("dailyGenerator helpers", () => {
       name: "CF Template",
     });
     // create yesterday checklist with an incomplete task in parent array
-    const yesterdayChecklistId = checklistIdFor(orgId, locId, shiftId, yesterday);
+    const yesterdayChecklistId = checklistIdFor(orgId, locId, shiftId, templateId, yesterday);
     await db
         .collection("organizations")
         .doc(orgId)
@@ -112,20 +120,28 @@ describe("dailyGenerator helpers", () => {
           date: yesterday,
           checklistTemplateId: templateId,
           shiftId: shiftId,
-          tasks: [
-            {
-              "taskId": "old-1",
-              "taskName": "Left undone",
-              "completed": false,
-            },
-          ],
+        });
+    await db
+        .collection("organizations")
+        .doc(orgId)
+        .collection("locations")
+        .doc(locId)
+        .collection("daily_checklists")
+        .doc(yesterdayChecklistId)
+        .collection("tasks")
+        .doc("old-1")
+        .set({
+          taskId: "old-1",
+          taskName: "Left undone",
+          completed: false,
+          checklistTemplateId: templateId,
         });
 
     // Ensure today's checklists exist (generator will carry forward)
     await generateForOrgDate(orgId, today);
 
     // Query today's carry-forward tasks
-    const todayChecklistId = checklistIdFor(orgId, locId, shiftId, today);
+    const todayChecklistId = checklistIdFor(orgId, locId, shiftId, templateId, today);
     const tasksSnap = await db
         .collection("organizations")
         .doc(orgId)
@@ -149,7 +165,7 @@ describe("dailyGenerator helpers", () => {
   }).timeout(10000);
 
   it("negative carry-forward: completed yesterday tasks are not carried forward", async () => {
-    const db = admin.firestore();
+    const db = testDb();
     const orgId = "cf-org-2";
     const locId = "loc-cf-2";
     const shiftId = "shift-cf-2";
@@ -165,24 +181,29 @@ describe("dailyGenerator helpers", () => {
       locationIds: [locId],
     });
     await db.collection("organizations").doc(orgId).collection("checklist_templates").doc(templateId).set({name: "CF Template 2"});
-    const yesterdayChecklistId = checklistIdFor(orgId, locId, shiftId, yesterday);
+    const yesterdayChecklistId = checklistIdFor(orgId, locId, shiftId, templateId, yesterday);
     await db.collection("organizations").doc(orgId).collection("locations").doc(locId).collection("daily_checklists").doc(yesterdayChecklistId).set({
       id: yesterdayChecklistId,
       date: yesterday,
       checklistTemplateId: templateId,
       shiftId: shiftId,
-      tasks: [{taskId: "done-1", taskName: "Done", completed: true}],
+    });
+    await db.collection("organizations").doc(orgId).collection("locations").doc(locId).collection("daily_checklists").doc(yesterdayChecklistId).collection("tasks").doc("done-1").set({
+      taskId: "done-1",
+      taskName: "Done",
+      completed: true,
+      checklistTemplateId: templateId,
     });
 
     await generateForOrgDate(orgId, today);
 
-    const todayChecklistId = checklistIdFor(orgId, locId, shiftId, today);
+    const todayChecklistId = checklistIdFor(orgId, locId, shiftId, templateId, today);
     const tasksSnap = await db.collection("organizations").doc(orgId).collection("locations").doc(locId).collection("daily_checklists").doc(todayChecklistId).collection("tasks").where("isCarryForward", "==", true).get();
     expect(tasksSnap.docs.length).to.equal(0);
   }).timeout(8000);
 
-  it("multi-template: shift with multiple templates seeds both templates tasks into today", async () => {
-    const db = admin.firestore();
+  it("multi-template: shift with multiple templates creates one checklist per template", async () => {
+    const db = testDb();
     const orgId = "multi-org";
     const locId = "multi-loc";
     const shiftId = "multi-shift";
@@ -204,16 +225,26 @@ describe("dailyGenerator helpers", () => {
 
     await generateForOrgDate(orgId, date);
 
-    const checklistId = checklistIdFor(orgId, locId, shiftId, date);
-    const tasksSnap = await db.collection("organizations").doc(orgId).collection("locations").doc(locId).collection("daily_checklists").doc(checklistId).collection("tasks").get();
-    // Expect two seeded tasks (a1 and b1)
-    expect(tasksSnap.docs.length).to.equal(2);
+    const checklistAId = checklistIdFor(orgId, locId, shiftId, templateA, date);
+    const checklistBId = checklistIdFor(orgId, locId, shiftId, templateB, date);
+    const checklistARef = db.collection("organizations").doc(orgId).collection("locations").doc(locId).collection("daily_checklists").doc(checklistAId);
+    const checklistBRef = db.collection("organizations").doc(orgId).collection("locations").doc(locId).collection("daily_checklists").doc(checklistBId);
 
-    // Assert each seeded/cf task has expiresAt and deterministic-ish id
-    for (const d of tasksSnap.docs) {
+    const [checklistASnap, checklistBSnap, tasksASnap, tasksBSnap] = await Promise.all([
+      checklistARef.get(),
+      checklistBRef.get(),
+      checklistARef.collection("tasks").get(),
+      checklistBRef.collection("tasks").get(),
+    ]);
+
+    expect(checklistASnap.exists).to.equal(true);
+    expect(checklistBSnap.exists).to.equal(true);
+    expect(tasksASnap.docs.length).to.equal(1);
+    expect(tasksBSnap.docs.length).to.equal(1);
+
+    for (const d of [...tasksASnap.docs, ...tasksBSnap.docs]) {
       const data = d.data();
       expect(data.expiresAt).to.exist;
-      // task id should be string and non-empty
       expect(d.id).to.be.a("string").and.to.have.length.greaterThan(0);
     }
   }).timeout(10000);

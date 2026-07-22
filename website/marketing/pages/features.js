@@ -1,11 +1,40 @@
 import PhoneMockup from '../components/PhoneMockup'
+import SEO from '../components/SEO'
 
 export default function Features() {
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Restaurant Management Software Features",
+    "description": "Comprehensive features for restaurant operations: digital checklists, team messaging, training documents, and real-time analytics.",
+    "url": "https://planwithhands.com/features/",
+    "mainEntity": {
+      "@type": "SoftwareApplication",
+      "name": "Plan With Hands",
+      "featureList": [
+        "Daily Digital Checklists with Photo Requirements",
+        "Team Messaging with Push Notifications", 
+        "Training Documents and Materials Library",
+        "Real-time Analytics and Missed Task Insights",
+        "Multi-location Management Dashboard",
+        "Audit History and Compliance Tracking"
+      ]
+    }
+  };
+
   return (
+    <>
+      <SEO
+        title="Features - Plan With Hands | Restaurant Management Software Tools"
+        description="Discover powerful features for restaurant operations: digital checklists, team messaging, training documents, real-time analytics, and multi-location management tools."
+        canonical="https://planwithhands.com/features/"
+        structuredData={structuredData}
+        keywords="restaurant management features, digital checklists, team messaging, training documents, restaurant analytics, multi-location management, operational tools"
+      />
     <div className="py-20">
       <header className="text-center max-w-3xl mx-auto px-4">
-        <h1 className="text-5xl font-bold mb-4">Why restaurants choose Hands</h1>
-        <p className="text-white/80">Daily checklists, documents & training, team messaging, and live insights. No more missed tasks.</p>
+        <h1 className="text-5xl font-bold mb-4">Run every shift with proof</h1>
+        <p className="text-white/80">Checklists, photo proof, training, messaging, dashboards, and daily summaries for restaurant teams.</p>
       </header>
 
       <div className="max-w-6xl mx-auto px-4 space-y-20 mt-16">
@@ -28,7 +57,7 @@ export default function Features() {
               </li>
               <li className="flex items-start gap-3">
                 <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
-                <span>Audit history and missed task insights</span>
+              <span>Audit history, location breakdowns, and missed task insights</span>
               </li>
               <li className="flex items-start gap-3">
                 <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
@@ -86,7 +115,7 @@ export default function Features() {
               </li>
               <li className="flex items-start gap-3">
                 <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
-                <span>Push notifications to devices (if enabled)</span>
+              <span>Push notifications for announcements, messages, and daily summaries</span>
               </li>
               <li className="flex items-start gap-3">
                 <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
@@ -114,7 +143,7 @@ export default function Features() {
               </li>
               <li className="flex items-start gap-3">
                 <div className="w-2 h-2 bg-accent rounded-full mt-2 flex-shrink-0"></div>
-                <span>Compare trends across locations</span>
+                <span>Compare trends across locations and business-day summary periods</span>
               </li>
             </ul>
           </div>
@@ -126,5 +155,6 @@ export default function Features() {
         </div>
       </div>
     </div>
+    </>
   )
 }

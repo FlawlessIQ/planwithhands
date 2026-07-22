@@ -1,0 +1,13 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls", "delegate_permission/common.get_login_creds"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.planwithhands.hands",
+      "sha256_cert_fingerprints": [
+        "3B17A34004E46365996DD1C2E4CE54A0F0F387E3A0DC798B66BA9B44DB5DA24E",
+        "D21E8CBF1AE6BB5A5926D1DDBAA0A52D7CD8F8C5C92F55606BC28F35CCBAC27D"
+      ]
+    }
+  }
+]

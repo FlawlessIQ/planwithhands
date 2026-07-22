@@ -27,30 +27,58 @@ class DashboardDataService {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
+    // Validate session before proceeding with data fetch
+    try {
+      await user.getIdToken(true); // Force token refresh to ensure validity
+    } catch (e) {
+      logger.w('[DashboardData] Session validation failed: $e');
+      if (e.toString().contains('network') || e.toString().contains('timeout')) {
+        // Network issue - proceed but log warning
+        logger.w('[DashboardData] Network issue during session validation, proceeding');
+      } else {
+        // Token genuinely invalid - throw exception
+        throw Exception('Session expired - please sign in again');
+      }
+    }
+
     logger.d('[DashboardData] Loading user session for ${user.uid}');
     final stopwatch = Stopwatch()..start();
 
-    // Parallel fetch user data and organization data
-    final futures = await Future.wait([_fetchUserDocument(user.uid), _fetchUserLocations(user.uid)]);
+    try {
+      // Parallel fetch user data and organization data
+      final futures = await Future.wait([_fetchUserDocument(user.uid), _fetchUserLocations(user.uid)]);
 
-    final userData = futures[0] as Map<String, dynamic>;
-    final locations = futures[1] as List<Map<String, dynamic>>;
+      final userData = futures[0] as Map<String, dynamic>;
+      final locations = futures[1] as List<Map<String, dynamic>>;
 
-    _currentSession = UserSessionData(
-      userId: user.uid,
-      organizationId: userData['organizationId'],
-      userRole: userData['userRole'] ?? 1,
-      jobTypes: _coerceToJobTypes(userData['jobTypes'] ?? userData['jobType']),
-      locationIds: _coerceToLocationIds(userData['locationIds'] ?? userData['locationId']),
-      availableLocations: locations,
-      loadedAt: DateTime.now(),
-      schedulingEnabled: true, // Default to true
-    );
+      _currentSession = UserSessionData(
+        userId: user.uid,
+        organizationId: userData['organizationId'],
+        userRole: userData['userRole'] ?? 1,
+        jobTypes: _coerceToJobTypes(userData['jobTypes'] ?? userData['jobType']),
+        locationIds: _coerceToLocationIds(userData['locationIds'] ?? userData['locationId']),
+        availableLocations: locations,
+        loadedAt: DateTime.now(),
+        schedulingEnabled: true, // Default to true
+      );
 
-    stopwatch.stop();
-    logger.d('[DashboardData] User session loaded in ${stopwatch.elapsedMilliseconds}ms');
+      stopwatch.stop();
+      logger.d('[DashboardData] User session loaded in ${stopwatch.elapsedMilliseconds}ms');
 
-    return _currentSession!;
+      return _currentSession!;
+    } catch (e) {
+      stopwatch.stop();
+      logger.e('[DashboardData] Failed to load user session: $e');
+
+      // Clear cached session on error
+      _currentSession = null;
+
+      // Re-throw with more context
+      if (e.toString().contains('UNAUTHENTICATED') || e.toString().contains('permission-denied')) {
+        throw Exception('Session expired - please sign in again');
+      }
+      rethrow;
+    }
   }
 
   /// Load dashboard data with parallel processing and caching

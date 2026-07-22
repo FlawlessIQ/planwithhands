@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/services/app_permission_service.dart';
 
 /// Widget that handles permission requests with user-friendly UI
@@ -37,7 +38,9 @@ class _AppPermissionWidgetState extends State<AppPermissionWidget> {
 
   Future<void> _checkPermissionStatus() async {
     final isGranted = await _permissionService.isGranted(widget.permission);
-    final isPermanentlyDenied = await _permissionService.isPermanentlyDenied(widget.permission);
+    final isPermanentlyDenied = await _permissionService.isPermanentlyDenied(
+      widget.permission,
+    );
 
     if (mounted) {
       setState(() {
@@ -49,7 +52,9 @@ class _AppPermissionWidgetState extends State<AppPermissionWidget> {
   }
 
   Future<void> _requestPermission() async {
-    final status = await _permissionService.requestPermission(widget.permission);
+    final status = await _permissionService.requestPermission(
+      widget.permission,
+    );
 
     if (mounted) {
       switch (status) {
@@ -59,7 +64,10 @@ class _AppPermissionWidgetState extends State<AppPermissionWidget> {
             _isPermanentlyDenied = false;
           });
           widget.onPermissionGranted?.call();
-          _showSnackBar('Permission granted! You can now use this feature.', isError: false);
+          _showSnackBar(
+            'Permission granted! You can now use this feature.',
+            isError: false,
+          );
           break;
 
         case PermissionStatus.denied:
@@ -88,8 +96,12 @@ class _AppPermissionWidgetState extends State<AppPermissionWidget> {
   }
 
   void _showPermissionDeniedSnackBar() {
-    final permissionName = _permissionService.getPermissionName(widget.permission);
-    final rationale = _permissionService.getPermissionRationale(widget.permission);
+    final permissionName = _permissionService.getPermissionName(
+      widget.permission,
+    );
+    final rationale = _permissionService.getPermissionRationale(
+      widget.permission,
+    );
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -107,7 +119,10 @@ class _AppPermissionWidgetState extends State<AppPermissionWidget> {
           onPressed: () async {
             final opened = await _permissionService.openSettings();
             if (!opened && mounted) {
-              _showSnackBar('Could not open settings. Please manually enable permissions.', isError: true);
+              _showSnackBar(
+                'Could not open settings. Please manually enable permissions.',
+                isError: true,
+              );
             }
           },
         ),
@@ -148,12 +163,18 @@ class _AppPermissionWidgetState extends State<AppPermissionWidget> {
                 Expanded(
                   child: Text(
                     '${_permissionService.getPermissionName(widget.permission)} access is disabled. Tap to enable in settings.',
-                    style: TextStyle(color: Colors.orange.shade700, fontSize: 12),
+                    style: TextStyle(
+                      color: Colors.orange.shade700,
+                      fontSize: 12,
+                    ),
                   ),
                 ),
                 TextButton(
                   onPressed: _permissionService.openSettings,
-                  child: Text('Settings', style: TextStyle(color: Colors.orange.shade700)),
+                  child: Text(
+                    'Settings',
+                    style: TextStyle(color: Colors.orange.shade700),
+                  ),
                 ),
               ],
             ),
@@ -183,7 +204,11 @@ class _AppPermissionWidgetState extends State<AppPermissionWidget> {
     // Check if permanently denied
     if (await service.isPermanentlyDenied(permission)) {
       onDenied?.call();
-      AppPermissionUtils._showPermanentlyDeniedDialog(context, permission, service);
+      AppPermissionUtils._showPermanentlyDeniedDialog(
+        context,
+        permission,
+        service,
+      );
       return false;
     }
 
@@ -195,7 +220,11 @@ class _AppPermissionWidgetState extends State<AppPermissionWidget> {
       return true;
     } else {
       onDenied?.call();
-      AppPermissionUtils._showPermissionDeniedDialog(context, permission, service);
+      AppPermissionUtils._showPermissionDeniedDialog(
+        context,
+        permission,
+        service,
+      );
       return false;
     }
   }
@@ -248,19 +277,23 @@ class AppPermissionUtils {
     showDialog(
       context: context,
       builder:
-          (context) => AlertDialog(
-            title: Text('$permissionName Permission'),
-            content: Text(rationale),
+          (context) => HandsDialog(
+            title: '$permissionName Permission',
+            maxWidth: 440,
             actions: [
-              TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-              TextButton(
+              HandsSecondaryButton(
+                text: 'Cancel',
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+              HandsPrimaryButton(
+                text: 'Settings',
                 onPressed: () async {
                   Navigator.of(context).pop();
                   await service.openSettings();
                 },
-                child: const Text('Settings'),
               ),
             ],
+            child: Text(rationale, style: HandsModalTokens.bodyStyle),
           ),
     );
   }
@@ -275,21 +308,26 @@ class AppPermissionUtils {
     showDialog(
       context: context,
       builder:
-          (context) => AlertDialog(
-            title: Text('$permissionName Required'),
-            content: Text(
-              'This feature requires $permissionName permission. Please enable it in your device settings to continue.',
-            ),
+          (context) => HandsDialog(
+            title: '$permissionName Required',
+            maxWidth: 440,
             actions: [
-              TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-              TextButton(
+              HandsSecondaryButton(
+                text: 'Cancel',
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+              HandsPrimaryButton(
+                text: 'Open Settings',
                 onPressed: () async {
                   Navigator.of(context).pop();
                   await service.openSettings();
                 },
-                child: const Text('Open Settings'),
               ),
             ],
+            child: Text(
+              'This feature requires $permissionName permission. Please enable it in your device settings to continue.',
+              style: HandsModalTokens.bodyStyle,
+            ),
           ),
     );
   }

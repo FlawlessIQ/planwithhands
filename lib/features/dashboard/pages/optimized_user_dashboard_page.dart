@@ -20,7 +20,11 @@ class OptimizedUserDashboardPage extends HookWidget {
   final String? selectedLocationId;
   final Function(String?)? onLocationChanged;
 
-  const OptimizedUserDashboardPage({super.key, this.selectedLocationId, this.onLocationChanged});
+  const OptimizedUserDashboardPage({
+    super.key,
+    this.selectedLocationId,
+    this.onLocationChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +38,12 @@ class OptimizedUserDashboardPage extends HookWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Dashboard'),
-        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: dashboard.refresh)],
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: dashboard.refresh,
+          ),
+        ],
       ),
       body: _buildBody(context, dashboard),
     );
@@ -48,7 +57,10 @@ class OptimizedUserDashboardPage extends HookWidget {
 
     // Loading state with progressive UI
     if (dashboard.isLoading && dashboard.snapshot == null) {
-      return _buildLoadingState(dashboard.loadingProgress, dashboard.loadingStage);
+      return _buildLoadingState(
+        dashboard.loadingProgress,
+        dashboard.loadingStage,
+      );
     }
 
     // Success state with data
@@ -68,9 +80,15 @@ class OptimizedUserDashboardPage extends HookWidget {
         children: [
           CircularProgressIndicator(value: progress),
           const SizedBox(height: 16),
-          Text(stage, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+          Text(
+            stage,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+          ),
           const SizedBox(height: 8),
-          Text('${(progress * 100).toInt()}% Complete', style: const TextStyle(color: Colors.grey)),
+          Text(
+            '${(progress * 100).toInt()}% Complete',
+            style: const TextStyle(color: Colors.grey),
+          ),
           const SizedBox(height: 32),
 
           // Skeleton loading for shifts
@@ -86,20 +104,29 @@ class OptimizedUserDashboardPage extends HookWidget {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
             width: 150,
             height: 20,
-            decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(4)),
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(4),
+            ),
           ),
           const SizedBox(height: 8),
           Container(
             width: 100,
             height: 16,
-            decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(4)),
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(4),
+            ),
           ),
         ],
       ),
@@ -114,9 +141,16 @@ class OptimizedUserDashboardPage extends HookWidget {
         children: [
           const Icon(Icons.error_outline, size: 64, color: Colors.red),
           const SizedBox(height: 16),
-          const Text('Failed to load dashboard', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          const Text(
+            'Failed to load dashboard',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 8),
-          Text(error, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
+          Text(
+            error,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.grey),
+          ),
           const SizedBox(height: 24),
           ElevatedButton(onPressed: onRetry, child: const Text('Retry')),
         ],
@@ -132,15 +166,24 @@ class OptimizedUserDashboardPage extends HookWidget {
         children: [
           Icon(Icons.dashboard_outlined, size: 64, color: Colors.grey),
           SizedBox(height: 16),
-          Text('No shifts scheduled', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          Text(
+            'No shifts scheduled',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
           SizedBox(height: 8),
-          Text('Check back later for your schedule', style: TextStyle(color: Colors.grey)),
+          Text(
+            'Check back later for your schedule',
+            style: TextStyle(color: Colors.grey),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildDashboardContent(BuildContext context, DashboardSnapshot snapshot) {
+  Widget _buildDashboardContent(
+    BuildContext context,
+    DashboardSnapshot snapshot,
+  ) {
     return RefreshIndicator(
       onRefresh: () => Future.value(), // Already handled by hook
       child: CustomScrollView(
@@ -158,7 +201,9 @@ class OptimizedUserDashboardPage extends HookWidget {
               (context, index) => _buildShiftCard(
                 context,
                 snapshot.shifts[index],
-                snapshot.checklists.length > index ? snapshot.checklists[index] : [],
+                snapshot.checklists.length > index
+                    ? snapshot.checklists[index]
+                    : [],
               ),
               childCount: snapshot.shifts.length,
             ),
@@ -182,14 +227,23 @@ class OptimizedUserDashboardPage extends HookWidget {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.blue.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.blue.withOpacity(0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Row(
         children: [
           Container(
             width: 60,
             height: 60,
-            decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(30)),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(30),
+            ),
             child: const Icon(Icons.person, size: 32, color: Colors.white),
           ),
           const SizedBox(width: 16),
@@ -199,17 +253,27 @@ class OptimizedUserDashboardPage extends HookWidget {
               children: [
                 const Text(
                   'Welcome back!',
-                  style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   'Role: ${_getRoleName(session.userRole)}',
-                  style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 16),
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.9),
+                    fontSize: 16,
+                  ),
                 ),
                 if (session.jobTypes.isNotEmpty)
                   Text(
                     'Jobs: ${session.jobTypes.join(', ')}',
-                    style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 14),
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.8),
+                      fontSize: 14,
+                    ),
                   ),
               ],
             ),
@@ -224,26 +288,34 @@ class OptimizedUserDashboardPage extends HookWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          const Text('Location: ', style: TextStyle(fontWeight: FontWeight.w500)),
+          const Text(
+            'Location: ',
+            style: TextStyle(fontWeight: FontWeight.w500),
+          ),
           Expanded(
             child: DropdownButtonFormField<String?>(
-              value: selectedLocationId ?? LocationSelectionService.instance.currentLocationId,
+              initialValue: _effectiveSelectedId(snapshot),
               decoration: const InputDecoration(
-                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 border: OutlineInputBorder(),
               ),
-              items: [
-                const DropdownMenuItem<String?>(value: null, child: Text('All Locations')),
-                ...snapshot.session.availableLocations.map(
-                  (location) => DropdownMenuItem<String?>(
-                    value: location['id'],
-                    child: Text(location['name'] ?? 'Unknown Location'),
-                  ),
-                ),
-              ],
-              onChanged: (value) {
-                // Update global persisted selection (null allowed -> all)
-                LocationSelectionService.instance.setLocation(value);
+              items: _buildLocationItems(snapshot),
+              onChanged: (value) async {
+                final selectedLocation = snapshot.session.availableLocations
+                    .cast<Map<String, dynamic>?>()
+                    .firstWhere(
+                      (location) => location?['id'] == value,
+                      orElse: () => null,
+                    );
+                try {
+                  await LocationSelectionService.instance.setLocationAsync(
+                    value,
+                    locationName: selectedLocation?['name'] as String?,
+                  );
+                } catch (_) {}
                 onLocationChanged?.call(value);
               },
             ),
@@ -253,13 +325,55 @@ class OptimizedUserDashboardPage extends HookWidget {
     );
   }
 
-  Widget _buildShiftCard(BuildContext context, ShiftData shift, List<DailyChecklist> checklists) {
+  String? _effectiveSelectedId(DashboardSnapshot snapshot) {
+    final itemsIds =
+        snapshot.session.availableLocations
+            .map((l) => l['id'] as String?)
+            .toSet();
+    final initial =
+        selectedLocationId ??
+        LocationSelectionService.instance.currentLocationId;
+    if (initial == null) return null; // allow 'All Locations'
+    return itemsIds.contains(initial) ? initial : null;
+  }
+
+  List<DropdownMenuItem<String?>> _buildLocationItems(
+    DashboardSnapshot snapshot,
+  ) {
+    final items = <DropdownMenuItem<String?>>[
+      const DropdownMenuItem<String?>(
+        value: null,
+        child: Text('All Locations'),
+      ),
+    ];
+    items.addAll(
+      snapshot.session.availableLocations.map(
+        (location) => DropdownMenuItem<String?>(
+          value: location['id'] as String?,
+          child: Text(location['name'] ?? 'Unknown Location'),
+        ),
+      ),
+    );
+    return items;
+  }
+
+  Widget _buildShiftCard(
+    BuildContext context,
+    ShiftData shift,
+    List<DailyChecklist> checklists,
+  ) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 2))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -269,7 +383,10 @@ class OptimizedUserDashboardPage extends HookWidget {
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: Colors.grey[50],
-              borderRadius: const BorderRadius.only(topLeft: Radius.circular(16), topRight: Radius.circular(16)),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+              ),
             ),
             child: Row(
               children: [
@@ -279,7 +396,13 @@ class OptimizedUserDashboardPage extends HookWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(shift.shiftName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      Text(
+                        shift.shiftName,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       const SizedBox(height: 4),
                       Text(
                         '${shift.startTime} - ${shift.endTime}',
@@ -289,11 +412,21 @@ class OptimizedUserDashboardPage extends HookWidget {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(color: Colors.green[100], borderRadius: BorderRadius.circular(20)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.green[100],
+                    borderRadius: BorderRadius.circular(20),
+                  ),
                   child: Text(
                     '${checklists.length} checklists',
-                    style: TextStyle(color: Colors.green[700], fontSize: 12, fontWeight: FontWeight.w500),
+                    style: TextStyle(
+                      color: Colors.green[700],
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
               ],
@@ -301,13 +434,19 @@ class OptimizedUserDashboardPage extends HookWidget {
           ),
 
           // Checklists
-          if (checklists.isNotEmpty) ...checklists.map((checklist) => _buildChecklistTile(context, checklist)),
+          if (checklists.isNotEmpty)
+            ...checklists.map(
+              (checklist) => _buildChecklistTile(context, checklist),
+            ),
 
           // Empty state for checklists
           if (checklists.isEmpty)
             const Padding(
               padding: EdgeInsets.all(20),
-              child: Text('No checklists available', style: TextStyle(color: Colors.grey)),
+              child: Text(
+                'No checklists available',
+                style: TextStyle(color: Colors.grey),
+              ),
             ),
         ],
       ),
@@ -316,8 +455,14 @@ class OptimizedUserDashboardPage extends HookWidget {
 
   Widget _buildChecklistTile(BuildContext context, DailyChecklist checklist) {
     return ListTile(
-      leading: CircleAvatar(backgroundColor: Colors.blue[100], child: Icon(Icons.checklist, color: Colors.blue[600])),
-      title: Text(checklist.templateName ?? 'Checklist', style: const TextStyle(fontWeight: FontWeight.w500)),
+      leading: CircleAvatar(
+        backgroundColor: Colors.blue[100],
+        child: Icon(Icons.checklist, color: Colors.blue[600]),
+      ),
+      title: Text(
+        checklist.templateName ?? 'Checklist',
+        style: const TextStyle(fontWeight: FontWeight.w500),
+      ),
       subtitle: Text('${checklist.tasks.length} tasks'),
       trailing: const Icon(Icons.arrow_forward_ios, size: 16),
       onTap: () {
@@ -358,7 +503,9 @@ class DashboardPerformanceMonitor extends HookWidget {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (loadStartTime.value != null) {
           final loadTime = DateTime.now().difference(loadStartTime.value!);
-          logger.d('[DashboardPerf] Page rendered in ${loadTime.inMilliseconds}ms');
+          logger.d(
+            '[DashboardPerf] Page rendered in ${loadTime.inMilliseconds}ms',
+          );
         }
       });
 

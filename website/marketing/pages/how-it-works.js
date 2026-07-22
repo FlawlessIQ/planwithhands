@@ -1,21 +1,22 @@
 import Link from 'next/link'
+import SEO from '../components/SEO'
 
 const admin = [
   { 
     title: 'Sign up & setup', 
-    desc: 'Create your organization, add locations, and access the admin dashboard to configure everything.',
+    desc: 'Create your organization, choose locations, and start the 14-day trial without a card.',
     icon: '🚀',
     color: 'from-blue-500 to-blue-600'
   },
   { 
     title: 'Define operations', 
-    desc: 'Set up shifts, roles, and assign checklists with tasks to each location and shift.',
+    desc: 'Set up shifts, roles, and checklists with photo proof, notes, and location-specific tasks.',
     icon: '⚙️',
     color: 'from-purple-500 to-purple-600'
   },
   { 
     title: 'Invite your team', 
-    desc: 'Add managers and staff—invites prompt mobile app download and account setup.',
+    desc: 'Add managers and staff, then have them finish account setup from the invite email or a reset link.',
     icon: '👥',
     color: 'from-green-500 to-green-600'
   },
@@ -27,7 +28,7 @@ const admin = [
   },
   { 
     title: 'Go live & manage', 
-    desc: 'Monitor completion in real-time, view photos/notes, spot misses, and message your team.',
+    desc: 'Monitor completion in real time, review photos and missed tasks, receive daily summaries, and message your team.',
     icon: '📊',
     color: 'from-red-500 to-red-600'
   },
@@ -36,7 +37,7 @@ const admin = [
 const staff = [
   { 
     title: 'Complete daily tasks', 
-    desc: 'Open the app to view shift checklists, upload required photos, and add notes or explanations.',
+    desc: 'Open the app or shared tablet to view shift checklists, upload required photos, and add notes or explanations.',
     icon: '✅',
     color: 'from-emerald-500 to-emerald-600'
   },
@@ -48,7 +49,7 @@ const staff = [
   },
   { 
     title: 'Stay connected', 
-    desc: 'Receive announcements and updates from management to keep aligned with standards.',
+    desc: 'Receive announcements, push notifications, and updates from management to keep aligned with standards.',
     icon: '💬',
     color: 'from-indigo-500 to-indigo-600'
   },
@@ -151,8 +152,51 @@ function ModernTimeline({ steps, title, subtitle, variant = 'admin' }) {
 }
 
 export default function HowItWorks() {
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "How to Set Up Restaurant Management with Plan With Hands",
+    "description": "Step-by-step guide to implementing Plan With Hands restaurant management software for digital checklists, team communication, and operational excellence.",
+    "url": "https://planwithhands.com/how-it-works/",
+    "step": [
+      {
+        "@type": "HowToStep",
+        "name": "Sign up & setup",
+        "text": "Create your organization, choose locations, and start the 14-day trial without a card."
+      },
+      {
+        "@type": "HowToStep", 
+        "name": "Define operations",
+        "text": "Set up shifts, roles, and checklists with photo proof, notes, and location-specific tasks."
+      },
+      {
+        "@type": "HowToStep",
+        "name": "Invite your team", 
+        "text": "Add managers and staff—invites prompt mobile app download and account setup."
+      },
+      {
+        "@type": "HowToStep",
+        "name": "Centralize documents",
+        "text": "Upload training materials, SOPs, and procedures so everyone sees the latest version."
+      },
+      {
+        "@type": "HowToStep",
+        "name": "Go live & manage",
+        "text": "Monitor completion in real time, review photos and missed tasks, receive daily summaries, and message your team."
+      }
+    ]
+  };
+
   return (
-    <div>
+    <>
+      <SEO
+        title="How It Works - Plan With Hands | Restaurant Management Implementation Guide"
+        description="Learn how to implement Plan With Hands restaurant management software. Step-by-step guide for digital checklists, team communication, and operational excellence."
+        canonical="https://planwithhands.com/how-it-works/"
+        structuredData={structuredData}
+        keywords="how restaurant management software works, implementation guide, restaurant operations setup, digital checklist implementation, team management setup"
+      />
+      <div>
       {/* Hero Section */}
       <section className="relative py-24 overflow-hidden">
         {/* Background gradient */}
@@ -171,12 +215,12 @@ export default function HowItWorks() {
             </span>
           </h1>
           <p className="text-xl lg:text-2xl text-white/70 mb-12 max-w-3xl mx-auto leading-relaxed">
-            Configure once, repeat across locations, and get hands on every task.
+            Create your operating standard once, then run it across locations, roles, languages, and devices.
           </p>
           
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-            <Link href="/pricing" className="group relative px-8 py-4 bg-gradient-to-r from-accent to-accent/80 text-primary font-bold text-lg rounded-xl shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105">
-              <span className="relative z-10">Start Free Trial</span>
+            <Link href="/app-signup?src=how_it_works_hero" className="group relative px-8 py-4 bg-gradient-to-r from-accent to-accent/80 text-primary font-bold text-lg rounded-xl shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105">
+              <span className="relative z-10">Start 14-Day Trial</span>
               <div className="absolute inset-0 bg-gradient-to-r from-accent/80 to-accent rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
             </Link>
             <Link href="/features" className="px-8 py-4 bg-white/10 backdrop-blur-sm text-white font-semibold text-lg rounded-xl border border-white/20 hover:bg-white/20 transition-all duration-300">
@@ -192,7 +236,7 @@ export default function HowItWorks() {
           <ModernTimeline
             steps={admin}
             title="Manager / Admin Setup"
-            subtitle="Configure your organization, define operations, invite your team, and start monitoring performance across all locations."
+            subtitle="Configure your organization, define shifts and checklists, invite your team, and monitor performance across locations."
             variant="admin"
           />
         </div>
@@ -233,8 +277,8 @@ export default function HowItWorks() {
           </p>
           
           <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">
-            <Link href="/pricing" className="group relative px-10 py-5 bg-gradient-to-r from-accent to-accent/90 text-primary font-bold text-xl rounded-xl shadow-2xl hover:shadow-accent/25 transition-all duration-300 transform hover:scale-105">
-              <span className="relative z-10">Start Free Trial</span>
+            <Link href="/app-signup?src=how_it_works_final" className="group relative px-10 py-5 bg-gradient-to-r from-accent to-accent/90 text-primary font-bold text-xl rounded-xl shadow-2xl hover:shadow-accent/25 transition-all duration-300 transform hover:scale-105">
+              <span className="relative z-10">Start 14-Day Trial</span>
               <div className="absolute inset-0 bg-white/20 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
             </Link>
             <Link href="/contact" className="px-10 py-5 bg-transparent text-white font-semibold text-xl rounded-xl border-2 border-white/30 hover:border-accent hover:bg-accent/10 transition-all duration-300">
@@ -244,5 +288,6 @@ export default function HowItWorks() {
         </div>
       </section>
     </div>
+    </>
   )
 }

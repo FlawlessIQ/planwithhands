@@ -130,13 +130,32 @@ class DailyChecklistGenerator {
 
   /// Check if a shift is scheduled for today
   bool _isShiftScheduledToday(ShiftData shiftData, String todayDayName) {
+    // CRITICAL FIX: Skip shifts with missing or invalid shift IDs (deleted shifts)
+    if (shiftData.shiftId.isEmpty || shiftData.shiftId == 'unknown') {
+      logger.w('[DailyChecklistGenerator] Skipping shift with invalid ID: ${shiftData.shiftId}');
+      return false;
+    }
+
     // If shift repeats daily, it's always scheduled
     if (shiftData.repeatsDaily) {
+      logger.d('[DailyChecklistGenerator] Shift ${shiftData.shiftName} repeats daily - scheduled for $todayDayName');
       return true;
     }
 
+    // CRITICAL FIX: Validate shift has days configured before checking
+    if (shiftData.days.isEmpty) {
+      logger.w(
+        '[DailyChecklistGenerator] Shift ${shiftData.shiftName} has no days configured and repeatsDaily=false - not scheduled for any day',
+      );
+      return false;
+    }
+
     // Check if today is in the shift's scheduled days
-    return shiftData.days.contains(todayDayName);
+    final isScheduled = shiftData.days.contains(todayDayName);
+    logger.d(
+      '[DailyChecklistGenerator] Shift ${shiftData.shiftName} days: ${shiftData.days}, today: $todayDayName, scheduled: $isScheduled',
+    );
+    return isScheduled;
   }
 
   /// Format date as YYYY-MM-DD

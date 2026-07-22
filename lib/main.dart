@@ -1,10 +1,15 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hands_app/core/providers/crashlytics_provider.dart';
+import 'package:hands_app/features/releases/widgets/app_experience_coordinator.dart';
+import 'package:hands_app/l10n/generated/app_localizations.dart';
 import 'package:hands_app/routing/router_provider.dart';
 import 'package:hands_app/services/local_storage_service.dart';
 import 'package:hands_app/services/daily_background_service.dart';
+import 'package:hands_app/services/location_selection_service.dart';
+import 'package:hands_app/state/app_locale_controller.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
@@ -12,102 +17,160 @@ import 'package:stack_trace/stack_trace.dart' as stack_trace;
 import 'package:timezone/data/latest.dart' as tz;
 import 'dart:async';
 
-import 'package:hands_app/services/firebase_initializer.dart';
+import 'package:hands_app/services/firebase_initializer_v6.dart';
 import 'package:hands_app/services/push_notification_service.dart';
-import 'package:hands_app/debug/firebase_init_test.dart'; // Import Firebase test page
-// No longer need web platform page since we're allowing direct web access
-// import 'package:hands_app/pages/web_platform_page.dart';
-// No longer checking user agent for mobile browsers
-// import 'platform/user_agent_stub.dart' if (dart.library.html) 'platform/user_agent_web.dart';
+import 'package:hands_app/services/session_manager.dart';
+import 'package:hands_app/services/activity_tracker.dart';
 import 'config/release_config.dart';
 
-// Mobile browser detection removed - now allowing all browsers to access web app
-// This enables seamless access from marketing site to app for both desktop and mobile users
+// Add Stripe import
+import 'package:flutter_stripe/flutter_stripe.dart';
+import 'package:hands_app/services/stripe_web_helpers_stub.dart'
+    if (dart.library.html) 'package:hands_app/services/stripe_web_helpers.dart'
+    as web_helpers;
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:hands_app/services/pk_fetcher_stub.dart'
+    if (dart.library.html) 'package:hands_app/services/pk_fetcher_web.dart'
+    as pk_fetch;
 
-// Special parameter to enable Firebase debug mode
-const String FIREBASE_DEBUG_PARAM = 'firebaseDebug';
+Future<Map<String, dynamic>> _fetchStripePublishableKey() async {
+  final callable = FirebaseFunctions.instance.httpsCallable(
+    'getStripePublishableKey',
+  );
+  final result = await callable.call({});
+  final data = result.data;
+  if (data is Map) {
+    return Map<String, dynamic>.from(data);
+  }
+  return {'publishableKey': null};
+}
 
 void main() async {
-  // Set URL strategy early to ensure proper URL handling
-  usePathUrlStrategy();
-
-  // If we should show the Firebase debug page, short-circuit and show it now.
-  if (kIsWeb && Uri.base.queryParameters.containsKey(FIREBASE_DEBUG_PARAM)) {
-    WidgetsFlutterBinding.ensureInitialized();
-    runApp(MaterialApp(debugShowCheckedModeBanner: false, home: SafeArea(child: FirebaseInitTest())));
-    return;
-  }
-
   // Run the app inside a guarded zone and ensure the Flutter binding is
   // initialized inside that same zone to avoid the "Zone mismatch" error.
   runZonedGuarded<Future<void>>(
     () async {
-      // Ensure the Widgets binding is initialized inside this zone before
-      // using any platform channels or calling runApp. This prevents the
-      // "Zone mismatch" assertion by keeping ensureInitialized and runApp
-      // in the same zone.
+      // Ensure the Widgets binding is initialized before using any
+      // platform channels or WidgetsBinding.instance.
       WidgetsFlutterBinding.ensureInitialized();
-
       tz.initializeTimeZones();
 
       // Wrap critical startup in a try/catch so we can show a friendly
       // error UI if something fails during initialization.
       try {
-        Future<void> runStep(String name, FutureOr<void> Function() fn) async {
-          debugPrint('== Startup STEP BEGIN: $name');
-          try {
-            await fn();
-            debugPrint('== Startup STEP OK: $name');
-          } catch (e) {
-            debugPrint('== Startup STEP FAIL: $name -> $e');
-            // Re-throw so outer catch can show unified error UI tagged with step name.
-            throw Exception('[STEP $name] $e');
-          }
+        // Initialize our "safe" local storage service and Firebase.
+        try {
+          await LocalStorageService.init();
+        } catch (e) {
+          print('LocalStorage init failed (non-critical): $e');
+          // Continue without local storage - the app can still function
         }
 
-        // Initialize our "safe" local storage service.
-        await runStep('localStorage', () async {
-          try {
-            await LocalStorageService.init();
-          } catch (e) {
-            // Non-critical; log and continue (do NOT wrap in Exception to avoid halting app)
-            debugPrint('LocalStorage init failed (non-critical): $e');
+        await FirebaseInitializerV6().initialize();
+
+        // Initialize location selection service to load persisted location
+        try {
+          await LocationSelectionService.instance.initialize();
+        } catch (e) {
+          print('LocationSelectionService init failed (non-critical): $e');
+          // Continue without persisted location - the app can still function
+        }
+
+        // Let Flutter's generated plugin registrant handle web plugin registration.
+
+        // Initialize Stripe on web before runApp
+        try {
+          if (kIsWeb) {
+            // Try compile-time key first, then callable, then HTTP fallback
+            String? pk = const String.fromEnvironment('STRIPE_PUBLISHABLE_KEY');
+            if (pk.isEmpty) {
+              pk = null;
+            }
+
+            if (pk == null) {
+              try {
+                final pkResp = await _fetchStripePublishableKey();
+                pk = pkResp['publishableKey'] as String?;
+              } catch (e) {
+                print(
+                  '⚠️ [STRIPE] Failed to fetch publishable key from callable: $e',
+                );
+              }
+            }
+
+            if (pk == null || pk.isEmpty) {
+              try {
+                final projectId = Firebase.app().options.projectId;
+                final fbPk = await pk_fetch.fetchPkHttpFallback(projectId);
+                if (fbPk != null && fbPk.isNotEmpty) {
+                  pk = fbPk;
+                }
+              } catch (e) {
+                print(
+                  '⚠️ [STRIPE] HTTP fallback for publishable key failed: $e',
+                );
+              }
+            }
+
+            if (pk != null && pk.isNotEmpty) {
+              Stripe.publishableKey = pk;
+              await Stripe.instance.applySettings();
+              // Store pk for embedded checkout page consumption
+              try {
+                web_helpers.setStripePkForEmbedded(pk);
+              } catch (_) {}
+              print(
+                '✅ [STRIPE] Web settings applied with key: ${pk.substring(0, 12)}...',
+              );
+            } else {
+              print(
+                '⚠️ [STRIPE] No publishable key available - Stripe disabled',
+              );
+            }
           }
-        });
+        } catch (e) {
+          print('⚠️ [STRIPE] Initialization failed: $e');
+        }
 
-        // Firebase core initialization
-        await runStep('firebaseCore', () async {
-          await FirebaseInitializer().initialize();
-        });
+        // Initialize push notifications (may fail on web in some browsers)
+        try {
+          await PushNotificationService().initialize();
+        } catch (e) {
+          print('Push notification init failed (non-critical): $e');
+          // Continue without push notifications
+        }
 
-        // Push notifications (tolerated failure on web)
-        await runStep('pushNotifications', () async {
-          try {
-            await PushNotificationService().initialize();
-          } catch (e) {
-            debugPrint('Push notification init failed (non-critical): $e');
-          }
-        });
+        // Initialize daily background service for automated summaries
+        try {
+          DailyBackgroundService.initialize();
+        } catch (e) {
+          print('Background service init failed (non-critical): $e');
+          // Continue without background service
+        }
 
-        // Daily background service (non-critical)
-        await runStep('dailyBackgroundService', () async {
-          try {
-            DailyBackgroundService.initialize();
-          } catch (e) {
-            debugPrint('Background service init failed (non-critical): $e');
-          }
-        });
+        // Initialize session management for token refresh and validation
+        try {
+          await SessionManager().initialize();
+        } catch (e) {
+          print('Session manager init failed (non-critical): $e');
+          // Continue without session management
+        }
 
-        // Add lifecycle observer
-        await runStep('lifecycleObserver', () async {
-          final lifecycleObserver = _AppLifecycleObserver();
-          WidgetsBinding.instance.addObserver(lifecycleObserver);
-        });
+        // Initialize activity tracking for session management
+        try {
+          ActivityTracker().initialize();
+        } catch (e) {
+          print('Activity tracker init failed (non-critical): $e');
+          // Continue without activity tracking
+        }
+
+        // Set up app lifecycle observer for proper cleanup
+        final lifecycleObserver = _AppLifecycleObserver();
+        WidgetsBinding.instance.addObserver(lifecycleObserver);
       } catch (e, st) {
         // If any of the above critical services fail, show an error UI and stop.
-        // Log full stack trace for debugging.
-        debugPrint('Critical startup error: $e');
-        debugPrint('Stack trace:\n${st.toString()}');
+        print('Critical startup error: $e\n$st');
         runApp(
           MaterialApp(
             debugShowCheckedModeBanner: false,
@@ -115,36 +178,36 @@ void main() async {
               body: Center(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.error, color: Colors.red, size: 48),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'App Initialization Error',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error, color: Colors.red, size: 48),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'App Initialization Error',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
                         ),
-                        const SizedBox(height: 8),
-                        SelectableText('Error: $e', textAlign: TextAlign.center),
-                        const SizedBox(height: 4),
-                        const Text('If this persists, screenshot & report.'),
-                        const SizedBox(height: 12),
-                        SizedBox(height: 300, child: SingleChildScrollView(child: SelectableText(st.toString()))),
-                        const SizedBox(height: 16),
-                        ElevatedButton(
-                          onPressed: () {
-                            // On web, we can reload. On other platforms, this button won't appear anyway
-                            if (kIsWeb) {
-                              // Use JavaScript to reload the page
-                              // ignore: avoid_web_libraries_in_flutter
-                              //dart:html.window.location.reload();
-                            }
-                          },
-                          child: const Text('Refresh Page'),
-                        ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Please refresh the page to try again.\n\nError: $e',
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: () {
+                          // On web, we can reload. On other platforms, this button won't appear anyway
+                          if (kIsWeb) {
+                            // Use JavaScript to reload the page
+                            // ignore: avoid_web_libraries_in_flutter
+                            //dart:html.window.location.reload();
+                          }
+                        },
+                        child: const Text('Refresh Page'),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -154,19 +217,28 @@ void main() async {
         return; // Halt execution of the zone callback.
       }
 
+      if (kIsWeb) {
+        usePathUrlStrategy();
+      }
+
       bool crashlyticsEnabled = false;
       // Allow RELEASE_SCREENSHOTS to behave like a non-debug release for
       // privacy / overlay disabling when capturing store screenshots.
       final bool treatAsRelease = !kDebugMode || RELEASE_SCREENSHOTS;
       if (!kIsWeb && treatAsRelease) {
-        await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
-        FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+        await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(
+          true,
+        );
+        FlutterError.onError =
+            FirebaseCrashlytics.instance.recordFlutterFatalError;
         crashlyticsEnabled = true;
       }
 
       runApp(
         ProviderScope(
-          overrides: [crashlyticsEnabledProvider.overrideWith((_) => crashlyticsEnabled)],
+          overrides: [
+            crashlyticsEnabledProvider.overrideWith((_) => crashlyticsEnabled),
+          ],
           child: const HandsApp(),
         ),
       );
@@ -190,20 +262,54 @@ void main() async {
   };
 }
 
-// WebHandsApp class removed - no longer needed as all browsers now use the main HandsApp
-
-class HandsApp extends ConsumerWidget {
+class HandsApp extends ConsumerStatefulWidget {
   const HandsApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final router = ref.watch(routerProvider);
+  ConsumerState<HandsApp> createState() => _HandsAppState();
+}
 
-    return MaterialApp.router(
-      title: 'Hands',
-      theme: handsTheme,
-      routerConfig: router,
-      debugShowCheckedModeBanner: false,
+class _HandsAppState extends ConsumerState<HandsApp> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(appLocaleControllerProvider.notifier).initialize();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final router = ref.watch(routerProvider);
+    final localeState = ref.watch(appLocaleControllerProvider);
+
+    // Wrap entire app with global gesture detection for activity tracking
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () => ActivityTracker().recordActivity(source: 'global_tap'),
+      onScaleStart:
+          (_) => ActivityTracker().recordActivity(source: 'global_interaction'),
+      onScaleUpdate:
+          (_) => ActivityTracker().recordActivity(source: 'global_interaction'),
+      child: MaterialApp.router(
+        title: 'Hands',
+        locale: localeState.locale,
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        theme: handsTheme,
+        routerConfig: router,
+        debugShowCheckedModeBanner: false,
+        builder:
+            (context, child) => AppExperienceCoordinator(
+              router: router,
+              child: child ?? const SizedBox.shrink(),
+            ),
+      ),
     );
   }
 }
@@ -214,6 +320,19 @@ class _AppLifecycleObserver extends WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.detached) {
       DailyBackgroundService.dispose();
+      SessionManager().dispose();
+      ActivityTracker().dispose();
+    } else if (state == AppLifecycleState.resumed) {
+      // Validate session when app resumes from background
+      SessionManager().handleAppResume();
+      // Refresh FCM registration after app updates, restores, or token rotation.
+      unawaited(
+        PushNotificationService().ensureRegistered(context: 'app_resume'),
+      );
+      // Record activity on app resume
+      ActivityTracker().recordActivity(source: 'app_resume');
     }
   }
 }
+
+// MARKER_003_123XYZ

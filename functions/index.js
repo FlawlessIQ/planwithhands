@@ -6,6 +6,8 @@ module.exports = {
   ...require("./user_functions"),
   ...require("./places_functions"),
   ...require("./help_functions"),
+  ...require("./test_email_function"),
+  ...require("./test_manual_email"),
 };
 
 module.exports.migrateChecklistTemplates =

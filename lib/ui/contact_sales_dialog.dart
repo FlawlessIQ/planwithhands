@@ -1,14 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:hands_app/l10n/l10n.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
 
 class ContactSalesDialog extends StatelessWidget {
   const ContactSalesDialog({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Contact Sales'),
-      content: const Text('For 5 or more locations, please contact our sales team for a customized plan.'),
-      actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close'))],
+    final l10n = context.l10n;
+    return HandsDialog(
+      title: l10n.settingsTalkToSales,
+      maxWidth: 440,
+      actions: [
+        HandsSecondaryButton(
+          text: l10n.commonClose,
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ],
+      child: Text(
+        l10n.settingsContactSalesBody,
+        style: HandsModalTokens.bodyStyle,
+      ),
     );
   }
 }

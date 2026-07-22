@@ -1,25 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:go_router/go_router.dart';
+import 'package:hands_app/utils/app_platform.dart';
 import 'package:hands_app/features/dashboard/pages/user_dashboard_page.dart';
 import 'package:hands_app/features/dashboard/pages/admin_dashboard_page.dart';
 import 'package:hands_app/features/dashboard/pages/WEB_admin_dashboard_page.dart'
     show WEBAdminDashboardPage, WebAdminTab;
 import 'package:hands_app/features/dashboard/pages/manager_dashboard_page.dart';
-import 'package:hands_app/features/dashboard/pages/WEB_manager_dashboard_page.dart' as web_manager;
+import 'package:hands_app/features/dashboard/pages/WEB_manager_dashboard_page.dart'
+    as web_manager;
 import 'package:hands_app/features/auth/pages/login_page.dart';
-import 'package:hands_app/features/auth/pages/account_creation_page_simple_branded.dart' as branded;
+import 'package:hands_app/features/auth/pages/account_creation_page_simple_branded.dart'
+    as branded;
 // import 'package:hands_app/features/auth/pages/invitation_page.dart';
 import 'package:hands_app/features/settings/pages/settings_page.dart';
+import 'package:hands_app/features/subscription/pages/subscription_management_page.dart';
 import 'package:hands_app/features/training/pages/training_materials_page.dart';
+import 'package:hands_app/features/crm/pages/crm_dashboard_page.dart';
+import 'package:hands_app/features/help/models/help_topic.dart';
+import 'package:hands_app/features/help/pages/help_home_page.dart';
+import 'package:hands_app/features/help/pages/help_role_page.dart';
+import 'package:hands_app/features/help/pages/help_start_here_page.dart';
+import 'package:hands_app/features/help/pages/help_topic_page.dart';
+import 'package:hands_app/features/help/pages/help_troubleshooting_page.dart';
+import 'package:hands_app/features/help/contact_us_page.dart';
 import 'package:hands_app/pages/notifications_page.dart';
 import 'package:hands_app/pages/messages_page.dart';
 import 'package:hands_app/features/messaging/pages/message_thread_page.dart';
 import 'package:hands_app/pages/sign_in_page.dart';
 import 'package:hands_app/pages/welcome_page.dart';
-import 'package:hands_app/pages/payment_success_page.dart';
-import 'package:hands_app/pages/payment_cancelled_page.dart';
+import 'package:hands_app/pages/not_available_ios_page.dart';
 import 'package:hands_app/ui/schedule_page.dart';
+import 'package:hands_app/pages/checkout_complete_page.dart';
 
 // Make sure that the NotificationsPage class is defined in notifications_page.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,9 +41,20 @@ import 'package:hands_app/constants/firestore_names.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 import 'package:hands_app/services/push_notification_service.dart';
 import 'package:hands_app/core/logging/logger.dart';
+import 'package:hands_app/config/feature_flags.dart';
+import 'package:hands_app/debug/stripe_probe_page.dart';
+import 'package:hands_app/billing/embedded_payment_page.dart';
+import 'package:hands_app/features/shared_mode/shared_mode_controller.dart';
+import 'package:hands_app/services/subscription_access_service.dart';
+import 'package:hands_app/theme/theme.dart';
 
 // Helper function to build the appropriate admin setup page based on platform
-Widget _buildAdminSetupPage(BuildContext ctx, {required String organizationId, String? tab}) {
+Widget _buildAdminSetupPage(
+  BuildContext ctx, {
+  required String organizationId,
+  String? tab,
+  bool allowPlatformAccess = false,
+}) {
   // Check if we should use the web version based on screen size and device characteristics
   final mediaQuery = MediaQuery.of(ctx);
   final screenWidth = mediaQuery.size.width;
@@ -44,10 +67,16 @@ Widget _buildAdminSetupPage(BuildContext ctx, {required String organizationId, S
   // Use mobile version for mobile devices, even when accessing via web
   // Allow forcing the web layout via ?forceWeb=true in the browser URL (useful for debugging)
   final forceWeb = Uri.base.queryParameters['forceWeb'] == 'true';
-  final useWebVersion = forceWeb || (kIsWeb && (isLargeScreen || isLandscapeDesktop));
+  final useWebVersion =
+      allowPlatformAccess ||
+      forceWeb ||
+      (kIsWeb && (isLargeScreen || isLandscapeDesktop));
+
+  // Check for setup query parameter
+  final isNewOrganizationSetup = Uri.base.queryParameters['setup'] == 'true';
 
   debugPrint(
-    'Admin route -> ${useWebVersion ? 'WEB' : 'MOBILE'} | width=$screenWidth height=$screenHeight ratio=${aspectRatio.toStringAsFixed(2)} | orgId=$organizationId tab=$tab',
+    'Admin route -> ${useWebVersion ? 'WEB' : 'MOBILE'} | width=$screenWidth height=$screenHeight ratio=${aspectRatio.toStringAsFixed(2)} | orgId=$organizationId tab=$tab setup=$isNewOrganizationSetup',
   );
 
   // Convert string tab to WebAdminTab enum for web version
@@ -73,12 +102,21 @@ Widget _buildAdminSetupPage(BuildContext ctx, {required String organizationId, S
   }
 
   return useWebVersion
-      ? WEBAdminDashboardPage(organizationId: organizationId, initialTab: webAdminTab)
-      : AdminDashboardPage();
+      ? WEBAdminDashboardPage(
+        organizationId: organizationId,
+        initialTab: webAdminTab,
+        isNewOrganizationSetup: isNewOrganizationSetup,
+        allowPlatformAccess: allowPlatformAccess,
+      )
+      : AdminDashboardPage(isNewOrganizationSetup: isNewOrganizationSetup);
 }
 
 // Helper function to build the appropriate manager dashboard page based on platform
-Widget _buildManagerDashboardPage(BuildContext ctx, {required String organizationId}) {
+Widget _buildManagerDashboardPage(
+  BuildContext ctx, {
+  required String organizationId,
+  bool allowPlatformAccess = false,
+}) {
   // Check if we should use the web version based on screen size and device characteristics
   final mediaQuery = MediaQuery.of(ctx);
   final screenWidth = mediaQuery.size.width;
@@ -89,15 +127,39 @@ Widget _buildManagerDashboardPage(BuildContext ctx, {required String organizatio
 
   // Use web version for desktop-like environments (large screens in landscape)
   // Use mobile version for mobile devices, even when accessing via web
-  final useWebVersion = kIsWeb && (isLargeScreen || isLandscapeDesktop);
+  final useWebVersion =
+      allowPlatformAccess || (kIsWeb && (isLargeScreen || isLandscapeDesktop));
 
   debugPrint(
-    'Manager route -> ${useWebVersion ? 'WEB' : 'MOBILE'} | width=$screenWidth height=$screenHeight ratio=${aspectRatio.toStringAsFixed(2)} | orgId=$organizationId',
+    'Manager route -> ${useWebVersion ? 'WEB' : 'MOBILE'} | width=$screenWidth height=$screenHeight ratio=${aspectRatio.toStringAsFixed(2)} | orgId=$organizationId platform=$allowPlatformAccess',
   );
 
   return useWebVersion
-      ? web_manager.ManagerDashboardPage(organizationId: organizationId)
+      ? web_manager.ManagerDashboardPage(
+        organizationId: organizationId,
+        allowPlatformAccess: allowPlatformAccess,
+      )
       : ManagerDashboardPage(organizationId: organizationId);
+}
+
+Widget _schedulePaymentRedirect(
+  BuildContext context, {
+  required String orgId,
+  required String email,
+  required String logPrefix,
+}) {
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (!context.mounted) return;
+    _resolveQuantityForPayment(orgId).then((quantity) {
+      if (!context.mounted) return;
+      final paymentUrl =
+          '${AppRoutes.embeddedPaymentPage.path}?orgId=$orgId&email=$email&quantity=$quantity';
+      logger.d('$logPrefix Redirecting to: $paymentUrl');
+      context.go(paymentUrl);
+    });
+  });
+
+  return const Scaffold(body: Center(child: CircularProgressIndicator()));
 }
 
 enum AppRoutes {
@@ -108,7 +170,14 @@ enum AppRoutes {
   welcomePage('/welcome'),
   // invitePage('/invite'),
   trainingMaterialsPage('/training_materials'),
+  howToUsePage('/how-to-use'),
+  helpStartHerePage('/how-to-use/start'),
+  helpRolePage('/how-to-use/role/:role'),
+  helpTopicPage('/how-to-use/topic/:topicId'),
+  helpTroubleshootingPage('/how-to-use/troubleshooting'),
+  contactUsPage('/contact-us'),
   settingsPage('/settings'),
+  subscriptionManagementPage('/subscription-management'),
   userDashboardPage('/user_dashboard'),
   adminDashboardPage('/admin_dashboard'),
   adminPage('/admin'),
@@ -118,8 +187,15 @@ enum AppRoutes {
   messagesPage('/messages'),
   threadPage('/threads/:threadId'),
   notificationsPage('/notifications'),
+  crmPage('/crm'),
+  crmOrgTasksPage('/crm/org/:orgId/tasks'),
+  crmOrgDashboardPage('/crm/org/:orgId/dashboard'),
+  crmOrgAdminPage('/crm/org/:orgId/admin'),
+  crmOrgDocumentsPage('/crm/org/:orgId/documents'),
   paymentSuccessPage('/payment-success'),
-  paymentCancelledPage('/payment-cancelled');
+  paymentCancelledPage('/payment-cancelled'),
+  checkoutComplete('/billing/checkout-complete'),
+  embeddedPaymentPage('/embedded-payment');
 
   final String path;
   const AppRoutes(this.path);
@@ -152,7 +228,9 @@ class AuthGateWithOrg extends ConsumerWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, authSnap) {
         if (authSnap.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
         final user = authSnap.data;
         if (user == null) {
@@ -160,7 +238,9 @@ class AuthGateWithOrg extends ConsumerWidget {
           // Get the current path from URI instead of GoRouterState to avoid null issues
           final uri = Uri.base;
           final currentPath = uri.path;
-          logger.d('[AuthGateWithOrg] Unauthenticated user accessing: $currentPath');
+          logger.d(
+            '[AuthGateWithOrg] Unauthenticated user accessing: $currentPath',
+          );
 
           // Check for exact path or if path contains the account creation route
           // This makes it more robust when we might have a trailing slash or query params
@@ -168,19 +248,32 @@ class AuthGateWithOrg extends ConsumerWidget {
               currentPath.contains(AppRoutes.accountCreationPage.path)) {
             logger.d('[AuthGateWithOrg] *** ALLOWING DIRECT SIGNUP ACCESS ***');
             // Return signup page instead of login for this route
-            return const branded.SimpleSignUpPage();
+            final query = uri.queryParameters;
+            return branded.SimpleSignUpPage(
+              email: query['email'],
+              organizationId: query['orgId'] ?? query['organizationId'],
+              token: query['token'] ?? query['inviteId'],
+            );
           }
 
           // For all other routes, redirect to login
-          logger.d('[AuthGateWithOrg] Redirecting unauthenticated user to login');
+          logger.d(
+            '[AuthGateWithOrg] Redirecting unauthenticated user to login',
+          );
           return const LoginPage();
         }
         // now fetch org ID
         return FutureBuilder<DocumentSnapshot>(
-          future: FirestoreEnforcer.instance.collection(FirestoreCollectionNames.users).doc(user.uid).get(),
+          future:
+              FirestoreEnforcer.instance
+                  .collection(FirestoreCollectionNames.users)
+                  .doc(user.uid)
+                  .get(),
           builder: (context, snap) {
             if (snap.connectionState != ConnectionState.done) {
-              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
             }
             if (!snap.hasData || !(snap.data?.exists ?? false)) {
               return const LoginPage();
@@ -192,24 +285,90 @@ class AuthGateWithOrg extends ConsumerWidget {
             }
 
             final userRole = userData['userRole'] as int? ?? 0;
+            final orgId = userData['organizationId'] as String?;
+            final userEmail = userData['email'] as String? ?? user.email ?? '';
 
             // Route users to appropriate dashboard based on role
             if (userRole >= 2) {
-              // Admin - redirect to admin dashboard
+              // Admin - redirect to admin dashboard WITHOUT subscription check here
+              // The admin dashboard will handle its own subscription requirements
+              logger.d(
+                '[AuthGateWithOrg] Admin user, redirecting to admin dashboard',
+              );
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                context.go(AppRoutes.adminDashboardPage.path);
+                if (context.mounted) {
+                  context.go(AppRoutes.adminDashboardPage.path);
+                }
               });
-              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
             } else if (userRole >= 1) {
-              // Manager - redirect to manager dashboard
+              // Manager - redirect to manager dashboard (will check subscription separately)
+              logger.d(
+                '[AuthGateWithOrg] Manager user, redirecting to manager dashboard',
+              );
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                context.go(AppRoutes.managerDashboardPage.path);
+                if (context.mounted) {
+                  context.go(AppRoutes.managerDashboardPage.path);
+                }
               });
-              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
             }
 
-            // Regular user - show user dashboard
-            return const UserDashboardPage();
+            // Regular user - check subscription before showing user dashboard
+            if (orgId == null) {
+              return const LoginPage();
+            }
+
+            // Check subscription status for regular users
+            return FutureBuilder<List<DocumentSnapshot>>(
+              future: Future.wait([
+                FirestoreEnforcer.instance
+                    .collection('organizations')
+                    .doc(orgId)
+                    .get(),
+                FirestoreEnforcer.instance
+                    .collection('organizations')
+                    .doc(orgId)
+                    .collection('stripe')
+                    .doc('subscription')
+                    .get(),
+              ]),
+              builder: (context, accessSnap) {
+                if (accessSnap.connectionState != ConnectionState.done) {
+                  return const Scaffold(
+                    body: Center(child: CircularProgressIndicator()),
+                  );
+                }
+
+                final organizationData =
+                    accessSnap.data?[0].data() as Map<String, dynamic>?;
+                final subscriptionData =
+                    accessSnap.data?[1].data() as Map<String, dynamic>?;
+                if (!SubscriptionAccessService.hasAccess(
+                  organizationData: organizationData,
+                  subscriptionData: subscriptionData,
+                )) {
+                  logger.d(
+                    '[AuthGateWithOrg] No active billing or valid trial for orgId: $orgId',
+                  );
+                  return _schedulePaymentRedirect(
+                    context,
+                    orgId: orgId,
+                    email: userEmail,
+                    logPrefix: '[AuthGateWithOrg]',
+                  );
+                }
+
+                logger.d(
+                  '[AuthGateWithOrg] Access granted, showing user dashboard',
+                );
+                return const UserDashboardPage();
+              },
+            );
           },
         );
       },
@@ -227,7 +386,9 @@ class AuthGateWithOrgForManager extends ConsumerWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, authSnap) {
         if (authSnap.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
         final user = authSnap.data;
         if (user == null) {
@@ -235,10 +396,16 @@ class AuthGateWithOrgForManager extends ConsumerWidget {
         }
         // now fetch org ID
         return FutureBuilder<DocumentSnapshot>(
-          future: FirestoreEnforcer.instance.collection(FirestoreCollectionNames.users).doc(user.uid).get(),
+          future:
+              FirestoreEnforcer.instance
+                  .collection(FirestoreCollectionNames.users)
+                  .doc(user.uid)
+                  .get(),
           builder: (context, snap) {
             if (snap.connectionState != ConnectionState.done) {
-              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
             }
             if (!snap.hasData || !(snap.data?.exists ?? false)) {
               return const LoginPage();
@@ -250,16 +417,67 @@ class AuthGateWithOrgForManager extends ConsumerWidget {
 
             final userRole = userData['userRole'] as int? ?? 0;
             final orgId = userData['organizationId'] as String? ?? '';
+            final userEmail = userData['email'] as String? ?? user.email ?? '';
 
             // Only block access for non-managers
             if (userRole < 1 || orgId.isEmpty) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 context.go(AppRoutes.userDashboardPage.path);
               });
-              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
             }
-            // Allow both managers and admins to view this page
-            return _buildManagerDashboardPage(context, organizationId: orgId);
+
+            // Check subscription status before allowing manager access
+            return FutureBuilder<List<DocumentSnapshot>>(
+              future: Future.wait([
+                FirestoreEnforcer.instance
+                    .collection('organizations')
+                    .doc(orgId)
+                    .get(),
+                FirestoreEnforcer.instance
+                    .collection('organizations')
+                    .doc(orgId)
+                    .collection('stripe')
+                    .doc('subscription')
+                    .get(),
+              ]),
+              builder: (context, accessSnap) {
+                if (accessSnap.connectionState != ConnectionState.done) {
+                  return const Scaffold(
+                    body: Center(child: CircularProgressIndicator()),
+                  );
+                }
+
+                final organizationData =
+                    accessSnap.data?[0].data() as Map<String, dynamic>?;
+                final subscriptionData =
+                    accessSnap.data?[1].data() as Map<String, dynamic>?;
+                if (!SubscriptionAccessService.hasAccess(
+                  organizationData: organizationData,
+                  subscriptionData: subscriptionData,
+                )) {
+                  logger.d(
+                    '[AuthGateWithOrgForManager] No active billing or valid trial for orgId: $orgId',
+                  );
+                  return _schedulePaymentRedirect(
+                    context,
+                    orgId: orgId,
+                    email: userEmail,
+                    logPrefix: '[AuthGateWithOrgForManager]',
+                  );
+                }
+
+                logger.d(
+                  '[AuthGateWithOrgForManager] Access granted, showing manager dashboard',
+                );
+                return _buildManagerDashboardPage(
+                  context,
+                  organizationId: orgId,
+                );
+              },
+            );
           },
         );
       },
@@ -276,9 +494,13 @@ class AuthGateWithOrgForAdmin extends ConsumerWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, authSnap) {
-        logger.d('[AUTH_GATE_ADMIN] stream state=${authSnap.connectionState} userPresent=${authSnap.data != null}');
+        logger.d(
+          '[AUTH_GATE_ADMIN] stream state=${authSnap.connectionState} userPresent=${authSnap.data != null}',
+        );
         if (authSnap.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
         final user = authSnap.data;
         if (user == null) {
@@ -287,13 +509,19 @@ class AuthGateWithOrgForAdmin extends ConsumerWidget {
         }
         // now fetch org ID and check admin access
         return FutureBuilder<DocumentSnapshot>(
-          future: FirestoreEnforcer.instance.collection(FirestoreCollectionNames.users).doc(user.uid).get(),
+          future:
+              FirestoreEnforcer.instance
+                  .collection(FirestoreCollectionNames.users)
+                  .doc(user.uid)
+                  .get(),
           builder: (context, snap) {
             logger.d(
               '[AUTH_GATE_ADMIN] user=${user.uid} future state=${snap.connectionState} hasData=${snap.hasData} exists=${snap.data?.exists}',
             );
             if (snap.connectionState != ConnectionState.done) {
-              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
             }
             if (!snap.hasData || !(snap.data?.exists ?? false)) {
               logger.d('[AUTH_GATE_ADMIN] Missing user doc -> LoginPage');
@@ -323,15 +551,21 @@ class AuthGateWithOrgForAdmin extends ConsumerWidget {
                   context.go(AppRoutes.userDashboardPage.path);
                 });
               }
-              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
             }
 
-            logger.d('[AUTH_GATE_ADMIN] Authorized admin -> routing to guarded setup');
+            logger.d(
+              '[AUTH_GATE_ADMIN] Authorized admin -> routing to guarded setup',
+            );
             // Use our new guarded route to ensure web gets WEB page
             WidgetsBinding.instance.addPostFrameCallback((_) {
               context.go(AppRoutes.setupPage.path, extra: orgId);
             });
-            return const Scaffold(body: Center(child: CircularProgressIndicator()));
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
           },
         );
       },
@@ -348,12 +582,20 @@ class _ThreadRouteGate extends ConsumerWidget {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const LoginPage();
     return FutureBuilder<DocumentSnapshot>(
-      future: FirestoreEnforcer.instance.collection(FirestoreCollectionNames.users).doc(user.uid).get(),
+      future:
+          FirestoreEnforcer.instance
+              .collection(FirestoreCollectionNames.users)
+              .doc(user.uid)
+              .get(),
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
-        if (!snap.hasData || !(snap.data?.exists ?? false)) return const LoginPage();
+        if (!snap.hasData || !(snap.data?.exists ?? false)) {
+          return const LoginPage();
+        }
         final data = snap.data?.data() as Map<String, dynamic>?;
         final orgId = data?['organizationId'] as String?;
         if (orgId == null) return const LoginPage();
@@ -378,7 +620,9 @@ class AuthGateForAdminSetup extends ConsumerWidget {
           '[AUTH_GATE_ADMIN_SETUP] stream state=${authSnap.connectionState} userPresent=${authSnap.data != null}',
         );
         if (authSnap.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
         final user = authSnap.data;
         if (user == null) {
@@ -387,13 +631,19 @@ class AuthGateForAdminSetup extends ConsumerWidget {
         }
         // Fetch org ID and check admin access
         return FutureBuilder<DocumentSnapshot>(
-          future: FirestoreEnforcer.instance.collection(FirestoreCollectionNames.users).doc(user.uid).get(),
+          future:
+              FirestoreEnforcer.instance
+                  .collection(FirestoreCollectionNames.users)
+                  .doc(user.uid)
+                  .get(),
           builder: (context, snap) {
             logger.d(
               '[AUTH_GATE_ADMIN_SETUP] user=${user.uid} future state=${snap.connectionState} hasData=${snap.hasData} exists=${snap.data?.exists}',
             );
             if (snap.connectionState != ConnectionState.done) {
-              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
             }
             if (!snap.hasData || !(snap.data?.exists ?? false)) {
               logger.d('[AUTH_GATE_ADMIN_SETUP] Missing user doc -> LoginPage');
@@ -408,11 +658,15 @@ class AuthGateForAdminSetup extends ConsumerWidget {
 
             final userRole = userData['userRole'] as int? ?? 0;
             final orgId = userData['organizationId'] as String?;
-            logger.d('[AUTH_GATE_ADMIN_SETUP] role=$userRole orgId=$orgId initialTab=$initialTab');
+            logger.d(
+              '[AUTH_GATE_ADMIN_SETUP] role=$userRole orgId=$orgId initialTab=$initialTab',
+            );
 
             // Check if user is admin and has organization
             if (userRole != 2 || orgId == null) {
-              logger.d('[AUTH_GATE_ADMIN_SETUP] Not admin or missing org; rerouting');
+              logger.d(
+                '[AUTH_GATE_ADMIN_SETUP] Not admin or missing org; rerouting',
+              );
               // Not an admin, redirect to appropriate dashboard
               if (userRole == 1) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -423,12 +677,83 @@ class AuthGateForAdminSetup extends ConsumerWidget {
                   context.go(AppRoutes.userDashboardPage.path);
                 });
               }
-              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
             }
 
-            logger.d('[AUTH_GATE_ADMIN_SETUP] Authorized admin -> Admin setup page (web: $kIsWeb)');
-            // Use the helper function to build the appropriate page
-            return _buildAdminSetupPage(context, organizationId: orgId, tab: initialTab);
+            // Check subscription status for admin access
+            // BYPASS: If user has setup=true in URL, they just completed payment - allow access
+            final isNewUserSetup =
+                GoRouterState.of(context).uri.queryParameters['setup'] ==
+                'true';
+            if (isNewUserSetup) {
+              logger.d(
+                '[AUTH_GATE_ADMIN_SETUP] setup=true detected - bypassing subscription check for new user',
+              );
+              // Use the helper function to build the appropriate page
+              return _buildAdminSetupPage(
+                context,
+                organizationId: orgId,
+                tab: initialTab,
+              );
+            }
+
+            return FutureBuilder<List<DocumentSnapshot>>(
+              future: Future.wait([
+                FirestoreEnforcer.instance
+                    .collection(FirestoreCollectionNames.organizationTable)
+                    .doc(orgId)
+                    .get(),
+                FirestoreEnforcer.instance
+                    .collection(FirestoreCollectionNames.organizationTable)
+                    .doc(orgId)
+                    .collection('stripe')
+                    .doc('subscription')
+                    .get(),
+              ]),
+              builder: (context, accessSnap) {
+                logger.d(
+                  '[AUTH_GATE_ADMIN_SETUP] Checking subscription for orgId=$orgId',
+                );
+
+                if (accessSnap.connectionState != ConnectionState.done) {
+                  return const Scaffold(
+                    body: Center(child: CircularProgressIndicator()),
+                  );
+                }
+
+                final organizationData =
+                    accessSnap.data?[0].data() as Map<String, dynamic>?;
+                final subscriptionData =
+                    accessSnap.data?[1].data() as Map<String, dynamic>?;
+                if (!SubscriptionAccessService.hasAccess(
+                  organizationData: organizationData,
+                  subscriptionData: subscriptionData,
+                )) {
+                  logger.d(
+                    '[AUTH_GATE_ADMIN_SETUP] Invalid subscription -> Redirecting to payment',
+                  );
+                  final userEmail = userData['email'] as String? ?? '';
+                  return _schedulePaymentRedirect(
+                    context,
+                    orgId: orgId,
+                    email: userEmail,
+                    logPrefix: '[AUTH_GATE_ADMIN_SETUP]',
+                  );
+                }
+
+                logger.d(
+                  '[AUTH_GATE_ADMIN_SETUP] Access granted -> Admin setup page (web: $kIsWeb)',
+                );
+                // Use the helper function to build the appropriate page
+                return _buildAdminSetupPage(
+                  context,
+                  organizationId: orgId,
+                  tab: initialTab,
+                );
+              },
+            );
           },
         );
       },
@@ -436,7 +761,83 @@ class AuthGateForAdminSetup extends ConsumerWidget {
   }
 }
 
+class PlatformAccessGate extends StatelessWidget {
+  final Widget child;
+
+  const PlatformAccessGate({required this.child, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const LoginPage();
+
+    return FutureBuilder<DocumentSnapshot>(
+      future:
+          FirestoreEnforcer.instance
+              .collection(FirestoreCollectionNames.users)
+              .doc(user.uid)
+              .get(),
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final data = snap.data?.data() as Map<String, dynamic>?;
+        final hasAccess = data?['platformAccess'] == true;
+        if (!hasAccess) {
+          return Scaffold(
+            backgroundColor: HandsColors.scaffoldBackground,
+            body: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: const Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text(
+                      'This dashboard is only available to Hands platform accounts.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+        return child;
+      },
+    );
+  }
+}
+
 GoRouter? _cachedRouter;
+
+// Local helper to determine payment quantity based on intendedLocationQuantity or existing locations
+Future<int> _resolveQuantityForPayment(String orgId) async {
+  try {
+    final orgDoc =
+        await FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(orgId)
+            .get();
+    if (orgDoc.exists) {
+      final data = orgDoc.data();
+      final intended = data?['intendedLocationQuantity'] as int?;
+      if (intended != null && intended > 0) return intended;
+    }
+
+    final locSnap =
+        await FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(orgId)
+            .collection('locations')
+            .get();
+    final count = locSnap.size;
+    return count > 0 ? count : 1;
+  } catch (_) {
+    return 1;
+  }
+}
 
 GoRouter buildAppRouter(Ref ref) {
   if (_cachedRouter != null) {
@@ -460,33 +861,65 @@ GoRouter buildAppRouter(Ref ref) {
         logger.d('[ROUTER_DEBUG] Query Params: ${state.uri.queryParameters}');
         logger.d('[ROUTER_DEBUG] ==========================================');
 
+        // iOS App Store compliance - block restricted routes
+        if (isIOS) {
+          final restrictedPaths = [
+            '/create_account',
+            '/pricing',
+            '/billing',
+            '/signup',
+            '/subscription',
+          ];
+
+          if (restrictedPaths.any((path) => routerPath.startsWith(path))) {
+            logger.d(
+              '[ROUTER] iOS compliance: blocking restricted path $routerPath',
+            );
+            return '/not-available-ios';
+          }
+        }
+
+        // Shared Mode: force tasks-only dashboard and prevent navigating into admin/manager/settings.
+        final sharedMode = ref.read(sharedModeControllerProvider);
+        if (sharedMode.enabled) {
+          final allowedPaths = <String>{
+            AppRoutes.userDashboardPage.path,
+            AppRoutes.loginPage.path,
+            AppRoutes.signInPage.path,
+          };
+
+          if (!allowedPaths.contains(routerPath)) {
+            logger.d(
+              '[ROUTER] Shared Mode enabled; redirecting $routerPath -> ${AppRoutes.userDashboardPage.path}',
+            );
+            return AppRoutes.userDashboardPage.path;
+          }
+        }
+
+        // CRITICAL: Don't redirect when on payment pages or return handler to prevent loops
+        if (routerPath.startsWith('/embedded-payment') ||
+            routerPath.startsWith('/billing/embedded-payment') ||
+            routerPath.startsWith('/billing/checkout-complete')) {
+          logger.d(
+            '[ROUTER] On payment page, skipping redirect checks to prevent loops',
+          );
+          return null;
+        }
+
         // AGGRESSIVE BROWSER URL PARSING
         logger.d('[ROUTER] Browser path: ${browserUri.path}');
         logger.d('[ROUTER] Router path: $routerPath');
 
-        // CRITICAL FIX: Handle direct navigation to create_account from marketing site
-        if (browserUri.path.contains('/create_account') && routerPath != AppRoutes.accountCreationPage.path) {
-          logger.d('[ROUTER] *** FORCING SIGNUP NAVIGATION ***');
-          logger.d('[ROUTER] Redirecting to: ${AppRoutes.accountCreationPage.path}');
-          return AppRoutes.accountCreationPage.path;
-        }
-
-        // CRITICAL FIX: Handle direct navigation to login from marketing site
-        if (browserUri.path.contains('/login') && routerPath != AppRoutes.loginPage.path) {
-          logger.d('[ROUTER] *** FORCING LOGIN NAVIGATION ***');
-          logger.d('[ROUTER] Redirecting to: ${AppRoutes.loginPage.path}');
-          return AppRoutes.loginPage.path;
-        }
+        // Don't interfere with normal navigation between login and account creation
+        // Only handle specific redirect cases if needed
 
         // If browser shows welcome but router doesn't, force welcome navigation
         if (browserUri.path == '/welcome' && routerPath != '/welcome') {
           logger.d('[ROUTER] *** FORCING WELCOME NAVIGATION ***');
-          final email = browserUri.queryParameters['email'];
-          final orgId = browserUri.queryParameters['orgId'];
           final inviteId = browserUri.queryParameters['inviteId'];
 
-          if (email != null && orgId != null) {
-            final welcomeUrl = '/welcome?email=$email&orgId=$orgId&inviteId=${inviteId ?? ''}';
+          if (inviteId != null && inviteId.isNotEmpty) {
+            final welcomeUrl = '/welcome?inviteId=$inviteId';
             logger.d('[ROUTER] Redirecting to: $welcomeUrl');
             return welcomeUrl;
           }
@@ -506,7 +939,9 @@ GoRouter buildAppRouter(Ref ref) {
         if (routerPath == '/pricing') {
           final paymentParam = state.uri.queryParameters['payment'];
           if (paymentParam == 'cancelled') {
-            logger.d('[ROUTER] *** REDIRECTING PRICING CANCELLATION TO PAYMENT CANCELLED ***');
+            logger.d(
+              '[ROUTER] *** REDIRECTING PRICING CANCELLATION TO PAYMENT CANCELLED ***',
+            );
             return AppRoutes.paymentCancelledPage.path;
           }
         }
@@ -524,20 +959,74 @@ GoRouter buildAppRouter(Ref ref) {
 
       // IMPROVED: Use browser URL path as initial location when available
       // Simplified logic to avoid potential null issues
-      initialLocation: kIsWeb && Uri.base.path.isNotEmpty ? Uri.base.path : AppRoutes.homePage.path,
+      // Special handling for payment pages to prevent redirect loops
+      initialLocation:
+          (() {
+            if (kIsWeb && Uri.base.path.isNotEmpty) {
+              final browserPath = Uri.base.path;
+              logger.d(
+                '[ROUTER_INIT] Browser path for initial location: $browserPath',
+              );
+
+              // If browser is on payment page, respect it
+              if (browserPath.startsWith('/embedded-payment') ||
+                  browserPath.startsWith('/billing/embedded-payment')) {
+                logger.d(
+                  '[ROUTER_INIT] Browser on payment page, using as initial location',
+                );
+                return browserPath;
+              }
+
+              return browserPath;
+            }
+            return AppRoutes.homePage.path;
+          })(),
       // Add observer for detailed route tracking
       observers: [],
       routes: [
-        GoRoute(path: AppRoutes.homePage.path, builder: (context, state) => const AuthGateWithOrg()),
+        GoRoute(
+          path: AppRoutes.homePage.path,
+          builder: (context, state) => const AuthGateWithOrg(),
+        ),
+        // Debug: Stripe probe (not linked in UI)
+        GoRoute(
+          path: '/debug/stripe-probe',
+          builder: (context, state) => const StripeProbePage(),
+        ),
         // Invite route removed
         GoRoute(
           path: AppRoutes.accountCreationPage.path,
           builder: (context, state) {
-            return const branded.SimpleSignUpPage();
+            // iOS compliance: block signup page
+            if (isIOS) {
+              return const NotAvailableOnIOSPage(
+                requestedFeature: 'Account creation',
+              );
+            }
+            return branded.SimpleSignUpPage(
+              email: state.uri.queryParameters['email'],
+              organizationId:
+                  state.uri.queryParameters['orgId'] ??
+                  state.uri.queryParameters['organizationId'],
+              token:
+                  state.uri.queryParameters['token'] ??
+                  state.uri.queryParameters['inviteId'],
+            );
           },
         ),
-        GoRoute(path: AppRoutes.loginPage.path, builder: (context, state) => const LoginPage()),
-        GoRoute(path: AppRoutes.signInPage.path, builder: (context, state) => const SignInPage()),
+        // iOS compliance route
+        GoRoute(
+          path: '/not-available-ios',
+          builder: (context, state) => const NotAvailableOnIOSPage(),
+        ),
+        GoRoute(
+          path: AppRoutes.loginPage.path,
+          builder: (context, state) => const LoginPage(),
+        ),
+        GoRoute(
+          path: AppRoutes.signInPage.path,
+          builder: (context, state) => const SignInPage(),
+        ),
         GoRoute(
           path: AppRoutes.welcomePage.path,
           builder:
@@ -550,12 +1039,123 @@ GoRouter buildAppRouter(Ref ref) {
         ),
         GoRoute(
           path: AppRoutes.settingsPage.path,
-          builder: (context, state) => const AuthGate(child: HandsSettingsPage()),
+          builder:
+              (context, state) => const AuthGate(child: HandsSettingsPage()),
+        ),
+        GoRoute(
+          path: AppRoutes.subscriptionManagementPage.path,
+          builder: (context, state) {
+            // Get orgId from query parameter or user data
+            final orgId = state.uri.queryParameters['orgId'];
+            if (orgId == null || orgId.isEmpty) {
+              return const Scaffold(
+                body: Center(
+                  child: Text(
+                    'Organization ID required for subscription management',
+                  ),
+                ),
+              );
+            }
+            return AuthGate(child: SubscriptionManagementPage(orgId: orgId));
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.crmPage.path,
+          builder:
+              (context, state) =>
+                  const PlatformAccessGate(child: CrmDashboardPage()),
+        ),
+        GoRoute(
+          path: AppRoutes.crmOrgTasksPage.path,
+          builder: (context, state) {
+            final orgId = state.pathParameters['orgId'] ?? '';
+            if (orgId.isEmpty) {
+              return const PlatformAccessGate(
+                child: Scaffold(
+                  body: Center(child: Text('Organization ID required')),
+                ),
+              );
+            }
+            return PlatformAccessGate(
+              child: UserDashboardPage(
+                organizationIdOverride: orgId,
+                allowPlatformAccess: true,
+              ),
+            );
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.crmOrgDashboardPage.path,
+          builder: (context, state) {
+            final orgId = state.pathParameters['orgId'] ?? '';
+            if (orgId.isEmpty) {
+              return const PlatformAccessGate(
+                child: Scaffold(
+                  body: Center(child: Text('Organization ID required')),
+                ),
+              );
+            }
+            return PlatformAccessGate(
+              child: Builder(
+                builder:
+                    (context) => _buildManagerDashboardPage(
+                      context,
+                      organizationId: orgId,
+                      allowPlatformAccess: true,
+                    ),
+              ),
+            );
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.crmOrgAdminPage.path,
+          builder: (context, state) {
+            final orgId = state.pathParameters['orgId'] ?? '';
+            final tab = state.uri.queryParameters['tab'];
+            if (orgId.isEmpty) {
+              return const PlatformAccessGate(
+                child: Scaffold(
+                  body: Center(child: Text('Organization ID required')),
+                ),
+              );
+            }
+            return PlatformAccessGate(
+              child: Builder(
+                builder:
+                    (context) => _buildAdminSetupPage(
+                      context,
+                      organizationId: orgId,
+                      tab: tab,
+                      allowPlatformAccess: true,
+                    ),
+              ),
+            );
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.crmOrgDocumentsPage.path,
+          builder: (context, state) {
+            final orgId = state.pathParameters['orgId'] ?? '';
+            if (orgId.isEmpty) {
+              return const PlatformAccessGate(
+                child: Scaffold(
+                  body: Center(child: Text('Organization ID required')),
+                ),
+              );
+            }
+            return PlatformAccessGate(
+              child: ViewDocumentsPage(
+                organizationIdOverride: orgId,
+                allowPlatformAccess: true,
+              ),
+            );
+          },
         ),
         GoRoute(
           path: AppRoutes.userDashboardPage.path,
           // Simple auth gate so admins and managers can navigate here directly
-          builder: (context, state) => const AuthGate(child: UserDashboardPage()),
+          builder:
+              (context, state) => const AuthGate(child: UserDashboardPage()),
         ),
         GoRoute(
           path: AppRoutes.adminDashboardPage.path,
@@ -574,7 +1174,10 @@ GoRouter buildAppRouter(Ref ref) {
         GoRoute(
           path: AppRoutes.setupPage.path,
           builder: (context, state) {
-            final tab = state.uri.queryParameters['tab']; // 'shifts' | 'checklists' | 'users' | 'locations'
+            final tab =
+                state
+                    .uri
+                    .queryParameters['tab']; // 'shifts' | 'checklists' | 'users' | 'locations'
             return AuthGateForAdminSetup(initialTab: tab);
           },
         ),
@@ -582,8 +1185,14 @@ GoRouter buildAppRouter(Ref ref) {
           path: AppRoutes.managerDashboardPage.path,
           builder: (context, state) => const AuthGateWithOrgForManager(),
         ),
-        GoRoute(path: AppRoutes.schedulePage.path, builder: (context, state) => const AuthGate(child: SchedulePage())),
-        GoRoute(path: AppRoutes.messagesPage.path, builder: (context, state) => const AuthGate(child: MessagesPage())),
+        GoRoute(
+          path: AppRoutes.schedulePage.path,
+          builder: (context, state) => const AuthGate(child: SchedulePage()),
+        ),
+        GoRoute(
+          path: AppRoutes.messagesPage.path,
+          builder: (context, state) => const AuthGate(child: MessagesPage()),
+        ),
         GoRoute(
           path: AppRoutes.threadPage.path,
           builder: (context, state) {
@@ -593,7 +1202,8 @@ GoRouter buildAppRouter(Ref ref) {
         ),
         GoRoute(
           path: AppRoutes.notificationsPage.path,
-          builder: (context, state) => const AuthGate(child: NotificationsPage()),
+          builder:
+              (context, state) => const AuthGate(child: NotificationsPage()),
         ),
         GoRoute(
           path: AppRoutes.trainingMaterialsPage.path,
@@ -602,8 +1212,103 @@ GoRouter buildAppRouter(Ref ref) {
             return const AuthGate(child: ViewDocumentsPage());
           },
         ),
-        GoRoute(path: AppRoutes.paymentSuccessPage.path, builder: (context, state) => const PaymentSuccessPage()),
-        GoRoute(path: AppRoutes.paymentCancelledPage.path, builder: (context, state) => const PaymentCancelledPage()),
+        GoRoute(
+          path: AppRoutes.howToUsePage.path,
+          builder: (context, state) {
+            final roleSlug = state.uri.queryParameters['role'];
+            if (roleSlug != null && roleSlug.isNotEmpty) {
+              return AuthGate(
+                child: HelpRolePage(role: HelpRoleX.fromSlug(roleSlug)),
+              );
+            }
+            return const AuthGate(child: HelpHomePage());
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.helpStartHerePage.path,
+          builder: (context, state) {
+            final roleSlug = state.uri.queryParameters['role'];
+            final role = roleSlug == null ? null : HelpRoleX.fromSlug(roleSlug);
+            return AuthGate(child: HelpStartHerePage(selectedRole: role));
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.helpRolePage.path,
+          builder: (context, state) {
+            final roleSlug = state.pathParameters['role'] ?? 'staff';
+            return AuthGate(
+              child: HelpRolePage(role: HelpRoleX.fromSlug(roleSlug)),
+            );
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.helpTopicPage.path,
+          builder: (context, state) {
+            final topicId = state.pathParameters['topicId'] ?? '';
+            return AuthGate(child: HelpTopicPage(topicId: topicId));
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.helpTroubleshootingPage.path,
+          builder:
+              (context, state) =>
+                  const AuthGate(child: HelpTroubleshootingPage()),
+        ),
+        GoRoute(
+          path: AppRoutes.contactUsPage.path,
+          builder:
+              (context, state) => AuthGate(
+                child: ContactUsPage(
+                  source: state.uri.queryParameters['source'],
+                  topicId: state.uri.queryParameters['topic'],
+                  topicTitle: state.uri.queryParameters['topicTitle'],
+                  currentRoute: state.uri.queryParameters['route'],
+                  screenLabel: state.uri.queryParameters['screen'],
+                  issueHint: state.uri.queryParameters['issue'],
+                ),
+              ),
+        ),
+        GoRoute(
+          path: AppRoutes.embeddedPaymentPage.path,
+          builder: (context, state) {
+            final orgId = state.uri.queryParameters['orgId'];
+            final priceIdMonthly =
+                state.uri.queryParameters['priceIdMonthly'] ??
+                kStripePriceMonthly;
+            final priceIdAnnual =
+                state.uri.queryParameters['priceIdAnnual'] ??
+                kStripePriceAnnual;
+            final quantity =
+                int.tryParse(state.uri.queryParameters['quantity'] ?? '1') ?? 1;
+            final email = state.uri.queryParameters['email'];
+
+            if (orgId == null) {
+              return const Scaffold(
+                body: Center(
+                  child: Text('Organization ID required for payment'),
+                ),
+              );
+            }
+
+            // If email is missing, we can still proceed - the payment form will handle this
+            final userEmail = email ?? '';
+
+            return EmbeddedPaymentPage(
+              orgId: orgId,
+              email: userEmail,
+              priceIdMonthly: priceIdMonthly,
+              priceIdAnnual: priceIdAnnual,
+              quantity: quantity,
+            );
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.checkoutComplete.path,
+          builder: (context, state) {
+            final sessionId = state.uri.queryParameters['session_id'];
+            return CheckoutCompletePage(sessionId: sessionId);
+          },
+        ),
       ],
     );
   } catch (e, st) {
@@ -616,7 +1321,16 @@ GoRouter buildAppRouter(Ref ref) {
   }
 
   // If we reach here, router construction failed in a non-throwing way. Create a minimal fallback router
-  logger.w('[ROUTER_INIT] Router construction failed; returning fallback GoRouter to avoid null exception');
-  _cachedRouter = GoRouter(routes: [GoRoute(path: AppRoutes.homePage.path, builder: (c, s) => const LoginPage())]);
+  logger.w(
+    '[ROUTER_INIT] Router construction failed; returning fallback GoRouter to avoid null exception',
+  );
+  _cachedRouter = GoRouter(
+    routes: [
+      GoRoute(
+        path: AppRoutes.homePage.path,
+        builder: (c, s) => const LoginPage(),
+      ),
+    ],
+  );
   return _cachedRouter!;
 }

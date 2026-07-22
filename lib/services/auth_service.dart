@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hands_app/services/push_notification_service.dart';
 import 'package:hands_app/services/web_optimized_firestore_service.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 
@@ -12,6 +13,10 @@ class AuthService {
     try {
       // Clear any local caches
       WebOptimizedFirestoreService.clearCache();
+
+      await PushNotificationService().detachCurrentDeviceFromUser(
+        context: 'auth_service_sign_out',
+      );
 
       // Sign out from Firebase
       await _auth.signOut();
@@ -39,7 +44,10 @@ class AuthService {
   }
 
   /// Centralized account deletion function
-  static Future<void> deleteAccount(BuildContext context, String password) async {
+  static Future<void> deleteAccount(
+    BuildContext context,
+    String password,
+  ) async {
     try {
       final user = _auth.currentUser;
       if (user == null) {
@@ -48,15 +56,22 @@ class AuthService {
 
       // Re-authenticate user before deletion
       final email = user.email;
-      if (email == null) throw Exception('User email missing for reauthentication');
-      final credential = EmailAuthProvider.credential(email: email, password: password);
+      if (email == null)
+        throw Exception('User email missing for reauthentication');
+      final credential = EmailAuthProvider.credential(
+        email: email,
+        password: password,
+      );
       await user.reauthenticateWithCredential(credential);
 
       // Clear any local caches
       WebOptimizedFirestoreService.clearCache();
 
       // Delete user document from Firestore first
-      await FirestoreEnforcer.instance.collection('users').doc(user.uid).delete();
+      await FirestoreEnforcer.instance
+          .collection('users')
+          .doc(user.uid)
+          .delete();
 
       // Delete user authentication account
       await user.delete();

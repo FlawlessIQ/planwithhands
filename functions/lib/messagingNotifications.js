@@ -33,590 +33,413 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onGeneralNotificationCreated = exports.onDailySummaryNotificationCreated = exports.sendMessageNotification = exports.onMessageCreated = void 0;
+exports.onNotificationOutboxCreated = void 0;
+// --- NEW LOOP-PROOF, IDEMPOTENT, KILL-SWITCH ENABLED, TTL-SUPPORTING FUNCTION ---
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
-/**
- * Trigger when a new message is created in a thread
- * Sends push notifications to all recipients in the thread
- */
-exports.onMessageCreated = functions.firestore
-    .document("messageThreads/{threadId}/messages/{messageId}")
-    .onCreate(async (snap, context) => {
-    const message = snap.data();
-    const threadId = context.params.threadId;
-    const messageId = context.params.messageId;
-    try {
-        console.log(`Processing new message: ${messageId} in thread: ${threadId}`);
-        // Get the sender's information
-        const senderId = message.senderId;
-        const senderDoc = await admin.firestore().collection("users").doc(senderId).get();
-        const senderData = senderDoc.data();
-        const senderName = `${senderData?.firstName || ""} ${senderData?.lastName || ""}`.trim() || "Someone";
-        // Get thread details to find recipients
-        const threadDoc = await admin.firestore()
-            .collection("messageThreads")
-            .doc(threadId)
-            .get();
-        if (!threadDoc.exists) {
-            console.error(`Thread ${threadId} not found`);
-            return;
-        }
-        const threadData = threadDoc.data();
-        const recipientUserIds = threadData.recipientUserIds || [];
-        const orgId = threadData.orgId;
-        // Filter out the sender from recipients
-        const actualRecipients = recipientUserIds.filter((id) => id !== senderId);
-        if (actualRecipients.length === 0) {
-            console.log("No recipients to notify");
-            return;
-        }
-        console.log(`Notifying ${actualRecipients.length} recipients`);
-        // Get FCM tokens for recipients from user-specific subcollections
-        const tokenPromises = actualRecipients.map(async (userId) => {
-            try {
-                // First try to get from user-specific subcollection (new format)
-                const userTokenSnap = await admin.firestore()
-                    .collection("users")
-                    .doc(userId)
-                    .collection("deviceTokens")
-                    .where("isActive", "==", true)
-                    .get();
-                let tokens = [];
-                if (!userTokenSnap.empty) {
-                    tokens = userTokenSnap.docs.map((doc) => doc.data().fcmToken);
-                }
-                else {
-                    // Fallback to top-level deviceTokens collection (legacy format)
-                    const legacyTokenSnap = await admin.firestore()
-                        .collection("deviceTokens")
-                        .where("userId", "==", userId)
-                        .where("isActive", "==", true)
-                        .get();
-                    tokens = legacyTokenSnap.docs.map((doc) => doc.data().fcmToken);
-                }
-                return { userId, tokens: tokens.filter(Boolean) };
-            }
-            catch (error) {
-                console.error(`Error fetching tokens for user ${userId}:`, error);
-                return { userId, tokens: [] };
-            }
-        });
-        const userTokens = await Promise.all(tokenPromises);
-        const allTokens = [];
-        userTokens.forEach(({ tokens }) => {
-            allTokens.push(...tokens);
-        });
-        if (allTokens.length === 0) {
-            console.log("No FCM tokens found for recipients");
-            return;
-        }
-        // Create notification documents for each recipient
-        const batch = admin.firestore().batch();
-        const timestamp = admin.firestore.FieldValue.serverTimestamp();
-        for (const userId of actualRecipients) {
-            const notificationRef = admin.firestore()
-                .collection("organizations")
-                .doc(orgId)
-                .collection("notifications")
-                .doc();
-            batch.set(notificationRef, {
-                userId: userId,
-                orgId: orgId,
-                threadId: threadId,
-                type: "message",
-                title: `${senderName}`,
-                message: message.text.length > 100 ? `${message.text.substring(0, 100)}...` : message.text,
-                read: false,
-                createdAt: timestamp,
-                senderId: senderId,
-                senderName: senderName,
-                // Add TTL - notifications expire after 30 days
-                expiresAt: new Date(Date.now() + (30 * 24 * 60 * 60 * 1000)),
-            });
-        }
-        await batch.commit();
-        // Prepare FCM message
-        const messageText = message.text.length > 100 ? `${message.text.substring(0, 100)}...` : message.text;
-        const fcmMessage = {
-            notification: {
-                title: senderName,
-                body: messageText,
-            },
-            data: {
-                type: "message",
-                threadId: threadId,
-                messageId: messageId,
-                senderId: senderId,
-                senderName: senderName,
-                orgId: orgId,
-            },
-            tokens: allTokens,
-        };
-        // Send push notifications
-        const response = await admin.messaging().sendMulticast(fcmMessage);
-        console.log(`Push notifications sent: ${response.successCount} successful, ${response.failureCount} failed`);
-        // Clean up invalid tokens
-        if (response.responses) {
-            const invalidTokens = [];
-            response.responses.forEach((resp, index) => {
-                if (!resp.success &&
-                    (resp.error?.code === "messaging/registration-token-not-registered" ||
-                        resp.error?.code === "messaging/invalid-registration-token")) {
-                    invalidTokens.push(allTokens[index]);
-                }
-            });
-            if (invalidTokens.length > 0) {
-                console.log(`Cleaning up ${invalidTokens.length} invalid tokens`);
-                await cleanupInvalidTokens(invalidTokens);
-            }
-        }
-    }
-    catch (error) {
-        console.error("Error processing message notification:", error);
-        throw error;
-    }
-});
-/**
- * Callable function to send a message and trigger notifications
- * This provides an alternative to the Firestore trigger
- * @param {object} data - Function call data
- * @param {object} context - Function call context
- * @return {Promise<object>} - Result of the operation
- */
-exports.sendMessageNotification = functions.https.onCall(async (data, context) => {
-    // Verify user is authenticated
-    if (!context.auth) {
-        throw new functions.https.HttpsError("unauthenticated", "User must be authenticated");
-    }
-    const { threadId, messageText, recipientUserIds } = data;
-    const senderId = context.auth.uid;
-    if (!threadId || !messageText) {
-        throw new functions.https.HttpsError("invalid-argument", "Missing required fields");
-    }
-    try {
-        // Get sender information
-        const senderDoc = await admin.firestore().collection("users").doc(senderId).get();
-        const senderData = senderDoc.data();
-        const senderName = `${senderData?.firstName || ""} ${senderData?.lastName || ""}`.trim() || "Someone";
-        // Get thread information
-        const threadDoc = await admin.firestore().collection("messageThreads").doc(threadId).get();
-        const threadData = threadDoc.data();
-        const orgId = threadData?.orgId;
-        if (!orgId) {
-            throw new functions.https.HttpsError("not-found", "Organization not found");
-        }
-        // Use provided recipient list or get from thread
-        const recipients = recipientUserIds || threadData?.recipientUserIds || [];
-        const actualRecipients = recipients.filter((id) => id !== senderId);
-        if (actualRecipients.length === 0) {
-            return { success: true, message: "No recipients to notify" };
-        }
-        // Get FCM tokens from user-specific subcollections
-        const tokenPromises = actualRecipients.map(async (userId) => {
-            try {
-                // First try to get from user-specific subcollection (new format)
-                const userTokenSnap = await admin.firestore()
-                    .collection("users")
-                    .doc(userId)
-                    .collection("deviceTokens")
-                    .where("isActive", "==", true)
-                    .get();
-                if (!userTokenSnap.empty) {
-                    return userTokenSnap.docs.map((doc) => doc.data().fcmToken);
-                }
-                else {
-                    // Fallback to top-level deviceTokens collection (legacy format)
-                    const legacyTokenSnap = await admin.firestore()
-                        .collection("deviceTokens")
-                        .where("userId", "==", userId)
-                        .where("isActive", "==", true)
-                        .get();
-                    return legacyTokenSnap.docs.map((doc) => doc.data().fcmToken);
-                }
-            }
-            catch (error) {
-                console.error(`Error fetching tokens for user ${userId}:`, error);
-                return [];
-            }
-        });
-        const userTokenArrays = await Promise.all(tokenPromises);
-        const allTokens = userTokenArrays.flat();
-        if (allTokens.length === 0) {
-            return { success: true, message: "No FCM tokens found" };
-        }
-        // Create notification documents
-        const batch = admin.firestore().batch();
-        const timestamp = admin.firestore.FieldValue.serverTimestamp();
-        for (const userId of actualRecipients) {
-            const notificationRef = admin.firestore()
-                .collection("organizations")
-                .doc(orgId)
-                .collection("notifications")
-                .doc();
-            batch.set(notificationRef, {
-                userId: userId,
-                orgId: orgId,
-                threadId: threadId,
-                type: "message",
-                title: senderName,
-                message: messageText.length > 100 ? `${messageText.substring(0, 100)}...` : messageText,
-                read: false,
-                createdAt: timestamp,
-                senderId: senderId,
-                senderName: senderName,
-                expiresAt: new Date(Date.now() + (30 * 24 * 60 * 60 * 1000)),
-            });
-        }
-        await batch.commit();
-        // Send push notification
-        const fcmMessage = {
-            notification: {
-                title: senderName,
-                body: messageText.length > 100 ? `${messageText.substring(0, 100)}...` : messageText,
-            },
-            data: {
-                type: "message",
-                threadId: threadId,
-                senderId: senderId,
-                senderName: senderName,
-                orgId: orgId,
-            },
-            tokens: allTokens,
-        };
-        const response = await admin.messaging().sendMulticast(fcmMessage);
-        return {
-            success: true,
-            sent: response.successCount,
-            failed: response.failureCount,
-            recipients: actualRecipients.length,
-        };
-    }
-    catch (error) {
-        console.error("Error in sendMessageNotification:", error);
-        throw new functions.https.HttpsError("internal", "Failed to send notification");
-    }
-});
-/**
- * Helper function to clean up invalid FCM tokens
- * @param {string[]} invalidTokens - Array of invalid token strings
- * @return {Promise<void>}
- */
-async function cleanupInvalidTokens(invalidTokens) {
-    if (invalidTokens.length === 0)
-        return;
-    try {
-        const batch = admin.firestore().batch();
-        for (const token of invalidTokens) {
-            // Clean up from both new user-specific subcollections and legacy top-level collection
-            // First, check user-specific subcollections
-            const usersSnapshot = await admin.firestore().collection("users").get();
-            for (const userDoc of usersSnapshot.docs) {
-                const userTokenQuery = await admin.firestore()
-                    .collection("users")
-                    .doc(userDoc.id)
-                    .collection("deviceTokens")
-                    .where("fcmToken", "==", token)
-                    .get();
-                userTokenQuery.docs.forEach((doc) => {
-                    batch.update(doc.ref, { isActive: false });
-                });
-            }
-            // Also clean up legacy top-level collection
-            const legacyTokenQuery = await admin.firestore()
-                .collection("deviceTokens")
-                .where("fcmToken", "==", token)
-                .get();
-            legacyTokenQuery.docs.forEach((doc) => {
-                batch.update(doc.ref, { isActive: false });
-            });
-        }
-        await batch.commit();
-        console.log(`Marked ${invalidTokens.length} tokens as inactive`);
-    }
-    catch (error) {
-        console.error("Error cleaning up invalid tokens:", error);
-    }
+const firestore_1 = require("@google-cloud/firestore");
+const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || "planwithhands";
+const db = new firestore_1.Firestore({ databaseId: FIRESTORE_DATABASE_ID });
+if (!admin.apps.length) {
+    admin.initializeApp();
 }
-/**
- * Trigger when a new daily summary notification is created
- * Sends push notifications specifically for daily summary notifications
- */
-exports.onDailySummaryNotificationCreated = functions.firestore
-    .document("organizations/{orgId}/notifications/{notifId}")
+// Helper: Check kill-switch in org settings
+async function notificationsEnabled(orgId) {
+    const settingsRef = db.collection("organizations").doc(orgId).collection("settings").doc("general");
+    const doc = await settingsRef.get();
+    return doc.exists ? doc.data()?.notificationsEnabled !== false : true;
+}
+// Helper: Idempotency lock
+async function acquireEventLock(eventId) {
+    const lockRef = db.collection("_ops").doc("eventLocks").collection("locks").doc(eventId);
+    const doc = await lockRef.get();
+    if (doc.exists)
+        return false;
+    await lockRef.set({ acquiredAt: admin.firestore.FieldValue.serverTimestamp() });
+    return true;
+}
+// Helper: TTL timestamp (30 days)
+function getTTLDate() {
+    return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+}
+function normalizeLanguageCode(rawValue) {
+    const normalized = String(rawValue || "").trim().toLowerCase().replace(/_/g, "-");
+    if (normalized.startsWith("es"))
+        return "es";
+    if (normalized.startsWith("pt"))
+        return "pt";
+    return "en";
+}
+function getLocalizedField(notif, field, preferredLanguageCode) {
+    const fallback = String(notif?.[field] || "");
+    const languageMap = notif?.[`${field}ByLanguage`];
+    if (languageMap && typeof languageMap === "object") {
+        const exact = languageMap[preferredLanguageCode];
+        if (typeof exact === "string" && exact.trim().length > 0)
+            return exact;
+        const baseCode = preferredLanguageCode.split("-")[0];
+        const baseValue = languageMap[baseCode];
+        if (typeof baseValue === "string" && baseValue.trim().length > 0)
+            return baseValue;
+    }
+    return fallback;
+}
+function isInvalidFcmTokenError(code) {
+    return code === "messaging/registration-token-not-registered" ||
+        code === "messaging/invalid-registration-token";
+}
+function timestampMillis(value) {
+    if (!value)
+        return 0;
+    if (value instanceof Date)
+        return value.getTime();
+    const timestampLike = value;
+    if (typeof timestampLike.toMillis === "function") {
+        return timestampLike.toMillis();
+    }
+    return 0;
+}
+function shouldUseLastFcmToken(userData) {
+    const token = userData.lastFcmToken;
+    if (typeof token !== "string" || token.trim().length === 0)
+        return false;
+    const updatedAt = timestampMillis(userData.lastFcmTokenUpdatedAt);
+    const invalidatedAt = timestampMillis(userData.lastFcmTokenInvalidatedAt);
+    return invalidatedAt === 0 || updatedAt >= invalidatedAt;
+}
+function addTokenRef(refsByToken, token, ref) {
+    const refs = refsByToken.get(token) || [];
+    refs.push(ref);
+    refsByToken.set(token, refs);
+}
+async function deactivateInvalidTokens(tokens, tokenRefsByToken, fallbackUserRefsByToken) {
+    if (tokens.size === 0)
+        return;
+    const writer = db.bulkWriter();
+    const invalidatedAt = admin.firestore.FieldValue.serverTimestamp();
+    for (const token of tokens) {
+        const tokenRefs = tokenRefsByToken.get(token) || [];
+        tokenRefs.forEach((ref) => {
+            writer.set(ref, { isActive: false, invalidatedAt }, { merge: true });
+        });
+        const fallbackUserRefs = fallbackUserRefsByToken.get(token) || [];
+        fallbackUserRefs.forEach((ref) => {
+            writer.set(ref, { lastFcmTokenInvalidatedAt: invalidatedAt }, { merge: true });
+        });
+    }
+    await writer.close();
+    console.log(`🧹 [Outbox] Marked ${tokens.size} invalid FCM token(s) inactive`);
+}
+// Main function: Outbox trigger, fan-out to per-user inbox
+exports.onNotificationOutboxCreated = functions.firestore
+    .database(FIRESTORE_DATABASE_ID)
+    .document("organizations/{orgId}/notificationOutbox/{notifId}")
     .onCreate(async (snap, context) => {
-    const notification = snap.data();
+    const notif = snap.data();
     const notifId = context.params.notifId;
     const orgId = context.params.orgId;
-    try {
-        // Only process daily summary notifications with userId field
-        if (notification.type !== "general" || !notification.userId || !notification.title?.includes("Daily Notes Summary")) {
-            return;
+    if (!notif)
+        return;
+    // Kill-switch check
+    if (!(await notificationsEnabled(orgId))) {
+        console.log(`[KillSwitch] Notifications disabled for org ${orgId}`);
+        return;
+    }
+    // Idempotency lock
+    const eventLockId = `${orgId}_${notifId}`;
+    if (!(await acquireEventLock(eventLockId))) {
+        console.log(`[Idempotency] Event ${eventLockId} already processed.`);
+        return;
+    }
+    // Determine recipients
+    let recipientUserIds = [];
+    switch (notif.targetType) {
+        case "users":
+        case "user_ids": {
+            const raw = (notif.userIds || notif.targetIds || notif.userIDs);
+            const ids = Array.isArray(raw) ? raw : [];
+            recipientUserIds = Array.from(new Set(ids.filter((id) => typeof id === "string" && id.length > 0)));
+            console.log(`[Outbox] Targeting explicit user IDs: ${recipientUserIds.length}`);
+            break;
         }
-        console.log(`[DailySummary] Processing daily summary notification: ${notifId} for user: ${notification.userId} in org: ${orgId}`);
-        // Get FCM tokens for the specific user
-        const userId = notification.userId;
-        let fcmTokens = [];
+        case "all":
+        case "all_users": {
+            const snap = await db.collection("users")
+                .where("organizationId", "==", orgId)
+                .where("isActive", "==", true)
+                .get();
+            recipientUserIds = snap.docs.map(doc => doc.id);
+            break;
+        }
+        case "group": {
+            const groupDoc = await db.collection("organizations").doc(orgId)
+                .collection("groups").doc(notif.targetId).get();
+            if (groupDoc.exists) {
+                const groupData = groupDoc.data();
+                recipientUserIds = groupData?.memberIds || groupData?.userIds || [];
+                console.log(`[Outbox] Group ${notif.targetId} has ${recipientUserIds.length} members:`, recipientUserIds);
+            }
+            else {
+                console.log(`[Outbox] Group ${notif.targetId} not found`);
+            }
+            break;
+        }
+        case "location": {
+            console.log(`[Outbox] Location targeting for location ${notif.targetId} in org ${orgId}`);
+            // First try users with locationIds array
+            const arraySnap = await db.collection("users")
+                .where("organizationId", "==", orgId)
+                .where("isActive", "==", true)
+                .where("locationIds", "array-contains", notif.targetId)
+                .get();
+            let arrayUserIds = arraySnap.docs.map(doc => doc.id);
+            console.log(`[Outbox] Found ${arrayUserIds.length} users with locationIds array containing ${notif.targetId}`);
+            // Then try users with single locationId field
+            const singleSnap = await db.collection("users")
+                .where("organizationId", "==", orgId)
+                .where("isActive", "==", true)
+                .where("locationId", "==", notif.targetId)
+                .get();
+            let singleUserIds = singleSnap.docs.map(doc => doc.id);
+            console.log(`[Outbox] Found ${singleUserIds.length} users with locationId field equal to ${notif.targetId}`);
+            // Combine and deduplicate user IDs
+            const allLocationUserIds = [...new Set([...arrayUserIds, ...singleUserIds])];
+            recipientUserIds = allLocationUserIds;
+            console.log(`[Outbox] Total unique users for location ${notif.targetId}: ${recipientUserIds.length}`);
+            if (recipientUserIds.length === 0) {
+                // Debug: let's check what users exist in this org and their location assignments
+                const allUsersSnap = await db.collection("users")
+                    .where("organizationId", "==", orgId)
+                    .where("isActive", "==", true)
+                    .get();
+                console.log(`[Outbox] Debug: Found ${allUsersSnap.docs.length} active users in org`);
+                allUsersSnap.docs.forEach(doc => {
+                    const userData = doc.data();
+                    console.log(`[Outbox] Debug: User ${doc.id} locationIds:`, userData.locationIds || 'none', 'locationId:', userData.locationId || 'none');
+                });
+            }
+            break;
+        }
+        default:
+            console.log(`[Outbox] Unknown targetType: ${notif.targetType}`);
+            return;
+    }
+    if (recipientUserIds.length === 0) {
+        console.log(`[Outbox] No recipients for notification ${notifId}`);
+        return;
+    }
+    // Fan-out: Write to per-user inbox with TTL and send push notifications
+    const writer = db.bulkWriter();
+    const timestamp = admin.firestore.FieldValue.serverTimestamp();
+    // Get FCM tokens for all recipients for push notifications
+    const tokenPromises = recipientUserIds.map(async (userId) => {
         try {
-            // First try to get from user-specific subcollection (new format)
-            const userTokenSnap = await admin.firestore()
+            const userDoc = await db.collection("users").doc(userId).get();
+            const userData = userDoc.data() || {};
+            const userRef = userDoc.ref;
+            const preferredLanguageCode = normalizeLanguageCode(userData.preferredLanguageCode);
+            const tokenRefsByToken = new Map();
+            const fallbackUserRefsByToken = new Map();
+            // First try user-specific subcollection (new format)
+            const userTokenSnap = await db
                 .collection("users")
                 .doc(userId)
                 .collection("deviceTokens")
                 .where("isActive", "==", true)
                 .get();
+            let tokens = [];
             if (!userTokenSnap.empty) {
-                fcmTokens = userTokenSnap.docs.map((doc) => doc.data().fcmToken).filter(Boolean);
-                console.log(`[DailySummary] Found ${fcmTokens.length} tokens from user subcollection for ${userId}`);
+                tokens = userTokenSnap.docs
+                    .map((doc) => {
+                    const fcmToken = doc.data().fcmToken;
+                    if (typeof fcmToken === "string" && fcmToken.trim().length > 0) {
+                        addTokenRef(tokenRefsByToken, fcmToken, doc.ref);
+                        return fcmToken;
+                    }
+                    return "";
+                })
+                    .filter(Boolean);
             }
             else {
-                // Fallback to top-level deviceTokens collection (legacy format)
-                const legacyTokenSnap = await admin.firestore()
+                // Fallback to legacy top-level collection
+                const legacyTokenSnap = await db
                     .collection("deviceTokens")
                     .where("userId", "==", userId)
                     .where("isActive", "==", true)
                     .get();
-                fcmTokens = legacyTokenSnap.docs.map((doc) => doc.data().fcmToken).filter(Boolean);
-                console.log(`[DailySummary] Found ${fcmTokens.length} tokens from legacy collection for ${userId}`);
+                tokens = legacyTokenSnap.docs
+                    .map((doc) => {
+                    const fcmToken = doc.data().fcmToken;
+                    if (typeof fcmToken === "string" && fcmToken.trim().length > 0) {
+                        addTokenRef(tokenRefsByToken, fcmToken, doc.ref);
+                        return fcmToken;
+                    }
+                    return "";
+                })
+                    .filter(Boolean);
             }
+            if (tokens.length === 0 && shouldUseLastFcmToken(userData)) {
+                tokens = [userData.lastFcmToken];
+                addTokenRef(fallbackUserRefsByToken, userData.lastFcmToken, userRef);
+                console.log(`[Outbox] Using lastFcmToken fallback for user ${userId}`);
+            }
+            return {
+                userId,
+                preferredLanguageCode,
+                tokens: tokens.filter(Boolean),
+                tokenRefsByToken,
+                fallbackUserRefsByToken,
+            };
         }
         catch (error) {
-            console.error(`[DailySummary] Error fetching tokens for user ${userId}:`, error);
+            console.error(`Error fetching tokens for user ${userId}:`, error);
+            return {
+                userId,
+                preferredLanguageCode: "en",
+                tokens: [],
+                tokenRefsByToken: new Map(),
+                fallbackUserRefsByToken: new Map(),
+            };
         }
-        if (fcmTokens.length === 0) {
-            console.log(`[DailySummary] No FCM tokens found for user ${userId} - notification document created but no push sent`);
-            return;
+    });
+    const userTokens = await Promise.all(tokenPromises);
+    const userMeta = new Map(userTokens.map((entry) => [entry.userId, entry]));
+    const tokenRefsByToken = new Map();
+    const fallbackUserRefsByToken = new Map();
+    userTokens.forEach((entry) => {
+        entry.tokenRefsByToken.forEach((refs, token) => {
+            refs.forEach((ref) => addTokenRef(tokenRefsByToken, token, ref));
+        });
+        entry.fallbackUserRefsByToken.forEach((refs, token) => {
+            refs.forEach((ref) => addTokenRef(fallbackUserRefsByToken, token, ref));
+        });
+    });
+    // Flatten and de-duplicate tokens to avoid duplicate sends
+    const tokenSet = new Set();
+    userTokens.forEach(({ tokens }) => {
+        for (const t of tokens)
+            tokenSet.add(t);
+    });
+    const allTokens = Array.from(tokenSet);
+    // Write inbox notifications
+    for (const userId of recipientUserIds) {
+        const preferredLanguageCode = userMeta.get(userId)?.preferredLanguageCode || "en";
+        const inboxRef = db.collection("userNotifications").doc(userId)
+            .collection("notifications").doc();
+        writer.set(inboxRef, {
+            userId,
+            orgId,
+            type: notif.type || "general",
+            title: getLocalizedField(notif, "title", preferredLanguageCode) ||
+                "Notification",
+            message: getLocalizedField(notif, "message", preferredLanguageCode) || "",
+            readBy: [],
+            archivedBy: [],
+            createdAt: timestamp,
+            targetType: notif.targetType,
+            ...(notif.targetId && { targetId: notif.targetId }),
+            expiresAt: getTTLDate(),
+            outboxId: notifId,
+        });
+    }
+    await writer.close();
+    // Send push notifications if we have tokens
+    if (allTokens.length > 0) {
+        console.log(`🔔 [Outbox] Preparing to send push notifications to ${allTokens.length} unique tokens`);
+        const tokenGroups = new Map();
+        for (const entry of userTokens) {
+            const languageCode = entry.preferredLanguageCode || "en";
+            const existingTokens = tokenGroups.get(languageCode) || [];
+            for (const token of entry.tokens) {
+                if (!existingTokens.includes(token)) {
+                    existingTokens.push(token);
+                }
+            }
+            tokenGroups.set(languageCode, existingTokens);
         }
-        // Prepare FCM message with daily summary specific data
-        const fcmMessage = {
-            notification: {
-                title: notification.title || "Daily Summary",
-                body: "Daily summary report is ready for review",
-            },
-            data: {
-                type: "daily_summary",
-                notificationId: notifId,
-                orgId: orgId,
-                userId: userId,
-                // Truncate message content for data field (FCM has size limits)
-                summary: notification.message ? notification.message.substring(0, 500) : "",
-            },
-            tokens: fcmTokens,
-            android: {
+        // FCM enforces a 500-token limit per multicast send. Chunk accordingly.
+        const chunkSize = 500;
+        let totalSuccess = 0;
+        let totalFailure = 0;
+        const invalidTokens = new Set();
+        for (const [languageCode, tokens] of tokenGroups.entries()) {
+            const notificationType = typeof notif.type === "string" && notif.type.trim().length > 0 ?
+                notif.type :
+                "general_notification";
+            const baseMessage = {
                 notification: {
-                    channelId: "daily_summary",
-                    priority: "default",
+                    title: getLocalizedField(notif, "title", languageCode) ||
+                        "Hands Notification",
+                    body: getLocalizedField(notif, "message", languageCode) || "",
                 },
-            },
-            apns: {
-                payload: {
-                    aps: {
-                        category: "DAILY_SUMMARY",
+                data: {
+                    type: notificationType,
+                    orgId: orgId,
+                    outboxId: notifId,
+                    languageCode,
+                },
+                apns: {
+                    headers: {
+                        "apns-priority": "10",
+                        "apns-push-type": "alert",
+                    },
+                    payload: {
+                        aps: {
+                            sound: "default",
+                            badge: 1,
+                        },
                     },
                 },
-            },
-        };
-        // Send push notifications
-        const response = await admin.messaging().sendMulticast(fcmMessage);
-        console.log(`[DailySummary] Push notification sent: ${response.successCount} successful, ${response.failureCount} failed`);
-        // Log detailed success/failure info
-        if (response.responses) {
-            const failures = [];
-            response.responses.forEach((resp, index) => {
-                if (!resp.success && resp.error) {
-                    failures.push({
-                        token: fcmTokens[index].substring(0, 20) + "...",
-                        error: resp.error.code || "unknown",
+                android: {
+                    notification: {
+                        channelId: notificationType === "daily_summary" ?
+                            "daily_summary" :
+                            "general_notifications",
+                    },
+                },
+            };
+            for (let i = 0; i < tokens.length; i += chunkSize) {
+                const chunk = tokens.slice(i, i + chunkSize);
+                const fcmMessage = { ...baseMessage, tokens: chunk };
+                try {
+                    // Use sendEachForMulticast to avoid deprecated legacy /batch endpoint.
+                    const response = await admin.messaging().sendEachForMulticast(fcmMessage);
+                    totalSuccess += response.successCount;
+                    totalFailure += response.failureCount;
+                    // Log up to first 3 errors in this chunk for diagnostics
+                    const sampleErrors = response.responses
+                        .map((r, idx) => ({ idx, error: r.error }))
+                        .filter((x) => !!x.error)
+                        .slice(0, 3);
+                    response.responses.forEach((result, idx) => {
+                        if (isInvalidFcmTokenError(result.error?.code)) {
+                            invalidTokens.add(chunk[idx]);
+                        }
+                    });
+                    if (sampleErrors.length > 0) {
+                        console.warn(`⚠️ [Outbox] ${languageCode} chunk ${Math.floor(i / chunkSize) + 1}: sample errors:`, sampleErrors.map(e => ({ index: e.idx, code: e.error?.code, message: e.error?.message })));
+                    }
+                }
+                catch (error) {
+                    totalFailure += chunk.length;
+                    console.error(`❌ [Outbox] Error sending ${languageCode} chunk ${Math.floor(i / chunkSize) + 1}:`, {
+                        message: error?.message,
+                        code: error?.code,
+                        stack: error?.stack,
                     });
                 }
-            });
-            if (failures.length > 0) {
-                console.log(`[DailySummary] Failed tokens:`, failures);
             }
         }
-        // Clean up invalid tokens
-        if (response.responses) {
-            const invalidTokens = [];
-            response.responses.forEach((resp, index) => {
-                if (!resp.success &&
-                    (resp.error?.code === "messaging/registration-token-not-registered" ||
-                        resp.error?.code === "messaging/invalid-registration-token")) {
-                    invalidTokens.push(fcmTokens[index]);
-                }
-            });
-            if (invalidTokens.length > 0) {
-                console.log(`[DailySummary] Cleaning up ${invalidTokens.length} invalid tokens`);
-                await cleanupInvalidTokens(invalidTokens);
-            }
+        try {
+            await deactivateInvalidTokens(invalidTokens, tokenRefsByToken, fallbackUserRefsByToken);
         }
+        catch (error) {
+            console.error("🧹 [Outbox] Failed to mark invalid FCM tokens inactive:", error);
+        }
+        console.log(`✅ [Outbox] Push notifications summary: ${totalSuccess} successful, ${totalFailure} failed`);
     }
-    catch (error) {
-        console.error("[DailySummary] Error processing daily summary notification:", error);
-        throw error;
+    else {
+        console.log(`📱 [Outbox] No FCM tokens found for push notifications`);
     }
-});
-/**
- * Trigger when a new general notification is created
- * Sends push notifications to targeted recipients based on notification type
- */
-exports.onGeneralNotificationCreated = functions.firestore
-    .document("organizations/{orgId}/notifications/{notifId}")
-    .onCreate(async (snap, context) => {
-    const notification = snap.data();
-    const notifId = context.params.notifId;
-    const orgId = context.params.orgId;
-    try {
-        console.log(`Processing general notification: ${notifId} in org: ${orgId}`);
-        // Skip if this is a user-specific notification (daily summaries are handled by dedicated function)
-        if (notification.userId || notification.title?.includes("Daily Notes Summary")) {
-            console.log("Skipping user-specific or daily summary notification - handled by other functions");
-            return;
-        }
-        const targetType = notification.targetType;
-        const targetId = notification.targetId;
-        let recipientUserIds = [];
-        // Determine recipients based on target type
-        switch (targetType) {
-            case 'all':
-                // Get all active users in the organization
-                const allUsersSnap = await admin.firestore()
-                    .collection("users")
-                    .where("organizationId", "==", orgId)
-                    .where("isActive", "==", true)
-                    .get();
-                recipientUserIds = allUsersSnap.docs.map(doc => doc.id);
-                break;
-            case 'group':
-                // Get users in the specified group
-                const groupDoc = await admin.firestore()
-                    .collection("organizations")
-                    .doc(orgId)
-                    .collection("groups")
-                    .doc(targetId)
-                    .get();
-                if (groupDoc.exists) {
-                    const groupData = groupDoc.data();
-                    recipientUserIds = groupData?.userIds || [];
-                }
-                break;
-            case 'location':
-                // Get users assigned to the specified location
-                const locationUsersSnap = await admin.firestore()
-                    .collection("users")
-                    .where("organizationId", "==", orgId)
-                    .where("isActive", "==", true)
-                    .where("locationIds", "array-contains", targetId)
-                    .get();
-                recipientUserIds = locationUsersSnap.docs.map(doc => doc.id);
-                break;
-            default:
-                console.log(`Unknown target type: ${targetType}`);
-                return;
-        }
-        if (recipientUserIds.length === 0) {
-            console.log("No recipients found for notification");
-            return;
-        }
-        console.log(`Notifying ${recipientUserIds.length} recipients for ${targetType} notification`);
-        // Get FCM tokens for recipients from user-specific subcollections
-        const tokenPromises = recipientUserIds.map(async (userId) => {
-            try {
-                // First try to get from user-specific subcollection (new format)
-                const userTokenSnap = await admin.firestore()
-                    .collection("users")
-                    .doc(userId)
-                    .collection("deviceTokens")
-                    .where("isActive", "==", true)
-                    .get();
-                let tokens = [];
-                if (!userTokenSnap.empty) {
-                    tokens = userTokenSnap.docs.map((doc) => doc.data().fcmToken);
-                }
-                else {
-                    // Fallback to top-level deviceTokens collection (legacy format)
-                    const legacyTokenSnap = await admin.firestore()
-                        .collection("deviceTokens")
-                        .where("userId", "==", userId)
-                        .where("isActive", "==", true)
-                        .get();
-                    tokens = legacyTokenSnap.docs.map((doc) => doc.data().fcmToken);
-                }
-                return { userId, tokens: tokens.filter(Boolean) };
-            }
-            catch (error) {
-                console.error(`Error fetching tokens for user ${userId}:`, error);
-                return { userId, tokens: [] };
-            }
-        });
-        const userTokens = await Promise.all(tokenPromises);
-        const allTokens = [];
-        userTokens.forEach(({ tokens }) => {
-            allTokens.push(...tokens);
-        });
-        if (allTokens.length === 0) {
-            console.log("No FCM tokens found for recipients");
-            return;
-        }
-        // Create notification documents for each recipient
-        const batch = admin.firestore().batch();
-        const timestamp = admin.firestore.FieldValue.serverTimestamp();
-        for (const userId of recipientUserIds) {
-            const userNotificationRef = admin.firestore()
-                .collection("organizations")
-                .doc(orgId)
-                .collection("notifications")
-                .doc();
-            batch.set(userNotificationRef, {
-                userId: userId,
-                orgId: orgId,
-                type: "general",
-                title: notification.title || "Notification",
-                message: notification.message || "",
-                read: false,
-                createdAt: timestamp,
-                targetType: targetType,
-                targetId: targetId,
-                // Add TTL - notifications expire after 30 days
-                expiresAt: new Date(Date.now() + (30 * 24 * 60 * 60 * 1000)),
-            });
-        }
-        await batch.commit();
-        // Prepare FCM message
-        const fcmMessage = {
-            notification: {
-                title: notification.title || "Hands App",
-                body: notification.message || "",
-            },
-            data: {
-                type: "general",
-                notificationId: notifId,
-                orgId: orgId,
-                targetType: targetType,
-                targetId: targetId || "",
-            },
-            tokens: allTokens,
-        };
-        // Send push notifications
-        const response = await admin.messaging().sendMulticast(fcmMessage);
-        console.log(`General push notifications sent: ${response.successCount} successful, ${response.failureCount} failed`);
-        // Clean up invalid tokens
-        if (response.responses) {
-            const invalidTokens = [];
-            response.responses.forEach((resp, index) => {
-                if (!resp.success &&
-                    (resp.error?.code === "messaging/registration-token-not-registered" ||
-                        resp.error?.code === "messaging/invalid-registration-token")) {
-                    invalidTokens.push(allTokens[index]);
-                }
-            });
-            if (invalidTokens.length > 0) {
-                console.log(`Cleaning up ${invalidTokens.length} invalid tokens`);
-                await cleanupInvalidTokens(invalidTokens);
-            }
-        }
-    }
-    catch (error) {
-        console.error("Error processing general notification:", error);
-        throw error;
-    }
+    console.log(`[Outbox] Fan-out complete for ${recipientUserIds.length} users.`);
 });

@@ -13,13 +13,19 @@ class NotificationController {
     required String title,
     required String body,
     String? groupId,
+    Map<String, String>? titleByLanguage,
+    Map<String, String>? messageByLanguage,
   }) async {
     // Determine organization ID from current user
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       throw Exception('User not signed in');
     }
-    final userDoc = await FirestoreEnforcer.instance.collection('users').doc(user.uid).get();
+    final userDoc =
+        await FirestoreEnforcer.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
     final orgId = userDoc.data()?['organizationId'] as String?;
     if (orgId == null) {
       throw Exception('Organization ID not found for user');
@@ -27,15 +33,24 @@ class NotificationController {
 
     // Prepare notification data
     final notifRef =
-        FirestoreEnforcer.instance.collection('organizations').doc(orgId).collection('notifications').doc();
+        FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(orgId)
+            .collection('notificationOutbox')
+            .doc();
 
     // Build targeting data based on recipient type
     Map<String, dynamic> notificationData = {
+      'type': 'broadcast',
       'title': title,
       'message': body,
       'createdAt': FieldValue.serverTimestamp(),
       'readBy': <String>[],
       'archivedBy': <String>[],
+      if (titleByLanguage != null && titleByLanguage.isNotEmpty)
+        'titleByLanguage': titleByLanguage,
+      if (messageByLanguage != null && messageByLanguage.isNotEmpty)
+        'messageByLanguage': messageByLanguage,
     };
 
     // Handle different targeting types

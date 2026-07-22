@@ -6,21 +6,30 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:hands_app/config/feature_flags.dart';
+import 'package:hands_app/l10n/l10n.dart';
+import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/services/stripe_service.dart';
 import 'package:hands_app/theme/theme.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
+import 'package:hands_app/widgets/hands_text_field.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:hands_app/widgets/responsive_appbar_title.dart';
 import 'package:hands_app/firebase_options.dart';
 import 'package:hands_app/ui/upgrade_location_sheet.dart';
+import 'package:hands_app/services/onboarding_seed_service.dart';
 
 class LocationWizard extends StatefulWidget {
   final String organizationId;
   final String? locationId; // If provided, edit mode
   final Map<String, dynamic>? initialData; // For editing
   final VoidCallback? onCompleted;
-  const LocationWizard({super.key, required this.organizationId, this.locationId, this.initialData, this.onCompleted});
+  const LocationWizard({
+    super.key,
+    required this.organizationId,
+    this.locationId,
+    this.initialData,
+    this.onCompleted,
+  });
 
   @override
   State<LocationWizard> createState() => _LocationWizardState();
@@ -32,6 +41,7 @@ class _LocationWizardState extends State<LocationWizard> {
   int _subscriptionQuantity = 0;
   int _existingLocationCount = 0;
   bool _initialized = false;
+  bool _usingIntendedTrialQuantity = false;
 
   // For edit mode, only one draft
   late final List<_LocationDraft> _drafts;
@@ -63,7 +73,8 @@ class _LocationWizardState extends State<LocationWizard> {
       d.formattedAddress = widget.initialData!['formattedAddress'];
       d.lat = (widget.initialData!['lat'] as num?)?.toDouble();
       d.lng = (widget.initialData!['lng'] as num?)?.toDouble();
-      d.addressComponents = widget.initialData!['addressComponents'] as Map<String, dynamic>?;
+      d.addressComponents =
+          widget.initialData!['addressComponents'] as Map<String, dynamic>?;
       _drafts = [d];
     } else {
       _drafts = [_LocationDraft()];
@@ -76,11 +87,19 @@ class _LocationWizardState extends State<LocationWizard> {
     if (!mounted) return;
     setState(() => _loading = true);
     try {
-      final sub = await StripeService.getSubscriptionData(widget.organizationId);
-      _subscriptionQuantity = (sub?['quantity'] as int?) ?? 1;
-
-      final orgDoc = await FirestoreEnforcer.instance.collection('organizations').doc(widget.organizationId).get();
+      final sub = await StripeService.getSubscriptionDataHydrated(
+        widget.organizationId,
+      );
+      final orgDoc =
+          await FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(widget.organizationId)
+              .get();
       _existingLocationCount = (orgDoc.data()?['locationCount'] as int?) ?? 0;
+      final intendedQuantity =
+          (orgDoc.data()?['intendedLocationQuantity'] as int?) ?? 1;
+      _subscriptionQuantity = (sub?['quantity'] as int?) ?? intendedQuantity;
+      _usingIntendedTrialQuantity = sub == null;
 
       if (_existingLocationCount == 0) {
         final locSnap =
@@ -103,13 +122,16 @@ class _LocationWizardState extends State<LocationWizard> {
     }
   }
 
-  int get _remainingSlots => (_subscriptionQuantity - _existingLocationCount).clamp(0, 100000);
+  int get _remainingSlots =>
+      (_subscriptionQuantity - _existingLocationCount).clamp(0, 100000);
 
-  bool get _canAddMoreRows => _remainingSlots == 0 ? false : _drafts.length < _remainingSlots;
+  bool get _canAddMoreRows =>
+      _remainingSlots == 0 ? false : _drafts.length < _remainingSlots;
 
   bool _validateDrafts() {
     for (final d in _drafts) {
-      if (d.nameController.text.trim().isEmpty || d.addressController.text.trim().isEmpty) {
+      if (d.nameController.text.trim().isEmpty ||
+          d.addressController.text.trim().isEmpty) {
         return false;
       }
     }
@@ -118,15 +140,19 @@ class _LocationWizardState extends State<LocationWizard> {
 
   Future<void> _finish() async {
     if (!_validateDrafts()) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Please fill in all location names and addresses')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please fill in all location names and addresses'),
+        ),
+      );
       return;
     }
 
     setState(() => _loading = true);
     try {
-      final orgRef = FirestoreEnforcer.instance.collection('organizations').doc(widget.organizationId);
+      final orgRef = FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(widget.organizationId);
       final locationsRef = orgRef.collection('locations');
       final d = _drafts.first;
       final payload = <String, dynamic>{
@@ -141,51 +167,81 @@ class _LocationWizardState extends State<LocationWizard> {
       }
       if (d.lat != null) payload['lat'] = d.lat;
       if (d.lng != null) payload['lng'] = d.lng;
-      if (d.addressComponents != null) payload['addressComponents'] = d.addressComponents;
+      if (d.addressComponents != null) {
+        payload['addressComponents'] = d.addressComponents;
+      }
 
       if (widget.locationId != null) {
         // Edit mode: update existing doc
-        await locationsRef.doc(widget.locationId).set(payload, SetOptions(merge: true));
+        await locationsRef
+            .doc(widget.locationId)
+            .set(payload, SetOptions(merge: true));
         if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Location updated'), backgroundColor: Colors.green));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Location updated'),
+              backgroundColor: Colors.green,
+            ),
+          );
         }
       } else {
         // Add mode: create new doc
         payload['isPrimary'] = _existingLocationCount == 0;
         payload['createdAt'] = FieldValue.serverTimestamp();
-        await locationsRef.doc().set(payload);
+        final newLocationRef = locationsRef.doc();
+        await newLocationRef.set(payload);
         await orgRef
-            .update({'locationCount': FieldValue.increment(1), 'updatedAt': FieldValue.serverTimestamp()})
+            .update({
+              'locationCount': FieldValue.increment(1),
+              'updatedAt': FieldValue.serverTimestamp(),
+            })
             .catchError((_) {});
+        if (_existingLocationCount == 0) {
+          final seedResult = await OnboardingSeedService().seedStarterSetup(
+            organizationId: widget.organizationId,
+            locationId: newLocationRef.id,
+          );
+          if (mounted && seedResult.seededAnything) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Location added. We also created a starter shift and checklist for you.',
+                ),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        }
         if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Location added'), backgroundColor: Colors.green));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Location added'),
+              backgroundColor: Colors.green,
+            ),
+          );
         }
       }
 
-      // If a parent supplies onCompleted it is responsible for closing the dialog / route.
-      // Previously we always called Navigator.pop() here AND most callers (e.g. admin dashboard)
-      // also popped inside their onCompleted callback, resulting in a double pop that
-      // triggered GoRouter's `currentConfiguration.isNotEmpty` assertion and subsequent
-      // setState-after-dispose errors when async loads completed on the disposed page.
-      final hasExternalCompletionHandler = widget.onCompleted != null;
+      // Call the completion handler if provided
       try {
         widget.onCompleted?.call();
       } catch (e) {
         debugPrint('[LocationWizard] onCompleted handler threw: $e');
       }
-      if (!hasExternalCompletionHandler && mounted) {
+
+      // Always close the bottom sheet/navigator after successful completion
+      if (mounted) {
         Navigator.of(context).pop(true);
       }
     } catch (e) {
       debugPrint('[LocationWizard] Error saving locations: $e');
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error saving locations: $e'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving locations: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -194,7 +250,10 @@ class _LocationWizardState extends State<LocationWizard> {
 
   Future<void> _handleOverQuota() async {
     if (_subscriptionQuantity >= 5) {
-      await showDialog(context: context, builder: (ctx) => const _SalesDialog());
+      await showDialog(
+        context: context,
+        builder: (ctx) => const _SalesDialog(),
+      );
     } else {
       // Offer in-app quantity upgrade
       await _openUpgradeQuantitySheet();
@@ -203,7 +262,9 @@ class _LocationWizardState extends State<LocationWizard> {
 
   Future<void> _openUpgradeQuantitySheet() async {
     try {
-      final sub = await StripeService.getSubscriptionData(widget.organizationId);
+      final sub = await StripeService.getSubscriptionDataHydrated(
+        widget.organizationId,
+      );
       final subscriptionId = sub?['subscriptionId'] as String?;
       final currentQty = (sub?['quantity'] as int?) ?? _subscriptionQuantity;
       if (subscriptionId == null) {
@@ -226,184 +287,374 @@ class _LocationWizardState extends State<LocationWizard> {
           _subscriptionQuantity = newQty;
         });
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Plan updated to $newQty location(s)')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Plan updated to $newQty location(s)')),
+          );
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to open upgrade flow: $e'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to open upgrade flow: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: ResponsiveAppBarTitle(widget.locationId != null ? 'Edit Location' : 'Add Location')),
-      body:
-          !_initialized || _loading
-              ? const Center(child: CircularProgressIndicator())
-              : Stepper(
-                currentStep: _currentStep,
-                onStepCancel:
-                    widget.locationId != null
-                        ? null
-                        : (_currentStep == 0 ? null : () => setState(() => _currentStep -= 1)),
-                onStepContinue:
-                    widget.locationId != null
-                        ? () async {
-                          // In edit mode, just save
-                          await _finish();
-                        }
-                        : () async {
-                          if (_currentStep == 1) {
-                            if (!_validateDrafts()) return;
-                          }
-                          if (_currentStep == 2) {
-                            await _finish();
-                          } else {
-                            setState(() => _currentStep += 1);
-                          }
-                        },
-                controlsBuilder: (context, details) {
-                  final isLast = _currentStep == 2 || widget.locationId != null;
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 12.0),
-                    child: Row(
-                      children: [
-                        ElevatedButton(onPressed: details.onStepContinue, child: Text(isLast ? 'Finish' : 'Next')),
-                        const SizedBox(width: 12),
-                        if (_currentStep > 0 && widget.locationId == null)
-                          TextButton(onPressed: details.onStepCancel, child: const Text('Back')),
-                      ],
+    final title = widget.locationId != null ? 'Edit location' : 'Add location';
+    final steps =
+        widget.locationId != null
+            ? const ['Location']
+            : const ['Overview', 'Locations', 'Review'];
+
+    Future<void> handleContinue() async {
+      if (widget.locationId != null) {
+        await _finish();
+        return;
+      }
+      if (_currentStep == 1 && !_validateDrafts()) return;
+      if (_currentStep == 2) {
+        await _finish();
+      } else {
+        setState(() => _currentStep += 1);
+      }
+    }
+
+    Widget buildStepBody() {
+      if (widget.locationId != null) {
+        return _LocationRow(draft: _drafts.first);
+      }
+
+      switch (_currentStep) {
+        case 0:
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              HandsModalSection(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Plan capacity',
+                      style: HandsModalTokens.sectionTitleStyle,
                     ),
+                    const SizedBox(height: 10),
+                    Text(
+                      '$_subscriptionQuantity location(s)',
+                      style: HandsModalTokens.titleStyle.copyWith(fontSize: 28),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Existing: $_existingLocationCount   ·   Remaining: $_remainingSlots',
+                      style: HandsModalTokens.bodyStyle,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      _usingIntendedTrialQuantity
+                          ? 'You are still on trial, so we are using the location count chosen at signup. Add billing later from Settings when you are ready.'
+                          : 'Add new locations here. Your billing plan controls how many you can create.',
+                      style: HandsModalTokens.bodyStyle,
+                    ),
+                  ],
+                ),
+              ),
+              if (_remainingSlots == 0) ...[
+                const SizedBox(height: 14),
+                const HandsModalInfoBanner(
+                  text:
+                      'You have reached the current location limit for this account.',
+                  icon: Icons.lock_outline_rounded,
+                  accentColor: HandsModalTokens.warning,
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    HandsPrimaryButton(
+                      text: 'Upgrade plan',
+                      onPressed: () async {
+                        if (_subscriptionQuantity >= 5) {
+                          await showDialog(
+                            context: context,
+                            builder: (ctx) => const _SalesDialog(),
+                          );
+                        } else {
+                          await _openUpgradeQuantitySheet();
+                        }
+                      },
+                    ),
+                    if (_subscriptionQuantity >= 5) const _SalesButtonInline(),
+                  ],
+                ),
+              ],
+            ],
+          );
+        case 1:
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const HandsModalInfoBanner(
+                text:
+                    'Add or manage locations in the Web Portal → Settings → Manage Locations. Update subscription there too.',
+              ),
+              const SizedBox(height: 12),
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _drafts.length,
+                itemBuilder: (context, index) {
+                  final draft = _drafts[index];
+                  return _LocationRow(
+                    key: ValueKey('loc_row_$index'),
+                    draft: draft,
+                    onRemove:
+                        _drafts.length == 1
+                            ? null
+                            : () => setState(() {
+                              _drafts.removeAt(index);
+                            }),
                   );
                 },
-                steps:
-                    widget.locationId != null
-                        ? [
-                          Step(
-                            title: const Text('Edit Location'),
-                            isActive: true,
-                            content: _LocationRow(draft: _drafts.first),
-                          ),
-                        ]
-                        : [
-                          Step(
-                            title: const Text('Overview'),
-                            isActive: _currentStep >= 0,
-                            content: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Plan capacity: $_subscriptionQuantity location(s)'),
-                                Text('Existing: $_existingLocationCount'),
-                                Text('Remaining: $_remainingSlots'),
-                                const SizedBox(height: 8),
-                                const Text(
-                                  'You can add new locations here. We use your billing plan’s quantity to limit how many you can create.',
-                                ),
-                                if (_remainingSlots == 0) ...[
-                                  const SizedBox(height: 12),
-                                  const Text('No remaining slots on your plan.'),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    children: [
-                                      ElevatedButton(
-                                        onPressed: () async {
-                                          if (_subscriptionQuantity >= 5) {
-                                            await showDialog(context: context, builder: (ctx) => const _SalesDialog());
-                                          } else {
-                                            await _openUpgradeQuantitySheet();
-                                          }
-                                        },
-                                        child: const Text('Upgrade Plan'),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      if (_subscriptionQuantity >= 5) const _SalesButtonInline(),
-                                    ],
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          Step(
-                            title: const Text('Locations'),
-                            isActive: _currentStep >= 1,
-                            content: Column(
-                              children: [
-                                ListView.builder(
-                                  shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  itemCount: _drafts.length,
-                                  itemBuilder: (context, index) {
-                                    final draft = _drafts[index];
-                                    return _LocationRow(
-                                      key: ValueKey('loc_row_$index'),
-                                      draft: draft,
-                                      onRemove:
-                                          _drafts.length == 1
-                                              ? null
-                                              : () => setState(() {
-                                                _drafts.removeAt(index);
-                                              }),
-                                    );
-                                  },
-                                ),
-                                const SizedBox(height: 8),
-                                Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: OutlinedButton.icon(
-                                    onPressed:
-                                        _canAddMoreRows
-                                            ? () {
-                                              if (_existingLocationCount + _drafts.length + 1 > _subscriptionQuantity) {
-                                                _handleOverQuota();
-                                                return;
-                                              }
-                                              setState(() => _drafts.add(_LocationDraft()));
-                                            }
-                                            : null,
-                                    icon: const Icon(Icons.add),
-                                    label: Text(
-                                      'Add another (${_remainingSlots - _drafts.length >= 0 ? _remainingSlots - _drafts.length : 0} left)',
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Step(
-                            title: const Text('Review'),
-                            isActive: _currentStep >= 2,
-                            content: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text('New locations to create:'),
-                                const SizedBox(height: 8),
-                                ..._drafts.map(
-                                  (d) => ListTile(
-                                    contentPadding: EdgeInsets.zero,
-                                    leading: const Icon(Icons.home_work_outlined),
-                                    title: Text(
-                                      d.nameController.text.trim().isEmpty ? '(No name)' : d.nameController.text.trim(),
-                                    ),
-                                    subtitle: Text(
-                                      d.addressController.text.trim().isEmpty
-                                          ? '(No address)'
-                                          : d.addressController.text.trim(),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                Text('Will create ${_drafts.length} and update organization count.'),
-                              ],
-                            ),
-                          ),
-                        ],
               ),
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: HandsSecondaryButton(
+                  text:
+                      'Add another (${_remainingSlots - _drafts.length >= 0 ? _remainingSlots - _drafts.length : 0} left)',
+                  icon: Icons.add_rounded,
+                  onPressed:
+                      _canAddMoreRows
+                          ? () {
+                            if (_existingLocationCount + _drafts.length + 1 >
+                                _subscriptionQuantity) {
+                              _handleOverQuota();
+                              return;
+                            }
+                            setState(() => _drafts.add(_LocationDraft()));
+                          }
+                          : null,
+                ),
+              ),
+            ],
+          );
+        case 2:
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'New locations to create',
+                style: HandsModalTokens.sectionTitleStyle,
+              ),
+              const SizedBox(height: 10),
+              ..._drafts.map(
+                (d) => HandsModalSection(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: HandsModalTokens.surfaceMuted,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.home_work_outlined,
+                          size: 18,
+                          color: HandsModalTokens.textMuted,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              d.nameController.text.trim().isEmpty
+                                  ? '(No name)'
+                                  : d.nameController.text.trim(),
+                              style: HandsModalTokens.sectionTitleStyle,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              d.addressController.text.trim().isEmpty
+                                  ? '(No address)'
+                                  : d.addressController.text.trim(),
+                              overflow: TextOverflow.ellipsis,
+                              style: HandsModalTokens.bodyStyle,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'This will create ${_drafts.length} location(s) and update your organization count.',
+                style: HandsModalTokens.bodyStyle,
+              ),
+            ],
+          );
+        default:
+          return const SizedBox.shrink();
+      }
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 12, 18, 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(title, style: HandsModalTokens.titleStyle),
+                ),
+                InkWell(
+                  onTap: () => Navigator.of(context).maybePop(),
+                  borderRadius: BorderRadius.circular(999),
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: HandsModalTokens.surfaceMuted,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: HandsModalTokens.border),
+                    ),
+                    child: const Icon(
+                      Icons.close_rounded,
+                      size: 18,
+                      color: HandsModalTokens.textMuted,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child:
+                !_initialized || _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(18, 14, 18, 12),
+                          child: HandsCompactStepper(
+                            steps: steps,
+                            currentStep: _currentStep,
+                            onStepTap:
+                                widget.locationId != null
+                                    ? null
+                                    : (index) {
+                                      if (index <= _currentStep) {
+                                        setState(() => _currentStep = index);
+                                      }
+                                    },
+                          ),
+                        ),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.fromLTRB(18, 4, 18, 18),
+                            child: buildStepBody(),
+                          ),
+                        ),
+                        const Divider(height: 1),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              if (_currentStep > 0 && widget.locationId == null)
+                                HandsSecondaryButton(
+                                  text: 'Back',
+                                  onPressed:
+                                      () => setState(() => _currentStep -= 1),
+                                ),
+                              if (_currentStep > 0 && widget.locationId == null)
+                                const SizedBox(width: 10),
+                              HandsPrimaryButton(
+                                text:
+                                    widget.locationId != null
+                                        ? 'Save location'
+                                        : (_currentStep == 2
+                                            ? 'Finish'
+                                            : 'Next'),
+                                onPressed: handleContinue,
+                                isLoading: _loading,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoTip extends StatefulWidget {
+  final String text;
+  const _InfoTip({required this.text});
+
+  @override
+  State<_InfoTip> createState() => _InfoTipState();
+}
+
+class _InfoTipState extends State<_InfoTip> {
+  bool _visible = true;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_visible) return const SizedBox.shrink();
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(Icons.info_outline, size: 16, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              widget.text,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+          ),
+          IconButton(
+            onPressed: () => setState(() => _visible = false),
+            icon: Icon(Icons.close, size: 16, color: scheme.onSurfaceVariant),
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            tooltip: 'Dismiss',
+          ),
+        ],
+      ),
     );
   }
 }
@@ -440,7 +691,8 @@ class _LocationRowState extends State<_LocationRow> {
   bool _loading = false;
   String? _sessionToken; // Places API (New) session token
   String? _autoStatus; // Debug/status hint for web autocomplete
-  bool _attemptedAutocomplete = false; // Show attribution even if no suggestions
+  bool _attemptedAutocomplete =
+      false; // Show attribution even if no suggestions
 
   @override
   void initState() {
@@ -481,7 +733,10 @@ class _LocationRowState extends State<_LocationRow> {
       // Locale hints
       final locale = Localizations.maybeLocaleOf(context);
       final languageCode = locale?.languageCode;
-      final regionCode = (locale?.countryCode?.isNotEmpty ?? false) ? locale!.countryCode : null;
+      final regionCode =
+          (locale?.countryCode?.isNotEmpty ?? false)
+              ? locale!.countryCode
+              : null;
 
       Map<String, dynamic>? data;
       if (kIsWeb) {
@@ -519,7 +774,9 @@ class _LocationRowState extends State<_LocationRow> {
           });
           return;
         }
-        final uri = Uri.parse('https://places.googleapis.com/v1/places:autocomplete');
+        final uri = Uri.parse(
+          'https://places.googleapis.com/v1/places:autocomplete',
+        );
         final body = <String, dynamic>{
           'input': input,
           'sessionToken': _sessionToken,
@@ -533,14 +790,17 @@ class _LocationRowState extends State<_LocationRow> {
             'X-Goog-Api-Key': kGooglePlacesApiKey,
             'X-Goog-FieldMask':
                 'suggestions.placePrediction.placeId,suggestions.placePrediction.place,suggestions.placePrediction.text',
-            if (_sessionToken != null) 'X-Goog-Maps-Session-Token': _sessionToken!,
+            if (_sessionToken != null)
+              'X-Goog-Maps-Session-Token': _sessionToken!,
           },
           body: jsonEncode(body),
         );
         if (resp.statusCode == 200) {
           data = json.decode(resp.body) as Map<String, dynamic>;
         } else {
-          debugPrint('[Places] autocomplete HTTP ${resp.statusCode}: ${resp.body}');
+          debugPrint(
+            '[Places] autocomplete HTTP ${resp.statusCode}: ${resp.body}',
+          );
         }
       }
 
@@ -548,7 +808,10 @@ class _LocationRowState extends State<_LocationRow> {
         final suggestionsRaw = (data['suggestions'] as List<dynamic>? ?? []);
         final preds =
             suggestionsRaw
-                .map((e) => _PlaceSuggestion.fromPlacesNew(e as Map<String, dynamic>))
+                .map(
+                  (e) =>
+                      _PlaceSuggestion.fromPlacesNew(e as Map<String, dynamic>),
+                )
                 .where((s) => s != null)
                 .cast<_PlaceSuggestion>()
                 .toList();
@@ -587,7 +850,10 @@ class _LocationRowState extends State<_LocationRow> {
     try {
       final locale = Localizations.maybeLocaleOf(context);
       final languageCode = locale?.languageCode;
-      final regionCode = (locale?.countryCode?.isNotEmpty ?? false) ? locale!.countryCode : null;
+      final regionCode =
+          (locale?.countryCode?.isNotEmpty ?? false)
+              ? locale!.countryCode
+              : null;
 
       Map<String, dynamic>? data;
       if (kIsWeb) {
@@ -608,7 +874,9 @@ class _LocationRowState extends State<_LocationRow> {
           if (resp.statusCode == 200) {
             data = json.decode(resp.body) as Map<String, dynamic>;
           } else {
-            debugPrint('[Places] details proxy HTTP ${resp.statusCode}: ${resp.body}');
+            debugPrint(
+              '[Places] details proxy HTTP ${resp.statusCode}: ${resp.body}',
+            );
           }
         } catch (e) {
           debugPrint('[Places] details proxy error: $e');
@@ -616,13 +884,16 @@ class _LocationRowState extends State<_LocationRow> {
       } else {
         if (kGooglePlacesApiKey.isEmpty) return;
         // v1 Places Details. Accept placeId either as raw place id or resource name.
-        final resourceName = s.placeId.startsWith('places/') ? s.placeId : 'places/${s.placeId}';
+        final resourceName =
+            s.placeId.startsWith('places/') ? s.placeId : 'places/${s.placeId}';
         final uri = Uri.parse('https://places.googleapis.com/v1/$resourceName');
         final headers = <String, String>{
           'X-Goog-Api-Key': kGooglePlacesApiKey,
           // Field mask per Places API (New)
-          'X-Goog-FieldMask': 'id,displayName,formattedAddress,location,addressComponents',
-          if (_sessionToken != null) 'X-Goog-Maps-Session-Token': _sessionToken!,
+          'X-Goog-FieldMask':
+              'id,displayName,formattedAddress,location,addressComponents',
+          if (_sessionToken != null)
+            'X-Goog-Maps-Session-Token': _sessionToken!,
         };
         final qs = <String, String>{
           if (languageCode != null) 'languageCode': languageCode,
@@ -644,7 +915,8 @@ class _LocationRowState extends State<_LocationRow> {
         final lng = (location?['longitude'] as num?)?.toDouble();
         final components = data['addressComponents'] as List<dynamic>?;
 
-        widget.draft.formattedAddress = formattedAddress ?? widget.draft.addressController.text;
+        widget.draft.formattedAddress =
+            formattedAddress ?? widget.draft.addressController.text;
         widget.draft.lat = lat;
         widget.draft.lng = lng;
         if (components != null) {
@@ -682,13 +954,16 @@ class _LocationRowState extends State<_LocationRow> {
         padding: const EdgeInsets.all(12.0),
         child: Column(
           children: [
-            TextField(
+            HandsTextField(
               controller: widget.draft.nameController,
-              decoration: const InputDecoration(labelText: 'Location Name', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'Location Name',
+                border: OutlineInputBorder(),
+              ),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 8),
-            TextField(
+            HandsTextField(
               controller: widget.draft.addressController,
               focusNode: _addrFocus,
               decoration: InputDecoration(
@@ -698,7 +973,11 @@ class _LocationRowState extends State<_LocationRow> {
                     _loading
                         ? const Padding(
                           padding: EdgeInsets.all(8),
-                          child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
                         )
                         : null,
               ),
@@ -718,7 +997,11 @@ class _LocationRowState extends State<_LocationRow> {
                       (s) => ListTile(
                         dense: true,
                         leading: const Icon(Icons.place_outlined),
-                        title: Text(s.description, maxLines: 1, overflow: TextOverflow.ellipsis),
+                        title: Text(
+                          s.description,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                         onTap: () => _selectSuggestion(s),
                       ),
                     ),
@@ -732,7 +1015,10 @@ class _LocationRowState extends State<_LocationRow> {
                 padding: const EdgeInsets.only(top: 6),
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: Text(_autoStatus!, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                  child: Text(
+                    _autoStatus!,
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
                 ),
               ),
             // Always show attribution when user is typing/attempting autocomplete, even if no suggestions
@@ -741,7 +1027,10 @@ class _LocationRowState extends State<_LocationRow> {
                 padding: const EdgeInsets.only(top: 4),
                 child: Align(
                   alignment: Alignment.centerRight,
-                  child: Opacity(opacity: 0.9, child: const _GoogleAttribution()),
+                  child: Opacity(
+                    opacity: 0.9,
+                    child: const _GoogleAttribution(),
+                  ),
                 ),
               ),
             const SizedBox(height: 8),
@@ -768,7 +1057,10 @@ class _PlaceSuggestion {
   _PlaceSuggestion({required this.description, required this.placeId});
   // ignore: unused_element
   factory _PlaceSuggestion.fromJson(Map<String, dynamic> json) =>
-      _PlaceSuggestion(description: json['description'] as String? ?? '', placeId: json['place_id'] as String? ?? '');
+      _PlaceSuggestion(
+        description: json['description'] as String? ?? '',
+        placeId: json['place_id'] as String? ?? '',
+      );
 
   // Parser for Places API (New) autocomplete suggestion
   // Expected shape: { "placePrediction": { "placeId": "..." | "place": "places/...", "text": { "text": "..." } } }
@@ -798,10 +1090,20 @@ class _SalesDialog extends StatelessWidget {
   const _SalesDialog();
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Contact Sales'),
-      content: const Text('For 5 or more locations, please contact our sales team for a customized plan.'),
-      actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close'))],
+    final l10n = context.l10n;
+    return HandsDialog(
+      title: l10n.settingsTalkToSales,
+      maxWidth: 440,
+      actions: [
+        HandsSecondaryButton(
+          text: l10n.commonClose,
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ],
+      child: Text(
+        l10n.settingsContactSalesBody,
+        style: HandsModalTokens.bodyStyle,
+      ),
     );
   }
 }
@@ -810,10 +1112,15 @@ class _SalesButtonInline extends StatelessWidget {
   const _SalesButtonInline();
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return OutlinedButton.icon(
-      onPressed: () => showDialog(context: context, builder: (_) => const _SalesDialog()),
+      onPressed:
+          () => showDialog(
+            context: context,
+            builder: (_) => const _SalesDialog(),
+          ),
       icon: const Icon(Icons.support_agent),
-      label: const Text('Contact Sales'),
+      label: Text(l10n.settingsTalkToSales),
     );
   }
 }
@@ -835,7 +1142,10 @@ class _GoogleAttribution extends StatelessWidget {
           // Minimal, compliant “Powered by Google” mark.
           // Prefer using the official asset; fall back to text if it fails to load.
           // Prefer a text fallback to avoid cross-origin fetches for the attribution asset on web
-          const Text('Powered by Google', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          const Text(
+            'Powered by Google',
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
         ],
       ),
     );
@@ -846,19 +1156,34 @@ Future<void> maybeLaunchLocationWizard(BuildContext context) async {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return;
   try {
-    final userDoc = await FirestoreEnforcer.instance.collection('users').doc(user.uid).get();
+    final userDoc =
+        await FirestoreEnforcer.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
     final orgId = userDoc.data()?['organizationId'] as String?;
     if (orgId == null || orgId.isEmpty) return;
 
-    final orgDoc = await FirestoreEnforcer.instance.collection('organizations').doc(orgId).get();
+    final orgDoc =
+        await FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(orgId)
+            .get();
     final count = (orgDoc.data()?['locationCount'] as int?) ?? 0;
     if (count > 0) return;
 
     final locSnap =
-        await FirestoreEnforcer.instance.collection('organizations').doc(orgId).collection('locations').limit(1).get();
+        await FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(orgId)
+            .collection('locations')
+            .limit(1)
+            .get();
     if (locSnap.docs.isNotEmpty) return;
 
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => LocationWizard(organizationId: orgId)));
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => LocationWizard(organizationId: orgId)),
+    );
   } catch (e) {
     debugPrint('[LocationWizard] maybeLaunch error: $e');
   }

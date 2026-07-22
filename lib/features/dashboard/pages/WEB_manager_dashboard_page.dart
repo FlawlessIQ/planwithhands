@@ -4,37 +4,57 @@ import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import 'package:hands_app/core/logging/logger.dart';
 import 'package:hands_app/shared/components/shared_components.dart';
 import 'package:hands_app/theme/theme.dart';
+import 'package:hands_app/services/activity_tracker.dart';
 import 'package:hands_app/data/models/missed_tasks_section.dart';
+import 'package:hands_app/data/models/task_data.dart';
 import 'package:hands_app/global_widgets/bottom_nav_bar.dart';
 import 'package:hands_app/global_widgets/generic_app_bar_content.dart';
 import 'package:hands_app/global_widgets/unified_menu_button.dart';
-import 'package:hands_app/global_widgets/professional_harvey_ball.dart';
 import 'package:hands_app/services/daily_checklist_service.dart';
 import 'package:hands_app/services/organization_setup_service.dart';
 import 'package:hands_app/services/location_selection_service.dart';
 import 'package:hands_app/utils/firestore_enforcer.dart';
 
+import 'package:hands_app/widgets/condensed_setup_widget.dart';
+import 'package:hands_app/features/dashboard/widgets/manager_dashboard_redesign.dart';
+import 'package:hands_app/features/help/models/guided_tour_step.dart';
+import 'package:hands_app/features/help/models/help_topic.dart';
+import 'package:hands_app/features/help/widgets/guided_tour_host.dart';
+import 'package:hands_app/features/help/widgets/inline_start_here_card.dart';
+import 'package:hands_app/features/crm/widgets/crm_scoped_bottom_nav.dart';
+import 'package:hands_app/l10n/l10n.dart';
+import 'package:hands_app/utils/localized_content.dart';
+
 class ManagerDashboardPage extends StatefulWidget {
   final String organizationId;
-  const ManagerDashboardPage({super.key, required this.organizationId});
+  final bool allowPlatformAccess;
+
+  const ManagerDashboardPage({
+    super.key,
+    required this.organizationId,
+    this.allowPlatformAccess = false,
+  });
 
   @override
   State<ManagerDashboardPage> createState() => _ManagerDashboardPageState();
 }
 
-class _ManagerDashboardPageState extends State<ManagerDashboardPage> with WidgetsBindingObserver {
+class _ManagerDashboardPageState extends State<ManagerDashboardPage>
+    with WidgetsBindingObserver, ActivityTrackingMixin {
   // User / setup
   int? userRole;
   bool _isLoadingUserRole = true;
   final OrganizationSetupService _setupService = OrganizationSetupService();
   bool _metricsEnabled = false;
   bool _isLoadingSetupStatus = true;
+  double _setupCompletionProgress = 0;
 
   // Date helpers
   final DateFormat _dateFormat = DateFormat('yyyy-MM-dd');
@@ -48,29 +68,28 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
 
   // Missed yesterday
   List<Map<String, dynamic>> _yesterdayMissed = [];
-  List<MissedTasksSection> _yesterdayMissedSections = []; // Add raw sections for accurate counting
+  List<MissedTasksSection> _yesterdayMissedSections =
+      []; // Add raw sections for accurate counting
   bool _loadingYesterday = true;
-
-  // 7d trend for missed
-  List<int> _missedTrend7d = List<int>.filled(7, 0, growable: false);
 
   // Live shifts
   List<Map<String, dynamic>> _liveShifts = [];
   bool _loadingLive = true;
-  String? _selectedStatusFilter = 'live'; // Changed from role to status filter
   Timer? _refreshTimer;
 
   // Historic insights
   List<Map<String, dynamic>> _frequentMisses30d = [];
-  bool _loadingFrequent = true;
   List<Map<String, dynamic>> _poorShifts30d = [];
-  bool _loadingPoorShifts = true;
 
   // History filters
   DateTimeRange? _selectedDateRange;
 
   List<Map<String, String>> _shifts = [];
   List<Map<String, String>> _checklists = [];
+
+  final GlobalKey _tourHeroKey = GlobalKey();
+  final GlobalKey _tourIssuesKey = GlobalKey();
+  final GlobalKey _tourShiftReadinessKey = GlobalKey();
 
   @override
   void initState() {
@@ -79,8 +98,12 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _todayKey = _dateFormat.format(DateTime.now());
-    _selectedLocationId = LocationSelectionService.instance.currentLocationId ?? _selectedLocationId;
-    LocationSelectionService.instance.listenable.addListener(_onGlobalLocationChanged);
+    _selectedLocationId =
+        LocationSelectionService.instance.currentLocationId ??
+        _selectedLocationId;
+    LocationSelectionService.instance.listenable.addListener(
+      _onGlobalLocationChanged,
+    );
     _initializeDashboard();
   }
 
@@ -91,7 +114,9 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
     if (state == AppLifecycleState.resumed && mounted) {
       // User returned to app - refresh missed tasks data
       _loadYesterdayMissed().catchError((e) {
-        debugPrint('[ManagerDashboard] Error refreshing data on app resume: $e');
+        debugPrint(
+          '[ManagerDashboard] Error refreshing data on app resume: $e',
+        );
       });
     }
   }
@@ -105,7 +130,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
           (l) => l['id'] == globalId,
           orElse: () => {'name': _selectedLocationName},
         );
-        _selectedLocationName = match['name'] as String? ?? _selectedLocationName;
+        _selectedLocationName =
+            match['name'] as String? ?? _selectedLocationName;
       });
       unawaited(_loadCriticalData());
     }
@@ -115,7 +141,11 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
   Future<void> _initializeDashboard() async {
     // Phase 1: Essential setup (5s timeout)
     try {
-      await Future.wait([_fetchUserRole(), _checkSetupStatus(), _loadLocations()]).timeout(const Duration(seconds: 5));
+      await Future.wait([
+        _fetchUserRole(),
+        _checkSetupStatus(),
+        _loadLocations(),
+      ]).timeout(const Duration(seconds: 5));
 
       // Phase 2: Load critical data (8s timeout)
       _loadCriticalData();
@@ -132,7 +162,10 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
   // Load time-sensitive data first
   Future<void> _loadCriticalData() async {
     try {
-      await Future.wait([_loadLiveShifts(), _loadYesterdayMissed()]).timeout(const Duration(seconds: 8));
+      await Future.wait([
+        _loadLiveShifts(),
+        _loadYesterdayMissed(),
+      ]).timeout(const Duration(seconds: 8));
 
       // Start background loading of less critical data
       _loadBackgroundData();
@@ -145,17 +178,21 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
   // Load trend data and analytics in the background
   void _loadBackgroundData() {
     // Use individual timeouts for each background operation
-    _loadMissedTrend7d().timeout(const Duration(seconds: 10)).catchError((_) {});
-    _loadFrequentMisses30d().timeout(const Duration(seconds: 15)).catchError((_) {});
-    _loadPoorShifts30d().timeout(const Duration(seconds: 15)).catchError((_) {});
+    _loadFrequentMisses30d()
+        .timeout(const Duration(seconds: 15))
+        .catchError((_) {});
+    _loadPoorShifts30d()
+        .timeout(const Duration(seconds: 15))
+        .catchError((_) {});
   }
 
-  @override
   @override
   void dispose() {
     _refreshTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
-    LocationSelectionService.instance.listenable.removeListener(_onGlobalLocationChanged);
+    LocationSelectionService.instance.listenable.removeListener(
+      _onGlobalLocationChanged,
+    );
     super.dispose();
   }
 
@@ -167,10 +204,15 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
       setState(() => _isLoadingUserRole = false);
       return;
     }
-    final userDoc = await FirestoreEnforcer.instance.collection('users').doc(user.uid).get();
+    final userDoc =
+        await FirestoreEnforcer.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
     if (!mounted) return;
     setState(() {
-      userRole = userDoc.data()?['userRole'] ?? 1;
+      userRole =
+          userDoc.data()?['userRole'] ?? 2; // Temporarily default to admin role
       _isLoadingUserRole = false;
     });
   }
@@ -178,11 +220,16 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
   Future<void> _checkSetupStatus() async {
     setState(() => _isLoadingSetupStatus = true);
     try {
-      final isEnabled = await _setupService.isMetricsTrackingEnabled(widget.organizationId);
+      final setupStatus = await _setupService.getSetupStatus(
+        widget.organizationId,
+      );
+      final isEnabled = setupStatus['metricsEnabled'] as bool? ?? false;
       if (!mounted) return;
       setState(() {
         _metricsEnabled = isEnabled;
         _isLoadingSetupStatus = false;
+        _setupCompletionProgress =
+            (setupStatus['setupCompletionPercentage'] as num?)?.toDouble() ?? 0;
       });
       if (_metricsEnabled) {
         await _ensureDailyChecklistsExist();
@@ -193,6 +240,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
       setState(() {
         _metricsEnabled = false;
         _isLoadingSetupStatus = false;
+        _setupCompletionProgress = 0;
       });
     }
   }
@@ -232,17 +280,26 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
       String? locationToSelect;
       String? locationToSelectName;
 
-      final hasGlobalValid = globalId != null && locations.any((l) => l['id'] == globalId);
-      final currentIsValid = _selectedLocationId != null && locations.any((l) => l['id'] == _selectedLocationId);
+      final hasGlobalValid =
+          globalId != null && locations.any((l) => l['id'] == globalId);
+      final currentIsValid =
+          _selectedLocationId != null &&
+          locations.any((l) => l['id'] == _selectedLocationId);
 
       if (hasGlobalValid) {
         locationToSelect = globalId;
-        locationToSelectName = locations.firstWhere((l) => l['id'] == globalId)['name'] as String?;
+        locationToSelectName =
+            locations.firstWhere((l) => l['id'] == globalId)['name'] as String?;
       } else if (currentIsValid) {
         locationToSelect = _selectedLocationId;
-        locationToSelectName = locations.firstWhere((l) => l['id'] == _selectedLocationId)['name'] as String?;
+        locationToSelectName =
+            locations.firstWhere((l) => l['id'] == _selectedLocationId)['name']
+                as String?;
       } else if (locations.isNotEmpty) {
-        final primary = locations.firstWhere((l) => l['isPrimary'] == true, orElse: () => locations.first);
+        final primary = locations.firstWhere(
+          (l) => l['isPrimary'] == true,
+          orElse: () => locations.first,
+        );
         locationToSelect = primary['id'] as String?;
         locationToSelectName = primary['name'] as String?;
       }
@@ -255,8 +312,15 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
       });
 
       // Sync global selection
-      if (_selectedLocationId != null && LocationSelectionService.instance.currentLocationId != _selectedLocationId) {
-        LocationSelectionService.instance.setLocation(_selectedLocationId!);
+      if (_selectedLocationId != null &&
+          LocationSelectionService.instance.currentLocationId !=
+              _selectedLocationId) {
+        try {
+          await LocationSelectionService.instance.setLocationAsync(
+            _selectedLocationId!,
+            locationName: _selectedLocationName,
+          );
+        } catch (_) {}
       }
 
       if (_selectedLocationId != null) {
@@ -266,7 +330,9 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
     } catch (e) {
       logger.e('Error loading locations: $e', e);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load locations: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to load locations: $e')));
     } finally {
       if (mounted) {
         setState(() => _isLoadingLocations = false);
@@ -276,13 +342,36 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
 
   Future<void> _loadFilterOptions() async {
     // Shifts (for filters)
-    final shiftsSnap =
-        await FirestoreEnforcer.instance
-            .collection('organizations')
-            .doc(widget.organizationId)
-            .collection('shifts')
-            .where('locationIds', arrayContains: _selectedLocationId)
-            .get();
+    final shiftsColl = FirestoreEnforcer.instance
+        .collection('organizations')
+        .doc(widget.organizationId)
+        .collection('shifts');
+
+    final Map<String, QueryDocumentSnapshot> shiftDocsById = {};
+    if (_selectedLocationId == null || _selectedLocationId!.isEmpty) {
+      final snap = await shiftsColl.get();
+      for (final d in snap.docs) {
+        shiftDocsById[d.id] = d;
+      }
+    } else {
+      final snapArray =
+          await shiftsColl
+              .where('locationIds', arrayContains: _selectedLocationId)
+              .get();
+      for (final d in snapArray.docs) {
+        shiftDocsById[d.id] = d;
+      }
+      try {
+        final snapSingle =
+            await shiftsColl
+                .where('locationId', isEqualTo: _selectedLocationId)
+                .get();
+        for (final d in snapSingle.docs) {
+          shiftDocsById[d.id] = d;
+        }
+      } catch (_) {}
+    }
+    final shiftDocs = shiftDocsById.values.toList();
 
     // Checklist templates (for filters)
     final templatesSnap =
@@ -295,12 +384,22 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
     if (!mounted) return;
     setState(() {
       _shifts =
-          shiftsSnap.docs
-              .map((d) => {'id': d.id, 'name': (d.data()['shiftName'] ?? 'Unnamed Shift').toString()})
-              .toList();
+          shiftDocs.map((d) {
+            final data =
+                (d.data() as Map<String, dynamic>?) ?? <String, dynamic>{};
+            return {
+              'id': d.id,
+              'name': (data['shiftName'] ?? 'Unnamed Shift').toString(),
+            };
+          }).toList();
       _checklists =
           templatesSnap.docs
-              .map((d) => {'id': d.id, 'name': (d.data()['name'] ?? 'Unnamed Checklist').toString()})
+              .map(
+                (d) => {
+                  'id': d.id,
+                  'name': (d.data()['name'] ?? 'Unnamed Checklist').toString(),
+                },
+              )
               .toList();
     });
   }
@@ -316,27 +415,20 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
       _loadingYesterday = true;
     });
     try {
-      final service = DailyChecklistService();
-      final today = DateTime.now();
-      logger.d('[WEBManagerDashboard] _loadYesterdayMissed ENTER (today=$today, location=$_selectedLocationId)');
+      // IMPORTANT: compute "missed yesterday" directly from yesterday's tasks,
+      // not from today's carry-forward lineage (which can be historically incorrect).
+      final now = DateTime.now();
+      final yesterday = now.subtract(const Duration(days: 1));
       logger.d(
-        '[WEBManagerDashboard] Using ONLY carry-forward tasks for Missed Yesterday (disabling supplemental enumeration)',
+        '[WEBManagerDashboard] _loadYesterdayMissed direct: yesterday=${_dateFormat.format(yesterday)} location=$_selectedLocationId',
       );
 
-      // Load carry-forward based sections (authoritative). Matches user dashboard logic exactly.
-      final cfSections = await service.loadMissedTasksForToday(
-        organizationId: widget.organizationId,
-        targetDate: today,
-        locationId: _selectedLocationId,
-      );
-      logger.d('[WEBManagerDashboard] CF loader returned ${cfSections.length} sections');
-
-      // Build grouped representation (taskName+shiftId) for display while retaining raw sections for accurate counting
-      final Map<String, Map<String, dynamic>> groupedCF = {};
-      for (final section in cfSections) {
+      final sections = await _loadMissedSectionsForDateDirect(yesterday);
+      final groupedTasks = <String, Map<String, dynamic>>{};
+      for (final section in sections) {
         for (final task in section.tasks) {
           final key = '${task.taskName}_${section.shiftId}';
-          final g = groupedCF.putIfAbsent(
+          final group = groupedTasks.putIfAbsent(
             key,
             () => {
               'taskName': task.taskName,
@@ -344,38 +436,17 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
               'shiftName': section.shiftName,
               'locationId': section.locationId,
               'count': 0,
-              // Track whether at least one instance was completed today (boolean)
               'completedToday': false,
             },
           );
-          g['count'] = (g['count'] as int) + 1;
-          if (task.completed) g['completedToday'] = true;
-        }
-      }
-      _yesterdayMissedSections = cfSections;
-      _yesterdayMissed = groupedCF.values.toList();
-
-      if (_yesterdayMissedSections.isEmpty) {
-        // As a safety, if CF failed to produce anything, fall back to legacy grouped method.
-        logger.w('[WEBManagerDashboard] CF baseline empty; invoking legacy fallback (no direct enumeration)');
-        try {
-          final fallback = await service.getYesterdayMissedFromTodayCarryForward(
-            organizationId: widget.organizationId,
-            today: today,
-            locationId: _selectedLocationId,
-          );
-          if (fallback.isNotEmpty) {
-            _yesterdayMissed = fallback;
-            logger.w('[WEBManagerDashboard] Legacy fallback supplied ${fallback.length} grouped entries');
-          }
-        } catch (fe, fst) {
-          logger.e('[WEBManagerDashboard] Legacy fallback failed: $fe\n$fst');
+          group['count'] = (group['count'] as int) + 1;
         }
       }
 
-      final finalRaw = _yesterdayMissedSections.fold<int>(0, (s, sec) => s + sec.tasks.length);
+      _yesterdayMissedSections = sections;
+      _yesterdayMissed = groupedTasks.values.toList();
       logger.d(
-        '[WEBManagerDashboard] FINAL MissedYesterday (CF-only) groups=${_yesterdayMissed.length} rawTasks=$finalRaw',
+        '[WEBManagerDashboard] _loadYesterdayMissed: sections=${sections.length} tasks=${sections.fold<int>(0, (s, sec) => s + sec.tasks.length)} grouped=${_yesterdayMissed.length}',
       );
     } catch (e, st) {
       logger.e('[ManagerDashboard] loadMissedTasksForToday error: $e\n$st');
@@ -387,49 +458,118 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
 
   // _missedSignature removed after simplifying logic to CF-only (no merging step required).
 
-  Future<void> _loadMissedTrend7d() async {
-    try {
-      logger.d('[ManagerDashboard] Loading 7-day missed tasks trend...');
-      final now = DateTime.now();
-      final futures = <Future<int>>[];
-      for (int i = 6; i >= 0; i--) {
-        final day = now.subtract(Duration(days: i));
-        futures.add(_countMissedForDate(day));
-      }
-      final results = await Future.wait(futures);
-      if (!mounted) return;
-      setState(() => _missedTrend7d = results);
-      logger.d(
-        '[ManagerDashboard] 7-day trend loaded: $results (total: ${results.fold(0, (sum, val) => sum + val)} missed tasks)',
-      );
-    } catch (e) {
-      logger.w('[ManagerDashboard] _loadMissedTrend7d failed: $e');
-    }
+  bool _taskIsCompleted(Map<String, dynamic> m) {
+    return (m['completed'] == true) ||
+        (m['isCompleted'] == true) ||
+        (m['status'] == 'completed');
   }
 
-  Future<int> _countMissedForDate(DateTime day) async {
-    try {
-      final service = DailyChecklistService();
+  DateTime _parseDateTime(dynamic v) {
+    if (v == null) return DateTime.now();
+    if (v is DateTime) return v;
+    if (v is Timestamp) return v.toDate();
+    if (v is String) return DateTime.tryParse(v) ?? DateTime.now();
+    return DateTime.now();
+  }
 
-      // Use the same subcollection method for consistency
-      final sections = await service.loadMissedTasksForToday(
-        organizationId: widget.organizationId,
-        targetDate: day,
-        locationId: _selectedLocationId,
-      );
+  TaskData _taskDataFromDoc({
+    required String docId,
+    required Map<String, dynamic> m,
+  }) {
+    final createdAt = _parseDateTime(m['createdAt']);
+    final dueDateRaw = m['dueDate'] ?? m['dueAt'] ?? m['deadline'];
+    final dueDate = dueDateRaw != null ? _parseDateTime(dueDateRaw) : createdAt;
 
-      // Count total missed tasks across all sections
-      int totalMissed = 0;
-      for (final section in sections) {
-        totalMissed += section.tasks.length;
-      }
+    final taskId = (m['taskId'] ?? m['id'] ?? docId).toString();
+    final taskName =
+        localizedContent(
+          m,
+          fieldKeys: const ['taskName', 'name', 'title', 'description'],
+        ).trim();
+    final checklistName =
+        localizedContent(
+          m,
+          fieldKeys: const ['checklistName', 'templateName', 'name'],
+        ).trim();
 
-      logger.d('[ManagerDashboard] Counted $totalMissed missed tasks for ${_dateFormat.format(day)}');
-      return totalMissed;
-    } catch (e) {
-      logger.w('[ManagerDashboard] _countMissedForDate failed for ${_dateFormat.format(day)}: $e');
-      return 0;
+    return TaskData(
+      taskId: taskId,
+      taskName: taskName.isNotEmpty ? taskName : 'Unknown Task',
+      createdAt: createdAt,
+      dueDate: dueDate,
+      completed: _taskIsCompleted(m),
+      isCarryForward: (m['isCarryForward'] == true),
+      excludedFromMetrics: (m['excludedFromMetrics'] == true),
+      organizationId: (m['organizationId'] ?? widget.organizationId).toString(),
+      locationId: (m['locationId'] ?? _selectedLocationId)?.toString(),
+      checklistId: (m['checklistId'] ?? m['dailyChecklistId'])?.toString(),
+      checklistName: checklistName.isNotEmpty ? checklistName : null,
+      shiftId: (m['shiftId'])?.toString(),
+      dateString: (m['dateString'])?.toString(),
+      order: (m['order'] is num) ? (m['order'] as num).toInt() : null,
+    );
+  }
+
+  Future<List<MissedTasksSection>> _loadMissedSectionsForDateDirect(
+    DateTime date,
+  ) async {
+    final dateStr = _dateFormat.format(date);
+
+    final shiftsSnap =
+        await FirestoreEnforcer.instance
+            .collection('organizations')
+            .doc(widget.organizationId)
+            .collection('shifts')
+            .get();
+    final shiftMetaById = <String, Map<String, dynamic>>{
+      for (final s in shiftsSnap.docs) s.id: s.data(),
+    };
+
+    final tasksByShiftId = <String, List<TaskData>>{};
+
+    Query q = FirestoreEnforcer.instance
+        .collectionGroup('tasks')
+        .where('organizationId', isEqualTo: widget.organizationId)
+        .where('isCarryForward', isEqualTo: false)
+        .where('dateString', isEqualTo: dateStr);
+    if (_selectedLocationId != null && _selectedLocationId!.isNotEmpty) {
+      q = q.where('locationId', isEqualTo: _selectedLocationId);
     }
+
+    final snap = await q.get();
+    for (final d in snap.docs) {
+      final raw = d.data();
+      final m = (raw is Map<String, dynamic>) ? raw : <String, dynamic>{};
+      if (m['excludedFromMetrics'] == true) continue;
+      if (m['isCarryForward'] == true) continue;
+      if (_taskIsCompleted(m)) continue;
+      final shiftId = (m['shiftId'] ?? '').toString();
+      if (shiftId.isEmpty) continue;
+      final task = _taskDataFromDoc(docId: d.id, m: m);
+      if (task.taskName.trim().isEmpty) continue;
+      tasksByShiftId.putIfAbsent(shiftId, () => <TaskData>[]).add(task);
+    }
+
+    final sections = <MissedTasksSection>[];
+    for (final entry in tasksByShiftId.entries) {
+      final shiftId = entry.key;
+      final shiftMeta = shiftMetaById[shiftId] ?? const <String, dynamic>{};
+      final shiftName =
+          (shiftMeta['shiftName'] ?? shiftMeta['name'] ?? '').toString();
+      if (shiftName.isEmpty) continue;
+      sections.add(
+        MissedTasksSection(
+          shiftId: shiftId,
+          shiftName: shiftName,
+          organizationId: widget.organizationId,
+          locationId: _selectedLocationId,
+          tasks: entry.value,
+        ),
+      );
+    }
+
+    sections.sort((a, b) => a.shiftName.compareTo(b.shiftName));
+    return sections;
   }
 
   Future<void> _loadLiveShifts() async {
@@ -440,25 +580,66 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
       print('====== MANAGER DASHBOARD: Loading live shifts ======');
       print('Current location ID: $_selectedLocationId');
 
+      if (_selectedLocationId == null || _selectedLocationId!.isEmpty) {
+        logger.w(
+          '[ManagerDashboard][DEBUG] _loadLiveShifts aborted: no location selected',
+        );
+        if (!mounted) return;
+        setState(() {
+          _liveShifts = [];
+        });
+        return;
+      }
+
       final todayStr = _todayKey;
-      logger.i('[ManagerDashboard][DEBUG] Today string: $todayStr, Selected Location: $_selectedLocationId');
-      final shiftsSnap =
-          await FirestoreEnforcer.instance
-              .collection('organizations')
-              .doc(widget.organizationId)
-              .collection('shifts')
+      logger.i(
+        '[ManagerDashboard][DEBUG] Today string: $todayStr, Selected Location: $_selectedLocationId',
+      );
+      final shiftsColl = FirestoreEnforcer.instance
+          .collection('organizations')
+          .doc(widget.organizationId)
+          .collection('shifts');
+      final Map<String, QueryDocumentSnapshot> docsById = {};
+      final snapArray =
+          await shiftsColl
               .where('locationIds', arrayContains: _selectedLocationId)
               .get();
-      logger.i('[ManagerDashboard][DEBUG] Found ${shiftsSnap.docs.length} shifts for location');
+      for (final d in snapArray.docs) {
+        docsById[d.id] = d;
+      }
+      int legacyCount = 0;
+      try {
+        // Some older shift docs store a single locationId instead of locationIds[]. Merge + dedupe.
+        final snapSingle =
+            await shiftsColl
+                .where('locationId', isEqualTo: _selectedLocationId)
+                .get();
+        legacyCount = snapSingle.docs.length;
+        for (final d in snapSingle.docs) {
+          docsById[d.id] = d;
+        }
+      } catch (e) {
+        logger.w(
+          '[ManagerDashboard][DEBUG] Legacy shift query (locationId) failed: $e',
+        );
+      }
+
+      final shiftDocs = docsById.values.toList();
+      logger.i(
+        '[ManagerDashboard][DEBUG] Found ${shiftDocs.length} shifts for location (locationIds=${snapArray.docs.length}, locationId=$legacyCount)',
+      );
 
       final List<Map<String, dynamic>> todaysShifts = [];
 
-      for (final shiftDoc in shiftsSnap.docs) {
-        final shiftData = shiftDoc.data();
-        final shiftName = (shiftData['shiftName'] ?? 'Unnamed Shift').toString();
+      for (final shiftDoc in shiftDocs) {
+        final shiftData =
+            (shiftDoc.data() as Map<String, dynamic>?) ?? <String, dynamic>{};
+        final shiftName =
+            (shiftData['shiftName'] ?? 'Unnamed Shift').toString();
         final startTime = (shiftData['startTime'] ?? '').toString();
         final endTime = (shiftData['endTime'] ?? '').toString();
-        final role = (shiftData['jobType'] ?? shiftData['role'] ?? '').toString();
+        final role =
+            (shiftData['jobType'] ?? shiftData['role'] ?? '').toString();
         logger.i(
           '[ManagerDashboard][DEBUG] Processing shift: $shiftName ($role) $startTime-$endTime, id=${shiftDoc.id}',
         );
@@ -512,10 +693,13 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
               '[ManagerDashboard][DEBUG] Org-scoped fallback returned ${legacySnap.docs.length} docs for shift $shiftName',
             );
             if (legacySnap.docs.isNotEmpty) {
-              checklistsSnap = legacySnap; // replace local variable with fallback
+              checklistsSnap =
+                  legacySnap; // replace local variable with fallback
             }
           } catch (e) {
-            logger.w('[ManagerDashboard][DEBUG] Org-scoped fallback failed for shift $shiftName: $e');
+            logger.w(
+              '[ManagerDashboard][DEBUG] Org-scoped fallback failed for shift $shiftName: $e',
+            );
           }
         }
 
@@ -541,15 +725,21 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
                 '[ManagerDashboard][DEBUG] Found ${tasks.length} tasks in subcollection for shift: $shiftName, checklist: ${cl.id}',
               );
             } catch (e) {
-              logger.e('[ManagerDashboard][DEBUG] Failed to load tasks subcollection for doc ${cl.id}: $e');
+              logger.e(
+                '[ManagerDashboard][DEBUG] Failed to load tasks subcollection for doc ${cl.id}: $e',
+              );
             }
           }
 
           // Filter out carry-forward tasks to avoid contaminating today's shift completion rates
-          final todayOnlyTasks = tasks.where((t) => t['isCarryForward'] != true).toList();
+          final todayOnlyTasks =
+              tasks.where((t) => t['isCarryForward'] != true).toList();
           totalTasks += todayOnlyTasks.length;
           for (final t in todayOnlyTasks) {
-            final completed = t['completed'] == true || t['isCompleted'] == true || t['status'] == 'completed';
+            final completed =
+                t['completed'] == true ||
+                t['isCompleted'] == true ||
+                t['status'] == 'completed';
             if (completed) completedTasks += 1;
           }
         }
@@ -566,22 +756,34 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
         final weekday = now.weekday; // 1..7 (Monday=1, Sunday=7)
         bool scheduledToday = false;
 
-        logger.i('[ManagerDashboard][DEBUG] Checking schedule for shift $shiftName on weekday $weekday');
+        logger.i(
+          '[ManagerDashboard][DEBUG] Checking schedule for shift $shiftName on weekday $weekday',
+        );
 
         // repeatsDaily flag (may be stored as bool)
         if (shiftData['repeatsDaily'] == true) {
-          logger.i('[ManagerDashboard][DEBUG] Shift $shiftName has repeatsDaily=true');
+          logger.i(
+            '[ManagerDashboard][DEBUG] Shift $shiftName has repeatsDaily=true',
+          );
           scheduledToday = true;
         }
 
         // activeDays can be List<int> or List<String>
         if (!scheduledToday && (shiftData['activeDays'] is List)) {
-          final active = (shiftData['activeDays'] as List).map((e) => e?.toString()).whereType<String>().toList();
-          logger.i('[ManagerDashboard][DEBUG] Shift $shiftName activeDays: $active, checking against weekday $weekday');
+          final active =
+              (shiftData['activeDays'] as List)
+                  .map((e) => e?.toString())
+                  .whereType<String>()
+                  .toList();
+          logger.i(
+            '[ManagerDashboard][DEBUG] Shift $shiftName activeDays: $active, checking against weekday $weekday',
+          );
           for (final a in active) {
             final ai = int.tryParse(a);
             if (ai != null && ai == weekday) {
-              logger.i('[ManagerDashboard][DEBUG] Shift $shiftName matches activeDays: $ai == $weekday');
+              logger.i(
+                '[ManagerDashboard][DEBUG] Shift $shiftName matches activeDays: $ai == $weekday',
+              );
               scheduledToday = true;
               break;
             }
@@ -590,18 +792,36 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
 
         // days may contain names like 'Monday' etc.
         if (!scheduledToday && (shiftData['days'] is List)) {
-          final todayName = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][weekday - 1];
+          final todayName =
+              [
+                'Monday',
+                'Tuesday',
+                'Wednesday',
+                'Thursday',
+                'Friday',
+                'Saturday',
+                'Sunday',
+              ][weekday - 1];
           final daysList =
-              (shiftData['days'] as List).map((d) => d?.toString().toLowerCase()).whereType<String>().toList();
-          logger.i('[ManagerDashboard][DEBUG] Shift $shiftName days: $daysList, checking against $todayName');
+              (shiftData['days'] as List)
+                  .map((d) => d?.toString().toLowerCase())
+                  .whereType<String>()
+                  .toList();
+          logger.i(
+            '[ManagerDashboard][DEBUG] Shift $shiftName days: $daysList, checking against $todayName',
+          );
           if (daysList.contains(todayName.toLowerCase())) {
-            logger.i('[ManagerDashboard][DEBUG] Shift $shiftName matches days: contains ${todayName.toLowerCase()}');
+            logger.i(
+              '[ManagerDashboard][DEBUG] Shift $shiftName matches days: contains ${todayName.toLowerCase()}',
+            );
             scheduledToday = true;
           }
         }
 
         // Some shifts may have a specific shiftDate field (Timestamp/DateTime)
-        if (!scheduledToday && shiftData.containsKey('shiftDate') && shiftData['shiftDate'] != null) {
+        if (!scheduledToday &&
+            shiftData.containsKey('shiftDate') &&
+            shiftData['shiftDate'] != null) {
           try {
             final raw = shiftData['shiftDate'];
             DateTime? sd;
@@ -612,23 +832,45 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
             else if (raw is String)
               sd = DateTime.tryParse(raw);
             if (sd != null) {
-              if (sd.year == now.year && sd.month == now.month && sd.day == now.day) {
-                logger.i('[ManagerDashboard][DEBUG] Shift $shiftName matches shiftDate: $sd');
+              if (sd.year == now.year &&
+                  sd.month == now.month &&
+                  sd.day == now.day) {
+                logger.i(
+                  '[ManagerDashboard][DEBUG] Shift $shiftName matches shiftDate: $sd',
+                );
                 scheduledToday = true;
               }
             }
           } catch (_) {}
         }
 
-        // REMOVED: Don't automatically include shifts just because they have checklists
-        // The presence of daily_checklists should not override explicit scheduling rules
-        // if (!scheduledToday && checklistsSnap.docs.isNotEmpty) scheduledToday = true;
+        final hasAnyScheduleMetadata =
+            shiftData['repeatsDaily'] == true ||
+            (shiftData['activeDays'] is List &&
+                (shiftData['activeDays'] as List).isNotEmpty) ||
+            (shiftData['days'] is List &&
+                (shiftData['days'] as List).isNotEmpty) ||
+            (shiftData.containsKey('shiftDate') &&
+                shiftData['shiftDate'] != null);
 
-        logger.i('[ManagerDashboard][DEBUG] Final scheduledToday for shift $shiftName: $scheduledToday');
+        // If scheduling metadata is missing (common in older orgs), default to showing the shift
+        // rather than hiding it, to avoid false negatives.
+        if (!scheduledToday && !hasAnyScheduleMetadata) {
+          logger.i(
+            '[ManagerDashboard][DEBUG] Shift $shiftName has no schedule metadata; defaulting scheduledToday=true',
+          );
+          scheduledToday = true;
+        }
+
+        logger.i(
+          '[ManagerDashboard][DEBUG] Final scheduledToday for shift $shiftName: $scheduledToday',
+        );
 
         // If not scheduled today, skip showing this shift in the Today's Shifts list
         if (!scheduledToday) {
-          logger.i('[ManagerDashboard][DEBUG] Skipping shift $shiftName — not scheduled today (weekday=$weekday)');
+          logger.i(
+            '[ManagerDashboard][DEBUG] Skipping shift $shiftName — not scheduled today (weekday=$weekday)',
+          );
           continue;
         }
 
@@ -647,7 +889,9 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
         });
       }
 
-      logger.i('[ManagerDashboard][DEBUG] Final live shifts list: $todaysShifts');
+      logger.i(
+        '[ManagerDashboard][DEBUG] Final live shifts list: $todaysShifts',
+      );
       if (!mounted) return;
       setState(() {
         _liveShifts = todaysShifts;
@@ -661,257 +905,301 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
   }
 
   Future<void> _loadFrequentMisses30d() async {
-    setState(() => _loadingFrequent = true);
     try {
+      debugPrint(
+        '[ManagerDashboard] _loadFrequentMisses30d: calling with locationId="$_selectedLocationId" (isNull=${_selectedLocationId == null}, isEmpty=${_selectedLocationId?.isEmpty})',
+      );
       final service = DailyChecklistService();
       final list = await service.getFrequentlyMissedTasks(
         organizationId: widget.organizationId,
         days: 30,
         limit: 10,
-        locationId: _selectedLocationId,
+        locationId:
+            _selectedLocationId?.isNotEmpty == true
+                ? _selectedLocationId
+                : null,
+      );
+      debugPrint(
+        '[ManagerDashboard] _loadFrequentMisses30d: received ${list.length} items',
       );
       if (!mounted) return;
       setState(() => _frequentMisses30d = list);
     } catch (e, st) {
       logger.e('[ManagerDashboard] getFrequentlyMissedTasks error: $e', e, st);
-    } finally {
-      if (!mounted) return;
-      setState(() => _loadingFrequent = false);
     }
   }
 
   Future<void> _loadPoorShifts30d() async {
-    logger.i('[ManagerDashboard][DEBUG] ALWAYSLOG: Entering _loadPoorShifts30d');
-    setState(() => _loadingPoorShifts = true);
+    logger.i(
+      '[ManagerDashboard][DEBUG] ALWAYSLOG: Entering _loadPoorShifts30d',
+    );
     try {
-      logger.i('[ManagerDashboard][DEBUG] ===== POOR SHIFTS ANALYSIS STARTING =====');
-      logger.i('[ManagerDashboard][DEBUG] _selectedLocationId: $_selectedLocationId');
-      logger.i('[ManagerDashboard][DEBUG] organizationId: ${widget.organizationId}');
-      logger.i('[ManagerDashboard][DEBUG] Loading poor performing shifts data...');
+      logger.i(
+        '[ManagerDashboard][DEBUG] ===== POOR SHIFTS ANALYSIS STARTING =====',
+      );
+      logger.i(
+        '[ManagerDashboard][DEBUG] _selectedLocationId: $_selectedLocationId',
+      );
+      logger.i(
+        '[ManagerDashboard][DEBUG] organizationId: ${widget.organizationId}',
+      );
+      logger.i(
+        '[ManagerDashboard][DEBUG] Loading poor performing shifts data...',
+      );
       final now = DateTime.now();
       final start = _dateFormat.format(now.subtract(const Duration(days: 30)));
       final end = _dateFormat.format(now);
 
-      logger.i('[ManagerDashboard][DEBUG] Querying poor shifts from $start to $end for location: $_selectedLocationId');
+      logger.i(
+        '[ManagerDashboard][DEBUG] Querying poor shifts from $start to $end for location: $_selectedLocationId',
+      );
 
-      // Determine which location(s) to query. Prefer the selected location but
-      // fallback to other available locations if it returns no data.
-      final preferredLocation = _selectedLocationId;
-
-      final List<QueryDocumentSnapshot> docs = [];
-
-      Future<List<QueryDocumentSnapshot>> queryForLocation(String locId) async {
-        try {
-          // Prefer location-scoped daily_checklists (locations/{locId}/daily_checklists)
-          final s =
-              await FirestoreEnforcer.instance
-                  .collection('organizations')
-                  .doc(widget.organizationId)
-                  .collection('locations')
-                  .doc(locId)
-                  .collection('daily_checklists')
-                  .where('date', isGreaterThanOrEqualTo: start)
-                  .where('date', isLessThanOrEqualTo: end)
-                  .get();
-          logger.i(
-            '[ManagerDashboard][DEBUG] queryForLocation($locId) (location-scoped) returned ${s.docs.length} docs',
-          );
-          return s.docs;
-        } catch (e) {
-          logger.w(
-            '[ManagerDashboard][DEBUG] queryForLocation($locId) failed (location-scoped), falling back to org-scoped query: $e',
-          );
-          // Fallback to org-root daily_checklists where we store a locationId field (legacy)
-          final s =
-              await FirestoreEnforcer.instance
-                  .collection('organizations')
-                  .doc(widget.organizationId)
-                  .collection('daily_checklists')
-                  .where('date', isGreaterThanOrEqualTo: start)
-                  .where('date', isLessThanOrEqualTo: end)
-                  .where('locationId', isEqualTo: locId)
-                  .get();
-          logger.i(
-            '[ManagerDashboard][DEBUG] queryForLocation($locId) (org-scoped fallback) returned ${s.docs.length} docs',
-          );
-          return s.docs;
+      // Fast path: aggregate directly from tasks subcollections (collectionGroup), excluding carry-forward tasks.
+      // This avoids N subcollection reads and dramatically reduces load time.
+      final Map<String, Map<String, int>> aggByShiftId =
+          {}; // shiftId -> {'done':x,'total':y}
+      bool usedFastPath = false;
+      try {
+        Query q = FirestoreEnforcer.instance
+            .collectionGroup('tasks')
+            .where('organizationId', isEqualTo: widget.organizationId)
+            .where('isCarryForward', isEqualTo: false)
+            .where('dateString', isGreaterThanOrEqualTo: start)
+            .where('dateString', isLessThanOrEqualTo: end);
+        if (_selectedLocationId != null && _selectedLocationId!.isNotEmpty) {
+          q = q.where('locationId', isEqualTo: _selectedLocationId);
         }
-      }
-
-      // Try preferred location first (if any)
-      if (preferredLocation != null && preferredLocation.isNotEmpty) {
-        logger.i('[ManagerDashboard][DEBUG] Trying selected location for poor shifts: $preferredLocation');
-        final r = await queryForLocation(preferredLocation);
-        docs.addAll(r);
-        logger.i('[ManagerDashboard][DEBUG] Selected location returned ${r.length} docs');
-      }
-
-      // If no docs found for preferred location, try other available locations
-      if (docs.isEmpty && _availableLocations.isNotEmpty) {
+        final snap = await q.get();
+        usedFastPath = true;
         logger.i(
-          '[ManagerDashboard][DEBUG] No checklists found for selected location; trying other available locations',
+          '[ManagerDashboard][DEBUG] Poor shifts fast-path task docs=${snap.docs.length}',
         );
-        for (final loc in _availableLocations) {
-          final id = loc['id'] as String?;
-          if (id == null) continue;
-          if (id == preferredLocation) continue; // already tried
-          final r = await queryForLocation(id);
-          if (r.isNotEmpty) {
-            docs.addAll(r);
-            logger.i('[ManagerDashboard][DEBUG] Found ${r.length} docs for fallback location $id');
-            // don't break; we may want to aggregate across locations
-          }
+        for (final d in snap.docs) {
+          final raw = d.data();
+          final m = (raw is Map<String, dynamic>) ? raw : <String, dynamic>{};
+          if (m['excludedFromMetrics'] == true) continue;
+          final shiftId = (m['shiftId'] ?? '').toString();
+          if (shiftId.isEmpty) continue;
+          final completed =
+              (m['completed'] == true) ||
+              (m['isCompleted'] == true) ||
+              (m['status'] == 'completed');
+          final entry = aggByShiftId.putIfAbsent(
+            shiftId,
+            () => {'done': 0, 'total': 0},
+          );
+          entry['total'] = (entry['total'] ?? 0) + 1;
+          if (completed) entry['done'] = (entry['done'] ?? 0) + 1;
         }
+      } catch (e) {
+        // Common failure: missing composite index for the range query.
+        logger.w(
+          '[ManagerDashboard][DEBUG] Poor shifts fast-path failed; falling back. error=$e',
+        );
       }
 
-      // Last resort: if still empty, try querying without a location filter for the date range
-      if (docs.isEmpty) {
-        logger.i(
-          '[ManagerDashboard][DEBUG] No daily_checklists found scoped to locations, falling back to global date-range query',
-        );
-        final s =
-            await FirestoreEnforcer.instance
-                .collection('organizations')
-                .doc(widget.organizationId)
-                .collection('daily_checklists')
-                .where('date', isGreaterThanOrEqualTo: start)
-                .where('date', isLessThanOrEqualTo: end)
-                .get();
-        docs.addAll(s.docs);
-        logger.i('[ManagerDashboard][DEBUG] Global date-range query returned ${s.docs.length} docs');
-      }
+      if (!usedFastPath) {
+        // Fallback: read daily_checklists and, per checklist, count regular tasks only.
+        // Still excludes carry-forward tasks and runs in controlled parallel batches.
+        final preferredLocation = _selectedLocationId;
 
-      logger.i('[ManagerDashboard][DEBUG] Total daily_checklist docs to process: ${docs.length}');
-
-      final Map<String, Map<String, num>> agg = {}; // key: shiftName, values: {'done':x,'total':y}
-
-      // Cache to avoid repeated reads for the same shiftId
-      final Map<String, String?> shiftNameCache = {};
-
-      for (final d in docs) {
-        final dataRaw = d.data();
-        final data = (dataRaw is Map<String, dynamic>) ? dataRaw : <String, dynamic>{};
-        final shiftId = (data['shiftId'] ?? '').toString();
-
-        if (shiftId.isEmpty) {
-          logger.w('[ManagerDashboard][DEBUG] Skipping daily_checklist ${d.id} due to missing shiftId.');
-          continue;
-        }
-
-        String? shiftName;
-
-        // Check cache first
-        if (shiftNameCache.containsKey(shiftId)) {
-          shiftName = shiftNameCache[shiftId];
-        } else {
-          // Fetch from Firestore
+        Future<List<QueryDocumentSnapshot>> queryForLocation(
+          String locId,
+        ) async {
           try {
-            final shiftDoc =
+            final s =
                 await FirestoreEnforcer.instance
                     .collection('organizations')
                     .doc(widget.organizationId)
-                    .collection('shifts')
-                    .doc(shiftId)
+                    .collection('locations')
+                    .doc(locId)
+                    .collection('daily_checklists')
+                    .where('date', isGreaterThanOrEqualTo: start)
+                    .where('date', isLessThanOrEqualTo: end)
                     .get();
-            if (shiftDoc.exists) {
-              final sdata = shiftDoc.data();
-              final resolved = (sdata?['shiftName'] ?? sdata?['name'] ?? '').toString();
-              if (resolved.isNotEmpty) {
-                shiftName = resolved;
-                shiftNameCache[shiftId] = resolved; // Cache the name
-              } else {
-                // Shift exists but has no name, treat as invalid
-                shiftNameCache[shiftId] = null;
+            return s.docs;
+          } catch (_) {
+            final s =
+                await FirestoreEnforcer.instance
+                    .collection('organizations')
+                    .doc(widget.organizationId)
+                    .collection('daily_checklists')
+                    .where('date', isGreaterThanOrEqualTo: start)
+                    .where('date', isLessThanOrEqualTo: end)
+                    .where('locationId', isEqualTo: locId)
+                    .get();
+            return s.docs;
+          }
+        }
+
+        final List<QueryDocumentSnapshot> docs = [];
+        if (preferredLocation != null && preferredLocation.isNotEmpty) {
+          docs.addAll(await queryForLocation(preferredLocation));
+        } else {
+          // No selected location: allow org-wide fallback.
+          final s =
+              await FirestoreEnforcer.instance
+                  .collection('organizations')
+                  .doc(widget.organizationId)
+                  .collection('daily_checklists')
+                  .where('date', isGreaterThanOrEqualTo: start)
+                  .where('date', isLessThanOrEqualTo: end)
+                  .get();
+          docs.addAll(s.docs);
+        }
+
+        logger.i(
+          '[ManagerDashboard][DEBUG] Poor shifts fallback daily_checklists=${docs.length}',
+        );
+
+        Future<void> processChecklist(QueryDocumentSnapshot d) async {
+          final dataRaw = d.data();
+          final data =
+              (dataRaw is Map<String, dynamic>) ? dataRaw : <String, dynamic>{};
+          final shiftId = (data['shiftId'] ?? '').toString();
+          if (shiftId.isEmpty) return;
+
+          // If parent counters exist, prefer them (fast).
+          final completedItems = data['completedItems'];
+          final totalItems = data['totalItems'];
+          if (completedItems is num && totalItems is num) {
+            final entry = aggByShiftId.putIfAbsent(
+              shiftId,
+              () => {'done': 0, 'total': 0},
+            );
+            entry['done'] = (entry['done'] ?? 0) + completedItems.toInt();
+            entry['total'] = (entry['total'] ?? 0) + totalItems.toInt();
+            return;
+          }
+
+          // Otherwise, count from tasks but exclude carry-forward tasks.
+          try {
+            int total = 0;
+            int done = 0;
+
+            if (data.containsKey('tasks') && data['tasks'] != null) {
+              // Old schema: tasks embedded in daily_checklist doc.
+              final tasks = List<Map<String, dynamic>>.from(
+                data['tasks'] ?? const [],
+              );
+              for (final t in tasks) {
+                if (t['isCarryForward'] == true) continue;
+                if (t['excludedFromMetrics'] == true) continue;
+                total += 1;
+                if (t['completed'] == true ||
+                    t['isCompleted'] == true ||
+                    t['status'] == 'completed') {
+                  done += 1;
+                }
               }
             } else {
-              // Shift is deleted, cache this info so we don't look it up again
-              shiftNameCache[shiftId] = null; // Null indicates deleted
+              // New schema: tasks subcollection.
+              final tasksSnap =
+                  await d.reference
+                      .collection('tasks')
+                      .where('isCarryForward', isEqualTo: false)
+                      .get();
+              for (final td in tasksSnap.docs) {
+                final t = td.data();
+                if (t['excludedFromMetrics'] == true) continue;
+                total += 1;
+                if (t['completed'] == true ||
+                    t['isCompleted'] == true ||
+                    t['status'] == 'completed') {
+                  done += 1;
+                }
+              }
             }
-          } catch (e) {
-            logger.w('[ManagerDashboard][DEBUG] Failed to resolve shiftName for shiftId=$shiftId: $e');
-            shiftNameCache[shiftId] = null; // Also cache failure to avoid retries
-          }
-        }
 
-        // If shiftName is null or empty, it means the shift was deleted or invalid. Skip it.
-        if (shiftName == null || shiftName.isEmpty) {
-          logger.i(
-            '[ManagerDashboard][DEBUG] Skipping checklist ${d.id} because shift $shiftId is deleted or invalid.',
-          );
-          continue;
-        }
-
-        logger.i('[ManagerDashboard][DEBUG] Processing checklist docId: ${d.id}, shiftName: $shiftName');
-
-        // Check if tasks are in subcollection (new way) or in document (old way)
-        List<Map<String, dynamic>> tasks = [];
-
-        if (data.containsKey('tasks') && data['tasks'] != null) {
-          // Old way: tasks in document
-          tasks = List<Map<String, dynamic>>.from(data['tasks'] ?? const []);
-          logger.i(
-            '[ManagerDashboard][DEBUG] Found ${tasks.length} tasks in document for shift: $shiftName, checklist: ${d.id}',
-          );
-        } else {
-          // New way: tasks in subcollection - need to fetch them
-          try {
-            final tasksSnap = await d.reference.collection('tasks').get();
-            tasks = tasksSnap.docs.map((taskDoc) => taskDoc.data()).toList();
-            logger.i(
-              '[ManagerDashboard][DEBUG] Found ${tasks.length} tasks in subcollection for shift: $shiftName, checklist: ${d.id}',
+            final entry = aggByShiftId.putIfAbsent(
+              shiftId,
+              () => {'done': 0, 'total': 0},
             );
+            entry['done'] = (entry['done'] ?? 0) + done;
+            entry['total'] = (entry['total'] ?? 0) + total;
           } catch (e) {
-            logger.e('[ManagerDashboard][DEBUG] Failed to load tasks subcollection for doc ${d.id}: $e');
+            logger.w(
+              '[ManagerDashboard][DEBUG] Poor shifts fallback task enumeration failed for ${d.id}: $e',
+            );
           }
         }
 
-        final total = tasks.length;
-        final done =
-            tasks.where((t) {
-              final completed = t['completed'] == true || t['isCompleted'] == true || t['status'] == 'completed';
-              return completed;
-            }).length;
-
-        logger.i('[ManagerDashboard][DEBUG] Shift $shiftName: $done/$total completed');
-
-        final entry = agg.putIfAbsent(shiftName, () => {'done': 0, 'total': 0});
-        entry['done'] = (entry['done'] ?? 0) + done;
-        entry['total'] = (entry['total'] ?? 0) + total;
+        const batchSize = 15;
+        for (int i = 0; i < docs.length; i += batchSize) {
+          final chunk = docs.sublist(i, math.min(i + batchSize, docs.length));
+          await Future.wait(chunk.map(processChecklist));
+        }
       }
 
+      // Resolve shift names in one read.
+      final shiftsSnap =
+          await FirestoreEnforcer.instance
+              .collection('organizations')
+              .doc(widget.organizationId)
+              .collection('shifts')
+              .get();
+      final Map<String, String> shiftNameById = {
+        for (final s in shiftsSnap.docs)
+          s.id: ((s.data()['shiftName'] ?? s.data()['name'] ?? '').toString()),
+      };
+
       final list =
-          agg.entries
+          aggByShiftId.entries
               .map((e) {
                 final done = (e.value['done'] ?? 0).toInt();
                 final total = math.max((e.value['total'] ?? 0).toInt(), 1);
                 final pct = done / total;
-                return {'shiftName': e.key, 'avgCompletion': pct, 'done': done, 'total': total};
+                final shiftName = shiftNameById[e.key] ?? '';
+                return {
+                  'shiftId': e.key,
+                  'shiftName': shiftName,
+                  'avgCompletion': pct,
+                  'done': done,
+                  'total': total,
+                };
               })
-              .where((m) => (m['total'] as int) > 0)
+              .where(
+                (m) =>
+                    (m['total'] as int) > 0 &&
+                    (m['shiftName'] as String).isNotEmpty,
+              )
               .toList()
-            ..sort((a, b) => (a['avgCompletion'] as double).compareTo(b['avgCompletion'] as double));
+            ..sort(
+              (a, b) => (a['avgCompletion'] as double).compareTo(
+                b['avgCompletion'] as double,
+              ),
+            );
 
-      logger.i('[ManagerDashboard][DEBUG] Poor performing shifts analysis complete: ${list.length} shifts found');
+      logger.i(
+        '[ManagerDashboard][DEBUG] Poor performing shifts analysis complete: ${list.length} shifts found',
+      );
       for (final shift in list) {
-        final pct = ((shift['avgCompletion'] as double) * 100).toStringAsFixed(1);
+        final pct = ((shift['avgCompletion'] as double) * 100).toStringAsFixed(
+          1,
+        );
         logger.i(
           '[ManagerDashboard][DEBUG] - ${shift['shiftName']}: $pct% completion (${shift['done']}/${shift['total']})',
         );
       }
 
       // Show shifts with completion rate below 85% as "poor performing"
-      final poorShifts = list.where((shift) => (shift['avgCompletion'] as double) < 0.85).toList();
-      logger.i('[ManagerDashboard][DEBUG] Found ${poorShifts.length} shifts with completion < 85%');
+      final poorShifts =
+          list
+              .where((shift) => (shift['avgCompletion'] as double) < 0.85)
+              .toList();
+      logger.i(
+        '[ManagerDashboard][DEBUG] Found ${poorShifts.length} shifts with completion < 85%',
+      );
 
       logger.i('[ManagerDashboard][DEBUG] Final poorShifts30d: $poorShifts');
       if (!mounted) return;
       setState(() => _poorShifts30d = poorShifts.take(5).toList());
     } catch (e, st) {
-      logger.e('[ManagerDashboard][DEBUG] _loadPoorShifts30d failed: $e', e, st);
-    } finally {
-      if (!mounted) return;
-      setState(() => _loadingPoorShifts = false);
-      logger.i('[ManagerDashboard][DEBUG] ALWAYSLOG: Exiting _loadPoorShifts30d');
+      logger.e(
+        '[ManagerDashboard][DEBUG] _loadPoorShifts30d failed: $e',
+        e,
+        st,
+      );
     }
   }
 
@@ -942,6 +1230,263 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
     }
   }
 
+  void _onMetricsEnabled() async {
+    setState(() => _metricsEnabled = true);
+    await _ensureDailyChecklistsExist();
+    await _loadAll();
+  }
+
+  Future<void> _openSetupPanel() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder:
+            (_) => CondensedSetupWidget(
+              organizationId: widget.organizationId,
+              onMetricsEnabled: () {
+                Navigator.of(context).pop();
+                _onMetricsEnabled();
+              },
+            ),
+      ),
+    );
+  }
+
+  int get _yesterdayMissedCount =>
+      _yesterdayMissedSections.isNotEmpty
+          ? _yesterdayMissedSections.fold<int>(
+            0,
+            (sum, section) => sum + section.tasks.length,
+          )
+          : _yesterdayMissed.fold<int>(
+            0,
+            (sum, item) => sum + ((item['count'] as int?) ?? 1),
+          );
+
+  int get _yesterdayAffectedShiftCount =>
+      _yesterdayMissedSections.isNotEmpty
+          ? _yesterdayMissedSections.length
+          : _yesterdayMissed
+              .map((item) => item['shiftId'] ?? item['shiftName'] ?? '')
+              .toSet()
+              .length;
+
+  bool _isShiftLiveNow(Map<String, dynamic> shift) =>
+      shift['timeStatus'].toString().contains('remaining');
+
+  bool _isShiftFinished(Map<String, dynamic> shift) =>
+      shift['timeStatus'].toString().contains('Finished');
+
+  bool _isShiftUpcoming(Map<String, dynamic> shift) =>
+      shift['timeStatus'].toString().contains('Starts in');
+
+  int _openTasksForShift(Map<String, dynamic> shift) {
+    final total = (shift['totalTasks'] as int?) ?? 0;
+    final completed = (shift['completedTasks'] as int?) ?? 0;
+    return math.max(0, total - completed);
+  }
+
+  bool _isShiftAtRisk(Map<String, dynamic> shift) {
+    final readiness = ((shift['completionPct'] as num?)?.toDouble() ?? 0).clamp(
+      0.0,
+      1.0,
+    );
+    final openTasks = _openTasksForShift(shift);
+    if (_isShiftFinished(shift)) {
+      return openTasks > 0;
+    }
+    if (_isShiftLiveNow(shift)) {
+      return openTasks > 0 && readiness < 0.8;
+    }
+    return false;
+  }
+
+  DashboardTone _toneForShift(Map<String, dynamic> shift) {
+    if (_isShiftAtRisk(shift)) return DashboardTone.danger;
+    if (_isShiftFinished(shift) && _openTasksForShift(shift) == 0) {
+      return DashboardTone.success;
+    }
+    if (_isShiftUpcoming(shift) &&
+        ((shift['completedTasks'] as int?) ?? 0) == 0) {
+      return DashboardTone.neutral;
+    }
+    if (((shift['completionPct'] as num?)?.toDouble() ?? 0) >= 0.85) {
+      return DashboardTone.success;
+    }
+    return DashboardTone.warning;
+  }
+
+  String _statusForShift(Map<String, dynamic> shift) {
+    final openTasks = _openTasksForShift(shift);
+    final completed = (shift['completedTasks'] as int?) ?? 0;
+    if (_isShiftFinished(shift)) {
+      return openTasks == 0 ? 'Complete' : 'At Risk';
+    }
+    if (_isShiftLiveNow(shift)) {
+      return _isShiftAtRisk(shift)
+          ? 'At Risk'
+          : (completed == 0 ? 'Not Started' : 'In Progress');
+    }
+    if (_isShiftUpcoming(shift)) {
+      return completed == 0 ? 'Not Started' : 'In Progress';
+    }
+    return completed == 0 ? 'Not Started' : 'In Progress';
+  }
+
+  String _detailForShift(Map<String, dynamic> shift) {
+    final openTasks = _openTasksForShift(shift);
+    if (openTasks == 0 && _isShiftFinished(shift)) {
+      return 'All tasks completed';
+    }
+    if (_isShiftAtRisk(shift)) {
+      return '$openTasks tasks still need attention';
+    }
+    if (_isShiftUpcoming(shift)) {
+      return 'Ready for today\'s run';
+    }
+    return '$openTasks tasks still open';
+  }
+
+  int get _activeOpenTaskCount => _liveShifts
+      .where(_isShiftLiveNow)
+      .fold<int>(0, (sum, shift) => sum + _openTasksForShift(shift));
+
+  int get _riskShiftCount => _liveShifts.where(_isShiftAtRisk).length;
+
+  List<ManagerActionIssue> get _attentionIssues {
+    if (_loadingLive || _loadingYesterday) {
+      return [
+        ManagerActionIssue(
+          title: 'Loading live operational status',
+          detail:
+              'Pulling today\'s shifts and yesterday\'s unfinished work now.',
+          ctaLabel: 'Refresh now',
+          tone: DashboardTone.neutral,
+          onTap: _refreshAllData,
+        ),
+      ];
+    }
+
+    final issues = <ManagerActionIssue>[];
+
+    if (_yesterdayMissedCount > 0) {
+      issues.add(
+        ManagerActionIssue(
+          title: 'Yesterday left unfinished work',
+          detail:
+              '$_yesterdayMissedCount tasks were missed across $_yesterdayAffectedShiftCount shifts.',
+          ctaLabel: 'Review missed work',
+          tone: DashboardTone.warning,
+          onTap: _openAllMissedYesterday,
+        ),
+      );
+    }
+
+    for (final shift in _liveShifts.where(_isShiftAtRisk).take(4)) {
+      final shiftName = (shift['shiftName'] ?? 'Unnamed Shift').toString();
+      final openTasks = _openTasksForShift(shift);
+      issues.add(
+        ManagerActionIssue(
+          title: '$shiftName is at risk',
+          detail:
+              '$openTasks tasks are still open. ${shift['timeStatus'] ?? 'Check progress now.'}',
+          ctaLabel: 'Open shift',
+          tone: DashboardTone.danger,
+          onTap: _openTodayShifts,
+        ),
+      );
+    }
+
+    if (issues.isEmpty) {
+      issues.add(
+        ManagerActionIssue(
+          title: 'Today is on track',
+          detail:
+              'No active shifts are currently off track at ${_selectedLocationName ?? 'this location'}.',
+          ctaLabel: 'View active shifts',
+          tone: DashboardTone.success,
+          onTap: _openTodayShifts,
+        ),
+      );
+    }
+
+    return issues;
+  }
+
+  List<ShiftReadinessSummary> get _shiftReadinessSummaries {
+    final sorted = [..._liveShifts];
+    sorted.sort((a, b) {
+      final toneRank = {
+        DashboardTone.danger: 0,
+        DashboardTone.warning: 1,
+        DashboardTone.neutral: 2,
+        DashboardTone.success: 3,
+      };
+      final compareTone = toneRank[_toneForShift(a)]!.compareTo(
+        toneRank[_toneForShift(b)]!,
+      );
+      if (compareTone != 0) return compareTone;
+      return ((a['completionPct'] as num?)?.toDouble() ?? 0).compareTo(
+        (b['completionPct'] as num?)?.toDouble() ?? 0,
+      );
+    });
+
+    return sorted
+        .map(
+          (shift) => ShiftReadinessSummary(
+            name: (shift['shiftName'] ?? 'Unnamed Shift').toString(),
+            statusLabel: _statusForShift(shift),
+            detail: _detailForShift(shift),
+            timeLabel: (shift['timeStatus'] ?? 'No schedule').toString(),
+            tone: _toneForShift(shift),
+            readiness: ((shift['completionPct'] as num?)?.toDouble() ?? 0)
+                .clamp(0.0, 1.0),
+            completed: (shift['completedTasks'] as int?) ?? 0,
+            total: (shift['totalTasks'] as int?) ?? 0,
+            attentionCount: _openTasksForShift(shift),
+            onTap: _openTodayShifts,
+          ),
+        )
+        .toList();
+  }
+
+  List<RecurringIssueSummary> get _recurringFailureItems =>
+      _frequentMisses30d.take(5).map((item) {
+        final failureRate = ((item['failureRate'] as num?)?.toDouble() ?? 0)
+            .clamp(0.0, 1.0);
+        final taskName = (item['taskName'] ?? 'Unknown Task').toString();
+        final checklistName = (item['checklistName'] ?? 'Checklist').toString();
+        final total = (item['totalOccurrences'] as int?) ?? 0;
+        final misses = (item['count'] as int?) ?? 0;
+        return RecurringIssueSummary(
+          title: taskName,
+          subtitle: '$checklistName • $misses of $total opportunities missed',
+          metric: '${(failureRate * 100).round()}%',
+          tone:
+              failureRate >= 0.4 ? DashboardTone.danger : DashboardTone.warning,
+          progress: failureRate,
+        );
+      }).toList();
+
+  List<RecurringIssueSummary> get _atRiskShiftItems =>
+      _poorShifts30d.take(5).map((item) {
+        final pct =
+            (((item['avgCompletion'] as num?)?.toDouble() ?? 0).clamp(
+              0.0,
+              1.0,
+            )) *
+            100;
+        final done = (item['done'] as int?) ?? 0;
+        final total = (item['total'] as int?) ?? 0;
+        return RecurringIssueSummary(
+          title: (item['shiftName'] ?? 'Unknown Shift').toString(),
+          subtitle:
+              '$done of $total tracked tasks completed in the last 30 days',
+          metric: '${pct.round()}%',
+          tone: pct < 70 ? DashboardTone.danger : DashboardTone.warning,
+          progress: (pct / 100).clamp(0.0, 1.0),
+        );
+      }).toList();
+
   // ===== UI =====
 
   @override
@@ -952,575 +1497,559 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
         appBar: AppBar(
           title: Text(
             'MANAGER DASHBOARD',
-            style: GoogleFonts.comfortaa(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+            style: GoogleFonts.comfortaa(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.2,
+            ),
           ),
           backgroundColor: HandsColors.primaryContainer,
           foregroundColor: HandsColors.white,
         ),
-        bottomNavigationBar: BottomNavBar(currentIndex: 1, userRole: userRole),
-        body: const Center(child: CircularProgressIndicator(color: HandsColors.handsOrange)),
+        bottomNavigationBar:
+            widget.allowPlatformAccess
+                ? CrmScopedBottomNav(
+                  orgId: widget.organizationId,
+                  currentIndex: 1,
+                )
+                : BottomNavBar(currentIndex: 1, userRole: userRole),
+        body: const Center(
+          child: CircularProgressIndicator(color: HandsColors.handsOrange),
+        ),
       );
     }
 
-    // Wrap the main content in error boundary for web compatibility
     return Scaffold(
       backgroundColor: HandsColors.scaffoldBackground,
       appBar: AppBar(
         backgroundColor: HandsColors.cardPrimary,
         elevation: 0,
         toolbarHeight: kToolbarHeight,
-        title: GenericAppBarContent(appBarTitle: 'Manager Dashboard', userRole: userRole),
+        leading:
+            widget.allowPlatformAccess
+                ? IconButton(
+                  tooltip: 'Back to CRM',
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => context.go('/crm'),
+                )
+                : null,
+        title:
+            widget.allowPlatformAccess
+                ? Text(
+                  'CRM account dashboard',
+                  style: GoogleFonts.comfortaa(fontWeight: FontWeight.w800),
+                )
+                : GenericAppBarContent(
+                  appBarTitle: 'Manager Dashboard',
+                  userRole: userRole,
+                ),
         automaticallyImplyLeading: false,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: PopupMenuButton<String>(
-              enabled: _availableLocations.isNotEmpty,
-              onSelected: (value) async {
-                logger.i('[ManagerDashboard][DEBUG] Location selected from header: $value');
-                setState(() {
-                  _selectedLocationId = value;
-                  final matches = _availableLocations.where((loc) => loc['id'] == value).toList();
-                  _selectedLocationName = matches.isNotEmpty ? (matches.first['name'] as String?) : 'Unknown Location';
-                });
-                // Persist globally
-                LocationSelectionService.instance.setLocation(value);
-                logger.i(
-                  '[ManagerDashboard][DEBUG] Updated _selectedLocationId: $_selectedLocationId, name: $_selectedLocationName',
-                );
-                await _loadFilterOptions();
-                await _loadAll();
-              },
-              itemBuilder:
-                  (context) =>
-                      _availableLocations.map((loc) {
-                        final selected = loc['id'] == _selectedLocationId;
-                        return PopupMenuItem<String>(
-                          value: loc['id'],
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.location_on,
-                                size: 16,
-                                color: selected ? HandsColors.handsOrange : HandsColors.white70,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  '${loc['name']}',
-                                  overflow: TextOverflow.ellipsis,
-                                  style: GoogleFonts.comfortaa(
-                                    fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-                                    color: selected ? HandsColors.handsOrange : HandsColors.white,
-                                  ),
-                                ),
-                              ),
-                              if (selected)
-                                const Padding(
-                                  padding: EdgeInsets.only(left: 8),
-                                  child: Icon(Icons.check, size: 16, color: HandsColors.handsOrange),
-                                ),
-                            ],
-                          ),
-                        );
-                      }).toList(),
-              child: Builder(
-                builder: (context) {
-                  final screenWidth = MediaQuery.of(context).size.width;
-                  final isNarrowScreen = screenWidth < 400;
-
-                  if (isNarrowScreen) {
-                    // Compact mobile version - just location icon
-                    return Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: HandsColors.handsOrange.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(Icons.location_on, color: HandsColors.white, size: 20),
-                    );
-                  } else {
-                    // Full desktop version
-                    return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: HandsColors.handsOrange.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.location_on, color: HandsColors.white, size: 18),
-                          const SizedBox(width: 6),
-                          Text(
-                            _selectedLocationName?.isNotEmpty == true ? _selectedLocationName! : 'Select Location',
-                            style: GoogleFonts.comfortaa(
-                              color: HandsColors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.arrow_drop_down, color: HandsColors.white, size: 16),
-                        ],
-                      ),
-                    );
-                  }
-                },
-              ),
-            ),
-          ),
-          UnifiedMenuButton(userRole: userRole),
-        ],
-      ),
-      bottomNavigationBar: BottomNavBar(currentIndex: 1, userRole: userRole),
-      body: Builder(
-        builder: (context) {
-          try {
-            return _buildDashboardGrid();
-          } catch (e) {
-            logger.e('[ManagerDashboard] Error building dashboard: $e');
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error_outline, size: 48, color: HandsColors.error),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Dashboard temporarily unavailable',
-                    style: GoogleFonts.comfortaa(fontSize: 16, color: HandsColors.white, fontWeight: FontWeight.w500),
+        actions:
+            widget.allowPlatformAccess
+                ? [
+                  TextButton.icon(
+                    onPressed: () => context.go('/crm'),
+                    icon: const Icon(Icons.dashboard_customize_outlined),
+                    label: const Text('Back to CRM'),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Please refresh the page',
-                    style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white70),
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: () {
-                      // Force a rebuild
-                      setState(() {});
-                    },
-                    child: const Text('Refresh Dashboard'),
+                  const SizedBox(width: 12),
+                ]
+                : [
+                  UnifiedMenuButton(
+                    userRole: userRole,
+                    organizationId: widget.organizationId,
                   ),
                 ],
-              ),
-            );
-          }
-        },
       ),
+      bottomNavigationBar:
+          widget.allowPlatformAccess
+              ? CrmScopedBottomNav(
+                orgId: widget.organizationId,
+                currentIndex: 1,
+              )
+              : BottomNavBar(currentIndex: 1, userRole: userRole),
+      body: _buildDashboardGrid(),
     );
   }
 
   Widget _buildDashboardGrid() {
-    // Simplified web layout to avoid unbounded height constraints
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Top row - two main cards side by side
-          SizedBox(
-            height: 350, // Reduced height to prevent overflow
-            child: Row(
-              children: [
-                // Missed Yesterday (left half)
-                Expanded(
-                  flex: 1,
-                  child: _SimpleDashboardCard(
-                    title: 'MISSED YESTERDAY',
-                    icon: Icons.report_gmailerrorred,
-                    accentColor: HandsColors.error,
-                    loading: _loadingYesterday,
-                    onTap: _openAllMissedYesterday,
-                    actions: [
-                      IconButton(
-                        onPressed: () async {
-                          setState(() => _loadingYesterday = true);
-                          await _loadYesterdayMissed();
-                          setState(() => _loadingYesterday = false);
-                        },
-                        icon: const Icon(Icons.refresh, color: HandsColors.white70),
-                        tooltip: 'Refresh Missed Tasks',
-                      ),
-                    ],
-                    content: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 20),
-                        // Main metric - use raw sections if available, otherwise fall back to grouped count
-                        Text(
-                          () {
-                            // Always use raw task count for consistency with user dashboard
-                            final rawTaskCount =
-                                _yesterdayMissedSections.isNotEmpty
-                                    ? _yesterdayMissedSections.fold<int>(
-                                      0,
-                                      (sum, section) => sum + section.tasks.length,
-                                    )
-                                    : _yesterdayMissed.fold<int>(0, (sum, e) => sum + (e['count'] as int? ?? 1));
-
-                            // Debug logging to track counting method
-                            final countingMethod = _yesterdayMissedSections.isNotEmpty ? 'sections' : 'grouped';
-                            final shiftCount =
-                                _yesterdayMissedSections.isNotEmpty
-                                    ? _yesterdayMissedSections.length
-                                    : _yesterdayMissed.map((e) => e['shiftId'] ?? e['shiftName'] ?? '').toSet().length;
-
-                            logger.d(
-                              '[ManagerDashboard] DISPLAY: $rawTaskCount tasks via $countingMethod method across $shiftCount shifts',
-                            );
-                            print(
-                              'MANAGER DASHBOARD COUNT DEBUG: $rawTaskCount tasks ($countingMethod method), $shiftCount shifts',
-                            );
-
-                            return '$rawTaskCount';
-                          }(),
-                          style: GoogleFonts.comfortaa(
-                            fontSize: 48,
-                            fontWeight: FontWeight.bold,
-                            color: HandsColors.white,
-                            height: 1.0,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          () {
-                            // Use actual shift count for consistency with user dashboard
-                            final actualShiftCount =
-                                _yesterdayMissedSections.isNotEmpty
-                                    ? _yesterdayMissedSections.length
-                                    : _yesterdayMissed.map((e) => e['shiftId'] ?? e['shiftName'] ?? '').toSet().length;
-
-                            return 'missed tasks across $actualShiftCount shifts';
-                          }(),
-                          style: GoogleFonts.comfortaa(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                            color: HandsColors.white70,
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        // 7-day trend chart
-                        Text(
-                          '7-DAY TREND',
-                          style: GoogleFonts.comfortaa(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: HandsColors.white70,
-                            letterSpacing: 1.0,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(height: 80, child: MiniSparkBars(values: _missedTrend7d, height: 80)),
-                        const Spacer(),
-                        // Location footer
-                        if (_selectedLocationName != null)
-                          Row(
-                            children: [
-                              Icon(Icons.location_on, size: 16, color: HandsColors.white70),
-                              const SizedBox(width: 4),
-                              Text(
-                                _selectedLocationName!,
-                                style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white70),
-                              ),
-                            ],
-                          ),
-                      ],
-                    ),
-                  ),
+    final l10n = context.l10n;
+    final issues = _attentionIssues;
+    final shiftSummaries = _shiftReadinessSummaries;
+    final recurringFailures = _recurringFailureItems;
+    final atRiskShifts = _atRiskShiftItems;
+    final isPrimaryLoading = _loadingLive || _loadingYesterday;
+    final hasActionableIssues = issues.any(
+      (issue) => issue.tone != DashboardTone.success,
+    );
+    final activeShiftCount = _liveShifts.where(_isShiftLiveNow).length;
+    final totalTrackedTasks = _liveShifts.fold<int>(
+      0,
+      (runningTotal, shift) =>
+          runningTotal + ((shift['totalTasks'] as int?) ?? 0),
+    );
+    final completedTrackedTasks = _liveShifts.fold<int>(
+      0,
+      (runningTotal, shift) =>
+          runningTotal + ((shift['completedTasks'] as int?) ?? 0),
+    );
+    final dashboardMetrics = <DashboardMetricSummary>[
+      DashboardMetricSummary(
+        icon: Icons.wifi_tethering_rounded,
+        label: l10n.managerDashboardActiveShifts,
+        value: '$activeShiftCount',
+        detail:
+            activeShiftCount == 1
+                ? l10n.managerDashboardActiveShiftLiveNowOne
+                : l10n.managerDashboardActiveShiftLiveNowOther(
+                  activeShiftCount,
                 ),
-                const SizedBox(width: 24),
-                // Today's Shifts (right half)
-                Expanded(
-                  flex: 1,
-                  child: _SimpleDashboardCard(
-                    title: "TODAY'S SHIFTS",
-                    icon: Icons.live_tv,
-                    accentColor: HandsColors.handsOrange,
-                    loading: _loadingLive,
-                    onTap: _openTodayShifts,
-                    actions: [
+        tone:
+            activeShiftCount > 0
+                ? DashboardTone.neutral
+                : DashboardTone.success,
+        progress:
+            _liveShifts.isEmpty
+                ? 0
+                : (activeShiftCount / _liveShifts.length).clamp(0.0, 1.0),
+      ),
+      DashboardMetricSummary(
+        icon: Icons.warning_amber_rounded,
+        label: l10n.managerDashboardAtRisk,
+        value: '$_riskShiftCount',
+        detail:
+            _riskShiftCount == 0
+                ? l10n.managerDashboardNoShiftsSlipping
+                : l10n.managerDashboardNeedInterventionNow,
+        tone:
+            _riskShiftCount > 0 ? DashboardTone.danger : DashboardTone.success,
+        progress:
+            activeShiftCount == 0
+                ? 0
+                : (_riskShiftCount / activeShiftCount).clamp(0.0, 1.0),
+      ),
+      DashboardMetricSummary(
+        icon: Icons.checklist_rtl_rounded,
+        label: l10n.managerDashboardOpenTasks,
+        value: '$_activeOpenTaskCount',
+        detail:
+            totalTrackedTasks == 0
+                ? l10n.managerDashboardNoTrackedTasksYet
+                : l10n.managerDashboardCompletedTracked(
+                  completedTrackedTasks,
+                  totalTrackedTasks,
+                ),
+        tone:
+            _activeOpenTaskCount > 0
+                ? DashboardTone.warning
+                : DashboardTone.success,
+        progress:
+            totalTrackedTasks == 0
+                ? 0
+                : (completedTrackedTasks / totalTrackedTasks).clamp(0.0, 1.0),
+      ),
+      DashboardMetricSummary(
+        icon: Icons.history_toggle_off_rounded,
+        label: l10n.managerDashboardCarryover,
+        value: '$_yesterdayMissedCount',
+        detail:
+            _yesterdayMissedCount == 0
+                ? l10n.managerDashboardYesterdayFinishedCleanly
+                : l10n.managerDashboardShiftsAffected(
+                  _yesterdayAffectedShiftCount,
+                ),
+        tone:
+            _yesterdayMissedCount > 0
+                ? DashboardTone.warning
+                : DashboardTone.success,
+        progress: (_yesterdayMissedCount / 12).clamp(0.0, 1.0),
+      ),
+    ];
+
+    final managerTourSteps = <GuidedTourStep>[
+      GuidedTourStep(
+        targetKey: _tourHeroKey,
+        title: l10n.managerDashboardTourSummaryTitle,
+        description: l10n.managerDashboardTourSummaryDescription,
+        topicId: 'manager-dashboard',
+      ),
+      GuidedTourStep(
+        targetKey: _tourIssuesKey,
+        title: l10n.managerDashboardTourIssuesTitle,
+        description: l10n.managerDashboardTourIssuesDescription,
+        topicId: 'manager-at-risk',
+        scrollAlignment: 0.08,
+      ),
+      GuidedTourStep(
+        targetKey: _tourShiftReadinessKey,
+        title: l10n.managerDashboardTourReadinessTitle,
+        description: l10n.managerDashboardTourReadinessDescription,
+        topicId: 'manager-shift-readiness',
+        scrollAlignment: 0.08,
+      ),
+    ];
+
+    return GuidedTourHost(
+      storageKey: 'manager-dashboard-tour-v1',
+      enabled:
+          !widget.allowPlatformAccess &&
+          !_isLoadingUserRole &&
+          !_isLoadingLocations &&
+          !isPrimaryLoading,
+      steps: managerTourSteps,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (widget.allowPlatformAccess) ...[
+              _buildCrmDashboardBanner(),
+              const SizedBox(height: 14),
+            ],
+            if (!_metricsEnabled) ...[
+              DashboardSetupBanner(
+                completion: _setupCompletionProgress,
+                onTap: _openSetupPanel,
+              ),
+              const SizedBox(height: 14),
+            ],
+            const InlineStartHereCard(
+              role: HelpRole.manager,
+              storageKey: 'manager-dashboard',
+            ),
+            const SizedBox(height: 16),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final stacked = constraints.maxWidth < 1180;
+                final issueColumns = constraints.maxWidth > 1440 ? 2 : 1;
+
+                final issueBoard = Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    DashboardSectionLabel(
+                      title: l10n.managerDashboardTodayAtRisk,
+                      subtitle: l10n.managerDashboardTodayAtRiskSubtitle,
+                      helpTopicIds: ['manager-at-risk', 'manager-dashboard'],
+                    ),
+                    const SizedBox(height: 8),
+                    if (issueColumns == 1)
+                      Column(
+                        children:
+                            issues
+                                .map(
+                                  (issue) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    child: DashboardIssueTile(issue: issue),
+                                  ),
+                                )
+                                .toList(),
+                      )
+                    else
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children:
+                            issues
+                                .map(
+                                  (issue) => SizedBox(
+                                    width: ((constraints.maxWidth * 0.32) - 5)
+                                        .clamp(220.0, 360.0),
+                                    child: DashboardIssueTile(issue: issue),
+                                  ),
+                                )
+                                .toList(),
+                      ),
+                  ],
+                );
+
+                if (stacked) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      DashboardHeroCard(
+                        key: _tourHeroKey,
+                        eyebrow:
+                            _selectedLocationName ??
+                            l10n.managerDashboardCurrentLocation,
+                        headline:
+                            isPrimaryLoading
+                                ? l10n.managerDashboardLoading
+                                : (hasActionableIssues
+                                    ? l10n.managerDashboardIssuesNeedAttention(
+                                      issues.length,
+                                    )
+                                    : l10n.managerDashboardTodayOnTrack),
+                        summary:
+                            isPrimaryLoading
+                                ? l10n.managerDashboardLoadingSummary(
+                                  _selectedLocationName ??
+                                      l10n.managerDashboardThisLocation,
+                                )
+                                : hasActionableIssues
+                                ? l10n.managerDashboardIssuesSummary(
+                                  _riskShiftCount,
+                                  _activeOpenTaskCount,
+                                )
+                                : l10n.managerDashboardNoLiveShiftsSummary,
+                        metrics: dashboardMetrics,
+                        primaryLabel:
+                            isPrimaryLoading
+                                ? l10n.managerDashboardRefreshNow
+                                : (hasActionableIssues
+                                    ? l10n.managerDashboardReviewIssues
+                                    : l10n.managerDashboardViewShiftReadiness),
+                        onPrimaryTap:
+                            isPrimaryLoading
+                                ? _refreshAllData
+                                : (hasActionableIssues
+                                    ? issues.first.onTap
+                                    : _openTodayShifts),
+                        secondaryLabel: l10n.managerDashboardHistoryReports,
+                        onSecondaryTap: _openTaskHistorySheet,
+                      ),
+                      const SizedBox(height: 14),
+                      Container(key: _tourIssuesKey, child: issueBoard),
+                    ],
+                  );
+                }
+
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 7,
+                      child: DashboardHeroCard(
+                        key: _tourHeroKey,
+                        eyebrow:
+                            _selectedLocationName ??
+                            l10n.managerDashboardCurrentLocation,
+                        headline:
+                            isPrimaryLoading
+                                ? l10n.managerDashboardLoading
+                                : (hasActionableIssues
+                                    ? l10n.managerDashboardIssuesNeedAttention(
+                                      issues.length,
+                                    )
+                                    : l10n.managerDashboardTodayOnTrack),
+                        summary:
+                            isPrimaryLoading
+                                ? l10n.managerDashboardLoadingSummary(
+                                  _selectedLocationName ??
+                                      l10n.managerDashboardThisLocation,
+                                )
+                                : hasActionableIssues
+                                ? l10n.managerDashboardIssuesSummary(
+                                  _riskShiftCount,
+                                  _activeOpenTaskCount,
+                                )
+                                : l10n.managerDashboardNoLiveShiftsSummary,
+                        metrics: dashboardMetrics,
+                        primaryLabel:
+                            isPrimaryLoading
+                                ? l10n.managerDashboardRefreshNow
+                                : (hasActionableIssues
+                                    ? l10n.managerDashboardReviewIssues
+                                    : l10n.managerDashboardViewShiftReadiness),
+                        onPrimaryTap:
+                            isPrimaryLoading
+                                ? _refreshAllData
+                                : (hasActionableIssues
+                                    ? issues.first.onTap
+                                    : _openTodayShifts),
+                        secondaryLabel: l10n.managerDashboardHistoryReports,
+                        onSecondaryTap: _openTaskHistorySheet,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      flex: 5,
+                      child: Container(key: _tourIssuesKey, child: issueBoard),
+                    ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final stacked = constraints.maxWidth < 1160;
+                if (stacked) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Container(
-                        height: 36,
-                        decoration: BoxDecoration(
-                          border: Border.all(color: HandsColors.white30),
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
+                        key: _tourShiftReadinessKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _StatusToggleButton(
-                              label: 'Live',
-                              selected: _selectedStatusFilter == 'live',
-                              onTap: () async {
-                                setState(() => _selectedStatusFilter = 'live');
-                                await _loadLiveShifts();
-                              },
+                            DashboardSectionLabel(
+                              title: l10n.managerDashboardShiftReadiness,
+                              subtitle:
+                                  l10n.managerDashboardShiftReadinessSubtitle,
+                              helpTopicIds: [
+                                'manager-shift-readiness',
+                                'manager-dashboard',
+                              ],
                             ),
-                            _StatusToggleButton(
-                              label: 'Done',
-                              selected: _selectedStatusFilter == 'finished',
-                              onTap: () async {
-                                setState(() => _selectedStatusFilter = 'finished');
-                                await _loadLiveShifts();
-                              },
+                            const SizedBox(height: 8),
+                            ShiftReadinessPanel(
+                              shifts: shiftSummaries,
+                              emptyTitle:
+                                  l10n.managerDashboardNoScheduledShiftsYet,
+                              emptySubtitle:
+                                  l10n.managerDashboardNoScheduledShiftsBody,
                             ),
                           ],
                         ),
                       ),
-                      IconButton(
-                        onPressed: () async {
-                          setState(() => _loadingLive = true);
-                          await _loadLiveShifts();
-                        },
-                        icon: const Icon(Icons.refresh, color: HandsColors.white70),
-                        tooltip: 'Refresh',
+                      const SizedBox(height: 14),
+                      DashboardSectionLabel(
+                        title: l10n.managerDashboardRecurringIssues,
+                        subtitle: l10n.managerDashboardRecurringIssuesSubtitle,
+                        helpTopicIds: [
+                          'manager-recurring-issues',
+                          'manager-history-reports',
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      RecurringInsightsPanel(
+                        title: l10n.managerDashboardRecurringFailures,
+                        subtitle:
+                            l10n.managerDashboardRecurringFailuresSubtitle,
+                        items: recurringFailures,
+                        emptyLabel: l10n.managerDashboardNoRecurringFailuresYet,
+                      ),
+                      const SizedBox(height: 10),
+                      RecurringInsightsPanel(
+                        title: l10n.managerDashboardAtRiskShifts,
+                        subtitle: l10n.managerDashboardAtRiskShiftsSubtitle,
+                        items: atRiskShifts,
+                        emptyLabel: l10n.managerDashboardNoAtRiskShifts,
                       ),
                     ],
-                    content: SizedBox(
-                      height: 240, // Reduced height for better fit
-                      child: _SimpleShiftList(shifts: _filteredLiveShifts, onOpen: _openTodayShifts),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+                  );
+                }
 
-          const SizedBox(height: 24),
-
-          // Bottom row - responsive layout: two metric cards side-by-side and
-          // the Task History card below on narrow screens; three-column layout
-          // on wide screens.
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final isNarrow = constraints.maxWidth < 900;
-
-              // Reusable widgets for the three cards (kept inline to preserve original content)
-              final frequentCard = _SimpleDashboardCard(
-                title: 'FREQUENT MISSES (30D)',
-                icon: Icons.trending_down,
-                accentColor: HandsColors.error,
-                loading: _loadingFrequent,
-                onTap: _openAllFrequentMisses,
-                content: Column(
+                return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(height: 20),
-                    Text(
-                      '${_frequentMisses30d.length}',
-                      style: GoogleFonts.comfortaa(
-                        fontSize: 48,
-                        fontWeight: FontWeight.bold,
-                        color: HandsColors.white,
-                        height: 1.0,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'hot spots',
-                      style: GoogleFonts.comfortaa(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        color: HandsColors.white70,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
                     Expanded(
-                      child: _SimpleTopList(
-                        items:
-                            _frequentMisses30d.take(5).map((t) {
-                              final name = (t['taskName'] ?? 'Unknown Task').toString();
-                              final count = (t['count'] ?? t['missedCount'] ?? 0).toString();
-                              return {'name': name, 'value': '×$count'};
-                            }).toList(),
-                        emptyLabel: 'No frequent misses found',
+                      flex: 7,
+                      child: Container(
+                        key: _tourShiftReadinessKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            DashboardSectionLabel(
+                              title: l10n.managerDashboardShiftReadiness,
+                              subtitle:
+                                  l10n.managerDashboardShiftReadinessSubtitle,
+                              helpTopicIds: [
+                                'manager-shift-readiness',
+                                'manager-dashboard',
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            ShiftReadinessPanel(
+                              shifts: shiftSummaries,
+                              emptyTitle:
+                                  l10n.managerDashboardNoScheduledShiftsYet,
+                              emptySubtitle:
+                                  l10n.managerDashboardNoScheduledShiftsBody,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ],
-                ),
-              );
-
-              final poorCard = _SimpleDashboardCard(
-                title: 'POOR PERFORMING (30D)',
-                icon: Icons.speed,
-                accentColor: HandsColors.handsOrange,
-                loading: _loadingPoorShifts,
-                onTap: _openPoorShiftDetails,
-                content: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 20),
-                    Text(
-                      '${_poorShifts30d.length}',
-                      style: GoogleFonts.comfortaa(
-                        fontSize: 48,
-                        fontWeight: FontWeight.bold,
-                        color: HandsColors.white,
-                        height: 1.0,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _poorShifts30d.isEmpty ? 'all good' : 'flagged',
-                      style: GoogleFonts.comfortaa(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        color: _poorShifts30d.isEmpty ? HandsColors.sageGreen : HandsColors.white70,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
+                    const SizedBox(width: 14),
                     Expanded(
-                      child: _SimpleTopList(
-                        items:
-                            _poorShifts30d.take(5).map((m) {
-                              final name = (m['shiftName'] ?? 'Unknown').toString();
-                              final pct = ((m['avgCompletion'] as double?) ?? 0) * 100;
-                              return {'name': name, 'value': '${pct.toStringAsFixed(0)}%'};
-                            }).toList(),
-                        emptyLabel: 'All shifts performing well',
-                      ),
-                    ),
-                  ],
-                ),
-              );
-
-              final taskHistoryCard = _SimpleDashboardCard(
-                title: 'TASK HISTORY',
-                icon: Icons.analytics,
-                accentColor: HandsColors.handsOrange,
-                onTap: _openTaskHistorySheet,
-                content: LayoutBuilder(
-                  builder: (context, constraints) {
-                    // Responsive sizing based on available space
-                    final width = constraints.maxWidth;
-                    final height = constraints.maxHeight;
-                    final isMobile = width < 300;
-                    final isCompact = height < 200;
-
-                    // Calculate dynamic sizes
-                    final iconSize = isMobile ? 50.0 : (isCompact ? 60.0 : 80.0);
-                    final descriptionFontSize = isMobile ? 12.0 : (isCompact ? 13.0 : 16.0);
-                    final buttonFontSize = isMobile ? 11.0 : (isCompact ? 12.0 : 14.0);
-                    final buttonPadding =
-                        isMobile
-                            ? const EdgeInsets.symmetric(horizontal: 16, vertical: 8)
-                            : const EdgeInsets.symmetric(horizontal: 24, vertical: 12);
-                    final verticalSpacing = isMobile ? 12.0 : (isCompact ? 16.0 : 24.0);
-
-                    return Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.analytics, size: iconSize, color: HandsColors.handsOrange.withOpacity(0.5)),
-                        SizedBox(height: verticalSpacing),
-                        Flexible(
-                          child: Text(
-                            'Detailed task analytics and historical performance data',
-                            textAlign: TextAlign.center,
-                            maxLines: isMobile ? 2 : 3,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.comfortaa(
-                              fontSize: descriptionFontSize,
-                              color: HandsColors.white70,
-                              height: 1.3,
-                            ),
-                          ),
-                        ),
-                        SizedBox(height: verticalSpacing),
-                        Container(
-                          padding: buttonPadding,
-                          decoration: BoxDecoration(
-                            color: HandsColors.handsOrange.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(isMobile ? 20 : 24),
-                            border: Border.all(color: HandsColors.handsOrange),
-                          ),
-                          child: Text(
-                            'VIEW REPORTS',
-                            style: GoogleFonts.comfortaa(
-                              fontSize: buttonFontSize,
-                              fontWeight: FontWeight.bold,
-                              color: HandsColors.handsOrange,
-                              letterSpacing: isMobile ? 0.5 : 1.0,
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              );
-
-              if (isNarrow) {
-                // Two metric cards in a row and task history below
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    SizedBox(
-                      height: 260,
-                      child: Row(
+                      flex: 5,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(flex: 1, child: frequentCard),
-                          const SizedBox(width: 24),
-                          Expanded(flex: 1, child: poorCard),
+                          DashboardSectionLabel(
+                            title: l10n.managerDashboardRecurringIssues,
+                            subtitle:
+                                l10n.managerDashboardRecurringIssuesSubtitle,
+                            helpTopicIds: [
+                              'manager-recurring-issues',
+                              'manager-history-reports',
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          RecurringInsightsPanel(
+                            title: l10n.managerDashboardRecurringFailures,
+                            subtitle:
+                                l10n.managerDashboardRecurringFailuresSubtitle,
+                            items: recurringFailures,
+                            emptyLabel:
+                                l10n.managerDashboardNoRecurringFailuresYet,
+                          ),
+                          const SizedBox(height: 10),
+                          RecurringInsightsPanel(
+                            title: l10n.managerDashboardAtRiskShifts,
+                            subtitle: l10n.managerDashboardAtRiskShiftsSubtitle,
+                            items: atRiskShifts,
+                            emptyLabel: l10n.managerDashboardNoAtRiskShifts,
+                          ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 24),
-                    // Task history as full-width card
-                    SizedBox(height: 180, child: taskHistoryCard),
                   ],
                 );
-              }
-
-              // Wide layout: three columns side-by-side (preserve original sizing)
-              return SizedBox(
-                height: 350,
-                child: Row(
-                  children: [
-                    Expanded(flex: 1, child: frequentCard),
-                    const SizedBox(width: 24),
-                    Expanded(flex: 1, child: poorCard),
-                    const SizedBox(width: 24),
-                    Expanded(flex: 1, child: taskHistoryCard),
-                  ],
-                ),
-              );
-            },
-          ),
-        ],
+              },
+            ),
+            const SizedBox(height: 16),
+            HistoryReportsButton(onTap: _openTaskHistorySheet),
+          ],
+        ),
       ),
     );
   }
 
-  List<Map<String, dynamic>> get _filteredLiveShifts {
-    if (_selectedStatusFilter == null) return _liveShifts;
-
-    if (_selectedStatusFilter == 'live') {
-      // Show shifts that are in progress or starting soon
-      return _liveShifts.where((s) {
-        final timeStatus = s['timeStatus'].toString();
-        return timeStatus.contains('remaining') || timeStatus.contains('Starts in');
-      }).toList();
-    } else if (_selectedStatusFilter == 'finished') {
-      // Show finished shifts
-      return _liveShifts.where((s) {
-        final timeStatus = s['timeStatus'].toString();
-        return timeStatus.contains('Finished');
-      }).toList();
-    }
-
-    return _liveShifts;
+  Widget _buildCrmDashboardBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: HandsColors.handsOrange.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: HandsColors.handsOrange.withValues(alpha: 0.25),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.admin_panel_settings_outlined,
+            color: HandsColors.handsOrange,
+            size: 18,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Viewing this customer dashboard from CRM. Navigation below stays scoped to this customer org.',
+              style: GoogleFonts.inter(
+                color: HandsColors.white,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   // ====== Modals / Sheets ======
 
   void _openAllMissedYesterday() {
+    final l10n = context.l10n;
     showDialog(
       context: context,
       builder:
           (context) => _ProfessionalDialog(
-            title: 'All Missed Tasks Yesterday',
+            title: l10n.managerDashboardAllMissedTasksYesterday,
             child:
                 _loadingYesterday
                     ? const Center(child: CircularProgressIndicator())
@@ -1529,8 +2058,13 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
                       itemCount: _yesterdayMissed.length,
                       itemBuilder: (context, i) {
                         final m = _yesterdayMissed[i];
-                        final name = (m['taskName'] ?? 'Unknown Task').toString();
-                        final shift = (m['shiftName'] ?? 'Unknown Shift').toString();
+                        final name =
+                            (m['taskName'] ?? l10n.managerDashboardUnknownTask)
+                                .toString();
+                        final shift =
+                            (m['shiftName'] ??
+                                    l10n.managerDashboardUnknownShift)
+                                .toString();
                         final count = (m['count'] ?? 1) as int;
                         final completedToday = m['completedToday'] == true;
 
@@ -1553,22 +2087,35 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
                                       ),
                                     ),
                                     const SizedBox(height: 2),
-                                    Text(shift, style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 12)),
+                                    Text(
+                                      shift,
+                                      style: GoogleFonts.comfortaa(
+                                        color: HandsColors.white70,
+                                        fontSize: 12,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
                               const SizedBox(width: 8),
                               if (completedToday)
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
                                   margin: const EdgeInsets.only(right: 4),
                                   decoration: BoxDecoration(
-                                    color: HandsColors.sageGreen.withOpacity(0.2),
+                                    color: HandsColors.sageGreen.withOpacity(
+                                      0.2,
+                                    ),
                                     borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: HandsColors.sageGreen),
+                                    border: Border.all(
+                                      color: HandsColors.sageGreen,
+                                    ),
                                   ),
                                   child: Text(
-                                    'Done today',
+                                    l10n.managerDashboardDoneToday,
                                     style: GoogleFonts.comfortaa(
                                       color: HandsColors.sageGreen,
                                       fontSize: 10,
@@ -1578,11 +2125,18 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
                                 ),
                               if (count > 1)
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: HandsColors.handsOrange.withOpacity(0.2),
+                                    color: HandsColors.handsOrange.withOpacity(
+                                      0.2,
+                                    ),
                                     borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: HandsColors.handsOrange),
+                                    border: Border.all(
+                                      color: HandsColors.handsOrange,
+                                    ),
                                   ),
                                   child: Text(
                                     '×$count',
@@ -1616,7 +2170,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
                       itemCount: _liveShifts.length,
                       itemBuilder: (context, i) {
                         final s = _liveShifts[i];
-                        final pct = ((s['completionPct'] ?? 0.0) as double).clamp(0.0, 1.0);
+                        final pct = ((s['completionPct'] ?? 0.0) as double)
+                            .clamp(0.0, 1.0);
                         final status = (s['timeStatus'] ?? '').toString();
 
                         return Container(
@@ -1630,7 +2185,8 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
                                 children: [
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           s['shiftName'] ?? 'Unnamed Shift',
@@ -1643,7 +2199,10 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
                                         const SizedBox(height: 2),
                                         Text(
                                           '${s['startTime']} - ${s['endTime']}',
-                                          style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 12),
+                                          style: GoogleFonts.comfortaa(
+                                            color: HandsColors.white70,
+                                            fontSize: 12,
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -1671,245 +2230,19 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
                                   const SizedBox(width: 8),
                                   Text(
                                     '${(pct * 100).round()}%',
-                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w500,
+                                    ),
                                   ),
                                 ],
                               ),
                               const SizedBox(height: 4),
                               Text(
                                 '${s['completedTasks']}/${s['totalTasks']} tasks complete',
-                                style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 11),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-          ),
-    );
-  }
-
-  void _openAllFrequentMisses() {
-    showDialog(
-      context: context,
-      builder:
-          (context) => _ProfessionalDialog(
-            title: 'Frequently Missed Tasks (30 days)',
-            child:
-                _loadingFrequent
-                    ? const Center(child: CircularProgressIndicator())
-                    : ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: _frequentMisses30d.length,
-                      itemBuilder: (context, i) {
-                        final t = _frequentMisses30d[i];
-                        final name = (t['taskName'] ?? 'Unknown Task').toString();
-                        final shift = (t['shiftName'] ?? '').toString();
-                        final shiftNames =
-                            (t['shiftNames'] ?? []).cast<String>(); // Handle multiple shift names if available
-                        final count = (t['count'] ?? t['missedCount'] ?? 0).toString();
-
-                        // Create display string for shifts - improved logic
-                        String shiftDisplay = '';
-                        if (shiftNames.isNotEmpty) {
-                          // Use multiple shift names if available
-                          if (shiftNames.length == 1) {
-                            shiftDisplay = shiftNames.first;
-                          } else if (shiftNames.length <= 3) {
-                            shiftDisplay = shiftNames.join(', ');
-                          } else {
-                            shiftDisplay = '${shiftNames.take(2).join(', ')} +${shiftNames.length - 2} more';
-                          }
-                        } else if (shift.isNotEmpty) {
-                          // Fallback to single shift name
-                          shiftDisplay = shift;
-                        } else {
-                          // Try other possible field names
-                          final alternativeShift = (t['shift'] ?? t['shiftType'] ?? t['location'] ?? '').toString();
-                          if (alternativeShift.isNotEmpty) {
-                            shiftDisplay = alternativeShift;
-                          }
-                        }
-
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.all(12),
-                          decoration: HandsDecorations.tertiaryBoxDecoration,
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 24,
-                                height: 24,
-                                decoration: BoxDecoration(
-                                  color:
-                                      i == 0
-                                          ? Colors.red
-                                          : i == 1
-                                          ? Colors.orange
-                                          : i == 2
-                                          ? Colors.amber
-                                          : Colors.grey,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    '${i + 1}',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      name,
-                                      style: GoogleFonts.comfortaa(
-                                        fontWeight: FontWeight.w500,
-                                        fontSize: 14,
-                                        color: HandsColors.white,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        Icon(Icons.schedule, size: 12, color: HandsColors.white70),
-                                        const SizedBox(width: 4),
-                                        Expanded(
-                                          child: Text(
-                                            shiftDisplay.isNotEmpty ? shiftDisplay : 'Multiple shifts',
-                                            style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 12),
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    if (shiftNames.length > 1) ...[
-                                      const SizedBox(height: 2),
-                                      Row(
-                                        children: [
-                                          Icon(Icons.info_outline, size: 10, color: HandsColors.handsOrange),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            'Affects ${shiftNames.length} shifts',
-                                            style: TextStyle(
-                                              color: Colors.blue[600],
-                                              fontSize: 10,
-                                              fontStyle: FontStyle.italic,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.red.shade50,
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: Colors.red.shade200),
-                                ),
-                                child: Text(
-                                  '×$count',
-                                  style: TextStyle(
-                                    color: Colors.red.shade700,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-          ),
-    );
-  }
-
-  void _openPoorShiftDetails() {
-    showDialog(
-      context: context,
-      builder:
-          (context) => _ProfessionalDialog(
-            title: 'Poor Performing Shifts (30 days)',
-            child:
-                _loadingPoorShifts
-                    ? const Center(child: CircularProgressIndicator())
-                    : ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: _poorShifts30d.length,
-                      itemBuilder: (context, i) {
-                        final m = _poorShifts30d[i];
-                        final pct = ((m['avgCompletion'] as double?) ?? 0) * 100;
-
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.all(12),
-                          decoration: HandsDecorations.tertiaryBoxDecoration,
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      m['shiftName'] ?? 'Unknown Shift',
-                                      style: GoogleFonts.comfortaa(
-                                        fontWeight: FontWeight.w500,
-                                        fontSize: 14,
-                                        color: HandsColors.white,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      'Avg completion last 30 days',
-                                      style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 12),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color:
-                                      pct < 50
-                                          ? Colors.red.shade50
-                                          : pct < 80
-                                          ? Colors.orange.shade50
-                                          : Colors.green.shade50,
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                    color:
-                                        pct < 50
-                                            ? Colors.red.shade200
-                                            : pct < 80
-                                            ? Colors.orange.shade200
-                                            : Colors.green.shade200,
-                                  ),
-                                ),
-                                child: Text(
-                                  '${pct.toStringAsFixed(0)}%',
-                                  style: TextStyle(
-                                    color:
-                                        pct < 50
-                                            ? Colors.red.shade700
-                                            : pct < 80
-                                            ? Colors.orange.shade700
-                                            : Colors.green.shade700,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                                style: GoogleFonts.comfortaa(
+                                  color: HandsColors.white70,
+                                  fontSize: 11,
                                 ),
                               ),
                             ],
@@ -1923,7 +2256,10 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
 
   Future<void> _openTaskHistorySheet() async {
     // Default date range: last 3 days
-    _selectedDateRange ??= DateTimeRange(start: DateTime.now().subtract(const Duration(days: 3)), end: DateTime.now());
+    _selectedDateRange ??= DateTimeRange(
+      start: DateTime.now().subtract(const Duration(days: 3)),
+      end: DateTime.now(),
+    );
     showDialog(
       context: context,
       builder:
@@ -1950,7 +2286,12 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
       final now = DateTime.now();
       final dateStr = DateFormat('yyyy-MM-dd').format(now);
       final start = DateFormat('yyyy-MM-dd HH:mm').parse('$dateStr $startTime');
-      final end = DateFormat('yyyy-MM-dd HH:mm').parse('$dateStr $endTime');
+      var end = DateFormat('yyyy-MM-dd HH:mm').parse('$dateStr $endTime');
+
+      // Handle overnight shifts (e.g., 18:00-02:00) by rolling the end time to the next day.
+      if (end.isBefore(start)) {
+        end = end.add(const Duration(days: 1));
+      }
       if (now.isBefore(start)) {
         final d = start.difference(now);
         return 'Starts in ${_formatDuration(d)}';
@@ -1978,11 +2319,17 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> with Widget
 class MiniSparkBars extends StatelessWidget {
   final List<int> values;
   final double height;
-  const MiniSparkBars({super.key, required this.values, this.height = 60}); // Increased from 40 to 60
+  const MiniSparkBars({
+    super.key,
+    required this.values,
+    this.height = 60,
+  }); // Increased from 40 to 60
 
   @override
   Widget build(BuildContext context) {
-    if (values.isEmpty) return SizedBox(height: height, child: const SizedBox.shrink());
+    if (values.isEmpty) {
+      return SizedBox(height: height, child: const SizedBox.shrink());
+    }
 
     // Simple bar chart instead of custom paint to avoid mouse tracker issues on web
     return SizedBox(
@@ -2000,11 +2347,24 @@ class MiniSparkBars extends StatelessWidget {
                   children: [
                     Container(
                       width: double.infinity,
-                      height: _calculateBarHeight(values[i], values, height - 20),
-                      decoration: BoxDecoration(color: _getTrendColor(values), borderRadius: BorderRadius.circular(2)),
+                      height: _calculateBarHeight(
+                        values[i],
+                        values,
+                        height - 20,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _getTrendColor(values),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                     const SizedBox(height: 4),
-                    Text('${values[i]}', style: GoogleFonts.comfortaa(fontSize: 8, color: HandsColors.white70)),
+                    Text(
+                      '${values[i]}',
+                      style: GoogleFonts.comfortaa(
+                        fontSize: 8,
+                        color: HandsColors.white70,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -2048,11 +2408,20 @@ class _TimeChip extends StatelessWidget {
       color = Colors.orange;
     }
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1), // Further reduced padding
-      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(6)), // Reduced radius
+      padding: const EdgeInsets.symmetric(
+        horizontal: 4,
+        vertical: 1,
+      ), // Further reduced padding
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(6),
+      ), // Reduced radius
       child: Text(
         status,
-        style: GoogleFonts.comfortaa(color: HandsColors.white, fontSize: 9), // Even smaller font
+        style: GoogleFonts.comfortaa(
+          color: HandsColors.white,
+          fontSize: 9,
+        ), // Even smaller font
       ),
     );
   }
@@ -2066,56 +2435,57 @@ class _ProfessionalDialog extends StatelessWidget {
   final double? width;
   final double? height;
 
-  const _ProfessionalDialog({required this.title, required this.child, this.width, this.height});
+  const _ProfessionalDialog({
+    required this.title,
+    required this.child,
+    this.width,
+    this.height,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: HandsColors.primaryContainer,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: SizedBox(
-        width: width ?? MediaQuery.of(context).size.width * 0.9,
-        height: height ?? MediaQuery.of(context).size.height * 0.8,
-        child: Column(
-          children: [
-            // Header with title and X button
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              decoration: BoxDecoration(
-                color: HandsColors.primaryContainer,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                border: Border(bottom: BorderSide(color: HandsColors.white12)),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      title.toUpperCase(),
-                      style: GoogleFonts.comfortaa(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: HandsColors.white,
-                        letterSpacing: 0.5,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+    return HandsModalSurface(
+      width: width ?? MediaQuery.of(context).size.width * 0.9,
+      height: height ?? MediaQuery.of(context).size.height * 0.8,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: HandsModalTokens.titleStyle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                InkWell(
+                  onTap: () => Navigator.of(context).pop(),
+                  borderRadius: BorderRadius.circular(999),
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: HandsModalTokens.surfaceMuted,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: HandsModalTokens.border),
+                    ),
+                    child: const Icon(
+                      Icons.close_rounded,
+                      size: 18,
+                      color: HandsModalTokens.textMuted,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close, color: HandsColors.white),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                    iconSize: 20,
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-            // Content
-            Expanded(child: child),
-          ],
-        ),
+          ),
+          const Divider(color: HandsModalTokens.border, height: 1),
+          Expanded(child: child),
+        ],
       ),
     );
   }
@@ -2197,13 +2567,15 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
     }
 
     try {
-      final userDoc = await FirestoreEnforcer.instance.collection('users').doc(uid).get();
+      final userDoc =
+          await FirestoreEnforcer.instance.collection('users').doc(uid).get();
       if (userDoc.exists) {
         final userData = userDoc.data()!;
         final firstName = userData['firstName'] ?? '';
         final lastName = userData['lastName'] ?? '';
         final displayName = '$firstName $lastName'.trim();
-        final userName = displayName.isNotEmpty ? displayName : (userData['email'] ?? uid);
+        final userName =
+            displayName.isNotEmpty ? displayName : (userData['email'] ?? uid);
         _userNameCache[uid] = userName;
         return userName;
       }
@@ -2243,7 +2615,9 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
       final startStr = DateFormat('yyyy-MM-dd').format(_dateRange!.start);
       final endStr = DateFormat('yyyy-MM-dd').format(_dateRange!.end);
 
-      print('[TaskHistory] Loading tasks from $startStr to $endStr for location: ${widget.selectedLocationId}');
+      print(
+        '[TaskHistory] Loading tasks from $startStr to $endStr for location: ${widget.selectedLocationId}',
+      );
 
       List<QueryDocumentSnapshot> docs = [];
 
@@ -2260,11 +2634,16 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
               .where('date', isLessThanOrEqualTo: endStr);
 
           if (_selectedShift != 'all') {
-            locationQuery = locationQuery.where('shiftId', isEqualTo: _selectedShift);
+            locationQuery = locationQuery.where(
+              'shiftId',
+              isEqualTo: _selectedShift,
+            );
           }
 
           final locationSnap = await locationQuery.get();
-          print('[TaskHistory] Location-scoped query returned ${locationSnap.docs.length} docs');
+          print(
+            '[TaskHistory] Location-scoped query returned ${locationSnap.docs.length} docs',
+          );
           docs.addAll(locationSnap.docs);
         } catch (e) {
           print('[TaskHistory] Location-scoped query failed: $e');
@@ -2282,14 +2661,19 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
               .where('date', isLessThanOrEqualTo: endStr);
 
           if (widget.selectedLocationId != null) {
-            orgQuery = orgQuery.where('locationId', isEqualTo: widget.selectedLocationId);
+            orgQuery = orgQuery.where(
+              'locationId',
+              isEqualTo: widget.selectedLocationId,
+            );
           }
           if (_selectedShift != 'all') {
             orgQuery = orgQuery.where('shiftId', isEqualTo: _selectedShift);
           }
 
           final orgSnap = await orgQuery.get();
-          print('[TaskHistory] Org-scoped query returned ${orgSnap.docs.length} docs');
+          print(
+            '[TaskHistory] Org-scoped query returned ${orgSnap.docs.length} docs',
+          );
           docs.addAll(orgSnap.docs);
         } catch (e) {
           print('[TaskHistory] Org-scoped query failed: $e');
@@ -2305,7 +2689,8 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
 
         final date = (data['date'] ?? '').toString();
         final shiftName = (data['shiftName'] ?? '').toString();
-        final checklistName = (data['checklistName'] ?? '').toString();
+        final checklistName =
+            (data['templateName'] ?? data['checklistName'] ?? '').toString();
 
         // Handle both old format (tasks in document) and new format (tasks in subcollection)
         List<Map<String, dynamic>> tasks = [];
@@ -2313,23 +2698,39 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
         if (data.containsKey('tasks') && data['tasks'] != null) {
           // Old format: tasks in document
           tasks = List<Map<String, dynamic>>.from(data['tasks'] ?? const []);
-          print('[TaskHistory] Found ${tasks.length} tasks in document for ${d.id}');
+          print(
+            '[TaskHistory] Found ${tasks.length} tasks in document for ${d.id}',
+          );
         } else {
           // New format: tasks in subcollection
           try {
             final tasksSnap = await d.reference.collection('tasks').get();
             tasks = tasksSnap.docs.map((taskDoc) => taskDoc.data()).toList();
-            print('[TaskHistory] Found ${tasks.length} tasks in subcollection for ${d.id}');
+            print(
+              '[TaskHistory] Found ${tasks.length} tasks in subcollection for ${d.id}',
+            );
           } catch (e) {
-            print('[TaskHistory] Failed to load tasks subcollection for ${d.id}: $e');
+            print(
+              '[TaskHistory] Failed to load tasks subcollection for ${d.id}: $e',
+            );
           }
         }
 
         for (final t in tasks) {
-          final name = (t['taskName'] ?? t['name'] ?? 'Unnamed Task').toString();
-          final completed = t['completed'] == true || t['isCompleted'] == true || t['status'] == 'completed';
-          final reason = (t['reason'] ?? t['reasonNotCompleted'] ?? t['reasonForNotCompleting'] ?? '').toString();
-          final note = (t['note'] ?? t['notes'] ?? t['taskNote'] ?? '').toString();
+          final name =
+              (t['taskName'] ?? t['name'] ?? 'Unnamed Task').toString();
+          final completed =
+              t['completed'] == true ||
+              t['isCompleted'] == true ||
+              t['status'] == 'completed';
+          final reason =
+              (t['reason'] ??
+                      t['reasonNotCompleted'] ??
+                      t['reasonForNotCompleting'] ??
+                      '')
+                  .toString();
+          final note =
+              (t['note'] ?? t['notes'] ?? t['taskNote'] ?? '').toString();
 
           // Handle photos with multiple possible field names
           List<String> photos = [];
@@ -2364,7 +2765,11 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
 
           // Extract completedBy UID and resolve to user name
           final completedByUid =
-              (t['completedBy'] ?? t['completedByUserId'] ?? t['completedByUserName'] ?? '').toString();
+              (t['completedBy'] ??
+                      t['completedByUserId'] ??
+                      t['completedByUserName'] ??
+                      '')
+                  .toString();
           String completedByName = '';
           String formattedTime = '';
 
@@ -2373,19 +2778,30 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
             completedByName = await _resolveUserName(completedByUid);
 
             // Format timestamp
-            final timeCompleted = t['timeCompleted'] ?? t['completedAt'] ?? t['updatedAt'] ?? t['timestamp'];
+            final timeCompleted =
+                t['timeCompleted'] ??
+                t['completedAt'] ??
+                t['updatedAt'] ??
+                t['timestamp'];
             formattedTime = _formatTimestamp(timeCompleted);
           }
 
-          final photoRequired = t['photoRequired'] == true || t['requiresPhoto'] == true || t['requirePhoto'] == true;
+          final photoRequired =
+              t['photoRequired'] == true ||
+              t['requiresPhoto'] == true ||
+              t['requirePhoto'] == true;
 
           // If photoRequired is false but we have templateTaskId, try to get it from the template
           bool finalPhotoRequired = photoRequired;
           if (!photoRequired) {
             final templateTaskId = t['templateTaskId']?.toString();
-            final templateId = data['checklistTemplateId']?.toString() ?? data['templateId']?.toString();
+            final templateId =
+                data['checklistTemplateId']?.toString() ??
+                data['templateId']?.toString();
 
-            if (templateTaskId != null && templateId != null && templateId.isNotEmpty) {
+            if (templateTaskId != null &&
+                templateId != null &&
+                templateId.isNotEmpty) {
               try {
                 // Get template task to check photoRequired
                 final templateTaskDoc =
@@ -2400,7 +2816,8 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
 
                 if (templateTaskDoc.exists) {
                   final templateTaskData = templateTaskDoc.data()!;
-                  finalPhotoRequired = templateTaskData['photoRequired'] == true;
+                  finalPhotoRequired =
+                      templateTaskData['photoRequired'] == true;
                 }
               } catch (e) {
                 // Ignore template lookup errors
@@ -2409,22 +2826,31 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
           }
 
           // Checklist filter (best-effort, some data models store checklistId on parent)
-          if (_selectedChecklist != 'all' && (data['templateId'] ?? data['checklistId']) != _selectedChecklist) {
+          if (_selectedChecklist != 'all' &&
+              (data['templateId'] ?? data['checklistId']) !=
+                  _selectedChecklist) {
             continue;
           }
 
           // Completion filter
           if (_selectedCompletion == 'completed' && !completed) continue;
           if (_selectedCompletion == 'incomplete' && completed) continue;
-          if (_selectedCompletion == 'incomplete_with_reason' && (completed || reason.isEmpty)) continue;
+          if (_selectedCompletion == 'incomplete_with_reason' &&
+              (completed || reason.isEmpty)) {
+            continue;
+          }
           if (_selectedCompletion == 'photo_added' && photos.isEmpty) continue;
           if (_selectedCompletion == 'notes_added' && note.isEmpty) continue;
-          if (_selectedCompletion == 'photo_required' && !finalPhotoRequired) continue;
+          if (_selectedCompletion == 'photo_required' && !finalPhotoRequired) {
+            continue;
+          }
 
           // Search filter
           final q = _searchCtrl.text.trim().toLowerCase();
           if (q.isNotEmpty &&
-              !(name.toLowerCase().contains(q) || note.toLowerCase().contains(q) || reason.toLowerCase().contains(q))) {
+              !(name.toLowerCase().contains(q) ||
+                  note.toLowerCase().contains(q) ||
+                  reason.toLowerCase().contains(q))) {
             continue;
           }
 
@@ -2457,7 +2883,9 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
     } catch (e) {
       print('[TaskHistory] Error loading tasks: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load tasks: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to load tasks: $e')));
     } finally {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -2495,7 +2923,11 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
               // Header
               Text(
                 'Task History Filters',
-                style: GoogleFonts.comfortaa(fontSize: 16, fontWeight: FontWeight.bold, color: HandsColors.white),
+                style: GoogleFonts.comfortaa(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: HandsColors.white,
+                ),
               ),
               const SizedBox(height: 16),
 
@@ -2506,22 +2938,42 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                     flex: 2,
                     child: TextField(
                       controller: _searchCtrl,
-                      style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                      style: GoogleFonts.comfortaa(
+                        fontSize: 14,
+                        color: HandsColors.white,
+                      ),
                       decoration: InputDecoration(
-                        prefixIcon: const Icon(Icons.search, color: HandsColors.white70, size: 20),
+                        prefixIcon: const Icon(
+                          Icons.search,
+                          color: HandsColors.white70,
+                          size: 20,
+                        ),
                         labelText: 'Search tasks...',
-                        labelStyle: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white70),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        labelStyle: GoogleFonts.comfortaa(
+                          fontSize: 12,
+                          color: HandsColors.white70,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
                         border: OutlineInputBorder(
-                          borderSide: const BorderSide(color: HandsColors.white12),
+                          borderSide: const BorderSide(
+                            color: HandsColors.white12,
+                          ),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         enabledBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: HandsColors.white12),
+                          borderSide: const BorderSide(
+                            color: HandsColors.white12,
+                          ),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         focusedBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: HandsColors.handsOrange, width: 2),
+                          borderSide: const BorderSide(
+                            color: HandsColors.handsOrange,
+                            width: 2,
+                          ),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         filled: true,
@@ -2539,7 +2991,10 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                               : '${DateFormat('M/d').format(_dateRange!.start)} - ${DateFormat('M/d').format(_dateRange!.end)}',
                       onPressed: _pickRange,
                       icon: Icons.date_range,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 12,
+                      ),
                     ),
                   ),
                 ],
@@ -2552,23 +3007,39 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                 children: [
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _selectedShift,
-                      style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                      initialValue: _selectedShift,
+                      style: GoogleFonts.comfortaa(
+                        fontSize: 14,
+                        color: HandsColors.white,
+                      ),
                       dropdownColor: HandsColors.primaryContainer,
                       decoration: InputDecoration(
                         labelText: 'Shift',
-                        labelStyle: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white70),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        labelStyle: GoogleFonts.comfortaa(
+                          fontSize: 12,
+                          color: HandsColors.white70,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
                         border: OutlineInputBorder(
-                          borderSide: const BorderSide(color: HandsColors.white12),
+                          borderSide: const BorderSide(
+                            color: HandsColors.white12,
+                          ),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         enabledBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: HandsColors.white12),
+                          borderSide: const BorderSide(
+                            color: HandsColors.white12,
+                          ),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         focusedBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: HandsColors.handsOrange, width: 2),
+                          borderSide: const BorderSide(
+                            color: HandsColors.handsOrange,
+                            width: 2,
+                          ),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         filled: true,
@@ -2579,7 +3050,10 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                           value: 'all',
                           child: Text(
                             'All shifts',
-                            style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                            style: GoogleFonts.comfortaa(
+                              fontSize: 14,
+                              color: HandsColors.white,
+                            ),
                           ),
                         ),
                         ...widget.shifts.map(
@@ -2587,34 +3061,54 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                             value: s['id'],
                             child: Text(
                               s['name'] ?? 'Shift',
-                              style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                              style: GoogleFonts.comfortaa(
+                                fontSize: 14,
+                                color: HandsColors.white,
+                              ),
                             ),
                           ),
                         ),
                       ],
-                      onChanged: (v) => setState(() => _selectedShift = v ?? 'all'),
+                      onChanged:
+                          (v) => setState(() => _selectedShift = v ?? 'all'),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _selectedCompletion,
-                      style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                      initialValue: _selectedCompletion,
+                      style: GoogleFonts.comfortaa(
+                        fontSize: 14,
+                        color: HandsColors.white,
+                      ),
                       dropdownColor: HandsColors.primaryContainer,
                       decoration: InputDecoration(
                         labelText: 'Status',
-                        labelStyle: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white70),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        labelStyle: GoogleFonts.comfortaa(
+                          fontSize: 12,
+                          color: HandsColors.white70,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
                         border: OutlineInputBorder(
-                          borderSide: const BorderSide(color: HandsColors.white12),
+                          borderSide: const BorderSide(
+                            color: HandsColors.white12,
+                          ),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         enabledBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: HandsColors.white12),
+                          borderSide: const BorderSide(
+                            color: HandsColors.white12,
+                          ),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         focusedBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: HandsColors.handsOrange, width: 2),
+                          borderSide: const BorderSide(
+                            color: HandsColors.handsOrange,
+                            width: 2,
+                          ),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         filled: true,
@@ -2623,46 +3117,78 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                       items: [
                         DropdownMenuItem(
                           value: 'all',
-                          child: Text('All', style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white)),
+                          child: Text(
+                            'All',
+                            style: GoogleFonts.comfortaa(
+                              fontSize: 14,
+                              color: HandsColors.white,
+                            ),
+                          ),
                         ),
                         DropdownMenuItem(
                           value: 'completed',
-                          child: Text('Done', style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white)),
+                          child: Text(
+                            'Done',
+                            style: GoogleFonts.comfortaa(
+                              fontSize: 14,
+                              color: HandsColors.white,
+                            ),
+                          ),
                         ),
                         DropdownMenuItem(
                           value: 'incomplete',
-                          child: Text('Missed', style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white)),
+                          child: Text(
+                            'Missed',
+                            style: GoogleFonts.comfortaa(
+                              fontSize: 14,
+                              color: HandsColors.white,
+                            ),
+                          ),
                         ),
                         DropdownMenuItem(
                           value: 'incomplete_with_reason',
                           child: Text(
                             'Missed w/ reason',
-                            style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                            style: GoogleFonts.comfortaa(
+                              fontSize: 14,
+                              color: HandsColors.white,
+                            ),
                           ),
                         ),
                         DropdownMenuItem(
                           value: 'photo_added',
                           child: Text(
                             'Photo added',
-                            style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                            style: GoogleFonts.comfortaa(
+                              fontSize: 14,
+                              color: HandsColors.white,
+                            ),
                           ),
                         ),
                         DropdownMenuItem(
                           value: 'notes_added',
                           child: Text(
                             'Notes added',
-                            style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                            style: GoogleFonts.comfortaa(
+                              fontSize: 14,
+                              color: HandsColors.white,
+                            ),
                           ),
                         ),
                         DropdownMenuItem(
                           value: 'photo_required',
                           child: Text(
                             'Photo required',
-                            style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white),
+                            style: GoogleFonts.comfortaa(
+                              fontSize: 14,
+                              color: HandsColors.white,
+                            ),
                           ),
                         ),
                       ],
-                      onChanged: (v) => setState(() => _selectedCompletion = v ?? 'all'),
+                      onChanged:
+                          (v) =>
+                              setState(() => _selectedCompletion = v ?? 'all'),
                     ),
                   ),
                 ],
@@ -2706,7 +3232,10 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                   padding: const EdgeInsets.only(top: 12),
                   child: Text(
                     'Found ${_allRows.length} tasks • Showing ${_displayedRows.length} of ${_allRows.length}',
-                    style: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white70),
+                    style: GoogleFonts.comfortaa(
+                      fontSize: 12,
+                      color: HandsColors.white70,
+                    ),
                   ),
                 ),
             ],
@@ -2719,7 +3248,9 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
               _loading
                   ? const Center(
                     child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(HandsColors.handsOrange),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        HandsColors.handsOrange,
+                      ),
                     ),
                   )
                   : _allRows.isEmpty
@@ -2727,7 +3258,11 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.search_off, size: 64, color: HandsColors.white30),
+                        Icon(
+                          Icons.search_off,
+                          size: 64,
+                          color: HandsColors.white30,
+                        ),
                         const SizedBox(height: 16),
                         Text(
                           'No tasks found',
@@ -2740,7 +3275,10 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                         const SizedBox(height: 8),
                         Text(
                           'Try adjusting your filters or date range',
-                          style: GoogleFonts.comfortaa(fontSize: 14, color: HandsColors.white70),
+                          style: GoogleFonts.comfortaa(
+                            fontSize: 14,
+                            color: HandsColors.white70,
+                          ),
                         ),
                       ],
                     ),
@@ -2758,17 +3296,27 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                               decoration: BoxDecoration(
                                 color: HandsColors.cardTertiary,
                                 borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: HandsColors.white12, width: 1),
+                                border: Border.all(
+                                  color: HandsColors.white12,
+                                  width: 1,
+                                ),
                               ),
                               child: ExpansionTile(
                                 tilePadding: const EdgeInsets.all(16),
-                                childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                                expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                                childrenPadding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  0,
+                                  16,
+                                  16,
+                                ),
+                                expandedCrossAxisAlignment:
+                                    CrossAxisAlignment.start,
                                 title: Row(
                                   children: [
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Text(
                                             r.taskName,
@@ -2781,7 +3329,10 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                                           const SizedBox(height: 4),
                                           Text(
                                             '${r.date} • ${r.shiftName}${r.checklistName.isNotEmpty ? ' • ${r.checklistName}' : ''}',
-                                            style: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white70),
+                                            style: GoogleFonts.comfortaa(
+                                              fontSize: 12,
+                                              color: HandsColors.white70,
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -2792,22 +3343,34 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                                       children: [
                                         // Status badge
                                         Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 4,
+                                          ),
                                           decoration: BoxDecoration(
-                                            color: r.completed ? HandsColors.sageGreen : HandsColors.error,
-                                            borderRadius: BorderRadius.circular(12),
+                                            color:
+                                                r.completed
+                                                    ? HandsColors.sageGreen
+                                                    : HandsColors.error,
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
                                           ),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
                                               Icon(
-                                                r.completed ? Icons.check_circle : Icons.cancel,
+                                                r.completed
+                                                    ? Icons.check_circle
+                                                    : Icons.cancel,
                                                 size: 14,
                                                 color: HandsColors.white,
                                               ),
                                               const SizedBox(width: 4),
                                               Text(
-                                                r.completed ? 'Completed' : 'Missed',
+                                                r.completed
+                                                    ? 'Completed'
+                                                    : 'Missed',
                                                 style: GoogleFonts.comfortaa(
                                                   fontSize: 11,
                                                   fontWeight: FontWeight.w600,
@@ -2818,15 +3381,21 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                                           ),
                                         ),
                                         // Content indicators
-                                        if (r.photoCount > 0 || r.reason.isNotEmpty || r.note.isNotEmpty) ...[
+                                        if (r.photoCount > 0 ||
+                                            r.reason.isNotEmpty ||
+                                            r.note.isNotEmpty) ...[
                                           const SizedBox(width: 8),
                                           Container(
                                             width: 24,
                                             height: 24,
                                             decoration: BoxDecoration(
-                                              color: HandsColors.handsOrange.withOpacity(0.2),
+                                              color: HandsColors.handsOrange
+                                                  .withOpacity(0.2),
                                               shape: BoxShape.circle,
-                                              border: Border.all(color: HandsColors.handsOrange, width: 1),
+                                              border: Border.all(
+                                                color: HandsColors.handsOrange,
+                                                width: 1,
+                                              ),
                                             ),
                                             child: const Icon(
                                               Icons.info_outline,
@@ -2841,22 +3410,32 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                                 ),
                                 children: [
                                   // Expanded content with dark theme
-                                  if (r.completed && r.completedBy.isNotEmpty) ...[
+                                  if (r.completed &&
+                                      r.completedBy.isNotEmpty) ...[
                                     Container(
                                       width: double.infinity,
                                       padding: const EdgeInsets.all(16),
                                       margin: const EdgeInsets.only(bottom: 12),
                                       decoration: BoxDecoration(
-                                        color: HandsColors.sageGreen.withOpacity(0.1),
+                                        color: HandsColors.sageGreen
+                                            .withOpacity(0.1),
                                         borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(color: HandsColors.sageGreen.withOpacity(0.3)),
+                                        border: Border.all(
+                                          color: HandsColors.sageGreen
+                                              .withOpacity(0.3),
+                                        ),
                                       ),
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Row(
                                             children: [
-                                              Icon(Icons.person_outlined, size: 18, color: HandsColors.sageGreen),
+                                              Icon(
+                                                Icons.person_outlined,
+                                                size: 18,
+                                                color: HandsColors.sageGreen,
+                                              ),
                                               const SizedBox(width: 8),
                                               Text(
                                                 'Completed by:',
@@ -2874,11 +3453,20 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                                               Expanded(
                                                 child: Text(
                                                   r.completedBy,
-                                                  style: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white),
+                                                  style: GoogleFonts.comfortaa(
+                                                    fontSize: 12,
+                                                    color: HandsColors.white,
+                                                  ),
                                                 ),
                                               ),
-                                              if (r.timeCompleted.isNotEmpty) ...[
-                                                Icon(Icons.access_time, size: 14, color: HandsColors.sageGreen),
+                                              if (r
+                                                  .timeCompleted
+                                                  .isNotEmpty) ...[
+                                                Icon(
+                                                  Icons.access_time,
+                                                  size: 14,
+                                                  color: HandsColors.sageGreen,
+                                                ),
                                                 const SizedBox(width: 4),
                                                 Text(
                                                   r.timeCompleted,
@@ -2900,16 +3488,27 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                                       padding: const EdgeInsets.all(16),
                                       margin: const EdgeInsets.only(bottom: 12),
                                       decoration: BoxDecoration(
-                                        color: HandsColors.amber.withOpacity(0.1),
+                                        color: HandsColors.amber.withOpacity(
+                                          0.1,
+                                        ),
                                         borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(color: HandsColors.amber.withOpacity(0.3)),
+                                        border: Border.all(
+                                          color: HandsColors.amber.withOpacity(
+                                            0.3,
+                                          ),
+                                        ),
                                       ),
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Row(
                                             children: [
-                                              Icon(Icons.warning_amber, size: 18, color: HandsColors.amber),
+                                              Icon(
+                                                Icons.warning_amber,
+                                                size: 18,
+                                                color: HandsColors.amber,
+                                              ),
                                               const SizedBox(width: 8),
                                               Text(
                                                 'Reason for not completing:',
@@ -2924,7 +3523,10 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                                           const SizedBox(height: 8),
                                           Text(
                                             r.reason,
-                                            style: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white),
+                                            style: GoogleFonts.comfortaa(
+                                              fontSize: 12,
+                                              color: HandsColors.white,
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -2936,23 +3538,33 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                                       padding: const EdgeInsets.all(16),
                                       margin: const EdgeInsets.only(bottom: 12),
                                       decoration: BoxDecoration(
-                                        color: HandsColors.handsOrange.withOpacity(0.1),
+                                        color: HandsColors.handsOrange
+                                            .withOpacity(0.1),
                                         borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(color: HandsColors.handsOrange.withOpacity(0.3)),
+                                        border: Border.all(
+                                          color: HandsColors.handsOrange
+                                              .withOpacity(0.3),
+                                        ),
                                       ),
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Row(
                                             children: [
-                                              Icon(Icons.note, size: 18, color: HandsColors.handsOrange),
+                                              Icon(
+                                                Icons.note,
+                                                size: 18,
+                                                color: HandsColors.handsOrange,
+                                              ),
                                               const SizedBox(width: 8),
                                               Text(
                                                 'Note:',
                                                 style: GoogleFonts.comfortaa(
                                                   fontWeight: FontWeight.w600,
                                                   fontSize: 13,
-                                                  color: HandsColors.handsOrange,
+                                                  color:
+                                                      HandsColors.handsOrange,
                                                 ),
                                               ),
                                             ],
@@ -2960,7 +3572,10 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                                           const SizedBox(height: 8),
                                           Text(
                                             r.note,
-                                            style: GoogleFonts.comfortaa(fontSize: 12, color: HandsColors.white),
+                                            style: GoogleFonts.comfortaa(
+                                              fontSize: 12,
+                                              color: HandsColors.white,
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -2971,16 +3586,25 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                                       width: double.infinity,
                                       padding: const EdgeInsets.all(16),
                                       decoration: BoxDecoration(
-                                        color: HandsColors.sageGreen.withOpacity(0.1),
+                                        color: HandsColors.sageGreen
+                                            .withOpacity(0.1),
                                         borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(color: HandsColors.sageGreen.withOpacity(0.3)),
+                                        border: Border.all(
+                                          color: HandsColors.sageGreen
+                                              .withOpacity(0.3),
+                                        ),
                                       ),
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Row(
                                             children: [
-                                              Icon(Icons.photo_library, size: 18, color: HandsColors.sageGreen),
+                                              Icon(
+                                                Icons.photo_library,
+                                                size: 18,
+                                                color: HandsColors.sageGreen,
+                                              ),
                                               const SizedBox(width: 8),
                                               Text(
                                                 'Photos (${r.photoCount}):',
@@ -2993,19 +3617,36 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                                               if (r.photoRequired) ...[
                                                 const SizedBox(width: 8),
                                                 Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 6,
+                                                        vertical: 2,
+                                                      ),
                                                   decoration: BoxDecoration(
-                                                    color: HandsColors.handsOrange.withOpacity(0.2),
-                                                    borderRadius: BorderRadius.circular(8),
-                                                    border: Border.all(color: HandsColors.handsOrange),
+                                                    color: HandsColors
+                                                        .handsOrange
+                                                        .withOpacity(0.2),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          8,
+                                                        ),
+                                                    border: Border.all(
+                                                      color:
+                                                          HandsColors
+                                                              .handsOrange,
+                                                    ),
                                                   ),
                                                   child: Text(
                                                     'REQUIRED',
-                                                    style: GoogleFonts.comfortaa(
-                                                      color: HandsColors.handsOrange,
-                                                      fontSize: 9,
-                                                      fontWeight: FontWeight.w600,
-                                                    ),
+                                                    style:
+                                                        GoogleFonts.comfortaa(
+                                                          color:
+                                                              HandsColors
+                                                                  .handsOrange,
+                                                          fontSize: 9,
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                        ),
                                                   ),
                                                 ),
                                               ],
@@ -3016,62 +3657,111 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                                             spacing: 8,
                                             runSpacing: 8,
                                             children:
-                                                r.photoUrls.take(6).map((photoUrl) {
-                                                  print('[TaskHistory] Debug: Attempting to load image: $photoUrl');
+                                                r.photoUrls.take(6).map((
+                                                  photoUrl,
+                                                ) {
+                                                  print(
+                                                    '[TaskHistory] Debug: Attempting to load image: $photoUrl',
+                                                  );
                                                   return GestureDetector(
-                                                    onTap: () => _showFullScreenImage(context, photoUrl, r.taskName),
+                                                    onTap:
+                                                        () =>
+                                                            _showFullScreenImage(
+                                                              context,
+                                                              photoUrl,
+                                                              r.taskName,
+                                                            ),
                                                     child: Container(
                                                       width: 80,
                                                       height: 80,
                                                       decoration: BoxDecoration(
-                                                        borderRadius: BorderRadius.circular(12),
-                                                        border: Border.all(color: HandsColors.white12),
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              12,
+                                                            ),
+                                                        border: Border.all(
+                                                          color:
+                                                              HandsColors
+                                                                  .white12,
+                                                        ),
                                                       ),
                                                       child: ClipRRect(
-                                                        borderRadius: BorderRadius.circular(12),
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              12,
+                                                            ),
                                                         child: Image.network(
                                                           photoUrl,
                                                           fit: BoxFit.cover,
-                                                          errorBuilder: (context, error, stackTrace) {
+                                                          errorBuilder: (
+                                                            context,
+                                                            error,
+                                                            stackTrace,
+                                                          ) {
                                                             print(
                                                               '[TaskHistory] Debug: Image load error for $photoUrl: $error',
                                                             );
                                                             return Container(
-                                                              color: HandsColors.cardTertiary,
+                                                              color:
+                                                                  HandsColors
+                                                                      .cardTertiary,
                                                               child: Column(
-                                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                                mainAxisAlignment:
+                                                                    MainAxisAlignment
+                                                                        .center,
                                                                 children: [
                                                                   const Icon(
-                                                                    Icons.broken_image,
-                                                                    color: HandsColors.white30,
+                                                                    Icons
+                                                                        .broken_image,
+                                                                    color:
+                                                                        HandsColors
+                                                                            .white30,
                                                                     size: 32,
                                                                   ),
                                                                   Text(
                                                                     'Failed to load',
                                                                     style: GoogleFonts.comfortaa(
-                                                                      fontSize: 8,
-                                                                      color: HandsColors.white30,
+                                                                      fontSize:
+                                                                          8,
+                                                                      color:
+                                                                          HandsColors
+                                                                              .white30,
                                                                     ),
                                                                   ),
                                                                 ],
                                                               ),
                                                             );
                                                           },
-                                                          loadingBuilder: (context, child, loadingProgress) {
-                                                            if (loadingProgress == null) return child;
+                                                          loadingBuilder: (
+                                                            context,
+                                                            child,
+                                                            loadingProgress,
+                                                          ) {
+                                                            if (loadingProgress ==
+                                                                null) {
+                                                              return child;
+                                                            }
                                                             return Container(
-                                                              color: HandsColors.cardTertiary,
+                                                              color:
+                                                                  HandsColors
+                                                                      .cardTertiary,
                                                               child: Center(
                                                                 child: CircularProgressIndicator(
                                                                   value:
-                                                                      loadingProgress.expectedTotalBytes != null
+                                                                      loadingProgress.expectedTotalBytes !=
+                                                                              null
                                                                           ? loadingProgress.cumulativeBytesLoaded /
                                                                               loadingProgress.expectedTotalBytes!
                                                                           : null,
-                                                                  strokeWidth: 2,
-                                                                  valueColor: const AlwaysStoppedAnimation<Color>(
-                                                                    HandsColors.handsOrange,
-                                                                  ),
+                                                                  strokeWidth:
+                                                                      2,
+                                                                  valueColor:
+                                                                      const AlwaysStoppedAnimation<
+                                                                        Color
+                                                                      >(
+                                                                        HandsColors
+                                                                            .handsOrange,
+                                                                      ),
                                                                 ),
                                                               ),
                                                             );
@@ -3084,10 +3774,15 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                                           ),
                                           if (r.photoUrls.length > 6)
                                             Padding(
-                                              padding: const EdgeInsets.only(top: 8),
+                                              padding: const EdgeInsets.only(
+                                                top: 8,
+                                              ),
                                               child: Text(
                                                 '+ ${r.photoUrls.length - 6} more photos',
-                                                style: GoogleFonts.comfortaa(fontSize: 11, color: HandsColors.white70),
+                                                style: GoogleFonts.comfortaa(
+                                                  fontSize: 11,
+                                                  color: HandsColors.white70,
+                                                ),
                                               ),
                                             ),
                                         ],
@@ -3099,13 +3794,23 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                                       width: double.infinity,
                                       padding: const EdgeInsets.all(16),
                                       decoration: BoxDecoration(
-                                        color: HandsColors.amber.withOpacity(0.1),
+                                        color: HandsColors.amber.withOpacity(
+                                          0.1,
+                                        ),
                                         borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(color: HandsColors.amber.withOpacity(0.3)),
+                                        border: Border.all(
+                                          color: HandsColors.amber.withOpacity(
+                                            0.3,
+                                          ),
+                                        ),
                                       ),
                                       child: Row(
                                         children: [
-                                          Icon(Icons.photo_camera_outlined, size: 18, color: HandsColors.amber),
+                                          Icon(
+                                            Icons.photo_camera_outlined,
+                                            size: 18,
+                                            color: HandsColors.amber,
+                                          ),
                                           const SizedBox(width: 8),
                                           Text(
                                             'Photo was required but not added',
@@ -3127,14 +3832,18 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                       ),
 
                       // Pagination controls
-                      if (_allRows.isNotEmpty && (_currentPage + 1) * _itemsPerPage < _allRows.length)
+                      if (_allRows.isNotEmpty &&
+                          (_currentPage + 1) * _itemsPerPage < _allRows.length)
                         Container(
                           padding: const EdgeInsets.all(16),
                           child: HandsPrimaryButton(
                             text: 'Load 10 More Tasks',
                             onPressed: _loadMore,
                             icon: Icons.expand_more,
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 12,
+                            ),
                           ),
                         ),
                     ],
@@ -3144,7 +3853,11 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
     );
   }
 
-  void _showFullScreenImage(BuildContext context, String imageUrl, String taskName) {
+  void _showFullScreenImage(
+    BuildContext context,
+    String imageUrl,
+    String taskName,
+  ) {
     showDialog(
       context: context,
       barrierColor: Colors.black87,
@@ -3166,7 +3879,11 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                           width: 200,
                           height: 200,
                           color: Colors.grey[900],
-                          child: const Center(child: CircularProgressIndicator(color: HandsColors.white)),
+                          child: const Center(
+                            child: CircularProgressIndicator(
+                              color: HandsColors.white,
+                            ),
+                          ),
                         );
                       },
                       errorBuilder: (context, error, stackTrace) {
@@ -3177,9 +3894,16 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                           child: const Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.broken_image, color: HandsColors.white, size: 48),
+                              Icon(
+                                Icons.broken_image,
+                                color: HandsColors.white,
+                                size: 48,
+                              ),
                               SizedBox(height: 8),
-                              Text('Failed to load image', style: TextStyle(color: Colors.white)),
+                              Text(
+                                'Failed to load image',
+                                style: TextStyle(color: Colors.white),
+                              ),
                             ],
                           ),
                         );
@@ -3206,7 +3930,11 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                         Expanded(
                           child: Text(
                             taskName,
-                            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -3214,7 +3942,11 @@ class _TaskHistoryDialogState extends State<_TaskHistoryDialog> {
                         const SizedBox(width: 16),
                         IconButton(
                           onPressed: () => Navigator.of(context).pop(),
-                          icon: const Icon(Icons.close, color: Colors.white, size: 28),
+                          icon: const Icon(
+                            Icons.close,
+                            color: Colors.white,
+                            size: 28,
+                          ),
                           style: IconButton.styleFrom(
                             backgroundColor: Colors.black26,
                             padding: const EdgeInsets.all(8),
@@ -3259,412 +3991,4 @@ class _TaskRow {
     required this.timeCompleted,
     required this.photoRequired,
   });
-}
-
-class _StatusToggleButton extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _StatusToggleButton({required this.label, required this.selected, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected ? HandsColors.handsOrange : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Text(
-          label.toUpperCase(),
-          style: GoogleFonts.comfortaa(
-            color: selected ? HandsColors.white : HandsColors.white70,
-            fontSize: 12,
-            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-            letterSpacing: 0.5,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ===== Simple Web Widgets =====
-
-class _SimpleDashboardCard extends StatelessWidget {
-  final String title;
-  final IconData icon;
-  final Color accentColor;
-  final bool loading;
-  final VoidCallback? onTap;
-  final Widget? content;
-  final List<Widget>? actions;
-
-  const _SimpleDashboardCard({
-    required this.title,
-    required this.icon,
-    required this.accentColor,
-    this.loading = false,
-    this.onTap,
-    this.content,
-    this.actions,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: HandsDecorations.primaryBoxDecoration.copyWith(borderRadius: BorderRadius.circular(20)),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              Row(
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      color: accentColor.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.all(12),
-                    child: Icon(icon, color: accentColor, size: 24),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: GoogleFonts.comfortaa(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: HandsColors.white,
-                        letterSpacing: 1.0,
-                      ),
-                    ),
-                  ),
-                  if (actions != null) ...actions!,
-                ],
-              ),
-
-              // Content
-              if (loading)
-                SizedBox(
-                  height: 240, // Reduced loading height
-                  child: Center(
-                    child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(accentColor)),
-                  ),
-                )
-              else if (content != null)
-                Expanded(child: content!),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SimpleShiftList extends StatefulWidget {
-  final List<Map<String, dynamic>> shifts;
-  final VoidCallback? onOpen;
-
-  const _SimpleShiftList({required this.shifts, this.onOpen});
-
-  @override
-  State<_SimpleShiftList> createState() => _SimpleShiftListState();
-}
-
-class _SimpleShiftListState extends State<_SimpleShiftList> {
-  final ScrollController _scrollController = ScrollController();
-  final PageController _pageController = PageController(viewportFraction: 0.85);
-  bool _showLeft = false;
-  bool _showRight = false;
-  int _currentPage = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _scrollController.addListener(_onScroll);
-    _pageController.addListener(_onPage);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _updateIndicators());
-  }
-
-  @override
-  void dispose() {
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
-    _pageController.removeListener(_onPage);
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  void _onScroll() => _updateIndicators();
-  void _onPage() {
-    final p = (_pageController.page ?? 0).round();
-    if (p != _currentPage) setState(() => _currentPage = p);
-    _updateIndicators();
-  }
-
-  void _updateIndicators() {
-    if (!mounted) return;
-    final isNarrow = MediaQuery.of(context).size.width < 420;
-
-    if (isNarrow) {
-      final maxScroll =
-          _scrollController.position.hasContentDimensions ? _scrollController.position.maxScrollExtent : 0.0;
-      final offset = _scrollController.offset;
-      setState(() {
-        _showLeft = offset > 8;
-        _showRight = maxScroll - offset > 8;
-      });
-    } else {
-      // For desktop horizontal scroll, we don't need navigation indicators
-      // The user can just scroll horizontally or use scroll wheel
-      setState(() {
-        _showLeft = false;
-        _showRight = false;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final shifts = widget.shifts;
-    if (shifts.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.schedule_outlined, size: 48, color: HandsColors.white30),
-            const SizedBox(height: 16),
-            Text('No shifts today', style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 16)),
-          ],
-        ),
-      );
-    }
-
-    final isNarrow = MediaQuery.of(context).size.width < 420;
-
-    // Narrow devices: horizontal scroll similar to mobile
-    if (isNarrow) {
-      return SizedBox(
-        height: 240,
-        child: Stack(
-          children: [
-            ListView.builder(
-              controller: _scrollController,
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-              itemCount: shifts.length,
-              itemBuilder: (context, i) {
-                final shift = shifts[i];
-                return SizedBox(width: 140, child: _WebShiftCard(shift: shift, onOpen: widget.onOpen));
-              },
-            ),
-            if (_showLeft)
-              Positioned(
-                left: 4,
-                top: 0,
-                bottom: 0,
-                child: Opacity(opacity: 0.35, child: Icon(Icons.arrow_back_ios, color: Colors.white, size: 18)),
-              ),
-            if (_showRight)
-              Positioned(
-                right: 4,
-                top: 0,
-                bottom: 0,
-                child: Opacity(opacity: 0.35, child: Icon(Icons.arrow_forward_ios, color: Colors.white, size: 18)),
-              ),
-          ],
-        ),
-      );
-    }
-
-    // Desktop/tablet: horizontal scrolling layout that shows all shifts
-    print('SHIFT LIST DEBUG: ${shifts.length} shifts, using horizontal scroll layout');
-
-    return SizedBox(
-      height: 280,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.all(12),
-        itemCount: shifts.length,
-        itemBuilder: (context, index) {
-          final shift = shifts[index];
-          return Container(
-            width: 280,
-            margin: const EdgeInsets.only(right: 12),
-            child: _WebShiftCard(shift: shift, onOpen: widget.onOpen),
-          );
-        },
-      ),
-    );
-  }
-}
-
-// Small card used in web shift lists
-class _WebShiftCard extends StatelessWidget {
-  final Map<String, dynamic> shift;
-  final VoidCallback? onOpen;
-  const _WebShiftCard({required this.shift, this.onOpen});
-
-  @override
-  Widget build(BuildContext context) {
-    final shiftName = shift['shiftName']?.toString() ?? 'Unknown';
-    final timeStatus = shift['timeStatus']?.toString() ?? '';
-    final isLive = timeStatus.contains('remaining');
-    final completionPct = (shift['completionPct'] as double?) ?? 0.0;
-    final completedTasks = (shift['completedTasks'] as int?) ?? 0;
-    final totalTasks = (shift['totalTasks'] as int?) ?? 0;
-
-    return Material(
-      color: HandsColors.cardTertiary,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      child: InkWell(
-        onTap: onOpen,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              // Responsive sizing based on available space
-              final cardHeight = constraints.maxHeight;
-              final cardWidth = constraints.maxWidth;
-
-              // Calculate dynamic sizes
-              final titleFontSize = (cardWidth * 0.08).clamp(12.0, 16.0);
-              final harveyBallSize = (cardHeight * 0.35).clamp(50.0, 90.0);
-              final taskFontSize = (cardWidth * 0.06).clamp(10.0, 14.0);
-              final statusFontSize = (cardWidth * 0.055).clamp(9.0, 12.0);
-
-              return Column(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Shift name with responsive typography
-                  Text(
-                    shiftName,
-                    style: GoogleFonts.comfortaa(
-                      color: HandsColors.white,
-                      fontSize: titleFontSize,
-                      fontWeight: FontWeight.w600,
-                      height: 1.2,
-                    ),
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // Professional Harvey Ball with responsive sizing
-                  Flexible(
-                    child: ProfessionalHarveyBall(
-                      percentage: completionPct,
-                      size: harveyBallSize,
-                      showPercentage: true,
-                      animate: true,
-                      strokeWidth: 3.5,
-                    ),
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // Task info and status with responsive typography
-                  Column(
-                    children: [
-                      Text(
-                        '$completedTasks/$totalTasks tasks',
-                        style: GoogleFonts.comfortaa(
-                          color: HandsColors.white70,
-                          fontSize: taskFontSize,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      if (timeStatus.isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              width: 6,
-                              height: 6,
-                              decoration: BoxDecoration(
-                                color: isLive ? HandsColors.sageGreen : HandsColors.white30,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Flexible(
-                              child: Text(
-                                timeStatus,
-                                style: GoogleFonts.comfortaa(
-                                  color: isLive ? HandsColors.sageGreen : HandsColors.white70,
-                                  fontSize: statusFontSize,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ],
-                  ),
-                ],
-              );
-            },
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SimpleTopList extends StatelessWidget {
-  final List<Map<String, dynamic>> items;
-  final String emptyLabel;
-
-  const _SimpleTopList({required this.items, this.emptyLabel = 'No items'});
-
-  @override
-  Widget build(BuildContext context) {
-    if (items.isEmpty) {
-      return Center(child: Text(emptyLabel, style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 16)));
-    }
-
-    return ListView.separated(
-      itemCount: items.length,
-      separatorBuilder: (context, index) => const SizedBox(height: 8),
-      itemBuilder: (context, index) {
-        final item = items[index];
-        final name = item['name']?.toString() ?? 'Unknown';
-        final value = item['value']?.toString() ?? '';
-
-        return Row(
-          children: [
-            Expanded(
-              child: Text(
-                name,
-                style: GoogleFonts.comfortaa(color: HandsColors.white, fontSize: 14, fontWeight: FontWeight.w500),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            Text(
-              value,
-              style: GoogleFonts.comfortaa(color: HandsColors.white70, fontSize: 14, fontWeight: FontWeight.w600),
-            ),
-          ],
-        );
-      },
-    );
-  }
 }

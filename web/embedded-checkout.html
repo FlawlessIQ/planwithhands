@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,shrink-to-fit=no" />
+    <title>Secure Checkout</title>
+    <script src="https://js.stripe.com/v3/"></script>
+    <style>
+      html, body { margin:0; padding:0; background:#0b0b0b; color:#fff; font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; }
+      .wrap { max-width: 980px; margin: 24px auto; padding: 16px; }
+      #checkout { background: transparent; }
+      a.back { color:#9ecbff; text-decoration:none; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <p><a class="back" href="/#/settings">← Back to app</a></p>
+      <div id="checkout"></div>
+    </div>
+    <script>
+      (async () => {
+        const params = new URLSearchParams(location.search);
+        const clientSecret = params.get('client_secret');
+        let pk = params.get('pk') || "%STRIPE_PUBLISHABLE_KEY%"; // replaced at build or via hosting templating
+        const isLive = clientSecret && clientSecret.startsWith('cs_live_');
+        const isTest = clientSecret && clientSecret.startsWith('cs_test_');
+        if (!pk || pk.startsWith('%')) {
+          try {
+            const pkLive = localStorage.getItem('STRIPE_PUBLISHABLE_KEY_LIVE') || '';
+            const pkTest = localStorage.getItem('STRIPE_PUBLISHABLE_KEY_TEST') || '';
+            const pkAny = localStorage.getItem('STRIPE_PUBLISHABLE_KEY') || '';
+            pk = isLive ? (pkLive || pkAny) : (isTest ? (pkTest || pkAny) : pkAny);
+          } catch (e) {}
+        }
+        // Persist pk for future navigations
+        try {
+          if (pk && pk.startsWith('pk_')) {
+            localStorage.setItem('STRIPE_PUBLISHABLE_KEY', pk);
+            if (pk.startsWith('pk_live_')) localStorage.setItem('STRIPE_PUBLISHABLE_KEY_LIVE', pk);
+            if (pk.startsWith('pk_test_')) localStorage.setItem('STRIPE_PUBLISHABLE_KEY_TEST', pk);
+          }
+        } catch (e) {}
+        const mount = document.getElementById('checkout');
+        if (!clientSecret || !pk) {
+          mount.innerText = 'Checkout can’t start (missing config).';
+          return;
+        }
+        try {
+          const stripe = Stripe(pk);
+          const checkout = await stripe.initEmbeddedCheckout({ clientSecret });
+          checkout.mount('#checkout');
+        } catch (e) {
+          mount.innerText = 'Failed to initialize checkout: ' + (e?.message || e);
+        }
+      })();
+    </script>
+  </body>
+</html>
